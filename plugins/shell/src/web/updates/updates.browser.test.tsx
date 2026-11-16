@@ -14,12 +14,7 @@ import { createPluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import manifest from "../../../plugin.json";
-import {
-	BETA_BADGES_FLAG,
-	SHELL_DEFINITIONS,
-	SidebarNotice,
-	UPDATE_TRACK_SWITCHER_FLAG,
-} from "../../contracts";
+import { SHELL_DEFINITIONS, SidebarNotice, UPDATE_TRACK_SWITCHER_FLAG } from "../../contracts";
 import type { LegalResources } from "../../main/legal";
 import { renderShell } from "../../testing";
 import { activateUpdates } from "./index";
@@ -91,17 +86,13 @@ async function renderApp(
 		updater?: UpdaterFake;
 		os?: OsFake;
 		flag?: boolean;
-		beta?: boolean;
 		path?: string;
 		resources?: LegalResources;
 	} = {},
 ) {
 	const host = await renderShell([], {
 		desktop: true,
-		flags: {
-			[UPDATE_TRACK_SWITCHER_FLAG]: options.flag !== false,
-			[BETA_BADGES_FLAG]: options.beta !== false,
-		},
+		flags: { [UPDATE_TRACK_SWITCHER_FLAG]: options.flag !== false },
 		shellMain: { legalResources: () => options.resources ?? packagedResources({}) },
 		beforeRender: (main) => {
 			main.kernelSdk.domainObjects.provide(KernelOs, {
@@ -327,7 +318,6 @@ describe("About settings", () => {
 
 		await expect.element(page.getByTestId("about-settings")).toBeVisible();
 		await expect.element(page.getByText("1.2.2", { exact: true })).toBeVisible();
-		await expect.element(page.getByTestId("about-beta-badge")).toHaveTextContent("Beta");
 		await expect
 			.element(page.getByTestId("update-status-message"))
 			.toHaveTextContent("Version 1.2.3 is ready to install.");
@@ -340,13 +330,6 @@ describe("About settings", () => {
 			.element(version.getByText("Improved retry behavior", { exact: true }))
 			.toBeVisible();
 		expect(page.getByTestId("update-release-notes").element().textContent).not.toContain("#");
-	});
-
-	it("hides the Beta badge while the beta-badges flag is off", async () => {
-		await openAbout({ beta: false });
-
-		await expect.element(page.getByText("1.2.2", { exact: true })).toBeVisible();
-		await expect.element(page.getByTestId("about-beta-badge")).not.toBeInTheDocument();
 	});
 
 	it("shows release-note text when there are no bullet items", async () => {

@@ -29,6 +29,11 @@ import {
 	type ReleaseDownload,
 } from "./track-release.js";
 import {
+	readReleaseHighlights,
+	RELEASE_HIGHLIGHTS_DIRECTORY,
+	withReleaseHighlights,
+} from "./release-highlights.js";
+import {
 	getPreviewBuildTime,
 	getArtifactKey,
 	getPublishAppVersion,
@@ -82,7 +87,10 @@ async function main(): Promise<void> {
 			},
 		},
 	);
-	const bodyMarkdown = sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(generated.body));
+	const bodyMarkdown = withReleaseHighlights(
+		sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(generated.body)),
+		await readReleaseHighlights(RELEASE_HIGHLIGHTS_DIRECTORY, version),
+	);
 	const publishedAt = new Date().toISOString();
 	const releaseNotes = {
 		schemaVersion: 1 as const,

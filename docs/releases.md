@@ -124,6 +124,16 @@ pull-request numbers, links, and tracker ids such as `[ABC-123]` before the same
 in-app release-note document. Preview the result for any tag without publishing with
 `pnpm --filter @kilo-desktop/desktop release:notes <tag>`.
 
+Hand-written highlights (for example a milestone or a change users must know about) lead the notes when
+`apps/desktop/release-highlights/<version>.md` exists for the exact published version.
+Add it in the Stable version-bump pull request so the wording is reviewed with the release;
+Preview versions are stamped at build time, so the file effectively applies to Stable. The
+file is Markdown, but the app lists only its list items (`- …`), in order and as plain text
+(links and emphasis are stripped), so write anything users must see, including URLs, as
+list items; publishing fails if it has none. `release:notes` includes the highlights for the
+tag's version (or `--version`). Release notes are immutable once published, so preview them
+before dispatching the release.
+
 Each update channel exposes stable public download pointers in addition to its immutable maker
 artifacts:
 

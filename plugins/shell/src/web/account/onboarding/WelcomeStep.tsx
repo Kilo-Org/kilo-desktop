@@ -2,14 +2,11 @@ import { ArrowRightIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useRef } from "react";
 
-import { useContextKey } from "@kilo-desktop/kernel/web";
-import { BETA_BADGES_FLAG } from "../../../contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import { DialogDescription, DialogTitle } from "@kilo-desktop/ui/components/dialog";
 import { KILO_TERMS_URL } from "@kilo-desktop/plugin-core/contracts";
 
-import { BetaWordmark } from "@kilo-desktop/ui/components/brand/beta-wordmark";
 import { KiloWelcomeLogo } from "@kilo-desktop/ui/components/brand/kilo-welcome-logo";
 
 import { DotGrid } from "./DotGrid";
@@ -46,7 +43,6 @@ export function WelcomeStep({
 	onContinue: () => void;
 }) {
 	const logoRef = useRef<HTMLDivElement>(null);
-	const beta = useContextKey(`kernel/flag:${BETA_BADGES_FLAG}`);
 
 	return (
 		<div
@@ -67,7 +63,6 @@ export function WelcomeStep({
 				<div ref={logoRef}>
 					<KiloWelcomeLogo className="text-foreground mb-0" sizeClassName="size-16" />
 				</div>
-				{beta ? <BetaWordmark className="text-foreground w-15" /> : null}
 			</motion.div>
 
 			<motion.div className="flex flex-col items-center gap-2" {...blurUp(0.25)}>
@@ -88,7 +83,7 @@ export function WelcomeStep({
 						data-qa-id="onboarding-accept-terms"
 					/>
 					<span className="text-pretty">
-						Kilo Desktop is a beta product. By checking this box, I&nbsp;agree to the{" "}
+						By checking this box, I&nbsp;agree to the{" "}
 						<a
 							href={KILO_TERMS_URL}
 							target="_blank"
@@ -98,7 +93,7 @@ export function WelcomeStep({
 						>
 							terms of service
 						</a>
-						. This product is not intended for production use.
+						.
 					</span>
 				</label>
 				{error ? (

@@ -41,7 +41,6 @@ test.describe("About settings", () => {
 
 	test("verifies version details", async ({ aboutPage }) => {
 		await aboutPage.verifyVersionNumber();
-		await aboutPage.verifyBetaBadge();
 	});
 
 	test("verifies update status without an update feed", async ({ aboutPage }) => {

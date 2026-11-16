@@ -7,7 +7,6 @@ import type { RendererKernel } from "@kilo-desktop/kernel/web";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
-	BETA_BADGES_FLAG,
 	Dialog,
 	LeftSidebar,
 	Main,
@@ -75,15 +74,6 @@ describe("shell frame", () => {
 		expect(
 			notice.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBeTruthy();
-	});
-
-	it("shows the Beta badge beside the sidebar toggle only while the beta-badges flag is on", async () => {
-		await renderShell([product()]);
-		await expect.element(page.getByTestId("sidebar-nav-toggle")).toBeVisible();
-		await expect.element(page.getByTestId("sidebar-beta-badge")).not.toBeInTheDocument();
-
-		await renderShell([product()], { flags: { [BETA_BADGES_FLAG]: true } });
-		await expect.element(page.getByTestId("sidebar-beta-badge")).toHaveTextContent("Beta");
 	});
 
 	it("explains an empty main area when no plugin provides the home view", async () => {

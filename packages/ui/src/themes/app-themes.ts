@@ -100,7 +100,7 @@ type RolePalette = {
  * remap them onto other existing tokens (never new colors).
  * - ink: link text, spinners, status dots, progress, checked toggle track.
  * - soft: selected/active chips, badges and icon tiles (wash + accent text).
- * - brand: the few brand moments (composer Send, Beta badge); edge outlines a fill too pale for its surface.
+ * - brand: the few brand moments (composer Send); edge outlines a fill too pale for its surface.
  */
 export const ACCENT_ROLE_DEFAULTS = {
 	"primary-ink": "var(--primary)",

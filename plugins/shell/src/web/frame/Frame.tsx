@@ -23,7 +23,6 @@ import {
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
 import {
-	BETA_BADGES_FLAG,
 	LeftSidebar,
 	Main,
 	SidebarNotice,
@@ -47,9 +46,8 @@ import { useShellUi } from "./ui-state";
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
 const DEFAULT_SIDEBAR_TOGGLE_LEFT = "0.75rem";
-/** Width reserved right of the toggle's left edge for the toggle and, when shown, its Beta badge. */
-const SIDEBAR_TOGGLE_CLEARANCE = "5.25rem";
-const SIDEBAR_TOGGLE_CLEARANCE_WITHOUT_BADGE = "2.25rem";
+/** Width reserved right of the toggle's left edge for the toggle. */
+const SIDEBAR_TOGGLE_CLEARANCE = "2.25rem";
 
 const selectMode = (state: { mode: "light" | "dark" }) => state.mode;
 const NO_ACTIONS: readonly Contribution<typeof TopBarAction>[] = [];
@@ -99,7 +97,6 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 	const desktop = useContextKey("kernel/desktop");
 	const mac = useContextKey("kernel/mac");
 	const desktopMac = desktop && mac;
-	const beta = useContextKey(`kernel/flag:${BETA_BADGES_FLAG}`);
 
 	const atHome = pathname === "/";
 	const title = settings ? "Settings" : atHome ? home?.metadata.title : undefined;
@@ -113,9 +110,7 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 		"--shell-sidebar-toggle-left": desktopMac
 			? MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT
 			: DEFAULT_SIDEBAR_TOGGLE_LEFT,
-		"--shell-sidebar-toggle-clearance": beta
-			? SIDEBAR_TOGGLE_CLEARANCE
-			: SIDEBAR_TOGGLE_CLEARANCE_WITHOUT_BADGE,
+		"--shell-sidebar-toggle-clearance": SIDEBAR_TOGGLE_CLEARANCE,
 	} as CSSProperties;
 
 	return (

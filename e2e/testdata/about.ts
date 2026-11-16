@@ -1,7 +1,6 @@
 export const aboutData = {
 	pageTitle: "About",
 	pageDescription: "Check the app version, manage updates, and find application logs.",
-	betaBadgeLabel: "Beta",
 	// Semver with an optional prerelease tag, e.g. `0.1.13-preview-261019-10491`.
 	versionPattern: /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
 	// The e2e build has no update host compiled in, on any platform.

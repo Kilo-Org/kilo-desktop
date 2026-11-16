@@ -30,9 +30,12 @@ updates:
     cooldown:
       default-days: 1
     open-pull-requests-limit: 10
-    # Keep `^` ranges and only touch the lockfile while a release stays in
-    # range. Exact pins (the Kilo CLI packages) stay exact.
-    versioning-strategy: increase-if-necessary
+    # Raise the range floor on every bump (`^19.0.0` -> `^19.3.1`); exact pins
+    # (the Kilo CLI packages) stay exact. Not `increase-if-necessary`: that
+    # makes in-range bumps lockfile-only, which Dependabot cannot do for
+    # `catalog:` entries (NoChangeError), so electron, react, vite and other
+    # caret catalog entries would only ever get major-version PRs.
+    versioning-strategy: increase
     commit-message:
       prefix: "chore"
       include: "scope"

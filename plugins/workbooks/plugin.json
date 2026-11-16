@@ -13,7 +13,8 @@
 		"kilo.work-sessions/work-session-list-action": "optional",
 		"kilo.shell/dialog": "optional",
 		"kilo.shell/navigation": "optional",
-		"kilo.chat/composer": "optional"
+		"kilo.chat/composer": "optional",
+		"kilo.core/tool": "optional"
 	},
 	"extensionPoints": [
 		{
@@ -65,6 +66,51 @@
 				{
 					"id": "start",
 					"title": "Start from a workbook",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				}
+			],
+			"kilo.core/tool": [
+				{
+					"id": "read_workbook",
+					"title": "Read the workbook",
+					"readOnly": true,
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "add_plan_step",
+					"title": "Add a plan step",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "set_step_status",
+					"title": "Set a plan step's status",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "record_decision",
+					"title": "Record a decision",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "file_item",
+					"title": "File an item in the workbook",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "set_where_i_left_off",
+					"title": "Update where I left off",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}

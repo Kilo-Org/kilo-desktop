@@ -13,7 +13,9 @@ Refine the Brief: ask about anything missing and propose acceptance criteria. Th
 
 ## Extract, don't archive
 
-File information the moment it appears, in the section it belongs to. Never leave something worth keeping only in the chat. Use the item formats below exactly: the app reads them.
+File information the moment it appears, in the section it belongs to. Never leave something worth keeping only in the chat.
+
+When the workbook tools are available (`desktop_workbooks_read_workbook`, `add_plan_step`, `set_step_status`, `record_decision`, `file_item`, `set_where_i_left_off`), use them: they write the formats below for you and know which workbook this chat is on. Otherwise use the item formats below exactly: the app reads them.
 
 | Section        | Holds                                         | Format                                                                                                                                                                |
 | -------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

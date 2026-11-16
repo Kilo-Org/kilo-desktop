@@ -14,6 +14,7 @@ import { kiloPagesCaller } from "./kilo-pages";
 import type { PagesToolCaller } from "./pages-tools";
 import { provideTemplates } from "./template-registry";
 import { provideSessionWorkbooks } from "./session-workbooks";
+import { implementWorkbookTools } from "./workbook-tools";
 import { provideWorkbooks } from "./workbook-store";
 
 export interface WorkbooksMainOptions {
@@ -36,20 +37,27 @@ export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): Pl
 			const pages = options.pages ?? kiloPages(sdk);
 			provideWorkbooks(sdk, {
 				template: templates.find,
-				workspace: (id) => {
-					const workspace = sdk.domainObjects
-						.get(Workspaces)
-						?.getState()
-						.workspaces.find((candidate) => candidate.id === id);
-					if (!workspace) return undefined;
-					const primary = workspace.folders.find((folder) => folder.isPrimary);
-					return { name: workspace.name, ...(primary ? { directory: primary.path } : {}) };
-				},
+				workspace: (id) => workspaceOf(sdk, id),
 				pages,
 			});
 			provideSessionWorkbooks(sdk);
+			implementWorkbookTools(sdk, {
+				pages: (workbook) =>
+					pages(workbook.backend, workspaceOf(sdk, workbook.workspaceId)?.directory),
+			});
 		},
 	});
+}
+
+/** A workspace's name and primary folder (where its chats, and Kilo's MCP connections, run). */
+function workspaceOf(sdk: PluginSdk, id: string) {
+	const workspace = sdk.domainObjects
+		.get(Workspaces)
+		?.getState()
+		.workspaces.find((candidate) => candidate.id === id);
+	if (!workspace) return undefined;
+	const primary = workspace.folders.find((folder) => folder.isPrimary);
+	return { name: workspace.name, ...(primary ? { directory: primary.path } : {}) };
 }
 
 function kiloPages(sdk: PluginSdk) {

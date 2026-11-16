@@ -96,10 +96,24 @@ export class FakePages implements PagesToolCaller {
 			id,
 			title: String(args.title),
 			projectId: String(args.project_id),
-			blocks: [{ node_id: this.#id("n"), markdown: String(args.markdown ?? "") }],
+			blocks: this.#blocks(String(args.markdown ?? "")),
 			revision: 1,
 		});
 		return { page_id: id, url: `https://pages.test/p/${id}` };
+	}
+
+	/** Splits markdown into blocks at blank lines, keeping fenced code together, as Pages does. */
+	#blocks(markdown: string): FakeBlock[] {
+		const parts: string[] = [];
+		let fenced = false;
+		for (const chunk of markdown.split("\n\n")) {
+			if (fenced) parts[parts.length - 1] += `\n\n${chunk}`;
+			else parts.push(chunk);
+			if ((chunk.match(/```/g) ?? []).length % 2 === 1) fenced = !fenced;
+		}
+		return parts
+			.filter((part) => part.trim())
+			.map((part) => ({ node_id: this.#id("n"), markdown: part }));
 	}
 
 	#target(args: Args): FakePage {
@@ -149,9 +163,14 @@ export class FakePages implements PagesToolCaller {
 			case "delete_block":
 				page.blocks = page.blocks.filter((candidate) => candidate.node_id !== operation.node_id);
 				return;
-			case "insert_markdown":
-				page.blocks.push({ node_id: this.#id("n"), markdown: String(operation.markdown) });
+			case "insert_markdown": {
+				const added = this.#blocks(String(operation.markdown));
+				const after = page.blocks.findIndex(
+					(candidate) => candidate.node_id === operation.after_node_id,
+				);
+				page.blocks.splice(after === -1 ? page.blocks.length : after + 1, 0, ...added);
 				return;
+			}
 			case "replace_match": {
 				const target = block();
 				const match = String(operation.match_text);

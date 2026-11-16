@@ -203,6 +203,8 @@ export async function bootWorkbooks(
 		readonly viaKilo?: boolean;
 		readonly workSessions?: { current?: WorkSessionsControl };
 		readonly started?: StartedChat[];
+		/** The `workbooks` flag; on unless a test turns it off. */
+		readonly flag?: boolean;
 		/** Records dialogs opened through kilo.shell's navigation. */
 		readonly dialogs?: string[];
 	} = {},
@@ -234,6 +236,7 @@ export async function bootWorkbooks(
 			...(options.others ?? []),
 		],
 		{
+			host: { flagOverrides: { workbooks: options.flag ?? true } },
 			mainHostServices: (pluginId) =>
 				({
 					storage:

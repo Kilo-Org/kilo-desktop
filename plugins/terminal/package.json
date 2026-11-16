@@ -27,7 +27,7 @@
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"atomically": "catalog:",
-		"ghostty-web": "0.4.0-next.20.g1858a59",
+		"ghostty-web": "0.4.0",
 		"lucide-react": "catalog:",
 		"node-pty": "1.2.0-beta.18",
 		"react": "^19.2.8",

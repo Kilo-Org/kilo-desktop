@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseNewestFullRelease, UpdateFeedError, WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
 
-const FEED = "https://updates.example.com/kilo-desktop-ci-test/latest/win32/x64";
+const FEED = "https://updates.example.com/kilo-desktop/latest/win32/x64";
 const PACKAGE = Buffer.from("full package bytes for 1.2.3");
 const SHA1 = createHash("sha1").update(PACKAGE).digest("hex").toUpperCase();
 const FILE_NAME = "KiloDesktop-1.2.3-full.nupkg";

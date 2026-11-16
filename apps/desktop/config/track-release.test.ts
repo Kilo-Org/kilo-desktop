@@ -225,7 +225,7 @@ describe("track release publishing", () => {
 		);
 		expect(download).toMatchObject({ platform: "macos", arch: "arm64", type: "dmg" });
 		expect(getLatestAliasKey("preview", download!)).toBe(
-			"kilo-desktop-ci-test/preview/latest/macos/arm64/Kilo Preview.dmg",
+			"kilo-desktop/preview/latest/macos/arm64/Kilo Preview.dmg",
 		);
 		expect(
 			getLatestAliasKey("preview", {
@@ -233,9 +233,9 @@ describe("track release publishing", () => {
 				platform: "windows",
 				type: "setup",
 			}),
-		).toBe("kilo-desktop-ci-test/preview/latest/windows/arm64/Kilo-Preview-Setup.exe");
+		).toBe("kilo-desktop/preview/latest/windows/arm64/Kilo-Preview-Setup.exe");
 		expect(getLatestAliasKey("stable", { ...download!, platform: "linux", type: "deb" })).toBe(
-			"kilo-desktop-ci-test/latest/latest/linux/arm64/kilo-desktop.deb",
+			"kilo-desktop/latest/latest/linux/arm64/kilo-desktop.deb",
 		);
 		expect(classifyReleaseDownload("/tmp/RELEASES.json")).toBeNull();
 	});
@@ -250,10 +250,10 @@ describe("track release publishing", () => {
 		expect(x64).toMatchObject({ platform: "windows", arch: "x64", type: "setup" });
 		expect(arm64).toMatchObject({ platform: "windows", arch: "arm64", type: "setup" });
 		expect(getLatestAliasKey("stable", x64!)).toBe(
-			"kilo-desktop-ci-test/latest/latest/windows/x64/Kilo-Setup.exe",
+			"kilo-desktop/latest/latest/windows/x64/Kilo-Setup.exe",
 		);
 		expect(getLatestAliasKey("stable", arm64!)).toBe(
-			"kilo-desktop-ci-test/latest/latest/windows/arm64/Kilo-Setup.exe",
+			"kilo-desktop/latest/latest/windows/arm64/Kilo-Setup.exe",
 		);
 	});
 
@@ -267,10 +267,10 @@ describe("track release publishing", () => {
 		expect(x64).toMatchObject({ platform: "linux", arch: "x64", type: "deb" });
 		expect(arm64).toMatchObject({ platform: "linux", arch: "arm64", type: "deb" });
 		expect(getLatestAliasKey("stable", x64!)).toBe(
-			"kilo-desktop-ci-test/latest/latest/linux/x64/kilo-desktop.deb",
+			"kilo-desktop/latest/latest/linux/x64/kilo-desktop.deb",
 		);
 		expect(getLatestAliasKey("stable", arm64!)).toBe(
-			"kilo-desktop-ci-test/latest/latest/linux/arm64/kilo-desktop.deb",
+			"kilo-desktop/latest/latest/linux/arm64/kilo-desktop.deb",
 		);
 	});
 });

@@ -101,7 +101,7 @@ Maker artifacts are written to `apps/desktop/out/make/`.
 Artifacts are published under updater namespaces:
 
 ```text
-kilo-desktop-ci-test/<update-channel>/<platform>/<arch>/<artifact>
+kilo-desktop/<update-channel>/<platform>/<arch>/<artifact>
 ```
 
 Preview uses update channel `preview`; Stable uses `latest`. The runtime update feed URL uses the same `update-channel/platform/arch` path,
@@ -128,10 +128,10 @@ Each update channel exposes stable public download pointers in addition to its i
 artifacts:
 
 ```text
-kilo-desktop-ci-test/<update-channel>/latest.json
-kilo-desktop-ci-test/<update-channel>/latest/<platform>/<arch>/<installer>
-kilo-desktop-ci-test/<update-channel>/release-notes/<version>.json
-kilo-desktop-ci-test/<update-channel>/release-notes/latest.json
+kilo-desktop/<update-channel>/latest.json
+kilo-desktop/<update-channel>/latest/<platform>/<arch>/<installer>
+kilo-desktop/<update-channel>/release-notes/<version>.json
+kilo-desktop/<update-channel>/release-notes/latest.json
 ```
 
 `latest.json` contains the version, publication time, immutable release-note URL, and

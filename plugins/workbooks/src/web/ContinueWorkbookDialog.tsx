@@ -53,7 +53,7 @@ export function ContinueWorkbookDialog({
 				<CommandInput placeholder="Search workbooks" disabled={busy} />
 				<CommandList className="scroll-fade" data-qa-id="workbooks-list">
 					<CommandEmpty>No workbooks found.</CommandEmpty>
-					<CommandGroup heading="Workbooks in this workspace">
+					<CommandGroup>
 						{workbooks.map((workbook) => {
 							const template = templates.find((candidate) => candidate.id === workbook.templateId);
 							const Icon = templateIcon(template?.icon);

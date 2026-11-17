@@ -1,5 +1,5 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
-import { GitBranchIcon } from "lucide-react";
+import { SplitIcon } from "lucide-react";
 import type { FC } from "react";
 
 import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-extras";
@@ -42,7 +42,7 @@ export const ForkFromHereButton: FC = () => {
 			disabled={fork.pending}
 			onClick={forkHere}
 		>
-			<GitBranchIcon className="size-3.5" />
+			<SplitIcon className="size-3.5" />
 		</TooltipIconButton>
 	);
 };

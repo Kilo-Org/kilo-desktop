@@ -117,8 +117,12 @@ export type CloseScope = "others" | "right" | "all";
 
 /** The tabs of `paneId`'s group that `scope` closes, in tab order. */
 export function panesToClose(layout: PaneLayout, paneId: string, scope: CloseScope): string[] {
-	const tabs = findPaneGroup(layout, paneId)?.tabs.map((tab) => tab.id) ?? [];
-	if (scope === "all") return tabs;
+	return tabsToClose(findPaneGroup(layout, paneId)?.tabs.map((tab) => tab.id) ?? [], paneId, scope);
+}
+
+/** Of a group's `tabs` (in order, holding `paneId`), the ones `scope` closes. */
+export function tabsToClose(tabs: readonly string[], paneId: string, scope: CloseScope): string[] {
+	if (scope === "all") return [...tabs];
 	if (scope === "others") return tabs.filter((id) => id !== paneId);
 	return tabs.slice(tabs.indexOf(paneId) + 1);
 }

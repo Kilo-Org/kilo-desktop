@@ -21,7 +21,9 @@ export const CLOSE_PANE_COMMAND = "kilo.work-sessions/close-pane";
 /*
  * Tab commands (the tab's right-click menu). Each acts on a pane of the open
  * work session: args `{ paneId }`, else the active pane. A command with
- * nothing to do does nothing.
+ * nothing to do does nothing. The close-in-group commands also take
+ * `groupPaneIds`: the pane's group as it is shown (the tab menu passes it, as
+ * the strip may show a layout not saved yet); else the saved layout's group.
  */
 
 /** Closes the other tabs of the pane's group. */

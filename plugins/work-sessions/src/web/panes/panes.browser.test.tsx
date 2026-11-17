@@ -125,9 +125,11 @@ async function renderPanes(
 		windows?: MainKernelHost["windows"];
 		extraPlugins?: readonly GuestPlugin[];
 		beforeRender?: (main: MainKernel) => void;
+		clipboard?: boolean;
 	} = {},
 ) {
 	const rendered = await renderWorkSessions({
+		...(options.clipboard === false ? { clipboard: false } : {}),
 		workSessions: [SESSION],
 		workspaces: [APP],
 		activeWorkspaceId: APP.id,
@@ -766,6 +768,28 @@ describe("tab context menu", () => {
 		await vi.waitFor(() => expect(open()).toEqual(["x"]));
 	});
 
+	it("closes among the tabs the strip shows, which may not be saved yet", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b", "c", "d"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+		const open = () => state().panes.map((entry) => entry.id);
+
+		// The strip shows b's group as [b, c] (a move not saved yet).
+		await run("close-other-panes", { paneId: "b", groupPaneIds: ["b", "c"] });
+		await vi.waitFor(() => expect(open()).toEqual(["a", "b", "d"]));
+		// Ids no longer open are ignored.
+		await run("close-panes-to-the-right", { paneId: "b", groupPaneIds: ["b", "gone", "d"] });
+		await vi.waitFor(() => expect(open()).toEqual(["a", "b"]));
+	});
+
+	it("closes by the saved layout when the shown group doesn't hold the tab", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b", "c"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await run("close-other-panes", { paneId: "b", groupPaneIds: ["a", "c"] });
+
+		await vi.waitFor(() => expect(state().panes.map((entry) => entry.id)).toEqual(["b"]));
+	});
+
 	it("acts on the active tab when given none", async () => {
 		const { run, state } = await renderPanes({ panes: arranged([["a", "b", "c"]], "b") });
 		await expect.element(page.getByTestId("terminal-b")).toBeVisible();
@@ -972,6 +996,28 @@ describe("copying a tab's path", () => {
 		await openTabMenu("a");
 		await page.getByTestId("pane-tab-menu-copy-relative-path").click();
 		await vi.waitFor(() => expect(copied).toEqual(["src/a.ts"]));
+	});
+
+	it("says so when no clipboard is available", async () => {
+		const original = Object.getOwnPropertyDescriptor(globalThis.navigator, "clipboard");
+		Object.defineProperty(globalThis.navigator, "clipboard", {
+			value: undefined,
+			configurable: true,
+		});
+		try {
+			const { run } = await renderPanes({
+				panes: withPanes([file("a", "/projects/app/src/a.ts")]),
+				clipboard: false,
+			});
+			await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+			await run("copy-pane-path", { paneId: "a" });
+
+			await expect.element(page.getByText("Could not copy the path")).toBeVisible();
+		} finally {
+			if (original) Object.defineProperty(globalThis.navigator, "clipboard", original);
+			else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+		}
 	});
 
 	it("copies nothing for a tab without a file", async () => {

@@ -24,6 +24,7 @@ import {
 	launchPane,
 	panesInOrder,
 	panesToClose,
+	tabsToClose,
 	sessionPanesOf,
 	setArrangement,
 	type CloseScope,
@@ -102,6 +103,18 @@ function targetPane(state: WorkSessionPanes, args: unknown): Pane | undefined {
 	return state.panes.find((pane) => pane.id === paneId);
 }
 
+/**
+ * The open tabs of the group the tab strip shows `paneId` in (`{ groupPaneIds }`,
+ * from the tab menu); undefined without one holding it. The strip can show a
+ * layout not saved yet, and the menu should act on what the person sees.
+ */
+function shownGroup(state: WorkSessionPanes, paneId: string, args: unknown): string[] | undefined {
+	const ids = (args as { groupPaneIds?: unknown } | undefined)?.groupPaneIds;
+	if (!Array.isArray(ids) || !ids.includes(paneId)) return undefined;
+	const open = new Set(state.panes.map((pane) => pane.id));
+	return ids.filter((id): id is string => typeof id === "string" && open.has(id));
+}
+
 /** Tab commands act on the panes of this window's open work session. */
 export function implementPaneCommands(sdk: PluginSdk): void {
 	const command = commandOf(sdk);
@@ -147,7 +160,10 @@ export function implementPaneCommands(sdk: PluginSdk): void {
 		const { session, pane } = target(args) ?? {};
 		if (!session || !pane) return;
 		// Taken before the first close: each close changes the layout.
-		const paneIds = panesToClose(session.layout, pane.id, scope);
+		const shown = shownGroup(session.state, pane.id, args);
+		const paneIds = shown
+			? tabsToClose(shown, pane.id, scope)
+			: panesToClose(session.layout, pane.id, scope);
 		void closePanes(session.panes, session.workSessionId, paneIds, (kind) =>
 			implementationOf(sdk, kind),
 		).then((failed) => {
@@ -170,11 +186,14 @@ export function implementPaneCommands(sdk: PluginSdk): void {
 			? relativePanePath(path, foldersOfWorkSession(sdk, session.workSessionId))
 			: path;
 		const clipboard = sdk.domainObjects.get(KernelClipboard);
-		void (
-			clipboard
-				? clipboard.methods.writeText({ text })
-				: globalThis.navigator.clipboard.writeText(text)
-		).catch(reportFailure("Could not copy the path", "The clipboard isn't available."));
+		// Inside `then`, so a missing navigator.clipboard (a sync throw) is reported too.
+		void Promise.resolve()
+			.then(() =>
+				clipboard
+					? clipboard.methods.writeText({ text })
+					: globalThis.navigator.clipboard.writeText(text),
+			)
+			.catch(reportFailure("Could not copy the path", "The clipboard isn't available."));
 	};
 	command("copy-pane-path", copyPath(false));
 	command("copy-pane-relative-path", copyPath(true));

@@ -671,6 +671,8 @@ export interface RenderWorkSessionsOptions extends WorkSessionsMainState {
 	/** The host's windows: pop-outs are offered (desktop) when set. */
 	readonly windows?: MainKernelHost["windows"];
 	readonly desktop?: boolean;
+	/** The host provides kernel/clipboard (default true). */
+	readonly clipboard?: boolean;
 	readonly flags?: Readonly<Record<string, FlagValue>>;
 	/** Replaces kilo.work-sessions' web entry (e.g. to boot only some areas). */
 	readonly web?: PluginEntry;
@@ -703,7 +705,7 @@ export async function renderWorkSessions(options: RenderWorkSessionsOptions = {}
 			// Seeded before the kernels start, so the window reads it at activation.
 			localAppearance: storage,
 			beforeRender: (mainKernel) => {
-				fakeClipboard(mainKernel, copied);
+				if (options.clipboard !== false) fakeClipboard(mainKernel, copied);
 				options.beforeRender?.(mainKernel);
 			},
 			...(options.windows || options.desktop ? { desktop: true } : {}),

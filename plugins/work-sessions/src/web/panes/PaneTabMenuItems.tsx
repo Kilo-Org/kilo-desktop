@@ -59,8 +59,11 @@ export function PaneTabMenuItems({
 	const pane = useWorkSessionPanes(workSessionId).panes.find((entry) => entry.id === paneId);
 	const kind = useExtensions(PaneKind).find((entry) => entry.key === pane?.kind);
 	const hasPath = pane !== undefined && paneFilePath(pane, implementationOf(kind)) !== undefined;
-	const run = (command: string) =>
-		void kernel.commands.execute(command, { paneId }).catch(() => undefined);
+	const run = (command: string, args?: object) =>
+		void kernel.commands.execute(command, { paneId, ...args }).catch(() => undefined);
+	// The group as the strip shows it, which may not be saved yet.
+	const closeInGroup = (command: string) =>
+		run(command, { groupPaneIds: tab.groupTabs.map((groupTab) => groupTab.id) });
 	const lastInGroup = tab.index === tab.groupTabs.length - 1;
 
 	return (
@@ -72,20 +75,20 @@ export function PaneTabMenuItems({
 				<DropdownMenuItem
 					data-qa-id="pane-tab-menu-close-others"
 					disabled={tab.groupTabs.length < 2}
-					onClick={() => run(CLOSE_OTHER_PANES_COMMAND)}
+					onClick={() => closeInGroup(CLOSE_OTHER_PANES_COMMAND)}
 				>
 					Close others
 				</DropdownMenuItem>
 				<DropdownMenuItem
 					data-qa-id="pane-tab-menu-close-right"
 					disabled={lastInGroup}
-					onClick={() => run(CLOSE_PANES_TO_THE_RIGHT_COMMAND)}
+					onClick={() => closeInGroup(CLOSE_PANES_TO_THE_RIGHT_COMMAND)}
 				>
 					Close to the right
 				</DropdownMenuItem>
 				<DropdownMenuItem
 					data-qa-id="pane-tab-menu-close-all"
-					onClick={() => run(CLOSE_ALL_PANES_COMMAND)}
+					onClick={() => closeInGroup(CLOSE_ALL_PANES_COMMAND)}
 				>
 					Close all
 				</DropdownMenuItem>

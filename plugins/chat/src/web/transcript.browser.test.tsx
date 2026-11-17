@@ -316,6 +316,33 @@ describe("editing a prompt", () => {
 					(request.path.endsWith("/revert") || request.path.endsWith("/prompt_async")),
 			)
 			.map((request) => request.path.split("/").at(-1));
+	const save = async () => {
+		await page.getByTestId("kilo-edit-message-save").click();
+		await page.getByTestId("kilo-edit-message-dialog-confirm").click();
+	};
+
+	it("offers the composer's agent and model pickers while editing", async () => {
+		await showChat(chatWith([reply("Read it.")]));
+		await startEditing();
+
+		const toolbar = editor().getByTestId("kilo-model-selector-trigger");
+		await expect.element(toolbar).toBeVisible();
+		await expect.element(editor().getByTestId("kilo-agent-selector-trigger")).toBeVisible();
+	});
+
+	it("asks before saving, and keeps editing when the person backs out", async () => {
+		const host = await showChat(chatWith([reply("Read it.")]));
+		await startEditing();
+		await userEvent.fill(editorInput(), EDITED);
+
+		await page.getByTestId("kilo-edit-message-save").click();
+		await expect.element(page.getByTestId("kilo-edit-message-dialog")).toBeVisible();
+		await page.getByTestId("kilo-edit-message-dialog-cancel").click();
+
+		await expect.element(page.getByTestId("kilo-edit-message-dialog")).not.toBeInTheDocument();
+		await expect.element(editorInput()).toHaveTextContent(EDITED);
+		expect(changesSent(host.server)).toBe(0);
+	});
 
 	it("saves the edit by reverting to the prompt, then sending the edit", async () => {
 		const host = await showChat(withCsv());
@@ -323,7 +350,7 @@ describe("editing a prompt", () => {
 		await expect.poll(editorTiles).toBe(1);
 
 		await userEvent.fill(editorInput(), EDITED);
-		await page.getByTestId("kilo-edit-message-save").click();
+		await save();
 
 		await expect.poll(() => revertsAndPrompts(host.server)).toEqual(["revert", "prompt_async"]);
 		expect(host.server.requestsTo("POST", "/session/ses_a/revert")[0]?.body).toMatchObject({
@@ -338,12 +365,15 @@ describe("editing a prompt", () => {
 		await expect.element(editor()).not.toBeInTheDocument();
 	});
 
-	it("saves the edit on Enter", async () => {
+	it("asks to save the edit on Enter", async () => {
 		const host = await showChat(chatWith([reply("Read it.")]));
 		await startEditing();
 
 		await userEvent.fill(editorInput(), EDITED);
 		await userEvent.keyboard("{Enter}");
+		await expect.element(page.getByTestId("kilo-edit-message-dialog")).toBeVisible();
+		expect(changesSent(host.server)).toBe(0);
+		await page.getByTestId("kilo-edit-message-dialog-confirm").click();
 
 		await expect.poll(() => revertsAndPrompts(host.server)).toEqual(["revert", "prompt_async"]);
 	});
@@ -354,7 +384,7 @@ describe("editing a prompt", () => {
 		await startEditing();
 
 		await userEvent.fill(editorInput(), EDITED);
-		await page.getByTestId("kilo-edit-message-save").click();
+		await save();
 
 		await expect.element(page.getByText("Could not edit the message.")).toBeVisible();
 		await expect.element(editorInput()).toHaveTextContent(EDITED);
@@ -368,7 +398,7 @@ describe("editing a prompt", () => {
 		await expect.poll(editorTiles).toBe(1);
 
 		await userEvent.fill(editorInput(), EDITED);
-		await page.getByTestId("kilo-edit-message-save").click();
+		await save();
 
 		await expect.element(page.getByText("Could not edit the message.")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-composer-header")).toBeVisible();

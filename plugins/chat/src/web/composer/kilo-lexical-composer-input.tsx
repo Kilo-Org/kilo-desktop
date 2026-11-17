@@ -35,6 +35,11 @@ type KiloLexicalComposerInputProps = {
 	onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
 	/** Takes a plain Enter before sending or queueing does, when it returns true. */
 	onEnter?: () => boolean;
+	/**
+	 * Takes a plain Enter the `/` and mention menus left alone, in place of
+	 * sending; pair it with `submitMode="none"`.
+	 */
+	onSubmitEnter?: () => void;
 	/** Inline sizing, e.g. a `maxHeight` replacing the default auto-grow cap. */
 	style?: CSSProperties | undefined;
 	/** The input's accessible name. */
@@ -59,6 +64,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	submitMode,
 	onKeyDown,
 	onEnter,
+	onSubmitEnter,
 	style,
 	label = "Message input",
 	qaId = "kilo-composer-input",
@@ -98,6 +104,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 				</>
 			) : null}
 			{onEnter ? <EnterOverridePlugin onEnter={onEnter} /> : null}
+			{onSubmitEnter ? <SubmitEnterPlugin onSubmitEnter={onSubmitEnter} /> : null}
 			{autoFocus ? <FocusAtEndPlugin /> : null}
 		</LexicalComposerInput>
 	);
@@ -235,6 +242,31 @@ function FocusAtEndPlugin() {
 		});
 		return () => cancelAnimationFrame(frame);
 	}, [editor]);
+	return null;
+}
+
+// LOW priority: after the built-in HIGH handler, which gives the `/` and
+// mention menus first refusal (and sends nothing with submitMode "none"), and
+// before plain text's EDITOR-priority newline.
+function SubmitEnterPlugin({ onSubmitEnter }: { onSubmitEnter: () => void }) {
+	const [editor] = useLexicalComposerContext();
+	const latest = useLatestRef(onSubmitEnter);
+	useEffect(
+		() =>
+			editor.registerCommand(
+				KEY_ENTER_COMMAND,
+				(event) => {
+					if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
+						return false;
+					}
+					event.preventDefault();
+					latest.current();
+					return true;
+				},
+				COMMAND_PRIORITY_LOW,
+			),
+		[editor],
+	);
 	return null;
 }
 

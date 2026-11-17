@@ -110,16 +110,23 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 		});
 	}
 
-	/** Every `sync` copy of a message event the stream delivers, with or without the skip header. */
+	/**
+	 * Every `sync` copy of a message event the stream delivers, with or without
+	 * the skip header. Resolves once the stream is live (its first event), so
+	 * nothing sent after it is missed.
+	 */
 	async function syncCopies(skipForkSync: boolean): Promise<SyncPayload[]> {
 		const seen: SyncPayload[] = [];
 		const subscription = await sdk().global.event({
 			signal: streams.signal,
 			...(skipForkSync ? { headers: { "x-kilo-sse-skip-fork-sync": "1" } } : {}),
 		});
+		let live!: () => void;
+		const connected = new Promise<void>((resolve) => (live = resolve));
 		void (async () => {
 			try {
 				for await (const event of subscription.stream as AsyncIterable<{ payload?: SyncPayload }>) {
+					live();
 					const payload = event.payload;
 					if (payload?.type === "sync" && payload.syncEvent?.type?.startsWith("message.")) {
 						seen.push(payload);
@@ -129,6 +136,7 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 				// Aborted when the test ends.
 			}
 		})();
+		await connected;
 		return seen;
 	}
 

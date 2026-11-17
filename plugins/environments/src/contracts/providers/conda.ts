@@ -618,6 +618,34 @@ export type CondaChannelsAddInput = z.infer<typeof condaChannelsAddInputSchema>;
 export const condaChannelsRemoveInputSchema = z.object({ channel: channelSchema });
 export type CondaChannelsRemoveInput = z.infer<typeof condaChannelsRemoveInputSchema>;
 
+export const condaChannelsResolveInputSchema = z.object({ channel: channelSchema });
+export type CondaChannelsResolveInput = z.infer<typeof condaChannelsResolveInputSchema>;
+
+/**
+ * A channel resolved with conda's own channel model (`channel_alias`,
+ * `custom_channels`, multichannels) and compared with the configured channels.
+ *
+ * - `channel` echoes the input with credentials masked; `name` is conda's
+ *   canonical name; `baseUrls` has one URL per member channel.
+ * - `configured` is true when configured channels provide every base URL.
+ *   `pkgs/main` is covered by `defaults`; bare `main` is
+ *   `<channel_alias>/main` and is not.
+ * - `configuredBy` names the configured channels providing any of them. Not
+ *   for display: conda reports members of `defaults` as `defaults`.
+ * - `exact` is false when an older bridge could only match the configured
+ *   channel names exactly (`baseUrls` is then empty).
+ */
+export const condaChannelsResolveResultSchema = z.object({
+	channel: z.string().min(1),
+	name: z.string(),
+	isMultichannel: z.boolean(),
+	baseUrls: z.array(z.string()),
+	configured: z.boolean(),
+	configuredBy: z.array(z.string()),
+	exact: z.boolean(),
+});
+export type CondaChannelsResolveResult = z.infer<typeof condaChannelsResolveResultSchema>;
+
 /* --------------------------------------------------------------------- */
 /* Method I/O — repodata                                                 */
 /* --------------------------------------------------------------------- */

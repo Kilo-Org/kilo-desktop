@@ -8,6 +8,8 @@ import {
 	condaChannelsAddInputSchema,
 	condaChannelsListResultSchema,
 	condaChannelsRemoveInputSchema,
+	condaChannelsResolveInputSchema,
+	condaChannelsResolveResultSchema,
 	condaEnvSchema,
 	condaEnvsCheckPrefixInputSchema,
 	condaEnvsCheckPrefixResultSchema,
@@ -170,6 +172,8 @@ export const Conda = defineDomainObject({
 		listChannels: method(nothing, condaChannelsListResultSchema),
 		addChannel: method(condaChannelsAddInputSchema, condaChannelsListResultSchema),
 		removeChannel: method(condaChannelsRemoveInputSchema, condaChannelsListResultSchema),
+		/** Whether the configured channels already provide a channel. Not an agent tool. */
+		resolveChannel: method(condaChannelsResolveInputSchema, condaChannelsResolveResultSchema),
 		findRepodata: method(condaRepodataFindInputSchema, condaRepodataFindResultSchema),
 		cancelJob: method(cancelInputSchema, cancelResultSchema),
 	},

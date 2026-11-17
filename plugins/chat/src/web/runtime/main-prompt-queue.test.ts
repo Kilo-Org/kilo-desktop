@@ -28,7 +28,7 @@ function fakeQueues(initial: Record<string, ChatQueue> = {}) {
 			return () => listeners.delete(listener);
 		},
 		methods: {
-			enqueue: method("enqueue", { id: "q1" }),
+			enqueue: method("enqueue"),
 			steer: method("steer"),
 			remove: method("remove"),
 			stopped: method("stopped"),
@@ -83,6 +83,21 @@ function setup(patch: Partial<MainPromptQueueOptions> = {}, queues = fakeQueues(
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** The ids the window queued in main, in order. */
+const enqueued = (queues: ReturnType<typeof fakeQueues>) =>
+	queues.call.mock.calls
+		.filter(([name]) => name === "enqueue")
+		.map(([, input]) => (input as { id: string }).id);
+
+/** Holds main's answer to the next call until the returned release. */
+function holdNextCall(queues: ReturnType<typeof fakeQueues>): () => void {
+	let release = () => {};
+	queues.call.mockImplementationOnce(
+		() => new Promise<undefined>((resolve) => (release = () => resolve(undefined))),
+	);
+	return () => release();
+}
+
 describe("createMainPromptQueue", () => {
 	it("sends straight through the runtime while nothing is in the way", async () => {
 		const { queue, queues, send } = setup();
@@ -112,8 +127,117 @@ describe("createMainPromptQueue", () => {
 		expect(send).not.toHaveBeenCalled();
 		expect(queues.call).toHaveBeenCalledWith("enqueue", {
 			chatId: "ses_a",
+			id: expect.any(String),
 			prompt: expect.objectContaining({ text: "Then add tests", agent: "code" }),
 		});
+	});
+
+	it("lists a prompt the moment it is queued, under the id main gets", async () => {
+		const queues = fakeQueues();
+		const { queue } = setup({ chatWorking: () => true }, queues);
+		const listener = vi.fn();
+		queue.subscribe(listener);
+
+		queue.adapter.enqueue(
+			message("Read this", {
+				attachments: [
+					{
+						id: "a1",
+						type: "image",
+						name: "shot.png",
+						contentType: "image/png",
+						status: { type: "complete" },
+						content: [{ type: "image", image: "data:image/png;base64,AA==" }],
+					},
+				],
+			}),
+		);
+
+		// Before the prompt is prepared or main has answered.
+		expect(listener).toHaveBeenCalled();
+		expect(queue.adapter.items).toEqual([
+			expect.objectContaining({
+				prompt: "Read this",
+				attachmentPreview: { name: "shot.png", src: "data:image/png;base64,AA==" },
+			}),
+		]);
+
+		const id = queue.adapter.items[0]!.id;
+		await flush();
+		expect(enqueued(queues)).toEqual([id]);
+		queues.set("ses_a", { ...EMPTY, items: [{ id, prompt: "Read this", text: "Read this" }] });
+
+		expect(queue.adapter.items.map((item) => item.id)).toEqual([id]);
+	});
+
+	it("lists a prompt once when main's state lists it before main answers", async () => {
+		const queues = fakeQueues();
+		const { queue } = setup({ chatWorking: () => true }, queues);
+		queue.subscribe(() => undefined);
+		const answer = holdNextCall(queues);
+
+		queue.adapter.enqueue(message("Then add tests"));
+		await flush();
+		const [id] = enqueued(queues);
+		queues.set("ses_a", { ...EMPTY, items: [{ id: id!, prompt: "Then add tests", text: "" }] });
+
+		expect(queue.adapter.items.map((item) => item.id)).toEqual([id]);
+		answer();
+		await flush();
+		expect(queue.adapter.items.map((item) => item.id)).toEqual([id]);
+	});
+
+	it("doesn't queue a prompt deleted before main had it", async () => {
+		const queues = fakeQueues();
+		const { queue } = setup({ chatWorking: () => true }, queues);
+		queue.subscribe(() => undefined);
+
+		queue.adapter.enqueue(message("Never mind"));
+		queue.adapter.remove(queue.adapter.items[0]!.id);
+		await flush();
+
+		expect(queue.adapter.items).toEqual([]);
+		expect(queues.call).not.toHaveBeenCalled();
+	});
+
+	it("does what the person did to a row on its way to main once main has it", async () => {
+		const queues = fakeQueues();
+		const { queue } = setup({ chatWorking: () => true }, queues);
+		queue.subscribe(() => undefined);
+		const answer = holdNextCall(queues);
+		queue.adapter.enqueue(message("Urgent"));
+		await flush();
+		const [id] = enqueued(queues);
+
+		queue.adapter.move(id!, { lane: "steer", insertAfter: null });
+		expect(queue.beginEdit(id!)).toBe("Urgent");
+		queue.adapter.remove(id!);
+		await flush();
+		expect(queues.call.mock.calls.map(([name]) => name)).toEqual(["enqueue"]);
+		expect(queue.adapter.items).toEqual([]);
+
+		answer();
+		await flush();
+		expect(queues.call.mock.calls).toEqual([
+			["enqueue", expect.objectContaining({ id })],
+			["steer", { chatId: "ses_a", id }],
+			["beginEdit", { chatId: "ses_a", id }],
+			["remove", { chatId: "ses_a", id }],
+		]);
+	});
+
+	it("drops a prompt it listed when main couldn't queue it", async () => {
+		const queues = fakeQueues();
+		const { queue, onError } = setup({ chatWorking: () => true }, queues);
+		queue.subscribe(() => undefined);
+		queues.call.mockRejectedValueOnce(new Error("gone"));
+
+		queue.adapter.enqueue(message("Then add tests"));
+		expect(queue.adapter.items).toHaveLength(1);
+		await flush();
+
+		expect(onError).toHaveBeenCalledWith(new Error("gone"));
+		expect(queue.adapter.items).toEqual([]);
 	});
 
 	it("queues a steer and anything sent while the thread runs, which comes as a steer", async () => {

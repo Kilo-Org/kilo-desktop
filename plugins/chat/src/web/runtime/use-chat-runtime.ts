@@ -1,11 +1,12 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
-import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import { useMemo, useRef } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 
 import { PromptQueues } from "../../contracts";
+import { KiloAttachmentAdapter } from "./attachment-adapter";
 import { createChatBackend, type ChatBackendOptions } from "./chat-backend";
 import { createMainPromptQueue } from "./main-prompt-queue";
 
@@ -50,7 +51,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 			}),
 		[options.services],
 	);
-	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
+	const adapters = useMemo(() => ({ attachments: new KiloAttachmentAdapter() }), []);
 	const initialChatId = useRef(options.chatId).current;
 	const threadChatId = useRef(initialChatId);
 	const queue = useDomainObject(PromptQueues);

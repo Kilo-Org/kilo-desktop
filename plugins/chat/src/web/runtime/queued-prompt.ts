@@ -5,7 +5,13 @@ import {
 	toMediaWireUrl,
 } from "@assistant-ui/core/internal";
 
-import type { PreparedText, PromptPart as QueuedPromptPart, QueuedPrompt } from "../../contracts";
+import {
+	queuePreview,
+	type PreparedText,
+	type PromptQueueItem,
+	type PromptPart as QueuedPromptPart,
+	type QueuedPrompt,
+} from "../../contracts";
 import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command";
 import type { PromptOptions, PromptPart } from "./prompt-options";
 
@@ -100,6 +106,17 @@ function attachmentPreview(message: AppendMessage): QueuedPrompt["attachmentPrev
 	return {
 		name: attachment.name,
 		...(src && src.length <= MAX_PREVIEW_IMAGE_LENGTH ? { src } : {}),
+	};
+}
+
+/** The message as its queue line, before it is prepared. */
+export function queueItemOf(message: AppendMessage): Omit<PromptQueueItem, "id"> {
+	const text = messageText(message);
+	const preview = attachmentPreview(message);
+	return {
+		prompt: queuePreview({ text, attachmentParts: toQueuedParts(fileParts(message)) }),
+		text,
+		...(preview ? { attachmentPreview: preview } : {}),
 	};
 }
 

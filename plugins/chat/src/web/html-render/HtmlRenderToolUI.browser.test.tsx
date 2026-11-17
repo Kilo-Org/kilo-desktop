@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import { definePlugin } from "@kilo-desktop/kernel";
@@ -128,7 +128,12 @@ describe("HtmlRenderToolUI", () => {
 		const frame = screen.getByTitle("Chart") as HTMLIFrameElement;
 		// Any recent click in the app window counts as activation; the page can
 		// time its request to it, so activation alone must not open anything.
-		await userEvent.click(frame.parentElement!);
+		// Clicked outside the frame: a click landing on the loading frame races
+		// its navigation and detaches it under load.
+		const elsewhere = document.body.appendChild(document.createElement("button"));
+		elsewhere.textContent = "Elsewhere";
+		onTestFinished(() => elsewhere.remove());
+		await userEvent.click(elsewhere);
 
 		window.dispatchEvent(
 			new MessageEvent("message", {

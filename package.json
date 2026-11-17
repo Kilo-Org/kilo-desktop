@@ -41,11 +41,11 @@
 	},
 	"lint-staged": {
 		"*.{js,mjs,cjs,ts,tsx}": [
-			"npm run lint:fix",
-			"npm run format"
+			"oxlint --fix --deny-warnings",
+			"oxfmt --no-error-on-unmatched-pattern"
 		],
 		"*.{json,md,yaml,yml,css}": [
-			"npm run format"
+			"oxfmt --no-error-on-unmatched-pattern"
 		]
 	},
 	"devDependencies": {

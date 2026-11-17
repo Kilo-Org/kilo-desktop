@@ -4,8 +4,10 @@ import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
 /**
  * Model selector coverage against the packaged app: the trigger, the menu,
  * the provider rail (Favorites + Local Model Server), the search box, the
- * two empty states, menu dismissal/rail switching, the Kilo Gateway info
- * tooltip, and favoriting a model from the Kilo Gateway rail.
+ * two empty states, menu dismissal/rail switching and the Kilo Gateway info
+ * tooltip. Favoriting and the per-provider tooltip checks live in
+ * chat-model-selector-favorites.spec.ts and chat-model-selector-tooltips.spec.ts,
+ * split out so CI can run them on different shards.
  *
  * No model selection or sending. The default model is out of scope.
  * Favorites persistence across reload/sessions is out of scope: the
@@ -13,9 +15,8 @@ import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
  * is not covered here: the packaged build always reports signed-in.
  */
 test.describe("Chat model selector", () => {
-	// The slowest spec file (~4 min serially). Every test opens its own draft
-	// and the fixture clears localStorage after each, so they are independent
-	// and can run on any worker.
+	// Every test opens its own draft and the fixture clears localStorage after
+	// each, so the tests are independent and can run on any worker.
 	test.describe.configure({ mode: "parallel" });
 
 	test("shows the model trigger and opens the menu @smoke", async ({
@@ -120,78 +121,4 @@ test.describe("Chat model selector", () => {
 		await chatModelSelectorPage.closeWithEscape();
 		await chatModelSelectorPage.verifyMenuClosed();
 	});
-
-	// One test per provider family (rather than one loop over all of them) so
-	// Playwright can spread them across workers and shards.
-	const favoritingTerms = [
-		...chatModelSelectorData.gatewayInfoSearchTerms.map((term) => ({
-			name: `favoriting a Kilo Gateway model (${term.label}) turns its star active and lists it under Favorites @smoke`,
-			terms: [term],
-		})),
-		{
-			name: "favorites keep every favorited Kilo Gateway model listed together @smoke",
-			terms: chatModelSelectorData.gatewayInfoSearchTerms.slice(0, 2),
-		},
-	];
-	for (const { name, terms } of favoritingTerms) {
-		test(name, async ({ appShellPage, chatComposerPage, chatModelSelectorPage }) => {
-			await appShellPage.verifyShellIsLoaded();
-			await chatComposerPage.openDraft();
-			const favoritedNames: string[] = [];
-			for (const { query, publisherPrefix } of terms) {
-				await chatModelSelectorPage.openModelSelector();
-				await chatModelSelectorPage.selectKiloGateway();
-				await chatModelSelectorPage.searchModels(query);
-				const modelId = await chatModelSelectorPage.getPublisherModelId(publisherPrefix);
-				const modelName = await chatModelSelectorPage.getPublisherModelName(modelId);
-
-				await chatModelSelectorPage.toggleFavorite(modelId);
-				await chatModelSelectorPage.verifyModelFavorited(modelId);
-				favoritedNames.push(modelName);
-				await chatModelSelectorPage.closeWithEscape();
-				await chatModelSelectorPage.verifyMenuClosed();
-			}
-
-			await chatModelSelectorPage.openModelSelector();
-			await chatModelSelectorPage.selectFavorites();
-			for (const modelName of favoritedNames) {
-				await chatModelSelectorPage.verifyModelInFavoritesList(modelName);
-			}
-			await chatModelSelectorPage.closeWithEscape();
-			await chatModelSelectorPage.verifyMenuClosed();
-		});
-	}
-
-	for (const { label, query, publisherPrefix } of chatModelSelectorData.gatewayInfoSearchTerms) {
-		test(`shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (${label}) @reg`, async ({
-			appShellPage,
-			chatComposerPage,
-			chatModelSelectorPage,
-		}) => {
-			await appShellPage.verifyShellIsLoaded();
-			await chatComposerPage.openDraft();
-			await chatModelSelectorPage.openModelSelector();
-			await chatModelSelectorPage.selectKiloGateway();
-			await chatModelSelectorPage.searchModels(query);
-			const modelId = await chatModelSelectorPage.getPublisherModelId(publisherPrefix);
-			const modelName = await chatModelSelectorPage.getPublisherModelName(modelId);
-			const groundTruth = await chatModelSelectorPage.fetchGatewayModelGroundTruth(modelId);
-
-			await chatModelSelectorPage.openModelInfo(modelId);
-			await chatModelSelectorPage.verifyModelInfoOpen(modelId);
-			await chatModelSelectorPage.verifyModelInfoTitleAndDescription(
-				modelId,
-				modelName,
-				groundTruth,
-			);
-			await chatModelSelectorPage.verifyModelInfoFacts(modelId, groundTruth);
-			await chatModelSelectorPage.verifyModelInfoOptionalCopySpelledCorrectly(modelId);
-			await chatModelSelectorPage.verifyModelInfoSectionsDoNotOverlap(modelId);
-
-			await chatModelSelectorPage.closeModelInfo(modelId);
-			await chatModelSelectorPage.verifyModelInfoClosed(modelId);
-			await chatModelSelectorPage.closeWithEscape();
-			await chatModelSelectorPage.verifyMenuClosed();
-		});
-	}
 });

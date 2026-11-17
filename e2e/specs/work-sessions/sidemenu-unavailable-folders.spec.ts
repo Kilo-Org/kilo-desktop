@@ -24,7 +24,9 @@ test.describe("Side menu workspace filter @packaged", () => {
 		await sidemenuPage.verifyNoUnavailableFoldersWarning();
 
 		// Take the folder away behind the app's back, then ask it to look again.
-		await rm(folder, { recursive: true, force: true });
+		// On Windows a git process the app just ran there can still hold the
+		// folder as its working directory (EBUSY); rm retries until it lets go.
+		await rm(folder, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });
 		await sessionListPage.recheckWorkspaceFolders();
 
 		await sidemenuPage.verifyUnavailableFoldersWarning(name);

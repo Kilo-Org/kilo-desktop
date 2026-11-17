@@ -120,7 +120,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: node scripts/test-changed.mjs HEAD^1 --shard ${{ matrix.shard }}/3 --concurrency 2
       - name: Run every package with the coverage gate
-        if: github.event_name != 'pull_request' || true # TEMP-MQ-TEST
+        if: github.event_name != 'pull_request'
         run: node scripts/test-changed.mjs --all --task coverage --shard ${{ matrix.shard }}/3 --concurrency 2
 
   # Keeps the Linux leg's name, the required branch-protection check, now that
@@ -241,7 +241,7 @@ jobs:
   # split across shards by recorded test time (scripts/test-durations/e2e.json);
   # each shard packages its own app.
   e2e-merge:
-    if: github.event_name == 'merge_group' || github.event_name == 'pull_request' # TEMP-MQ-TEST
+    if: github.event_name == 'merge_group'
     strategy:
       fail-fast: false
       matrix:

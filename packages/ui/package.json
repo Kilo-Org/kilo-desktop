@@ -30,7 +30,7 @@
 		"@base-ui/react": "^1.9.0",
 		"@lobehub/icons": "^6.15.2",
 		"@lottiefiles/dotlottie-react": "0.21.1",
-		"@lottiefiles/dotlottie-web": "0.82.1",
+		"@lottiefiles/dotlottie-web": "0.83.2",
 		"@shadcn/react": "^0.3.1",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",

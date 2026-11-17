@@ -970,8 +970,8 @@ importers:
         specifier: 0.21.1
         version: 0.21.1(react@19.3.1)
       '@lottiefiles/dotlottie-web':
-        specifier: 0.82.1
-        version: 0.82.1
+        specifier: 0.83.2
+        version: 0.83.2
       '@shadcn/react':
         specifier: ^0.3.1
         version: 0.3.1(@types/react@19.2.17)(react@19.3.1)
@@ -3688,6 +3688,10 @@ packages:
 
   '@lottiefiles/dotlottie-web@0.82.1':
     resolution: {integrity: sha512-hLPdAL0dUeHKvQvXqw1p3FtvzZUHRtBsTMt3FLLgphFThsUPNUj2+U+GyttJ5H5qSt5JreLzoaD+IaKO8H/VnA==}
+    engines: {node: '>=18.17.0', npm: '>=9.5.0'}
+
+  '@lottiefiles/dotlottie-web@0.83.2':
+    resolution: {integrity: sha512-MMI4RVcFtB5Vjv9mwbP8oWsSqy4N7GO2P+jwHVLo4GjbYAdR4Z7seK3rR7YefpcfayWrsQogaORMBzv6YFWntQ==}
     engines: {node: '>=18.17.0', npm: '>=9.5.0'}
 
   '@malept/cross-spawn-promise@1.1.1':
@@ -11414,6 +11418,8 @@ snapshots:
       react: 19.3.1
 
   '@lottiefiles/dotlottie-web@0.82.1': {}
+
+  '@lottiefiles/dotlottie-web@0.83.2': {}
 
   '@malept/cross-spawn-promise@1.1.1':
     dependencies:

@@ -99,8 +99,6 @@ export const Thread: FC = () => {
 				className={cn(THREAD_VIEWPORT_CLASS, "[scrollbar-gutter:stable_both-edges]")}
 			>
 				<ScrollToBottomOnSend />
-				{/* A gradient, not a `scroll-fade` mask: masking the scroller disables the
-				    docked composer's backdrop blur in Chromium. */}
 				<div
 					aria-hidden
 					className="from-pane pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
@@ -117,10 +115,7 @@ export const Thread: FC = () => {
 					    still at the bottom, so a reader scrolling up less than that is pulled back by
 					    the next streamed token, and its height includes this `mt-auto` margin as last
 					    measured, which a short thread (one still loading) leaves near the viewport's. */}
-					<div
-						/* Transparent so sticky glass can blur scrolled messages behind the shell. */
-						className="aui-thread-viewport-footer relative sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-1.5"
-					>
+					<div className="aui-thread-viewport-footer relative sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-1.5">
 						<ThreadScrollToBottom />
 						<div className="relative flex w-full flex-col">
 							<ComposerDockMask />

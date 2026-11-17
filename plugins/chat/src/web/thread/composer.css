@@ -1,21 +1,11 @@
-/* Composer chrome: frosted glass surfaces, Lexical input, directive chips,
-   toolbar container queries, and docked-corner fills.
-
-   Glass recipe matches t3code: translucent card tint + blur + slight
-   saturate in both color schemes. */
+/* Composer chrome: translucent surfaces, Lexical input, directive chips,
+   toolbar container queries, and docked-corner fills. */
 
 :root {
-	--glass-blur: 12px;
 	--glass-opacity: 80%;
-	--glass-saturation: 1.14;
 	/* Shared by the docked glass outline and the draft composer border so
 	   both composers brighten the same way when the input has focus. */
 	--composer-focus-stroke: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
-}
-
-[data-theme="dark"] {
-	--glass-blur: 16px;
-	--glass-saturation: 1.08;
 }
 
 .chat-composer-glass {
@@ -24,10 +14,9 @@
 	--composer-glass-surface: var(--pane-raised, var(--card));
 	--composer-glass-stroke: var(--border-subtle);
 	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-	/* Chromium clips `border` at rounded corners when backdrop-filter is on
-	   the same element. Outline is painted after the filter and stays intact. */
+	/* Backdrop blur makes this sticky surface flash during native macOS scrolling. */
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
 	outline: 1px solid var(--composer-glass-stroke);
 	outline-offset: -1px;
 }
@@ -152,12 +141,6 @@
 	[data-slot="model-selector-name"],
 	[data-slot="model-selector-value"][data-model-selected="false"] {
 		display: none;
-	}
-}
-
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-	.chat-composer-glass {
-		background: var(--composer-glass-surface);
 	}
 }
 

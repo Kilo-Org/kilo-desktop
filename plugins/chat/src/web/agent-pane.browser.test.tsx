@@ -561,8 +561,7 @@ describe("a prompt queued while the agent works", () => {
 		});
 	});
 
-	it("carries its attachment, sent as a file part", async () => {
-		const { server } = await queueWhileBusy("First");
+	async function queueWithAttachment(text: string) {
 		const transfer = new DataTransfer();
 		transfer.items.add(new File(["# Notes"], "notes.md", { type: "text/markdown" }));
 		const dropzone = document.querySelector('[data-slot="aui_composer-shell"]')!;
@@ -572,8 +571,44 @@ describe("a prompt queued while the agent works", () => {
 			);
 		}
 		await expect.element(page.getByRole("button", { name: "Remove file" })).toBeInTheDocument();
-		await userEvent.fill(composerInput(), "Read this");
+		await userEvent.fill(composerInput(), text);
 		await page.getByTestId("kilo-composer-queue-submit").click();
+	}
+
+	const userMessageTexts = () =>
+		[...document.querySelectorAll('[data-role="user"]')].map((message) => message.textContent);
+
+	it("shows a prompt queued with an attachment in the queue only, not the transcript", async () => {
+		await queueWhileBusy("First");
+
+		await queueWithAttachment("Read this");
+
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-item").getByText("Read this"))
+			.toBeVisible();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(userMessageTexts().some((text) => text?.includes("Read this"))).toBe(false);
+	});
+
+	it("stays out of the transcript of a chat this pane started from a draft", async () => {
+		const host = await renderChat();
+		await send("Fix the login form");
+		await promptsTo(host.server, "ses_new_1");
+		host.server.emit("session.status", { sessionID: "ses_new_1", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+
+		await queueWithAttachment("Read this");
+
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-item").getByText("Read this"))
+			.toBeVisible();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(userMessageTexts().some((text) => text?.includes("Read this"))).toBe(false);
+	});
+
+	it("carries its attachment, sent as a file part", async () => {
+		const { server } = await queueWhileBusy("First");
+		await queueWithAttachment("Read this");
 		await expect
 			.element(page.getByTestId("kilo-composer-queue-toggle"))
 			.toHaveTextContent("2 queued");

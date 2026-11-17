@@ -100,4 +100,5 @@ registries:
   "@anaconda": https://npm.pkg.github.com/
 
 patchedDependencies:
+  "@assistant-ui/core@0.3.35": plugins/chat/patches/@assistant-ui__core@0.3.35.patch
   "@assistant-ui/react-opencode@0.2.17": plugins/chat/patches/@assistant-ui__react-opencode@0.2.17.patch

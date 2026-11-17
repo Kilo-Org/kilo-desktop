@@ -11,7 +11,12 @@ import type {
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 
 import type { ChatQueue, PromptQueues, PromptQueueItem } from "../../contracts";
-import { prepareQueuedPrompt, prepareText, type QueuePromptOptions } from "./queued-prompt";
+import {
+	prepareQueuedPrompt,
+	prepareText,
+	queueItemOf,
+	type QueuePromptOptions,
+} from "./queued-prompt";
 
 type PromptQueueHandle = DomainObjectHandle<typeof PromptQueues>;
 
@@ -26,6 +31,13 @@ export interface MainPromptQueueOptions {
 }
 
 const NO_QUEUE: ChatQueue = { items: [], paused: false, editing: null, sending: false };
+
+/** A prompt on its way to main's queue, listed until main lists it. */
+interface Handover {
+	readonly item: PromptQueueItem;
+	/** Main's id for it, and the state this window had when main answered. */
+	queued?: { readonly id: string; readonly seen: ChatQueue };
+}
 
 /**
  * A thread's view of its chat's queue in main (`kilo.chat/prompt-queue`), in
@@ -42,6 +54,10 @@ const NO_QUEUE: ChatQueue = { items: [], paused: false, editing: null, sending: 
  * - Anything else is prepared here (what the composer chose, mentions,
  *   slash command, files) and queued in main, which sends it when the chat
  *   is idle. Send now stops the turn there.
+ * - A prompt is listed the moment it is handed over, while it is prepared
+ *   and until main's state lists it: assistant-ui checks right after a send
+ *   whether the queue took it, and otherwise keeps showing the message in
+ *   the transcript (a send with attachments) until the chat has it.
  * - Edits answer at once from the mirrored state (the runtime asks
  *   synchronously); main holds the queue while one is open.
  */
@@ -52,6 +68,8 @@ export function createMainPromptQueue(
 	let driver: OpenCodeMessageQueueDriver | undefined;
 	let running = false;
 	let view = NO_QUEUE;
+	let handovers: Handover[] = [];
+	let handoverCount = 0;
 	let version = 0;
 	let localDraft: { id: string; text: string } | undefined;
 
@@ -95,12 +113,41 @@ export function createMainPromptQueue(
 
 	function refresh(): void {
 		const next = readView();
-		if (next === view) return;
+		const waiting = handovers.filter((handover) => !landed(handover, next));
+		if (next === view && waiting.length === handovers.length) return;
 		view = next;
+		handovers = waiting;
 		if (localDraft && view.editing?.id !== localDraft.id) localDraft = undefined;
-		adapter.items = view.items.map(toItemState);
+		publish();
+	}
+
+	function publish(): void {
+		adapter.items = [...view.items, ...handovers.map((handover) => handover.item)].map(toItemState);
 		version += 1;
 		for (const listener of listeners) listener();
+	}
+
+	/**
+	 * Main's state may reach this window before or after its answer: either it
+	 * lists the prompt, or the next state after the answer has dealt with it.
+	 */
+	function landed({ queued }: Handover, current: ChatQueue): boolean {
+		if (!queued) return false;
+		return current !== queued.seen || current.items.some((item) => item.id === queued.id);
+	}
+
+	function handOver(message: AppendMessage): Handover {
+		const handover: Handover = {
+			item: { id: `handover-${++handoverCount}`, ...queueItemOf(message) },
+		};
+		handovers = [...handovers, handover];
+		publish();
+		return handover;
+	}
+
+	function dropHandover(handover: Handover): void {
+		handovers = handovers.filter((candidate) => candidate !== handover);
+		publish();
 	}
 
 	function call(action: (queue: PromptQueueHandle, chatId: string) => Promise<unknown>): void {
@@ -114,7 +161,7 @@ export function createMainPromptQueue(
 		if (!driver) return false;
 		if (!options.chatId()) return true;
 		if (steer || running || options.chatWorking()) return false;
-		return view.items.length === 0 && !view.sending && !view.editing;
+		return view.items.length === 0 && handovers.length === 0 && !view.sending && !view.editing;
 	}
 
 	async function enqueue(message: AppendMessage, steer: boolean): Promise<void> {
@@ -145,15 +192,19 @@ export function createMainPromptQueue(
 			options.onError(new Error("The prompt couldn't be queued."));
 			return;
 		}
+		const handover = handOver(message);
 		try {
 			const prompt = await prepareQueuedPrompt(message, chatId, options.prompt());
-			await queue.methods.enqueue({
+			const { id } = await queue.methods.enqueue({
 				chatId,
 				prompt,
 				...(flags.steer ? { steer: true } : {}),
 				...(flags.failed ? { failed: true } : {}),
 			});
+			handover.queued = { id, seen: readView() };
+			refresh();
 		} catch (error) {
+			dropHandover(handover);
 			options.onError(error);
 		}
 	}

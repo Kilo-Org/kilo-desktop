@@ -116,6 +116,57 @@ describe("createMainPromptQueue", () => {
 		});
 	});
 
+	it("lists a prompt the moment it is queued, until main lists it", async () => {
+		const queues = fakeQueues();
+		const { queue } = setup({ chatWorking: () => true }, queues);
+		const listener = vi.fn();
+		queue.subscribe(listener);
+
+		queue.adapter.enqueue(
+			message("Read this", {
+				attachments: [
+					{
+						id: "a1",
+						type: "image",
+						name: "shot.png",
+						contentType: "image/png",
+						status: { type: "complete" },
+						content: [{ type: "image", image: "data:image/png;base64,AA==" }],
+					},
+				],
+			}),
+		);
+
+		// assistant-ui reads the queue straight after handing it a send.
+		expect(listener).toHaveBeenCalled();
+		expect(queue.adapter.items).toEqual([
+			expect.objectContaining({
+				prompt: "Read this",
+				attachmentPreview: { name: "shot.png", src: "data:image/png;base64,AA==" },
+			}),
+		]);
+
+		await flush();
+		const item = { id: "q1", prompt: "Read this", text: "Read this" };
+		queues.set("ses_a", { ...EMPTY, items: [item] });
+
+		expect(queue.adapter.items.map(({ id }) => id)).toEqual(["q1"]);
+	});
+
+	it("drops a prompt it listed when main couldn't queue it", async () => {
+		const queues = fakeQueues();
+		const { queue, onError } = setup({ chatWorking: () => true }, queues);
+		queue.subscribe(() => undefined);
+		queues.call.mockRejectedValueOnce(new Error("gone"));
+
+		queue.adapter.enqueue(message("Then add tests"));
+		expect(queue.adapter.items).toHaveLength(1);
+		await flush();
+
+		expect(onError).toHaveBeenCalledWith(new Error("gone"));
+		expect(queue.adapter.items).toEqual([]);
+	});
+
 	it("queues a steer and anything sent while the thread runs, which comes as a steer", async () => {
 		const { queue, queues } = setup();
 		queue.adapter.steer(message("Now", { steer: true }));

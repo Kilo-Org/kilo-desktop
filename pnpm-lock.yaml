@@ -268,6 +268,7 @@ overrides:
   '@sentry/node>@sentry/bundler-plugins': '-'
 
 patchedDependencies:
+  '@assistant-ui/core@0.3.35': 1fcc7ce2b04578ff68823f06d4eae50adfb64a5bcb9cc63abe32952abc7394ee
   '@assistant-ui/react-opencode@0.2.17': a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf
 
 importers:
@@ -1256,13 +1257,13 @@ importers:
     dependencies:
       '@assistant-ui/core':
         specifier: 0.3.35
-        version: 0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
+        version: 0.3.35(patch_hash=1fcc7ce2b04578ff68823f06d4eae50adfb64a5bcb9cc63abe32952abc7394ee)(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/react':
         specifier: 0.15.35
         version: 0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1))
       '@assistant-ui/react-lexical':
         specifier: 0.2.21
-        version: 0.2.21(@assistant-ui/core@0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1)))(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@lexical/history@0.53.0(typescript@7.0.2))(@lexical/plain-text@0.53.0(typescript@7.0.2))(@lexical/react@0.53.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(@lexical/utils@0.53.0(typescript@7.0.2))(@types/react@19.2.17)(lexical@0.53.0(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 0.2.21(dd30c5779deac9340ab4d9a259dea128)
       '@assistant-ui/react-markdown':
         specifier: ^0.14.25
         version: 0.14.25(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1)))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@10.2.2)
@@ -9947,7 +9948,7 @@ snapshots:
       - jiti
       - supports-color
 
-  '@assistant-ui/core@0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)':
+  '@assistant-ui/core@0.3.35(patch_hash=1fcc7ce2b04578ff68823f06d4eae50adfb64a5bcb9cc63abe32952abc7394ee)(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)':
     dependencies:
       '@assistant-ui/store': 0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/tap': 0.9.25(@types/react@19.2.17)(react@19.3.1)
@@ -9965,9 +9966,9 @@ snapshots:
       - ioredis
       - redis
 
-  '@assistant-ui/react-lexical@0.2.21(@assistant-ui/core@0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1)))(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@lexical/history@0.53.0(typescript@7.0.2))(@lexical/plain-text@0.53.0(typescript@7.0.2))(@lexical/react@0.53.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2))(@lexical/utils@0.53.0(typescript@7.0.2))(@types/react@19.2.17)(lexical@0.53.0(typescript@7.0.2))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@assistant-ui/react-lexical@0.2.21(dd30c5779deac9340ab4d9a259dea128)':
     dependencies:
-      '@assistant-ui/core': 0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
+      '@assistant-ui/core': 0.3.35(patch_hash=1fcc7ce2b04578ff68823f06d4eae50adfb64a5bcb9cc63abe32952abc7394ee)(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/react': 0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1))
       '@assistant-ui/store': 0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1)
       '@lexical/history': 0.53.0(typescript@7.0.2)
@@ -9998,7 +9999,7 @@ snapshots:
 
   '@assistant-ui/react-opencode@0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)':
     dependencies:
-      '@assistant-ui/core': 0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
+      '@assistant-ui/core': 0.3.35(patch_hash=1fcc7ce2b04578ff68823f06d4eae50adfb64a5bcb9cc63abe32952abc7394ee)(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/react': 0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1))
       '@assistant-ui/store': 0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1)
       '@opencode-ai/sdk': link:plugins/chat/opencode-sdk-compat
@@ -10016,7 +10017,7 @@ snapshots:
 
   '@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.6.0(react@19.3.1))':
     dependencies:
-      '@assistant-ui/core': 0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
+      '@assistant-ui/core': 0.3.35(patch_hash=1fcc7ce2b04578ff68823f06d4eae50adfb64a5bcb9cc63abe32952abc7394ee)(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/store': 0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/tap': 0.9.25(@types/react@19.2.17)(react@19.3.1)
       assistant-cloud: 0.2.11(@opentelemetry/api@1.9.1)

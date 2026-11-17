@@ -1,0 +1,55 @@
+diff --git a/dist/runtime/base/base-composer-runtime-core.js b/dist/runtime/base/base-composer-runtime-core.js
+index 9768bb6e006d50815d8bd2521212eebc51e875e6..cc03942bef710000fd884e3507bf0d47c4c2437c 100644
+--- a/dist/runtime/base/base-composer-runtime-core.js
++++ b/dist/runtime/base/base-composer-runtime-core.js
+@@ -330,7 +330,11 @@ var BaseComposerRuntimeCore = class extends BaseSubscribable {
+ 			else this._notifySubscribers();
+ 			return;
+ 		}
+-		if (sendTask) sendTask.catch((error) => {
++		if (sendTask) sendTask.then(() => {
++			// A queue behind the thread's initialization barrier takes the
++			// message only once the send settles, after the check below ran.
++			if (isSubmission && this.queue.length > queued && this._leaveTransit(sent)) this._notifySubscribers();
++		}, (error) => {
+ 			const wasInTransit = this._leaveTransit(sent);
+ 			if (generation === this._sendGeneration && isMessageNotSentError(error)) this._returnToDraft(returned);
+ 			else if (wasInTransit) this._notifySubscribers();
+diff --git a/src/runtime/base/base-composer-runtime-core.ts b/src/runtime/base/base-composer-runtime-core.ts
+index 9154d791d7bf062beedc0b1a68f454acfcd40c33..59705ce451767c6935d7f572ad86789e53971f83 100644
+--- a/src/runtime/base/base-composer-runtime-core.ts
++++ b/src/runtime/base/base-composer-runtime-core.ts
+@@ -529,12 +529,27 @@ export abstract class BaseComposerRuntimeCore
+       return;
+     }
+     if (sendTask)
+-      void sendTask.catch((error) => {
+-        const wasInTransit = this._leaveTransit(sent);
+-        if (generation === this._sendGeneration && isMessageNotSentError(error))
+-          this._returnToDraft(returned);
+-        else if (wasInTransit) this._notifySubscribers();
+-      });
++      void sendTask.then(
++        () => {
++          // A queue behind the thread's initialization barrier takes the
++          // message only once the send settles, after the check below ran.
++          if (
++            isSubmission &&
++            this.queue.length > queued &&
++            this._leaveTransit(sent)
++          )
++            this._notifySubscribers();
++        },
++        (error) => {
++          const wasInTransit = this._leaveTransit(sent);
++          if (
++            generation === this._sendGeneration &&
++            isMessageNotSentError(error)
++          )
++            this._returnToDraft(returned);
++          else if (wasInTransit) this._notifySubscribers();
++        },
++      );
+ 
+     if (isSubmission)
+       for (const attachment of draft.attachments)

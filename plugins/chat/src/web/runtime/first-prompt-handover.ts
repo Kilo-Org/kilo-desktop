@@ -15,8 +15,13 @@ import { prepareQueuedPrompt, type QueuePromptOptions } from "./queued-prompt";
  * Session page that is the page closing (another session opened) while the
  * work session's worktree is made: the chat was created and nothing sent.
  *
- * - The message is read when the chat is requested, which the composer's
- *   send does, and dropped once the thread takes a message to send.
+ * - The composer's last draft with something in it is noted (a send empties
+ *   the composer before the chat is requested), and kept with the chat once
+ *   it exists.
+ * - A message the thread takes to send is its own: the take forgets the noted
+ *   draft and the kept message, and a chat still being created when it
+ *   happens keeps nothing. This holds whichever order assistant-ui makes
+ *   them in, so the thread and main never both send a message.
  * - Detached with the message untaken (before or after the chat exists),
  *   the message is prepared here and queued in main, which sends it to the
  *   idle chat from no window at all.
@@ -34,8 +39,6 @@ export interface UnsentMessage {
 }
 
 export interface FirstPromptHandoverOptions {
-	/** The message the composer is sending, read as the draft's chat is requested. */
-	readonly unsent: () => UnsentMessage | undefined;
 	readonly queue: () => DomainObjectHandle<typeof PromptQueues> | null;
 	readonly prompt: () => QueuePromptOptions;
 	/** Keeps the message main couldn't take as the work session's draft. */
@@ -53,9 +56,11 @@ function draftText(message: UnsentMessage): string {
 }
 
 export interface FirstPromptHandover {
-	/** Creates the draft's chat with `create`, keeping the message it is created for. */
+	/** The composer's latest draft with something in it: what a send would send. */
+	noteDraft(message: UnsentMessage): void;
+	/** Creates the draft's chat with `create`, keeping the noted message for it. */
 	createChat(create: () => Promise<CreatedChat>): Promise<CreatedChat>;
-	/** The thread took a message to send itself. */
+	/** The thread took a message to send itself: nothing it noted or kept is handed over. */
 	taken(): void;
 	/** The thread is mounted (again). */
 	attach(): void;
@@ -71,8 +76,10 @@ interface Kept {
 export function createFirstPromptHandover(
 	options: FirstPromptHandoverOptions,
 ): FirstPromptHandover {
+	let noted: UnsentMessage | undefined;
 	let kept: Kept | undefined;
 	let attached = true;
+	let takes = 0;
 
 	async function handOver(): Promise<void> {
 		const current = kept;
@@ -99,16 +106,22 @@ export function createFirstPromptHandover(
 	}
 
 	return {
+		noteDraft(message) {
+			noted = message;
+		},
 		async createChat(create) {
-			const message = options.unsent();
+			const message = noted;
+			const takesBefore = takes;
 			const chat = await create();
-			if (message) {
+			if (message && takes === takesBefore) {
 				kept = { chat, message };
 				if (!attached) void handOver();
 			}
 			return chat;
 		},
 		taken() {
+			takes += 1;
+			noted = undefined;
 			kept = undefined;
 		},
 		attach() {

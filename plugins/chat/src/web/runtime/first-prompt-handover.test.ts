@@ -30,12 +30,12 @@ function setup(
 	const keepDraft = vi.fn<(workSessionId: string, text: string) => void>();
 	const onError = vi.fn();
 	const handover = createFirstPromptHandover({
-		unsent: () => message,
 		queue: () => queue,
 		prompt: () => ({ getAgent: () => "code", getSystem: async () => "Work in the copy." }),
 		keepDraft,
 		onError,
 	});
+	if (message) handover.noteDraft(message);
 	return { handover, keepDraft, onError };
 }
 
@@ -94,6 +94,49 @@ describe("createFirstPromptHandover", () => {
 		await flush();
 
 		expect(queue.enqueue).not.toHaveBeenCalled();
+	});
+
+	it("leaves the message to the thread that took it while its chat was being created", async () => {
+		const queue = fakeQueue();
+		const { handover } = setup(queue.handle);
+		const chat = heldChat();
+
+		const creating = handover.createChat(chat.create);
+		handover.taken();
+		chat.finish();
+		await creating;
+		handover.detach();
+		await flush();
+
+		expect(queue.enqueue).not.toHaveBeenCalled();
+	});
+
+	it("leaves the message to the thread that took it before asking for its chat", async () => {
+		const queue = fakeQueue();
+		const { handover } = setup(queue.handle);
+
+		handover.taken();
+		await handover.createChat(async () => CHAT);
+		handover.detach();
+		await flush();
+
+		expect(queue.enqueue).not.toHaveBeenCalled();
+	});
+
+	it("holds the message while a remounted thread is still there", async () => {
+		const queue = fakeQueue();
+		const { handover } = setup(queue.handle);
+
+		// A remount (StrictMode, a re-keyed parent) detaches and attaches again.
+		handover.detach();
+		handover.attach();
+		await handover.createChat(async () => CHAT);
+		await flush();
+		expect(queue.enqueue).not.toHaveBeenCalled();
+
+		handover.detach();
+		await flush();
+		expect(queue.enqueue).toHaveBeenCalledOnce();
 	});
 
 	it("keeps the text as the work session's draft when main can't take it", async () => {

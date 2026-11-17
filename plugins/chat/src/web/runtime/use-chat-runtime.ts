@@ -46,20 +46,20 @@ const isComplete = (attachment: Attachment): attachment is CompleteAttachment =>
 	attachment.status.type === "complete";
 
 /**
- * Keeps the composer's last draft with something in it in `draft`: the send
- * empties the composer before the runtime asks for the chat, so while the
- * chat is requested this is the message being sent. (Kilo's attachments are
- * complete once added, so a send never waits on them.)
+ * Notes each composer draft with something in it: the send empties the
+ * composer before the runtime asks for the chat, so while the chat is
+ * requested the last one noted is the message being sent. (Kilo's attachments
+ * are complete once added, so a send never waits on them.)
  */
-function followDraft(runtime: AssistantRuntime, draft: { current: UnsentMessage | undefined }) {
+function followDraft(runtime: AssistantRuntime, note: (message: UnsentMessage) => void) {
 	const composer = runtime.thread.composer;
-	const remember = () => {
+	const noteCurrent = () => {
 		const { text, attachments } = composer.getState();
 		if (!text.trim() && attachments.length === 0) return;
-		draft.current = { text, attachments: attachments.filter(isComplete) };
+		note({ text, attachments: attachments.filter(isComplete) });
 	};
-	remember();
-	return composer.subscribe(remember);
+	noteCurrent();
+	return composer.subscribe(noteCurrent);
 }
 
 /**
@@ -72,7 +72,6 @@ function followDraft(runtime: AssistantRuntime, draft: { current: UnsentMessage 
 export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 	const latest = useRef(options);
 	latest.current = options;
-	const draft = useRef<UnsentMessage | undefined>(undefined);
 	const queue = useDomainObject(PromptQueues);
 	const conversations = useDomainObject(Chats);
 	const domains = useRef({ queue, conversations });
@@ -80,7 +79,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 	const [handover] = useState(() =>
 		options.firstPromptHandover
 			? createFirstPromptHandover({
-					unsent: () => draft.current,
 					queue: () => domains.current.queue,
 					prompt: () => queuePromptOptions(latest.current),
 					keepDraft: (workSessionId, text) =>
@@ -151,6 +149,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 		},
 		adapters,
 	});
-	useEffect(() => (handover ? followDraft(runtime, draft) : undefined), [handover, runtime]);
+	useEffect(
+		() => (handover ? followDraft(runtime, (message) => handover.noteDraft(message)) : undefined),
+		[handover, runtime],
+	);
 	return runtime;
 }

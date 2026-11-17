@@ -471,6 +471,8 @@ export function provideConversations(
 
 	/** The chats anyone may see: no fork held mid-fork or left unfinished. */
 	function visibleChats() {
+		// Every way a chat leaves the store (a deletion, a re-read) publishes through here.
+		forkHolds.prune(store.chats);
 		const held = forkHolds.visible(store.chats);
 		const unfinished = unfinishedForks.list();
 		if (unfinished.length === 0) return held;

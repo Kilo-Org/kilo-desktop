@@ -57,6 +57,16 @@ export class ForkHolds {
 		return this.#named.has(id);
 	}
 
+	/**
+	 * Forgets named forks whose chats are gone from `chats`, so the names
+	 * don't outgrow the chats; one its own hold still names is kept.
+	 */
+	prune(chats: ChatRecords): void {
+		for (const id of this.#named) {
+			if (!(id in chats) && !this.names(id)) this.#named.delete(id);
+		}
+	}
+
 	/** A fork in progress has this id: its own `fork` call decides what becomes of it. */
 	names(id: string): boolean {
 		for (const hold of this.#holds) if (hold.id === id) return true;

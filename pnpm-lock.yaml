@@ -1581,8 +1581,8 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
       systeminformation:
-        specifier: 5.33.19
-        version: 5.33.19
+        specifier: 5.33.23
+        version: 5.33.23
       vscode-jsonrpc:
         specifier: ^10.0.0
         version: 10.0.0
@@ -1909,8 +1909,8 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
       systeminformation:
-        specifier: 5.33.19
-        version: 5.33.19
+        specifier: 5.33.23
+        version: 5.33.23
       zod:
         specifier: ^4.6.6
         version: 4.6.7
@@ -9292,8 +9292,8 @@ packages:
     resolution: {integrity: sha512-eNRKgb3z66Yp3D2CixVujOUvXLFUTij/zVnV8KRyvFdQwpz7I5DS8UfRkTeLzb64u+dkzDSdelE24izu+zSSUg==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  systeminformation@5.33.19:
-    resolution: {integrity: sha512-Zm7wGeCG7PqfvzegMJIzrxICopWqYCeLATVmvxOOci1isLcNVKgY4Fr0hhYQzvc7cgtK3377jQVChTFAnznOiA==}
+  systeminformation@5.33.23:
+    resolution: {integrity: sha512-OBOvemo4WHf8bGMszwszn3JcFxkIMZt7adjhdgJh3eePo37EIBZovZbhJDQ2zfVYPEtXScHDJXGik8eYd3WMNw==}
     engines: {node: '>=10.0.0'}
     os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
     hasBin: true
@@ -10531,7 +10531,7 @@ snapshots:
       object-treeify: 1.1.33
       open: 8.4.2
       picomatch: 4.0.7
-      systeminformation: 5.33.19
+      systeminformation: 5.33.23
       undici: 7.30.1
       which: 4.0.0
       yocto-spinner: 1.2.2
@@ -17352,7 +17352,7 @@ snapshots:
     dependencies:
       '@pkgr/core': 0.3.6
 
-  systeminformation@5.33.19: {}
+  systeminformation@5.33.23: {}
 
   tabbable@6.5.1: {}
 

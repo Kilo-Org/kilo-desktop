@@ -54,7 +54,7 @@ describe("workbooks", () => {
 		const added = await host.invoke(Workbooks, "add", input());
 
 		const { workspaceId: _, ...reference } = input();
-		expect(added).toMatchObject({ ...reference, id: expect.any(String) });
+		expect(added).toMatchObject({ ...reference, id: "prj_1" });
 		expect(Date.parse(added.createdAt)).not.toBeNaN();
 		expect(added.lastUsedAt).toBe(added.createdAt);
 		expect(added.usedIn).toEqual([{ workspaceId: "ws-1", lastUsedAt: added.createdAt }]);
@@ -95,7 +95,7 @@ describe("workbooks", () => {
 		expect(workbooks.getState().workbooks).toEqual([
 			{
 				...reference,
-				id: "old",
+				id: "prj_1",
 				createdAt: "2026-11-16T00:00:00.000Z",
 				lastUsedAt: "2026-11-16T00:00:00.000Z",
 				usedIn: [{ workspaceId: "ws-1", lastUsedAt: "2026-11-16T00:00:00.000Z" }],
@@ -155,9 +155,8 @@ describe("creating a workbook", () => {
 			backend: { kind: "pages-mcp", server: "pages" },
 			usedIn: [{ workspaceId: "ws-1", lastUsedAt: created.createdAt }],
 		});
-		expect(pages.projects.get(created.projectId)?.description).toBe(
-			"Workbook · Coding · workspace: Kilo Desktop",
-		);
+		expect(created.id).toBe(created.projectId);
+		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Coding (coding)");
 		expect(created.sections).toHaveLength(10);
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
 	});
@@ -173,7 +172,7 @@ describe("creating a workbook", () => {
 		});
 
 		expect(created.usedIn).toEqual([]);
-		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Blank");
+		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Blank (blank)");
 	});
 
 	it("reaches Pages through Kilo's global MCP connection by default", async () => {
@@ -208,6 +207,126 @@ describe("creating a workbook", () => {
 		await expect(create({ templateId: "nope" })).rejects.toMatchObject({ code: "NOT_FOUND" });
 		await expect(create({ workspaceId: "nope" })).rejects.toMatchObject({ code: "NOT_FOUND" });
 		expect(workbooks.getState().workbooks).toEqual([]);
+	});
+});
+
+describe("finding workbooks in Pages", () => {
+	it("lists the marked Projects, made anywhere, and keeps where they were used", async () => {
+		const pages = new FakePages();
+		const elsewhere = pages.addProject("From the old laptop", "Workbook · Coding · workspace: W", [
+			"How to work here",
+			"Plan",
+		]);
+		pages.addProject("Holiday plans", "Not a workbook");
+		const { host, workbooks } = await boot(undefined, pages);
+		const made = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "blank",
+			name: "Made here",
+			values: { goal: "g" },
+		});
+
+		await host.invoke(Workbooks, "refresh", undefined);
+
+		const state = workbooks.getState();
+		expect(state).toMatchObject({ refreshing: false, refreshError: null });
+		expect(state.workbooks.map((workbook) => workbook.id)).toEqual([elsewhere, made.id]);
+		expect(state.workbooks[0]).toMatchObject({
+			name: "From the old laptop",
+			templateId: "coding",
+			usedIn: [],
+			sections: [{ id: "plan" }],
+		});
+		expect(state.workbooks[1]).toEqual(made);
+	});
+
+	it("drops workbooks no longer in Pages", async () => {
+		const pages = new FakePages();
+		const { host, workbooks } = await boot(undefined, pages);
+		const made = await host.invoke(Workbooks, "create", {
+			workspaceId: null,
+			templateId: "blank",
+			name: "Soon deleted",
+			values: { goal: "g" },
+		});
+		pages.projects.delete(made.projectId);
+
+		await host.invoke(Workbooks, "refresh", undefined);
+
+		expect(workbooks.getState().workbooks).toEqual([]);
+	});
+
+	it("keeps the list it had, and says why, when Pages can't be read", async () => {
+		const pages = new FakePages();
+		const { host, workbooks } = await boot(undefined, pages);
+		const added = await host.invoke(Workbooks, "add", input());
+		pages.failOn = "list_projects";
+
+		await expect(host.invoke(Workbooks, "refresh", undefined)).resolves.toBeUndefined();
+
+		expect(workbooks.getState()).toMatchObject({
+			workbooks: [added],
+			refreshing: false,
+			refreshError: expect.stringContaining("list_projects failed"),
+		});
+	});
+
+	it("shares one refresh between callers, and keeps a workbook created while it lists", async () => {
+		const pages = new FakePages();
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const call = pages.call.bind(pages);
+		pages.call = async (tool, args) => {
+			if (tool === "list_projects") await gate;
+			return call(tool, args);
+		};
+		const { host, workbooks } = await boot(undefined, pages);
+
+		const first = host.invoke(Workbooks, "refresh", undefined);
+		const second = host.invoke(Workbooks, "refresh", undefined);
+		await expect.poll(() => workbooks.getState().refreshing).toBe(true);
+		const listing = pages.calls.length;
+		const made = await host.invoke(Workbooks, "create", {
+			workspaceId: null,
+			templateId: "blank",
+			name: "Made meanwhile",
+			values: { goal: "g" },
+		});
+		pages.projects.delete(made.projectId);
+		release();
+		await Promise.all([first, second]);
+
+		expect(
+			pages.calls.slice(listing).filter((entry) => entry.tool === "list_projects"),
+		).toHaveLength(1);
+		expect(workbooks.getState().workbooks.map((workbook) => workbook.id)).toEqual([made.id]);
+	});
+
+	it("reads workbooks and sessions saved under the old random ids by their project id", async () => {
+		const storage = createMemoryStorage("/memory/kilo.workbooks");
+		const { workspaceId: _, ...reference } = input();
+		storage.kv({ namespace: "workbooks", defaults: { workbooks: [] as unknown[] } }).set({
+			workbooks: [
+				{
+					...reference,
+					id: "6b0c-random",
+					createdAt: "2026-11-16T00:00:00.000Z",
+					lastUsedAt: "2026-11-16T00:00:00.000Z",
+					usedIn: [],
+				},
+			],
+		});
+		storage
+			.kv({ namespace: "session-workbooks", defaults: { bySession: {} as Record<string, string> } })
+			.set({ bySession: { wses_old: "6b0c-random" } });
+
+		const { host, workbooks } = await boot(storage);
+
+		expect(workbooks.getState().workbooks.map((workbook) => workbook.id)).toEqual(["prj_1"]);
+		const sessions = host.renderer.kernelSdk.domainObjects.get(SessionWorkbooks)!;
+		expect(sessions.getState().bySession).toEqual({ wses_old: "prj_1" });
 	});
 });
 

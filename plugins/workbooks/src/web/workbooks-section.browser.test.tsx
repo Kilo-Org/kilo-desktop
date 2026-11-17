@@ -409,4 +409,32 @@ describe("Start from a workbook on the New Session page", () => {
 			.workbooks.find((workbook) => workbook.name === "Scratch");
 		expect(created?.usedIn).toEqual([]);
 	});
+
+	it("finds workbooks made elsewhere in Pages when it shows", async () => {
+		const pages = new FakePages();
+		const projectId = pages.addProject("From the old laptop", "Workbook · Spike · workspace: W", [
+			"Decisions",
+		]);
+		pages.addProject("Holiday plans", "Not a workbook");
+		await renderSection({ pages });
+
+		await openPicker();
+
+		await expect
+			.poll(() => page.getByTestId(`workbooks-continue-${projectId}`).element().textContent)
+			.toContain("From the old laptopSpike");
+		await expect.element(page.getByText("Holiday plans")).not.toBeInTheDocument();
+	});
+
+	it("says why it couldn't read the workbooks from Pages", async () => {
+		const pages = new FakePages();
+		pages.failOn = "list_projects";
+		await renderSection({ pages });
+
+		await openPicker();
+
+		await expect
+			.element(page.getByText(/Couldn't read your workbooks from Pages: .*list_projects failed/))
+			.toBeVisible();
+	});
 });

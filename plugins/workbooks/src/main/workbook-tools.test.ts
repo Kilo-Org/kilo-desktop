@@ -203,9 +203,10 @@ describe("workbooks missing a section", () => {
 		const { id: _, createdAt: __, lastUsedAt: ___, usedIn: ____, ...reference } = workbook;
 		const bare = await host.invoke(Workbooks, "add", {
 			...reference,
+			projectId: "prj_bare",
 			workspaceId: null,
 			name: "Bare",
-			sections: [{ id: "notes", title: "Notes", itemType: "note", pageId: workbook.guidePageId }],
+			sections: [{ id: "notes", title: "Notes", itemType: "note", pageId: workbook.guidePageId! }],
 		});
 
 		await expect(

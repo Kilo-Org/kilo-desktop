@@ -37,10 +37,11 @@ export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): Pl
 			const pages = options.pages ?? kiloPages(sdk);
 			const workbooks = provideWorkbooks(sdk, {
 				template: templates.find,
+				templates: templates.all,
 				workspace: (id) => workspaceOf(sdk, id),
 				pages,
 			});
-			provideSessionWorkbooks(sdk, { recordUse: workbooks.recordUse });
+			provideSessionWorkbooks(sdk, workbooks);
 			implementWorkbookTools(sdk, { pages: (workbook) => pages(workbook.backend) });
 		},
 	});
@@ -51,7 +52,7 @@ function workspaceOf(sdk: PluginSdk, id: string) {
 		.get(Workspaces)
 		?.getState()
 		.workspaces.find((candidate) => candidate.id === id);
-	return workspace ? { name: workspace.name } : undefined;
+	return workspace;
 }
 
 function kiloPages(sdk: PluginSdk) {

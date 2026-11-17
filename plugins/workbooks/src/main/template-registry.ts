@@ -22,6 +22,7 @@ type TemplateContribution = Contribution<typeof WorkbookTemplatePoint>;
  */
 export function provideTemplates(sdk: PluginSdk): {
 	find(id: string): WorkbookTemplate | undefined;
+	all(): WorkbookTemplate[];
 } {
 	let templates = new Map<string, WorkbookTemplate>();
 	const warned = new Set<string>();
@@ -76,7 +77,7 @@ export function provideTemplates(sdk: PluginSdk): {
 
 	reread();
 	sdk.extensions.subscribe(WorkbookTemplatePoint, reread);
-	return { find: (id) => templates.get(id) };
+	return { find: (id) => templates.get(id), all: () => [...templates.values()] };
 }
 
 function readTemplate(

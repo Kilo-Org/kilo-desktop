@@ -8,8 +8,8 @@ export interface NewWorkbookContent {
 	readonly name: string;
 	/** Brief field values by field id. */
 	readonly values: Readonly<Record<string, string>>;
-	/** The workspace it's created in, shown in the Project's description so workbooks are recognisable in Pages itself. */
-	readonly workspaceLabel?: string;
+	/** The Project's description: the workbook marker, which is how the app finds it again. */
+	readonly description: string;
 	readonly nonce?: () => string;
 }
 
@@ -63,9 +63,7 @@ export async function createWorkbookContent(
 
 	const project = (await pages.call("create_project", {
 		title: name,
-		description: content.workspaceLabel
-			? `Workbook · ${template.name} · workspace: ${content.workspaceLabel}`
-			: `Workbook · ${template.name}`,
+		description: content.description,
 		nonce: nonce(),
 	})) as { project_id?: string; url?: string };
 	const projectId = project?.project_id;

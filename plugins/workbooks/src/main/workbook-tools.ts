@@ -75,6 +75,9 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 			}),
 			run: async ({ section, workbookId }, context) => {
 				const { workbook, writer } = writerFor(workbookId, context);
+				if (section === "guide" && !workbook.guidePageId) {
+					throw new KernelError("NOT_FOUND", 'This workbook has no "How to work here" page.');
+				}
 				const pageId =
 					section === "guide"
 						? workbook.guidePageId

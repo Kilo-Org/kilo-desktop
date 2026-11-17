@@ -24,8 +24,13 @@ type Args = Readonly<Record<string, unknown>>;
 export class FakePages implements PagesToolCaller {
 	readonly calls: { tool: string; args: Args }[] = [];
 	readonly pages = new Map<string, FakePage>();
-	readonly projects = new Map<string, { documentId: string; title: string; description: string }>();
+	readonly projects = new Map<
+		string,
+		{ documentId: string; title: string; description: string; createdAt: string }
+	>();
 	failOn: string | null = null;
+	/** How many entries a list call returns before handing back a cursor. */
+	pageSize = 50;
 	#next = 0;
 
 	async call(tool: string, args: Args): Promise<unknown> {
@@ -40,6 +45,28 @@ export class FakePages implements PagesToolCaller {
 				return this.#readPage(args);
 			case "edit_page":
 				return this.#editPage(args);
+			case "list_projects":
+				return this.#list(
+					[...this.projects].map(([projectId, project]) => ({
+						project_id: projectId,
+						title: project.title,
+						description: project.description,
+						created_at: project.createdAt,
+						url: `https://pages.test/project/${projectId}`,
+					})),
+					"projects",
+					args,
+				);
+			case "list_pages":
+				return this.#list(
+					this.pagesOf(String(args.project_id)).map((page) => ({
+						page_id: page.id,
+						title: page.title,
+						project_id: page.projectId,
+					})),
+					"pages",
+					args,
+				);
 			default:
 				throw new Error(`FakePages doesn't know ${tool}`);
 		}
@@ -50,6 +77,15 @@ export class FakePages implements PagesToolCaller {
 		return this.#page(pageId)
 			.blocks.map((block) => block.markdown)
 			.join("\n\n");
+	}
+
+	/** A Project made outside the app (by hand, or on another machine), with empty pages. */
+	addProject(title: string, description: string, pageTitles: readonly string[] = []): string {
+		const { project_id: projectId } = this.#createProject({ title, description });
+		for (const pageTitle of pageTitles) {
+			this.#createPage({ project_id: projectId, title: pageTitle, markdown: "" });
+		}
+		return projectId;
 	}
 
 	documentOf(projectId: string): string {
@@ -72,7 +108,12 @@ export class FakePages implements PagesToolCaller {
 		const projectId = this.#id("prj");
 		const documentId = this.#id("doc");
 		const description = String(args.description ?? "");
-		this.projects.set(projectId, { documentId, title: String(args.title), description });
+		this.projects.set(projectId, {
+			documentId,
+			title: String(args.title),
+			description,
+			createdAt: new Date(Date.UTC(2026, 10, 1, 0, this.#next)).toISOString(),
+		});
 		this.pages.set(documentId, {
 			id: documentId,
 			title: String(args.title),
@@ -116,6 +157,16 @@ export class FakePages implements PagesToolCaller {
 		const page = this.pages.get(id);
 		if (!page) throw new Error(`no page ${id}`);
 		return page;
+	}
+
+	/** One page of a list result, with `next_cursor` (an offset) while there's more. */
+	#list<T>(entries: readonly T[], key: string, args: Args) {
+		const start = args.cursor ? Number(args.cursor) : 0;
+		const end = start + this.pageSize;
+		return {
+			[key]: entries.slice(start, end),
+			next_cursor: end < entries.length ? String(end) : null,
+		};
 	}
 
 	#readPage(args: Args) {

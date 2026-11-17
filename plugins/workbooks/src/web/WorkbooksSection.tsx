@@ -1,5 +1,5 @@
 import { ArrowRightIcon, ChevronDownIcon, NotebookTabsIcon, PlusIcon } from "lucide-react";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
@@ -32,7 +32,14 @@ import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
 import { templateIcon } from "./template-icons";
 
 const selectWorkbooks = (state: { workbooks: Workbook[] }) => state.workbooks;
+const selectRefreshing = (state: { refreshing: boolean }) => state.refreshing;
+const selectRefreshError = (state: { refreshError: string | null }) => state.refreshError;
 const selectTemplates = (state: { templates: TemplateSummary[] }) => state.templates;
+
+/** The template's name, or the workbook's own record of it when the template isn't on offer. */
+function templateLabel(workbook: Workbook, template: TemplateSummary | undefined): string {
+	return template?.name ?? workbook.templateName ?? workbook.templateId;
+}
 
 /** No row highlighted when the picker opens, as the workspace picker does. */
 const NO_SELECTION = "__no-workbook-selection__";
@@ -54,7 +61,9 @@ function filterByKeywords(value: string, search: string, keywords?: string[]): n
  * one "Workbook" tile, in the style of the page's tool tiles, that opens a
  * searchable picker built to the dropdown standard (as the workspace picker):
  * every workbook, those used in the page's workspace first, then "New
- * workbook" pinned under the list, which opens the New workbook wizard.
+ * workbook" pinned under the list, which opens the New workbook wizard. The
+ * list is the last one found in Pages, refreshed when the section shows and
+ * each time the picker opens.
  * Workbooks aren't tied to a workspace, so the tile shows with or without
  * one. Picking a workbook selects it (the tile then names it) and shows a
  * "Start session" tile beside it: the go action, which starts the session
@@ -69,7 +78,14 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 		start,
 	};
 	const all = useDomainObjectState(Workbooks, selectWorkbooks) ?? [];
+	const refreshing = useDomainObjectState(Workbooks, selectRefreshing) ?? false;
+	const refreshError = useDomainObjectState(Workbooks, selectRefreshError) ?? null;
 	const { here, elsewhere } = workbooksFor(all, workspaceId);
+	const workbooksHandle = deps.workbooks;
+	const refresh = () => void workbooksHandle?.methods.refresh(undefined);
+	useEffect(() => {
+		void workbooksHandle?.methods.refresh(undefined);
+	}, [workbooksHandle]);
 	const templates = useDomainObjectState(WorkbookTemplates, selectTemplates) ?? [];
 	const [open, setOpen] = useState(false);
 	const [commandValue, setCommandValue] = useState(NO_SELECTION);
@@ -114,6 +130,8 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 	const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
 		if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 			event.preventDefault();
+			setCommandValue(NO_SELECTION);
+			refresh();
 			setOpen(true);
 		}
 	};
@@ -125,7 +143,7 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 			<CommandItem
 				key={workbook.id}
 				value={workbook.id}
-				keywords={[workbook.name, template?.name ?? workbook.templateId]}
+				keywords={[workbook.name, templateLabel(workbook, template)]}
 				data-qa-id={`workbooks-continue-${workbook.id}`}
 				data-checked={workbook.id === selected?.id}
 				onSelect={() => select(workbook)}
@@ -133,7 +151,7 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 				<Icon className="text-muted-foreground" />
 				<span className="min-w-0 flex-1 truncate">{workbook.name}</span>
 				<span className="text-muted-foreground shrink-0 text-xs">
-					{template?.name ?? workbook.templateId}
+					{templateLabel(workbook, template)}
 				</span>
 			</CommandItem>
 		);
@@ -149,7 +167,10 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 			<Popover
 				open={open}
 				onOpenChange={(next) => {
-					if (next) setCommandValue(NO_SELECTION);
+					if (next) {
+						setCommandValue(NO_SELECTION);
+						refresh();
+					}
 					setOpen(next);
 				}}
 			>
@@ -198,7 +219,13 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 						<CommandInput placeholder="Search workbooks" />
 						<CommandList className="scroll-fade">
 							<CommandEmpty>
-								{all.length === 0 ? "No workbooks yet." : "No workbooks found."}
+								{all.length > 0
+									? "No workbooks found."
+									: refreshing
+										? "Looking for workbooks in Pages…"
+										: refreshError
+											? `Couldn't read your workbooks from Pages: ${refreshError}`
+											: "No workbooks yet."}
 							</CommandEmpty>
 							{here.length > 0 ? (
 								<CommandGroup heading={grouped ? "This workspace" : undefined}>

@@ -16,13 +16,13 @@ describe("createWorkbookContent", () => {
 			template: coding,
 			name: "Fix the server bug",
 			values: { goal: "Fix the bug in the Kilo server", acceptance: "  " },
-			workspaceLabel: "Kilo Desktop",
+			description: "Workbook · Coding (coding)",
 		});
 
 		const project = pages.projects.get(created.projectId)!;
 		expect(project).toMatchObject({
 			title: "Fix the server bug",
-			description: "Workbook · Coding · workspace: Kilo Desktop",
+			description: "Workbook · Coding (coding)",
 		});
 		expect(created.url).toBe(`https://pages.test/project/${created.projectId}`);
 		const brief = pages.markdown(project.documentId);
@@ -50,7 +50,7 @@ describe("createWorkbookContent", () => {
 				template: coding,
 				name: "x",
 				values: { goal: " " },
-				workspaceLabel: "W",
+				description: "Workbook · Coding (coding)",
 			}),
 		).rejects.toMatchObject({ code: "VALIDATION", message: "Fill in the Brief first: Goal." });
 		expect(pages.calls).toEqual([]);
@@ -64,7 +64,7 @@ describe("createWorkbookContent", () => {
 				template: coding,
 				name: "x",
 				values: { goal: "g" },
-				workspaceLabel: "W",
+				description: "Workbook · Coding (coding)",
 			}),
 		).rejects.toMatchObject({ code: "UNAVAILABLE" });
 	});
@@ -78,7 +78,7 @@ describe("createWorkbookContent", () => {
 				template: coding,
 				name: "x",
 				values: { goal: "g" },
-				workspaceLabel: "W",
+				description: "Workbook · Coding (coding)",
 			}),
 		).rejects.toThrow("create_page failed");
 	});

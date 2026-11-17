@@ -10,21 +10,31 @@ interface SavedSessions extends Record<string, unknown> {
 export interface SessionWorkbooksDeps {
 	/** Records a workbook's use in a workspace, or (null) none. */
 	readonly recordUse: (workbookId: string, workspaceId: string | null) => void;
+	/** A saved workbook id as it is now; undefined for a workbook that's gone. */
+	readonly currentId: (savedId: string) => string | undefined;
 }
 
 /**
  * Provides `kilo.workbooks/session-workbooks`: each work session's active
  * workbook, saved in kv. Entries go when their session is deleted or their
  * workbook is forgotten, so a lookup never points at something gone. Setting
- * a session's workbook records the use, in the session's workspace.
+ * a session's workbook records the use, in the session's workspace. Entries
+ * saved under a workbook's former random id are read under its project id.
  */
 export function provideSessionWorkbooks(sdk: PluginSdk, deps: SessionWorkbooksDeps): void {
 	const store = mainHost(sdk).storage.kv<SavedSessions>({
 		namespace: "session-workbooks",
 		defaults: { bySession: {} },
 	});
+	const saved = store.get("bySession");
+	const upgraded = Object.fromEntries(
+		Object.entries(saved).map(([session, workbook]) => [
+			session,
+			deps.currentId(workbook) ?? workbook,
+		]),
+	);
 	const sessions = sdk.domainObjects.provide(SessionWorkbooks, {
-		initialState: { bySession: { ...store.get("bySession") } },
+		initialState: { bySession: upgraded },
 		methods: {
 			setActive: ({ workSessionId, workbookId }) => {
 				if (workbookId && !sdk.domainObjects.get(Workbooks)?.lookup(workbookId)) {

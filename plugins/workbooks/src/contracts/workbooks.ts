@@ -35,17 +35,21 @@ export type WorkbookUse = z.output<typeof workbookUseSchema>;
 /**
  * A workbook: which template it came from and where each part of it lives.
  * Workbooks belong to the person, not to a workspace; the workspaces it has
- * been used in only order the picker.
+ * been used in only order the picker. Its id is its Pages project id, so it
+ * is the same workbook on every machine.
  */
 export const workbookSchema = z.object({
 	id: z.string().min(1),
 	name: z.string().min(1),
 	templateId: z.string().min(1),
+	/** The template's name from the workbook's marker, when the template isn't on offer. */
+	templateName: z.string().optional(),
 	backend: workbookBackendSchema,
 	/** The Pages Project; its own document is the Brief. */
 	projectId: z.string().min(1),
 	url: z.string().optional(),
-	guidePageId: z.string().min(1),
+	/** "How to work here"; missing when no page of that title was found. */
+	guidePageId: z.string().min(1).optional(),
 	sections: z.array(workbookSectionRefSchema),
 	createdAt: z.string(),
 	/** When a work session last started on it (its creation, until then). */
@@ -91,18 +95,32 @@ export const workbookProgressSchema = z.object({
 export type WorkbookProgress = z.output<typeof workbookProgressSchema>;
 
 /**
- * The person's workbooks, kept by kilo.workbooks (the workbooks themselves
- * live in Pages). Forgetting a workbook removes only the reference. Starting a
- * work session on one (`session-workbooks` `setActive`) records the use.
+ * The person's workbooks. Pages decides which exist (`refresh` finds every
+ * Project marked as a workbook); kilo.workbooks keeps the last list found,
+ * and where and when each was used. Forgetting a workbook removes only the
+ * reference, until the next refresh finds it again. Starting a work session
+ * on one (`session-workbooks` `setActive`) records the use.
  */
 export const Workbooks = defineDomainObject({
 	id: "kilo.workbooks/workbooks",
 	home: "main",
-	state: z.object({ workbooks: z.array(workbookSchema) }),
+	state: z.object({
+		workbooks: z.array(workbookSchema),
+		/** True while a refresh is reading Pages. */
+		refreshing: z.boolean(),
+		/** Why the last refresh failed; null once one succeeds. */
+		refreshError: z.string().nullable(),
+	}),
 	methods: {
+		/**
+		 * Finds the workbooks in Pages, keeping what's known of each. Never
+		 * rejects: a failure keeps the last list and sets `refreshError`.
+		 * Concurrent calls share one refresh.
+		 */
+		refresh: method(z.undefined(), z.undefined()),
 		/** Copies a template into a new Pages Project and records it. */
 		create: method(createWorkbookInputSchema, workbookSchema),
-		/** Adds a reference to a workbook that already exists in Pages. */
+		/** Adds a reference to a workbook that already exists in Pages (kept until a refresh, unless it's marked). */
 		add: method(addWorkbookInputSchema, workbookSchema),
 		rename: method(z.object({ id: z.string(), name: z.string().trim().min(1) }), workbookSchema),
 		forget: method(z.object({ id: z.string() }), z.object({ forgotten: z.boolean() })),

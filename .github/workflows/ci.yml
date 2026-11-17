@@ -205,6 +205,10 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --name-only "$BASE_SHA" HEAD | node e2e/scripts/plan-pr-e2e.ts
 
+  # PR e2e runs on Linux (xvfb), where Blacksmith sticky disks keep the pnpm
+  # store and root node_modules between runs, so setup and install do not
+  # start cold. Sticky disks are Linux-only. Windows e2e coverage comes from
+  # the merge queue (e2e-merge) and nightly.
   e2e-pr:
     needs: e2e-plan
     if: github.event_name == 'pull_request' && needs.e2e-plan.outputs.total != '0'
@@ -212,19 +216,46 @@ jobs:
       fail-fast: false
       matrix:
         shard: ${{ fromJSON(needs.e2e-plan.outputs.shards) }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       PLAYWRIGHT_FAIL_ON_FLAKY_TESTS: "false"
+      # pnpm 12 reads its store location from pnpm_config_*.
+      pnpm_config_store_dir: /home/runner/pnpm-sticky-store
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Mounted before install: each job gets its own clone of the last
+      # committed snapshot and commits back when it ends (on-change: only when
+      # it wrote something). Enable sticky-disk branch protection in the
+      # Blacksmith dashboard so only main can commit.
+      - name: Mount the pnpm store
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
+        with:
+          key: ${{ github.repository }}-e2e-pnpm-store-linux-x64
+          path: /home/runner/pnpm-sticky-store
+          commit: on-change
+      - name: Mount node_modules
+        uses: useblacksmith/stickydisk@3f6be1451e3cad893b778bc93495c80452a5da26 # v1.7.2
+        with:
+          key: ${{ github.repository }}-e2e-node-modules-linux-x64
+          path: ${{ github.workspace }}/node_modules
+          commit: on-change
+      # The store lives on the sticky disk, so skip the Actions-cache restore.
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
+        with:
+          pnpm-cache: "false"
+      - name: Install dependencies
+        shell: bash
+        run: |
+          start=$SECONDS
+          pnpm install --frozen-lockfile
+          echo "::notice title=pnpm install::$(( SECONDS - start ))s with sticky store $(du -sh "$pnpm_config_store_dir" 2>/dev/null | cut -f1) and node_modules $(du -sh node_modules 2>/dev/null | cut -f1)"
       - uses: ./.github/actions/run-e2e
         with:
           script: test:e2e
+          xvfb: "true"
           grep: ${{ needs.e2e-plan.outputs.grep }}
           shard: ${{ matrix.shard }}/${{ needs.e2e-plan.outputs.total }}
           report-name: playwright-report-pr-${{ matrix.shard }}

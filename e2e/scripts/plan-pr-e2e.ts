@@ -24,8 +24,8 @@ import { discoverSpecFiles } from "../utils/spec-files.ts";
 import { EVERYTHING, selectPrE2eGrep } from "./select-pr-e2e.ts";
 
 /**
- * Test-seconds a 4-worker, 8-vCPU Windows runner gets through per second
- * (measured on PR #113: workers contend for CPU, so not 4).
+ * Test-seconds a 4-worker, 8-vCPU runner gets through per second (measured
+ * on Windows in PR #113: workers contend for CPU, so not 4).
  */
 const RUNNER_THROUGHPUT = 2.2;
 /** Aim for about this much test time per shard, on top of ~2 min of setup. */

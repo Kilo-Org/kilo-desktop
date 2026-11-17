@@ -8,7 +8,7 @@
 | Integration | `*.integration.test.ts` | Vitest node, serial            | Every PR                            |
 | Component   | `*.browser.test.tsx`    | Vitest Chromium                | Every PR                            |
 | App-level   | `*.app.test.tsx`        | Vitest Chromium                | Every PR (composition / routing)    |
-| E2E PR      | changed areas           | Playwright + packaged Electron | PRs that can reach e2e (Windows)    |
+| E2E PR      | changed areas           | Playwright + packaged Electron | PRs that can reach e2e (Linux)      |
 | E2E full    | all specs               | Playwright + packaged Electron | Nightly matrix + merge queue        |
 
 Coverage gate: **80%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
@@ -33,16 +33,17 @@ workflows outside the e2e harness run nothing, so a PR made only of those skips 
 queue and nightly run the full suite on their platform matrices; every E2E test launches an
 OS-matched packaged application.
 
-`e2e-plan` (`e2e/scripts/plan-pr-e2e.ts`) picks the specs and the number of Windows shards before
+`e2e-plan` (`e2e/scripts/plan-pr-e2e.ts`) picks the specs and the number of Linux shards before
 any runner packages the app: about 75 s of recorded test time per shard, up to six. PR shards upload
 only `junit.xml` and `results.json` on success (enough for `record-test-durations.mjs`) and the full
 report on failure.
 
 Playwright runs two workers locally and one per 2 vCPUs in CI (4 on the
-8-vCPU Windows runner, 3 on macOS, 2 on Linux), set by the `run-e2e` action
+8-vCPU Windows and Linux runners, 3 on macOS, 2 on 4-vCPU Linux), set by the `run-e2e` action
 (`E2E_WORKERS` overrides; set `1` to serialize while debugging). Each worker owns its app and profile and stops only its own
 process tree; orphaned app instances are swept once in global setup and
-teardown. PR E2E runs in up to six Windows shards and the macOS merge-queue leg in
+teardown. PR E2E runs in up to six Linux shards (under xvfb, with Blacksmith sticky disks holding
+the pnpm store and root `node_modules`; Windows E2E runs in the merge queue and nightly) and the macOS merge-queue leg in
 two (`E2E_SHARD=current/total`); `e2e-merge-report` merges the macOS blob
 reports into one HTML report. Shards split spec files by recorded test time
 (`scripts/test-durations/e2e.json`, read by `e2e/utils/shard-specs.ts`) so the

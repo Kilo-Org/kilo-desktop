@@ -128,6 +128,22 @@ describe("the Agents button", () => {
 		expect(sessions.calls.open).toHaveBeenCalledWith(expect.objectContaining({ placement: "tab" }));
 	});
 
+	it("starts a new agent as a draft tab of the active group", async () => {
+		const { panes, sessions } = await renderButton();
+		const before = panes().panes.length;
+
+		await page.getByTestId("agents-menu-button").click();
+		await page.getByTestId("agents-menu-new").click();
+
+		await vi.waitFor(() => expect(panes().panes).toHaveLength(before + 1));
+		const opened = panes().panes.at(-1)!;
+		expect(opened.kind).toBe(AGENT_PANE_KIND);
+		expect(paneChatId(opened)).toBeNull();
+		expect(sessions.calls.open).toHaveBeenCalledWith(
+			expect.objectContaining({ kind: AGENT_PANE_KIND, placement: "tab" }),
+		);
+	});
+
 	it("leaves the Closed section out when every chat is open", async () => {
 		await renderButton(Object.keys(TITLES));
 

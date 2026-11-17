@@ -1,4 +1,4 @@
-import { BotIcon, ExternalLinkIcon } from "lucide-react";
+import { BotIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
 import { useCallback, type ReactNode } from "react";
 
 import { KernelWindows, type DomainObjectState } from "@kilo-desktop/kernel";
@@ -67,7 +67,8 @@ function usePaneWindowIds(workSessionId: string): ReadonlyMap<string, string> {
 
 /**
  * The Agents button in the open work session's header
- * (kilo.work-sessions/work-session-action): the work session's chats, those
+ * (kilo.work-sessions/work-session-action): New agent (a draft tab), then
+ * the work session's chats, those
  * with an agent tab first in tab order (with each tab's status, and a mark
  * on a popped-out one), then closed ones newest first. Picking an open chat
  * shows its tab or brings its window forward; picking a closed one reopens it.
@@ -124,6 +125,10 @@ export function AgentsMenu({ workSession }: WorkSessionActionProps) {
 				placement: "tab",
 			})
 			.catch(failed("open the chat"));
+	const startNew = () =>
+		void panes.methods
+			.open({ workSessionId: workSession.id, kind: AGENT_PANE_KIND, placement: "tab" })
+			.catch(failed("start a new agent"));
 
 	const row = (chat: ChatSummary, icon: ReactNode, trailing: ReactNode, onClick: () => void) => (
 		<DropdownMenuItem key={chat.id} data-qa-id={`agents-menu-${chat.id}`} onClick={onClick}>
@@ -156,6 +161,11 @@ export function AgentsMenu({ workSession }: WorkSessionActionProps) {
 				<TooltipContent side="bottom">Agents</TooltipContent>
 			</Tooltip>
 			<DropdownMenuContent align="end" className="w-72" data-qa-id="agents-menu">
+				<DropdownMenuItem data-qa-id="agents-menu-new" onClick={startNew}>
+					<PlusIcon className="size-3.5" aria-hidden />
+					New agent
+				</DropdownMenuItem>
+				{open.length > 0 || closed.length > 0 ? <DropdownMenuSeparator /> : null}
 				{open.length > 0 ? (
 					<DropdownMenuGroup>
 						<DropdownMenuLabel>Open</DropdownMenuLabel>

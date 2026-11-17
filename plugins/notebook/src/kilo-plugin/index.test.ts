@@ -531,8 +531,21 @@ describe("nteract Kilo plugin", () => {
 			notebook_id: NOTEBOOK_ID,
 			action: "add",
 			declaration: { recorded: true, packages: ["polars>=1"], package_manager: "uv" },
-			environment_sync: { status: "applied", typed: false },
+			environment_sync: {
+				status: "completed_unconfirmed",
+				typed: false,
+				detail: expect.any(String),
+				next_step: expect.any(String),
+			},
 			kernel: null,
+			package_manager: {
+				requested: "uv",
+				running: null,
+				matches: false,
+				application: "unconfirmed",
+				detail: expect.stringMatching(/could not be confirmed/),
+				next_step: expect.any(String),
+			},
 			status: { uv: { dependencies: ["polars>=1"] }, fingerprint: "environment-2" },
 		});
 	});
@@ -574,9 +587,11 @@ describe("nteract Kilo plugin", () => {
 		);
 
 		expect(session.restartKernel).toHaveBeenCalledOnce();
+		expect(result.title).toBe("Notebook kernel restarted");
 		expect(JSON.parse(result.output)).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			action: "restart",
+			restart: { confirmed: true },
 			status: {
 				status: "idle",
 				lifecycle: "Running",
@@ -640,8 +655,6 @@ describe("nteract Kilo plugin", () => {
 					status: "error",
 					starting_phase: "",
 					unconfirmed: { env_source: "conda:env_yml" },
-					name: "",
-					language: "",
 				},
 				dependencies: {
 					conda: { dependencies: ["pandas"], channels: ["main"] },
@@ -1772,12 +1785,15 @@ describe("nteract Kilo plugin", () => {
 				kernel: {
 					lifecycle: "Running",
 					status: "idle",
+					name: "python3",
+					language: "python",
+					runtime_agent_id: "runtime-1",
 					env_source: "uv:inline",
 					environment_id: "uv:inline:8f2c",
 					python_version: "3.13.1",
 				},
 				summary: expect.stringMatching(
-					/Staged Conda environment lumen.*still uses the automatic environment.*apply with expected_revision 4/s,
+					/Staged Conda environment lumen.*not applied.*automatic environment was last applied and the running kernel reports environment uv:inline:8f2c.*apply with expected_revision 4/s,
 				),
 			});
 			expect(staged.result.metadata).toMatchObject({ state: "staged", active: false });
@@ -1816,15 +1832,20 @@ describe("nteract Kilo plugin", () => {
 					lifecycle: "Launching",
 					status: "starting",
 					unconfirmed: {
+						name: "python3",
+						language: "python",
+						runtime_agent_id: "runtime-1",
 						env_source: "uv:inline",
 						environment_id: "uv:inline:8f2c",
 						python_version: "3.13.1",
 					},
 				},
-				summary: expect.stringMatching(/kernel is Launching.*not active yet/),
+				summary: expect.stringMatching(/kernel is Launching.*no environment is confirmed active/),
 			});
 			expect(output.kernel).not.toHaveProperty("env_source");
 			expect(output.kernel).not.toHaveProperty("environment_id");
+			expect(output.kernel).not.toHaveProperty("name");
+			expect(output.kernel).not.toHaveProperty("runtime_agent_id");
 		});
 
 		it("reports an applied selection as active once the running kernel reports its identity", async () => {
@@ -1850,7 +1871,7 @@ describe("nteract Kilo plugin", () => {
 					environment_name: "lumen",
 				},
 				summary: expect.stringMatching(
-					/Conda environment lumen \(\/opt\/miniconda3\/envs\/lumen\) is applied and the running kernel reports environment conda:\/opt\/miniconda3\/envs\/lumen/,
+					/Conda environment lumen \(\/opt\/miniconda3\/envs\/lumen\) was last applied and the running kernel reports environment conda:\/opt\/miniconda3\/envs\/lumen/,
 				),
 			});
 		});
@@ -1902,6 +1923,44 @@ describe("nteract Kilo plugin", () => {
 				summary: expect.stringMatching(/not active yet/),
 			});
 		});
+
+		it.each([
+			[
+				"while the kernel is launching",
+				{},
+				{ lifecycle: "Launching", status: "starting" },
+				/automatic environment was last applied, but the kernel is Launching, so no environment is confirmed active/,
+			],
+			[
+				"when the running kernel reports another environment",
+				{ applied: LUMEN },
+				{},
+				/Conda environment lumen .* was last applied, but the running kernel reports environment uv:inline:8f2c.*Do not treat/s,
+			],
+			[
+				"when the running kernel reports no environment id",
+				{},
+				{ environmentId: "" },
+				/does not report which environment it runs in.*unconfirmed/s,
+			],
+		])(
+			"does not claim the last applied environment runs %s",
+			async (_name, selection, runtime, summary) => {
+				const session = selectionSession({
+					revision: 4,
+					...selection,
+					...("applied" in selection ? {} : { selected: LUMEN }),
+				});
+				session.runtime = { ...UV_RUNNING, ...runtime };
+
+				const { output } = await run(await hooksFor(session), { action: "status" });
+
+				expect(output.state).toBe("staged");
+				expect(output.active).toBe(false);
+				expect(output.summary).toMatch(summary);
+				expect(output.summary).not.toMatch(/still uses/);
+			},
+		);
 
 		it("changes nothing when the user denies the restart that apply needs", async () => {
 			const session = selectionSession({ revision: 4, selected: LUMEN });
@@ -2193,18 +2252,45 @@ describe("nteract Kilo plugin", () => {
 		}
 
 		const ADD_CONDA = { action: "add", packages: ["pandas"], package_manager: "conda" };
+		const APPLIED_EMPTY: TypedSync = {
+			status: "applied",
+			syncedPackages: [],
+			needsRestart: false,
+			nextAction: "none",
+		};
 
-		it("records a Conda add on a uv kernel and reports the typed restart_required without restarting", async () => {
-			const why = "Conda dependencies changed; the uv kernel cannot hot-install them.";
-			const session = dependencySession({
-				typed: async () => ({
-					status: "restart_required",
-					syncedPackages: [],
-					needsRestart: true,
-					error: why,
-					nextAction: "restart",
-				}),
+		function onKernel(
+			session: ReturnType<typeof dependencySession>,
+			envSource: string,
+			lifecycle = "Running",
+		) {
+			session.getRuntimeStatus.mockResolvedValue({
+				status: lifecycle === "Running" ? "idle" : "starting",
+				lifecycle,
+				activity: "Idle",
+				startingPhase: "",
+				name: "python3",
+				language: "python",
+				envSource,
+				runtimeAgentId: "runtime-1",
 			});
+			return session;
+		}
+
+		it("passes through a typed restart_required verdict without restarting", async () => {
+			const why = "Removing packages needs a fresh environment.";
+			const session = onKernel(
+				dependencySession({
+					typed: async () => ({
+						status: "restart_required",
+						syncedPackages: [],
+						needsRestart: true,
+						error: why,
+						nextAction: "restart",
+					}),
+				}),
+				"conda:inline",
+			);
 
 			const { result, output } = await dependencies(session, ADD_CONDA);
 
@@ -2227,10 +2313,10 @@ describe("nteract Kilo plugin", () => {
 					/notebooks_kernel action restart.*Nothing restarts automatically/s,
 				),
 			});
-			expect(output.kernel).toEqual({
-				lifecycle: "Running",
-				status: "idle",
-				env_source: "uv:inline",
+			expect(output.package_manager).toEqual({
+				requested: "conda",
+				running: "conda",
+				matches: true,
 			});
 			expect(result.metadata).toMatchObject({
 				declaration_recorded: true,
@@ -2238,25 +2324,106 @@ describe("nteract Kilo plugin", () => {
 			});
 		});
 
-		it("reports a typed applied sync with the packages the daemon installed", async () => {
-			const session = dependencySession({
-				typed: async () => ({
+		it.each(["uv:inline", "uv:prewarmed"])(
+			"does not let a typed applied verdict on a %s kernel vouch for a Conda declaration",
+			async (envSource) => {
+				const session = onKernel(
+					dependencySession({ typed: async () => APPLIED_EMPTY }),
+					envSource,
+				);
+
+				const { result, output } = await dependencies(session, ADD_CONDA);
+
+				expect(output.declaration).toEqual({
+					recorded: true,
+					packages: ["pandas"],
+					package_manager: "conda",
+				});
+				expect(output.environment_sync).toEqual({
 					status: "applied",
-					syncedPackages: ["pandas"],
-					needsRestart: false,
-					nextAction: "none",
-				}),
+					synced_packages: [],
+					needs_restart: false,
+					next_action: "none",
+				});
+				expect(output.package_manager).toEqual({
+					requested: "conda",
+					running: "uv",
+					matches: false,
+					application: "unconfirmed",
+					detail: expect.stringMatching(/saved for conda, but the running kernel uses uv/),
+					next_step: expect.stringMatching(
+						/does not necessarily switch.*notebooks_environment action select, then apply.*Do not delete/s,
+					),
+				});
+				expect(output.package_manager.next_step).not.toMatch(/notebooks_kernel action restart/);
+				expect(result.title).toBe(
+					"Notebook dependencies recorded; requested package manager is not the running kernel's",
+				);
+				expect(result.metadata).toMatchObject({ sync: "applied", package_manager_active: false });
+				expect(session.restartKernel).not.toHaveBeenCalled();
+			},
+		);
+
+		it("treats a uv declaration on a Conda kernel the same way", async () => {
+			const session = onKernel(
+				dependencySession({ typed: async () => APPLIED_EMPTY }),
+				"conda:prefix",
+			);
+
+			const { output } = await dependencies(session, {
+				action: "add",
+				packages: ["httpx"],
+				package_manager: "uv",
 			});
 
-			const { result, output } = await dependencies(session, ADD_CONDA);
+			expect(output.package_manager).toMatchObject({
+				requested: "uv",
+				running: "conda",
+				matches: false,
+				application: "unconfirmed",
+			});
+		});
 
-			expect(result.title).toBe("Notebook dependencies");
-			expect(output.environment_sync).toEqual({
+		it("stays unconfirmed when the kernel is not running", async () => {
+			const session = onKernel(
+				dependencySession({ typed: async () => APPLIED_EMPTY }),
+				"uv:inline",
+				"Launching",
+			);
+
+			const { output } = await dependencies(session, ADD_CONDA);
+
+			expect(output.package_manager).toMatchObject({
+				running: null,
+				matches: false,
+				detail: expect.stringMatching(/could not be confirmed/),
+			});
+			expect(output.kernel).toEqual({
+				lifecycle: "Launching",
+				status: "starting",
+				unconfirmed: expect.objectContaining({ env_source: "uv:inline" }),
+			});
+		});
+
+		it("adds no manager report when the agent did not pick a package manager", async () => {
+			const session = onKernel(
+				dependencySession({
+					typed: async () => ({ ...APPLIED_EMPTY, syncedPackages: ["pandas"] }),
+				}),
+				"uv:inline",
+			);
+
+			const { result, output } = await dependencies(session, {
+				action: "add",
+				packages: ["pandas"],
+			});
+
+			expect(output).not.toHaveProperty("package_manager");
+			expect(output.environment_sync).toMatchObject({
 				status: "applied",
 				synced_packages: ["pandas"],
-				needs_restart: false,
-				next_action: "none",
 			});
+			expect(result.title).toBe("Notebook dependencies");
 		});
 
 		it("points a typed failure at inspection, not a restart", async () => {
@@ -2292,33 +2459,60 @@ describe("nteract Kilo plugin", () => {
 				},
 			});
 
-			const { output } = await dependencies(session, ADD_CONDA);
+			const { result, output } = await dependencies(session, {
+				action: "add",
+				packages: ["pandas"],
+			});
 
 			expect(output.declaration.recorded).toBe(true);
 			expect(output.environment_sync).toEqual({
 				status: "unknown",
+				typed: true,
 				error: "Not connected",
 				next_step: expect.stringMatching(/unknown.*before retrying/s),
 			});
+			expect(result.title).toBe("Notebook dependencies recorded; sync outcome unknown");
+			expect(result.title).not.toMatch(/not updated/);
 		});
 
-		it("keeps a recorded add when an untyped sync rejects, without inventing restart_required", async () => {
+		it("never reports a legacy sync that resolved as applied", async () => {
+			const session = dependencySession({ legacy: async () => undefined });
+
+			const { result, output } = await dependencies(session, {
+				action: "add",
+				packages: ["pandas"],
+			});
+
+			expect(output.environment_sync).toEqual({
+				status: "completed_unconfirmed",
+				typed: false,
+				detail: expect.stringMatching(/without reporting what it installed/),
+				next_step: expect.stringMatching(/does not report whether the running kernel/),
+			});
+			expect(result.title).toBe("Notebook dependencies recorded; application unconfirmed");
+		});
+
+		it("reports a legacy rejection as unknown without inventing restart_required", async () => {
 			const session = dependencySession({
 				legacy: async () => {
 					throw new Error("Conda dependencies changed; restart the kernel to use them.");
 				},
 			});
 
-			const { output } = await dependencies(session, ADD_CONDA);
+			const { result, output } = await dependencies(session, {
+				action: "add",
+				packages: ["pandas"],
+			});
 
 			expect(output.declaration.recorded).toBe(true);
 			expect(output.environment_sync).toEqual({
-				status: "not_applied",
+				status: "unknown",
 				typed: false,
 				error: "Conda dependencies changed; restart the kernel to use them.",
-				next_step: expect.stringMatching(/does not say whether a restart.*notebooks_diagnose/s),
+				next_step: expect.stringMatching(/unknown.*connection may have dropped after it applied/s),
 			});
-			expect(JSON.stringify(output)).not.toMatch(/restart_required/);
+			expect(JSON.stringify(output)).not.toMatch(/restart_required|not_applied/);
+			expect(result.title).not.toMatch(/not updated/);
 			expect(session.restartKernel).not.toHaveBeenCalled();
 		});
 
@@ -2328,8 +2522,32 @@ describe("nteract Kilo plugin", () => {
 			const { result, output } = await dependencies(session, { action: "sync" });
 
 			expect(output).not.toHaveProperty("declaration");
-			expect(output.environment_sync).toEqual({ status: "applied", typed: false });
+			expect(output).not.toHaveProperty("package_manager");
+			expect(output.environment_sync.status).toBe("completed_unconfirmed");
+			expect(result.title).toBe("Notebook environment sync: application unconfirmed");
 			expect(result.metadata).not.toHaveProperty("declaration_recorded");
+		});
+
+		it("does not claim run_cell dependencies were installed when a legacy sync resolves", async () => {
+			const session = dependencySession({ legacy: async () => undefined });
+			session.runCell.mockResolvedValue({
+				cellId: "cell-1",
+				executionId: "execution-1",
+				executionCount: 1,
+				status: "done",
+				success: true,
+				outputs: [],
+			});
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+
+			const result = await hooks.tool.notebooks_run_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, code: "import pandas", dependencies: ["pandas"] },
+				toolContext(),
+			);
+
+			expect(result.metadata).toMatchObject({ dependency_sync: "completed_unconfirmed" });
 		});
 
 		it("says run_cell dependencies were recorded when their sync does not apply, and runs nothing", async () => {
@@ -2356,6 +2574,98 @@ describe("nteract Kilo plugin", () => {
 			);
 			expect(session.runCell).not.toHaveBeenCalled();
 			expect(session.restartKernel).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("restart confirmation", () => {
+		const RUNNING = {
+			status: "idle",
+			lifecycle: "Running",
+			startingPhase: "",
+			name: "python3",
+			language: "python",
+			envSource: "conda:prefix",
+			runtimeAgentId: "runtime-1",
+		};
+		const LAUNCHING = { ...RUNNING, status: "starting", lifecycle: "Launching" };
+
+		async function restart(session: object) {
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({
+					openNotebook: vi.fn(async () => ({
+						notebookId: NOTEBOOK_ID,
+						close: vi.fn(),
+						...session,
+					})),
+				}),
+			})();
+			const result = await hooks.tool.notebooks_kernel.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "restart" },
+				toolContext(),
+			);
+			return { result, output: JSON.parse(result.output) };
+		}
+
+		it("keeps a legacy restartKernel false instead of discarding it", async () => {
+			const { result, output } = await restart({
+				restartKernel: vi.fn(async () => false),
+				getRuntimeStatus: vi.fn(async () => RUNNING),
+			});
+
+			expect(result.title).toBe("Notebook kernel restart not confirmed");
+			expect(output.restart).toEqual({ confirmed: false });
+			expect(result.metadata).toMatchObject({ restart_confirmed: false });
+		});
+
+		it("does not confirm a legacy restart while the status still reads Launching", async () => {
+			const { result, output } = await restart({
+				restartKernel: vi.fn(async () => true),
+				getRuntimeStatus: vi.fn(async () => LAUNCHING),
+			});
+
+			expect(result.title).toBe("Notebook kernel restart not confirmed");
+			expect(output.restart.confirmed).toBe(false);
+			expect(output.unconfirmed).toMatchObject({ envSource: "conda:prefix", name: "python3" });
+		});
+
+		it("confirms a typed running outcome with the launched environment", async () => {
+			const getRuntimeStatus = vi.fn();
+			const { result, output } = await restart({
+				restartKernel: vi.fn(),
+				restartKernelResult: vi.fn(async () => ({
+					outcome: "running",
+					launchedEnvSource: "conda:prefix",
+					status: RUNNING,
+				})),
+				getRuntimeStatus,
+			});
+
+			expect(getRuntimeStatus).not.toHaveBeenCalled();
+			expect(result.title).toBe("Notebook kernel restarted");
+			expect(output.restart).toEqual({
+				confirmed: true,
+				outcome: "running",
+				launched_env_source: "conda:prefix",
+			});
+		});
+
+		it("reports a typed timed_out outcome without treating its stale status as current", async () => {
+			const { result, output } = await restart({
+				restartKernelResult: vi.fn(async () => ({
+					outcome: "timed_out",
+					error: "kernel did not report Running within 30000 ms",
+					status: LAUNCHING,
+				})),
+			});
+
+			expect(result.title).toBe("Notebook kernel restart not confirmed");
+			expect(output.restart).toEqual({
+				confirmed: false,
+				outcome: "timed_out",
+				error: "kernel did not report Running within 30000 ms",
+			});
+			expect(output.status).not.toHaveProperty("envSource");
+			expect(output.status).not.toHaveProperty("runtimeAgentId");
 		});
 	});
 

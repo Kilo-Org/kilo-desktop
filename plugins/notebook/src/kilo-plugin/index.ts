@@ -15,7 +15,12 @@ import {
 	requireDependencyApproval,
 	withTrustGuidance,
 } from "./dependency-approval";
-import { syncOutcome, type SyncOutcome } from "./dependency-sync";
+import {
+	managerReport,
+	type ManagerReport,
+	syncOutcome,
+	type SyncOutcome,
+} from "./dependency-sync";
 import {
 	CONDA_ENVIRONMENT_LIST_TOOL,
 	ENVIRONMENT_ACTIONS,
@@ -416,7 +421,10 @@ async function withSelectionGuidance<T>(action: "select" | "apply", run: () => P
 }
 
 const RUNTIME_IDENTITY_KEYS = [
+	"name",
+	"language",
 	"envSource",
+	"runtimeAgentId",
 	"environmentId",
 	"environmentName",
 	"pythonVersion",
@@ -443,10 +451,61 @@ function kernelStatusReport(status: RuntimeStatus) {
 	};
 }
 
-function dependencyTitle(recorded: boolean, sync: SyncOutcome | undefined): string {
-	if (!sync || sync.status === "applied") return "Notebook dependencies";
+type RestartReport = {
+	confirmed: boolean;
+	outcome?: string;
+	error?: string;
+	launchedEnvSource?: string;
+	status?: RuntimeStatus;
+};
+
+type RestartResultSession = {
+	restartKernelResult(): Promise<{
+		outcome: string;
+		error?: string;
+		launchedEnvSource?: string;
+		status: RuntimeStatus;
+	}>;
+};
+
+/**
+ * Prefers `restartKernelResult()`, whose `running` outcome is confirmed by the
+ * SDK. Older `restartKernel()` may resolve `false` or resolve before the new
+ * kernel is visible; only `true` with a Running status counts as confirmed.
+ */
+async function restartKernel(session: Session): Promise<RestartReport> {
+	const typed = session as Session & Partial<RestartResultSession>;
+	if (typeof typed.restartKernelResult === "function") {
+		const result = await typed.restartKernelResult();
+		return {
+			confirmed: result.outcome === "running",
+			outcome: result.outcome,
+			...(result.error ? { error: result.error } : {}),
+			...(result.launchedEnvSource ? { launchedEnvSource: result.launchedEnvSource } : {}),
+			status: result.status,
+		};
+	}
+	const restarted: unknown = await session.restartKernel();
+	return { confirmed: restarted !== false };
+}
+
+function dependencyTitle(
+	recorded: boolean,
+	sync: SyncOutcome | undefined,
+	manager: ManagerReport | undefined,
+): string {
+	if (!sync) return "Notebook dependencies";
 	const outcome =
-		sync.status === "restart_required" ? "restart required to use them" : "environment not updated";
+		manager && !manager.matches
+			? "requested package manager is not the running kernel's"
+			: {
+					applied: "",
+					completed_unconfirmed: "application unconfirmed",
+					restart_required: "restart required to use them",
+					failed: "environment not updated",
+					unknown: "sync outcome unknown",
+				}[sync.status];
+	if (!outcome) return "Notebook dependencies";
 	return recorded
 		? `Notebook dependencies recorded; ${outcome}`
 		: `Notebook environment sync: ${outcome}`;
@@ -650,6 +709,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
 				const session = await sessions.open(args.notebook_id, context);
 				await requireExecutionApproval(context, args.notebook_id, { kind: "run", code: args.code });
+				let dependencySync: SyncOutcome | undefined;
 				if (args.dependencies?.length) {
 					await requireDependencyApproval(context, session, args.notebook_id, {
 						kind: "add",
@@ -657,13 +717,14 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					});
 					await session.addDependencies(args.dependencies);
 					const sync = await syncOutcome(session);
-					if (sync.status !== "applied") {
+					if (sync.status !== "applied" && sync.status !== "completed_unconfirmed") {
 						throw new Error(
 							`Recorded ${args.dependencies.join(", ")} in the notebook, but the environment sync ended ` +
 								`${sync.status}, so the code was not run: ${"error" in sync ? sync.error : ""} ` +
 								`${"next_step" in sync ? sync.next_step : ""}`.trimEnd(),
 						);
 					}
+					dependencySync = sync;
 				}
 				const result = await withTrustGuidance(session, () =>
 					session.runCell(args.code, {
@@ -673,7 +734,11 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				const projected = projectCellResult(result);
 				return {
 					...projected,
-					metadata: { ...projected.metadata, notebook_id: args.notebook_id },
+					metadata: {
+						...projected.metadata,
+						notebook_id: args.notebook_id,
+						...(dependencySync ? { dependency_sync: dependencySync.status } : {}),
+					},
 				};
 			},
 		};
@@ -1043,14 +1108,16 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					readRuntime(session),
 				]);
 				const kernelError = runtime ? kernelErrorOf(runtime) : undefined;
+				const manager = declaration ? managerReport(args.package_manager, runtime) : undefined;
 				const typosquatWarnings = checkTyposquats(declaredDependencySpecs(status));
 				return {
-					title: dependencyTitle(declaration !== undefined, sync),
+					title: dependencyTitle(declaration !== undefined, sync, manager),
 					output: JSON.stringify({
 						notebook_id: args.notebook_id,
 						action: args.action,
 						...(declaration ? { declaration } : {}),
 						...(sync ? { environment_sync: sync, kernel: projectKernel(runtime) } : {}),
+						...(manager ? { package_manager: manager } : {}),
 						status,
 						...approvalReport(status),
 						...(kernelError ? { kernel_error: kernelError } : {}),
@@ -1061,6 +1128,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						action: args.action,
 						...(declaration ? { declaration_recorded: true } : {}),
 						...(sync ? { sync: sync.status } : {}),
+						...(manager && !manager.matches ? { package_manager_active: false } : {}),
 					},
 				};
 			},
@@ -1100,8 +1168,6 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 								...(runtime.value.activity ? { activity: runtime.value.activity } : {}),
 								starting_phase: runtime.value.startingPhase,
 								...diagnosedIdentity(runtime.value),
-								name: runtime.value.name,
-								language: runtime.value.language,
 							}
 						: null;
 				return {
@@ -1141,19 +1207,43 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			async execute(args, context) {
 				const session = await sessions.open(args.notebook_id, context);
 				if (args.action === "interrupt") await session.interruptKernel();
+				let restart: RestartReport | undefined;
 				if (args.action === "restart") {
 					await requireExecutionApproval(context, args.notebook_id, { kind: "restart" });
-					await session.restartKernel();
+					restart = await restartKernel(session);
 				}
-				const status = await session.getRuntimeStatus();
+				const status = restart?.status ?? (await session.getRuntimeStatus());
+				const report = kernelStatusReport(status);
+				const confirmed = restart ? restart.confirmed && status.lifecycle === "Running" : undefined;
 				return {
-					title: "Notebook kernel",
+					title:
+						confirmed === undefined
+							? "Notebook kernel"
+							: confirmed
+								? "Notebook kernel restarted"
+								: "Notebook kernel restart not confirmed",
 					output: JSON.stringify({
 						notebook_id: args.notebook_id,
 						action: args.action,
-						...kernelStatusReport(status),
+						...(restart
+							? {
+									restart: {
+										confirmed,
+										...(restart.outcome ? { outcome: restart.outcome } : {}),
+										...(restart.error ? { error: restart.error } : {}),
+										...(restart.launchedEnvSource
+											? { launched_env_source: restart.launchedEnvSource }
+											: {}),
+									},
+								}
+							: {}),
+						...report,
 					}),
-					metadata: { notebook_id: args.notebook_id, action: args.action },
+					metadata: {
+						notebook_id: args.notebook_id,
+						action: args.action,
+						...(confirmed === undefined ? {} : { restart_confirmed: confirmed }),
+					},
 				};
 			},
 		};

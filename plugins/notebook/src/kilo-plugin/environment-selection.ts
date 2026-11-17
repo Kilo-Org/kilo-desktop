@@ -236,6 +236,9 @@ function describeTarget(target: ProjectedTarget): string {
 export type RuntimeView = {
 	lifecycle?: string;
 	status?: string;
+	name?: string;
+	language?: string;
+	runtimeAgentId?: string;
 	envSource?: string;
 	environmentId?: string;
 	environmentName?: string;
@@ -244,6 +247,9 @@ export type RuntimeView = {
 
 function runtimeIdentity(runtime: RuntimeView) {
 	const fields = {
+		name: runtime.name,
+		language: runtime.language,
+		runtime_agent_id: runtime.runtimeAgentId,
 		env_source: runtime.envSource,
 		environment_id: runtime.environmentId,
 		environment_name: runtime.environmentName,
@@ -289,7 +295,7 @@ function appliedSummary(
 ): string {
 	const target = capitalize(describeTarget(applied));
 	if (identity === "confirmed") {
-		return `${target} is applied and the running kernel reports environment ${runtime?.environmentId}.`;
+		return `${target} was last applied and the running kernel reports environment ${runtime?.environmentId}.`;
 	}
 	if (identity === "mismatch") {
 		return (
@@ -303,7 +309,7 @@ function appliedSummary(
 			"which environment it runs in, so the active environment is unconfirmed."
 		);
 	}
-	return `${target} is applied, but the kernel is ${runtime?.lifecycle || "in an unknown state"}, so it is not active yet.`;
+	return `${target} was last applied, but the kernel is ${runtime?.lifecycle || "in an unknown state"}, so no environment is confirmed active.`;
 }
 
 export function selectionReport(
@@ -321,7 +327,7 @@ export function selectionReport(
 		state === "applying"
 			? `Applying ${describeTarget(selected)}. The kernel is launching and the selection is not active yet. Check status again.`
 			: state === "staged"
-				? `Staged ${describeTarget(selected)}. The running kernel still uses ${describeTarget(applied)}. ` +
+				? `Staged ${describeTarget(selected)}; it is not applied. ${appliedSummary(applied, identity, runtime)} ` +
 					`To switch, call notebooks_environment action apply with expected_revision ${selection.revision}; ` +
 					"it asks the user, then restarts the kernel and clears its variables."
 				: appliedSummary(applied, identity, runtime);

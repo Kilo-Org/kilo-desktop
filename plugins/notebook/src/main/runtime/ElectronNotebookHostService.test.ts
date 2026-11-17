@@ -234,6 +234,58 @@ describe("ElectronNotebookHostService", () => {
 		);
 	});
 
+	it.each([
+		[
+			"supported",
+			{ localEnvironmentSelection: true, installedKernelspecs: true },
+			{
+				local_environment_selection: true,
+				installed_kernelspecs: true,
+			},
+		],
+		[
+			"unsupported",
+			{ localEnvironmentSelection: false, installedKernelspecs: false },
+			{
+				local_environment_selection: false,
+				installed_kernelspecs: false,
+			},
+		],
+		["absent", {}, {}],
+	])(
+		"forwards %s environment capabilities in the ready payload",
+		async (_name, capabilities, expected) => {
+			const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
+			Object.assign(nativeRelay.info, capabilities);
+			mocks.createRelay.mockResolvedValueOnce(nativeRelay);
+			const service = new ElectronNotebookHostService({
+				platform: fakePlatform(),
+				socketPath: "/tmp/nightly.sock",
+			});
+
+			await service.connect(
+				port(),
+				{
+					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+					workSessionId: "kilo-1",
+					title: "Analysis",
+				},
+				"42",
+			);
+
+			const payload = vi
+				.mocked(server.emit)
+				.mock.calls.find(([event]) => event === "daemon.ready")?.[1];
+			for (const key of ["local_environment_selection", "installed_kernelspecs"]) {
+				if (key in expected) {
+					expect(payload).toHaveProperty(key, expected[key as keyof typeof expected]);
+				} else {
+					expect(payload).not.toHaveProperty(key);
+				}
+			}
+		},
+	);
+
 	it("opens a file-backed relay by canonical path and returns the daemon notebook id", async () => {
 		const directory = await mkdtemp(path.join(os.tmpdir(), "kilo-notebook-"));
 		const notebookPath = path.join(directory, "analysis.ipynb");

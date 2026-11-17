@@ -109,8 +109,6 @@ jobs:
       - name: Refresh release lockfile
         run: pnpm install --lockfile-only --ignore-scripts
 
-      - uses: ./plugins/notebook/actions/setup-native
-
       - uses: ./.github/actions/cache-electron-rebuild
 
       # Signing material is loaded after dependency install so package install

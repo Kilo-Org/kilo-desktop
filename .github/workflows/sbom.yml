@@ -116,8 +116,6 @@ jobs:
       - name: Refresh release lockfile
         run: pnpm install --lockfile-only --ignore-scripts
 
-      - uses: ./plugins/notebook/actions/setup-native
-
       - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Package

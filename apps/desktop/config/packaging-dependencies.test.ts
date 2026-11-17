@@ -452,20 +452,19 @@ describe("packaged production dependencies", () => {
 			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
 			"utf8",
 		);
-		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
-		const publish = readFileSync(
-			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+		const prMacosBuild = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/pr_macos_build.yml"),
 			"utf8",
 		);
+		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
 		expect(setupNative).toContain("runner.arch");
 		expect(setupNative).toContain("plugins/notebook/resources/notebook");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
-		expect(build).toContain("./plugins/notebook/actions/setup-native");
+		expect(prMacosBuild).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("windows-11-vs2026-arm");
 		expect(build).toContain("windows-arm64");
-		expect(publish).toContain("./plugins/notebook/actions/setup-native");
 	});
 
 	it("stages the notebook UI through packaging hooks without a workflow fan-out job", () => {
@@ -634,15 +633,17 @@ describe("packaged production dependencies", () => {
 		}
 	});
 
-	// Release builds package exactly what the lockfile installs.
+	// Release builds stage the Kilo CLI and notebook resources fresh; only the
+	// Electron rebuild cache is restored.
 	it.each([
 		".github/workflows/build.yml",
 		".github/workflows/publish_helper.yml",
 		".github/workflows/sbom.yml",
-	])("%s stages the Kilo CLI from the installed package", (file) => {
+	])("%s stages the Kilo CLI and notebook resources fresh", (file) => {
 		const workflow = readFileSync(path.join(workspaceRoot, file), "utf8");
 
 		expect(workflow).not.toContain("./plugins/core/actions/setup-cli");
+		expect(workflow).not.toContain("./plugins/notebook/actions/setup-native");
 	});
 
 	it.each([

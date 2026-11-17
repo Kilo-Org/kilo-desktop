@@ -73,8 +73,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - uses: ./plugins/notebook/actions/setup-native
-
       - uses: ./.github/actions/cache-electron-rebuild
 
       # Signing material is loaded after dependency install so package install

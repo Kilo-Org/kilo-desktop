@@ -90,6 +90,57 @@ describe("readPackageInstallLink", () => {
 		}
 	});
 
+	it("rejects the Windows and network paths conda reads as local", () => {
+		for (const bad of [
+			"\\\\attacker.example\\share\\channel",
+			"\\\\?\\C:\\channels\\evil",
+			"//attacker.example/share",
+			"C:\\channels",
+			"c:/channels",
+			"FILE:///tmp/channel",
+			"../channel",
+		]) {
+			expect(install({ package: "numpy", channel: bad })).toEqual({
+				kind: "invalid",
+				reason: "invalid-channel",
+			});
+		}
+	});
+
+	it("rejects a channel with characters conda or the bridge could read differently", () => {
+		for (const bad of [
+			// The bridge strips Python whitespace, which includes these but JavaScript's trim does not.
+			"\u0085file:///tmp/channel",
+			"\u001cfile:///tmp/channel",
+			"\u200bconda-forge",
+			"conda-forge\u00a0--override-channels",
+			"s3://bucket/channel",
+		]) {
+			expect(install({ package: "numpy", channel: bad })).toEqual({
+				kind: "invalid",
+				reason: "invalid-channel",
+			});
+		}
+	});
+
+	it("accepts an http(s) channel URL", () => {
+		expect(
+			install({ package: "numpy", channel: "https://repo.anaconda.cloud/repo/main-x" }),
+		).toMatchObject({ kind: "install", channel: "https://repo.anaconda.cloud/repo/main-x" });
+	});
+
+	it("rejects a package or version that conda would read as a package file", () => {
+		for (const bad of ["evil.conda", "evil.tar.bz2", "EVIL.TAR.BZ2"]) {
+			expect(install({ package: bad })).toEqual({ kind: "invalid", reason: "invalid-package" });
+		}
+		for (const bad of ["1.0.conda", "1.0.tar.bz2"]) {
+			expect(install({ package: "numpy", version: bad })).toEqual({
+				kind: "invalid",
+				reason: "invalid-version",
+			});
+		}
+	});
+
 	it("rejects actions other than install", () => {
 		expect(readPackageInstallLink({ packageAction: "remove", package: "numpy" })).toEqual({
 			kind: "invalid",

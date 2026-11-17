@@ -45,6 +45,19 @@ const PACKAGE_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 /** A single exact version (`1.26.4`, `1!2.0+cpu`): no operators, globs or whitespace. */
 const EXACT_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+!]*$/;
 
+/** conda's MatchSpec reads a spec with this ending as a package file path, not a package. */
+const PACKAGE_FILE = /\.(?:conda|tar\.bz2)$/i;
+
+/** A named channel, optionally with a label: `conda-forge`, `pkgs/main`, `bioconda/label/dev`. */
+const NAMED_CHANNEL = /^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
+
+/**
+ * Printable ASCII. The bridge strips Python whitespace (`\x1c`–`\x1f`, `\x85`),
+ * which JavaScript's `trim` keeps, so anything else could reach conda as a
+ * different channel than the one checked here.
+ */
+const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
+
 /**
  * anaconda.org's `main` is Anaconda's `defaults` main; conda reads a bare
  * `main` as `<channel_alias>/main`, a different channel.
@@ -75,7 +88,7 @@ export function readPackageInstallLink(
 	if (!isPackageName(name)) return invalid("invalid-package");
 
 	const version = optional(search["version"]);
-	if (version && !EXACT_VERSION.test(version)) return invalid("invalid-version");
+	if (version && !isExactVersion(version)) return invalid("invalid-version");
 	const spec = version ? `${name}=${version}` : name;
 	if (!matchSpecSchema.safeParse(spec).success) return invalid("invalid-version");
 
@@ -123,19 +136,24 @@ function optional(value: string | undefined): string | undefined {
 function isPackageName(name: string): boolean {
 	return (
 		PACKAGE_NAME.test(name) &&
+		!PACKAGE_FILE.test(name) &&
 		repodataPackageNameSchema.safeParse(name).success &&
 		matchSpecSchema.safeParse(name).success
 	);
 }
 
-/** A channel conda accepts that is not on this device: a web page must not point conda at local files. */
+function isExactVersion(version: string): boolean {
+	return EXACT_VERSION.test(version) && !PACKAGE_FILE.test(version);
+}
+
+/**
+ * A named channel or an http(s) URL: never a channel on this device, which a
+ * web page must not point conda at. Only these forms are accepted because
+ * conda reads many others as local (`file:`, `~`, relative, drive and UNC
+ * paths such as `\\server\share`).
+ */
 function isWebLinkChannel(channel: string): boolean {
 	if (!channelSchema.safeParse(channel).success) return false;
-	return !(
-		/^file:/i.test(channel) ||
-		channel.startsWith("/") ||
-		channel.startsWith("~") ||
-		channel.startsWith(".") ||
-		/^[a-z]:[\\/]/i.test(channel)
-	);
+	if (NAMED_CHANNEL.test(channel)) return true;
+	return /^https?:\/\//i.test(channel) && PRINTABLE_ASCII.test(channel) && !channel.includes("\\");
 }

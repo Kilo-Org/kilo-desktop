@@ -406,14 +406,16 @@ describe("an anaconda.org install link", () => {
 	});
 
 	it("closes with a toast when conda says the channel is invalid", async () => {
+		const resolveChannel = vi.fn(async (_input: CondaChannelsResolveInput) => {
+			throw new KernelError("VALIDATION", "INVALID_CHANNEL: Invalid channel.");
+		});
 		await renderLink({
-			search: link({ package: "numpy", channel: "http:bad" }),
-			resolveChannel: async () => {
-				throw new KernelError("VALIDATION", "INVALID_CHANNEL: Invalid channel.");
-			},
+			search: link({ package: "numpy", channel: "http://[bad" }),
+			resolveChannel,
 		});
 
-		await expect.element(screen.getByText("This install link is invalid.")).toBeVisible();
+		await expect.element(screen.getByText("Its channel is not one conda can use.")).toBeVisible();
+		expect(resolveChannel).toHaveBeenCalledWith({ channel: "http://[bad" });
 		await expect
 			.element(screen.getByTestId("environments-install-link-dialog"))
 			.not.toBeInTheDocument();

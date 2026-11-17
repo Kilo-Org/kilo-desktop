@@ -11,8 +11,11 @@ import {
 	KernelServices,
 	type DomainObjectProvider,
 	type FlagValue,
+	type KvStore,
+	type KvStoreOptions,
 	type PluginRegistration,
 	type PluginSdk,
+	type PluginStorage,
 } from "@kilo-desktop/kernel";
 import { createMainKernel, type MainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testing";
@@ -44,6 +47,24 @@ function storageFor(storage: string, pluginId: string) {
 	let found = storages.get(key);
 	if (!found) storages.set(key, (found = createMemoryStorage(storage)));
 	return found;
+}
+
+/** `storage` whose kv writes throw, as on a full disk, for the namespaces in `failing`. */
+function withFailingWrites(storage: PluginStorage, failing: ReadonlySet<string>): PluginStorage {
+	return {
+		dir: storage.dir,
+		kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T> {
+			const store = storage.kv(options);
+			const namespace = options.namespace ?? "default";
+			return {
+				...store,
+				set: (patch) => {
+					if (failing.has(namespace)) throw new Error("disk full");
+					return store.set(patch);
+				},
+			};
+		},
+	};
 }
 
 /** Stops every kernel and removes every folder the tests made; call from `afterEach`. */
@@ -102,6 +123,8 @@ export interface BootedAgent {
 	/** kilo.core's own sdk, to call what only kilo.core may. */
 	readonly coreSdk: PluginSdk;
 	readonly chats: FakeKiloChats;
+	/** kilo.core kv namespaces whose writes throw from now on. */
+	readonly failingStorage: Set<string>;
 	readonly consent: DomainObjectProvider<typeof KernelDataCollection>;
 	setTermsAccepted(accepted: boolean): void;
 	setSignedIn(signedIn: boolean): void;
@@ -125,6 +148,7 @@ export async function bootAgent(options: BootOptions = {}): Promise<BootedAgent>
 	let account: DomainObjectProvider<typeof KiloAccount> | undefined;
 	let flags: Record<string, FlagValue> = { [EXTERNAL_AI_APPS_FLAG]: options.externalApps ?? false };
 	const flagListeners = new Set<() => void>();
+	const failingStorage = new Set<string>();
 
 	const entry = definePlugin({
 		activate: async (sdk) => {
@@ -163,7 +187,10 @@ export async function bootAgent(options: BootOptions = {}): Promise<BootedAgent>
 		hostServices: (pluginId) => {
 			const root = options.pluginRoots?.[pluginId];
 			return {
-				storage: storageFor(storage, pluginId),
+				storage:
+					pluginId === manifest.id
+						? withFailingWrites(storageFor(storage, pluginId), failingStorage)
+						: storageFor(storage, pluginId),
 				...(root ? { assets: { resolve: (subpath: string) => path.join(root, subpath) } } : {}),
 			};
 		},
@@ -191,6 +218,7 @@ export async function bootAgent(options: BootOptions = {}): Promise<BootedAgent>
 		storage,
 		coreSdk: coreSdk!,
 		chats,
+		failingStorage,
 		consent,
 		setTermsAccepted: (accepted) => coreSdk!.context.set("termsAccepted", accepted),
 		setSignedIn: (signedIn) => account!.update((state) => ({ ...state, signedIn })),

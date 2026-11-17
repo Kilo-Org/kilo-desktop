@@ -125,9 +125,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  *   rules re-applied and stays unpublished until they are (`ForkHolds`), then
  *   is handed the hidden note VS Code and JetBrains give every fork
  *   (`forkHandoffText`). While its rules are being applied a fork is also
- *   persisted as unfinished (`UnfinishedForks`): one whose rules fail is
- *   deleted, and one whose delete fails too (or that a crash left behind) is
- *   never published and is deleted again after each read of the chat list.
+ *   recorded as unfinished (`UnfinishedForks`, in memory until persisted):
+ *   one whose rules fail, or that can't be persisted, is deleted, and one
+ *   whose delete fails too (or that a crash left behind) is never published
+ *   and is deleted again after each read of the chat list.
  *   A crash before the server answers the fork request, when its id isn't
  *   known yet, is not covered.
  * - Successful live root turns share one drain barrier until its matching

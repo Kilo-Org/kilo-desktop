@@ -35,7 +35,7 @@ async function boot(
 	const chats = options.chats ?? new FakeKiloChats();
 	let server: FakeServer | undefined;
 	let release = () => {};
-	const { kernel } = await bootAgent({
+	const { kernel, failingStorage } = await bootAgent({
 		chats,
 		plugins: options.plugins ?? [],
 		showWindow: false,
@@ -88,6 +88,7 @@ async function boot(
 		conversations,
 		generation,
 		chats,
+		failingStorage,
 		events,
 		state,
 		whenReady,
@@ -1338,6 +1339,56 @@ describe("forking chats", () => {
 			expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(1),
 		);
 		expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]);
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("deletes a fork it couldn't record as unfinished, never listing it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		const { conversations, whenReady, state, events, failingStorage } = await boot({ chats });
+		await whenReady();
+		failingStorage.add("unfinished-forks");
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
+			["fork", ["ses_a", "msg_2"]],
+			["delete", ["ses_fork_1"]],
+		]);
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("never lists a fork it couldn't record as unfinished or delete, and deletes it on a later read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.failing.add("delete");
+		const { conversations, whenReady, state, events, failingStorage } = await boot({ chats });
+		await whenReady();
+		failingStorage.add("unfinished-forks");
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		await reread(chats);
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+
+		expect(chats.chats.map(({ id }) => id)).toContain("ses_fork_1");
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+
+		chats.failing.delete("delete");
+		await reread(chats);
+
+		await eventually(() => expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]));
+		expect(state().chats.ses_fork_1).toBeUndefined();
 		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
 	});
 

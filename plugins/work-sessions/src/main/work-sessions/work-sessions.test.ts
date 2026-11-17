@@ -364,6 +364,23 @@ describe("changing chats on the server", () => {
 		await vi.waitFor(() => expect(core.deleted).toEqual(["ses_a"]));
 	});
 
+	it("keeps a deleted work session gone when its busy chat changes before the server deletes it", async () => {
+		const core = new FakeCore();
+		core.chats = [chat("ses_a", { title: "Busy" })];
+		const { workSessions, list } = await boot({ core });
+		await vi.waitFor(() => expect(list()).toHaveLength(1));
+		const { id } = list()[0]!;
+
+		const removed = workSessions.methods.remove({ id });
+		// The chat is still running: kilo.core announces a change before the delete lands.
+		core.upsert(chat("ses_a", { title: "Busy", workSessionId: id, updatedAt: 9_000 }));
+		await removed;
+		core.remove("ses_a");
+		await settle();
+
+		expect(list()).toEqual([]);
+	});
+
 	it("still changes the work session when the server can't be reached", async () => {
 		const core = new FakeCore();
 		core.chats = [chat("ses_a")];

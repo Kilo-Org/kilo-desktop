@@ -42,8 +42,7 @@ Playwright runs two workers locally and one per 2 vCPUs in CI (4 on the
 8-vCPU Windows and Linux runners, 3 on macOS, 2 on 4-vCPU Linux), set by the `run-e2e` action
 (`E2E_WORKERS` overrides; set `1` to serialize while debugging). Each worker owns its app and profile and stops only its own
 process tree; orphaned app instances are swept once in global setup and
-teardown. PR E2E runs in up to six Linux shards (under xvfb, with Blacksmith sticky disks holding
-the pnpm store and root `node_modules`; Windows E2E runs in the merge queue and nightly) and the macOS merge-queue leg in
+teardown. PR E2E runs in up to six Linux shards (under xvfb; Windows E2E runs in the merge queue and nightly) and the macOS merge-queue leg in
 two (`E2E_SHARD=current/total`); `e2e-merge-report` merges the macOS blob
 reports into one HTML report. Shards split spec files by recorded test time
 (`scripts/test-durations/e2e.json`, read by `e2e/utils/shard-specs.ts`) so the

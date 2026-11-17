@@ -12,6 +12,12 @@ export interface ChatFollower {
 	current(): DomainObjectHandle<typeof Chats> | undefined;
 	/** Applies a chat (e.g. one just created) in order with the ones kilo.core announces. */
 	apply(chat: ChatSummary): void;
+	/**
+	 * Stops following chats whose work session was deleted, so a change the
+	 * server announces before their deletion lands (a busy chat keeps
+	 * updating) can't adopt them back into a new work session.
+	 */
+	forget(chatIds: readonly string[]): void;
 	/** Writes to the Kilo server, best effort: logged, never thrown. */
 	write(
 		label: string,
@@ -30,8 +36,9 @@ export interface ChatFollower {
  * session's title (until the person renames it), directory and branch
  * current (a work session placed at creation keeps its own), and a chat
  * archived after the work session's last archive change archives it; a
- * deleted chat is detached. Without kilo.core there are no chats and nothing
- * changes.
+ * deleted chat is detached. Chats of a deleted work session are forgotten
+ * until the server confirms their deletion. Without kilo.core there are no
+ * chats and nothing changes.
  */
 export function followChats(
 	sdk: PluginSdk,
@@ -39,6 +46,7 @@ export function followChats(
 	options: { readonly createId: () => string; readonly after: Promise<unknown> },
 ): ChatFollower {
 	let chats: DomainObjectHandle<typeof Chats> | undefined;
+	const forgotten = new Set<string>();
 
 	let queue: Promise<unknown> = options.after;
 	const inOrder = (task: () => void) => {
@@ -108,7 +116,7 @@ export function followChats(
 	}
 
 	function applyChat(chat: ChatSummary): void {
-		if (chat.parentId) return;
+		if (chat.parentId || forgotten.has(chat.id)) return;
 		const workspaceId = knownWorkspace(chat.workspaceId);
 		let owner = registry.holding(chat.id);
 		if (!owner) {
@@ -161,7 +169,12 @@ export function followChats(
 				handle.subscribe(onState),
 				handle.on("created", ({ chat }) => inOrder(() => applyChat(chat))),
 				handle.on("updated", ({ after }) => inOrder(() => applyChat(after))),
-				handle.on("deleted", ({ chat }) => inOrder(() => detachChat(chat.id))),
+				handle.on("deleted", ({ chat }) =>
+					inOrder(() => {
+						forgotten.delete(chat.id);
+						detachChat(chat.id);
+					}),
+				),
 			];
 			stop = () => stops.forEach((dispose) => dispose());
 		},
@@ -176,6 +189,7 @@ export function followChats(
 	return {
 		current: () => chats,
 		apply: (chat) => inOrder(() => applyChat(chat)),
+		forget: (chatIds) => chatIds.forEach((chatId) => forgotten.add(chatId)),
 		async write(label, task) {
 			if (!chats) return;
 			try {

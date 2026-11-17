@@ -298,15 +298,20 @@ jobs:
         with:
           pattern: playwright-report-merge-blacksmith-*
           path: shard-reports
-      # Each shard's blob reporter writes report-<shard>.zip, so one directory
-      # per platform keeps the macOS and Windows shards from colliding.
+      # Duration-balanced shards pick their spec files themselves rather than
+      # through Playwright's `shard` option, so every shard's blob is named
+      # report.zip; each copy is renamed after its shard's artifact.
       - name: Merge shard reports per platform
         shell: bash
         run: |
           for platform in blacksmith-6vcpu-macos-latest blacksmith-8vcpu-windows-2025; do
             blobs="$GITHUB_WORKSPACE/blob-reports/$platform"
             mkdir -p "$blobs"
-            find shard-reports -path "*playwright-report-merge-$platform-*/blob-report/*.zip" -exec cp {} "$blobs/" \;
+            for shard in shard-reports/playwright-report-merge-"$platform"-*/; do
+              for blob in "$shard"blob-report/*.zip; do
+                [ -f "$blob" ] && cp "$blob" "$blobs/$(basename "$shard")-$(basename "$blob")"
+              done
+            done
             ls "$blobs"
             [ -n "$(ls -A "$blobs")" ] || continue
             pnpm --filter @kilo-desktop/e2e exec playwright merge-reports --reporter html "$blobs"

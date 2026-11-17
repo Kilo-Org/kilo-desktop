@@ -60,7 +60,7 @@ type Stage =
  * 3. **Target**: an existing environment or a new one.
  *
  * It then hands over to Add packages or Create environment, opened with the
- * package selected and, unless it was already configured, the channel added.
+ * package selected and the link's channel ahead of the others.
  */
 export function PackageInstallRequestDialog({
 	request,
@@ -95,10 +95,9 @@ export function PackageInstallRequestDialog({
 
 	const preset = (): PackageInstallPreset => {
 		const packages = [{ name: request.package, version: request.version ?? null }];
-		// A configured channel is already searched; an unconfigured one is
-		// passed even after "Add & install", which the channel list may not
-		// show yet when the dialog opens.
-		return channel && channelChoice ? { packages, channels: [channel] } : { packages };
+		// Passed even when configured: it goes first, so conda installs the
+		// package from it rather than from another channel that also has it.
+		return channel ? { packages, channels: [channel] } : { packages };
 	};
 
 	if (stage.kind === "add-packages") {

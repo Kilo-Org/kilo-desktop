@@ -95,7 +95,7 @@ export interface PackageSelection {
 
 /**
  * Packages a dialog opens with already selected (an install link's package),
- * and channels it searches and installs from besides the configured ones.
+ * and channels it searches and installs from ahead of the configured ones.
  */
 export interface PackageInstallPreset {
 	readonly packages: readonly SelectedPackage[];

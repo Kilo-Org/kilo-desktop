@@ -167,6 +167,29 @@ describe("an anaconda.org install link", () => {
 		expect(resolveChannel).toHaveBeenCalledWith({ channel: "pkgs/main" });
 	});
 
+	it("installs from the link's channel first, even when it is configured", async () => {
+		const installPackages = vi.fn(async (_input: CondaPackagesInstallInput) => ({
+			jobId: "j",
+			envName: "dev",
+			installed: [],
+		}));
+		await renderLink({
+			search: link({ package: "numpy", channel: "defaults" }),
+			installPackages,
+		});
+
+		await userEvent.click(screen.getByRole("button", { name: "Install into dev" }));
+		const install = screen.getByTestId("environments-conda-add-pkg-install-btn");
+		await expect.element(install, { timeout: 4000 }).toBeEnabled();
+		await userEvent.click(install);
+		await vi.waitFor(() => expect(installPackages).toHaveBeenCalledOnce());
+		// conda prefers the channels it is given first.
+		expect(installPackages.mock.calls[0]![0]).toMatchObject({
+			packages: ["numpy"],
+			channels: ["defaults", "conda-forge"],
+		});
+	});
+
 	it("takes the link off the route once and tracks it without the package or channel", async () => {
 		const { host } = await renderLink({
 			search: link({ package: "numpy", version: "1.26.4", channel: "conda-forge" }),
@@ -259,7 +282,7 @@ describe("an anaconda.org install link", () => {
 		expect(previewInstall.mock.calls[0]![0]).toMatchObject({
 			prefix: "/opt/anaconda3/envs/dev",
 			packages: ["numpy=1.26.4"],
-			channels: expect.arrayContaining(["bioconda"]),
+			channels: ["bioconda", "conda-forge", "defaults"],
 		});
 		await expect
 			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
@@ -269,7 +292,7 @@ describe("an anaconda.org install link", () => {
 		await vi.waitFor(() => expect(installPackages).toHaveBeenCalledOnce());
 		expect(installPackages.mock.calls[0]![0]).toMatchObject({
 			packages: ["numpy=1.26.4"],
-			channels: expect.arrayContaining(["bioconda", "conda-forge", "defaults"]),
+			channels: ["bioconda", "conda-forge", "defaults"],
 		});
 		expect(addChannel).not.toHaveBeenCalled();
 		// The environment opens once its package is installed.
@@ -320,7 +343,7 @@ describe("an anaconda.org install link", () => {
 			name: "linked",
 			prefix: "/opt/anaconda3/envs/linked",
 			packages: ["numpy=1.26.4"],
-			channels: expect.arrayContaining(["bioconda"]),
+			channels: ["bioconda", "conda-forge", "defaults"],
 		});
 		await expect.element(screen.getByTestId("environments-create-success")).toBeVisible();
 

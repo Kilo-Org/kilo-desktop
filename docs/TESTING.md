@@ -2,14 +2,14 @@
 
 ## Tiers
 
-| Tier        | Pattern                  | Runner                         | Trigger                             |
-| ----------- | ------------------------ | ------------------------------ | ----------------------------------- |
-| Unit        | `*.test.ts`              | Vitest node                    | Every PR (ubuntu / windows / macos) |
-| Integration | `*.integration.test.ts`  | Vitest node, serial            | Every PR                            |
-| Component   | `*.browser.test.tsx`     | Vitest Chromium                | Every PR                            |
-| App-level   | `*.app.test.tsx`         | Vitest Chromium                | Every PR (composition / routing)    |
-| E2E smoke   | `@smoke` + changed areas | Playwright + packaged Electron | Every PR (Windows, 3 shards)        |
-| E2E full    | all specs                | Playwright + packaged Electron | Nightly matrix + merge queue        |
+| Tier        | Pattern                 | Runner                         | Trigger                             |
+| ----------- | ----------------------- | ------------------------------ | ----------------------------------- |
+| Unit        | `*.test.ts`             | Vitest node                    | Every PR (ubuntu / windows / macos) |
+| Integration | `*.integration.test.ts` | Vitest node, serial            | Every PR                            |
+| Component   | `*.browser.test.tsx`    | Vitest Chromium                | Every PR                            |
+| App-level   | `*.app.test.tsx`        | Vitest Chromium                | Every PR (composition / routing)    |
+| E2E PR      | changed areas           | Playwright + packaged Electron | PRs that can reach e2e (Windows)    |
+| E2E full    | all specs               | Playwright + packaged Electron | Nightly matrix + merge queue        |
 
 Coverage gate: **80%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
 
@@ -23,19 +23,26 @@ platform compatibility tests.
 
 App-level tests cover the kernel boot with the bundled plugins. Plugin journeys belong in browser component tests (in a booted test kernel) and e2e (protocol / IPC / packaging).
 
-PR E2E runs `@smoke` on Windows plus the full specs of every area the PR
-touches (`e2e/scripts/select-pr-e2e.ts`): a change under `plugins/<id>/` runs
+PR E2E runs the full specs of every area the PR touches, and nothing else
+(`e2e/scripts/select-pr-e2e.ts`): a change under `plugins/<id>/` runs
 `plugins/<id>/e2e/**`, plugins map to their specs under `e2e/specs/<area>`
 (kilo.core and kilo.shell run each other's too), and changes to the e2e harness, `packages/kernel`,
-`packages/bundled-plugins`, `packages/ui` or `apps/` run everything. The merge queue and nightly run
-the full suite on their platform matrices; every E2E test launches an
+`packages/bundled-plugins`, `packages/ui` or `apps/` run everything. Other shared inputs (root
+manifests, the lockfile, unmapped packages) run `@smoke`. Docs, markdown, unit test files and
+workflows outside the e2e harness run nothing, so a PR made only of those skips PR E2E. The merge
+queue and nightly run the full suite on their platform matrices; every E2E test launches an
 OS-matched packaged application.
+
+`e2e-plan` (`e2e/scripts/plan-pr-e2e.ts`) picks the specs and the number of Windows shards before
+any runner packages the app: about 75 s of recorded test time per shard, up to six. PR shards upload
+only `junit.xml` and `results.json` on success (enough for `record-test-durations.mjs`) and the full
+report on failure.
 
 Playwright runs two workers locally and one per 2 vCPUs in CI (4 on the
 8-vCPU Windows runner, 3 on macOS, 2 on Linux), set by the `run-e2e` action
 (`E2E_WORKERS` overrides; set `1` to serialize while debugging). Each worker owns its app and profile and stops only its own
 process tree; orphaned app instances are swept once in global setup and
-teardown. PR E2E runs in three Windows shards and the macOS merge-queue leg in
+teardown. PR E2E runs in up to six Windows shards and the macOS merge-queue leg in
 two (`E2E_SHARD=current/total`); `e2e-merge-report` merges the macOS blob
 reports into one HTML report. Shards split spec files by recorded test time
 (`scripts/test-durations/e2e.json`, read by `e2e/utils/shard-specs.ts`) so the

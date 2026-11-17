@@ -1,9 +1,12 @@
-import { globSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { idsForShard, weighSpecFiles, type Shard } from "../../scripts/shard-plan.mjs";
+import { discoverSpecFiles } from "./spec-files.ts";
 
 const DURATIONS_FILE = path.join("scripts", "test-durations", "e2e.json");
+
+export type SpecDurations = Record<string, Record<string, number>>;
 
 /**
  * The spec files one CI shard runs, balanced by recorded test time instead of
@@ -16,20 +19,12 @@ const DURATIONS_FILE = path.join("scripts", "test-durations", "e2e.json");
  */
 export function specFilesForShard(options: {
 	repoRoot: string;
-	testMatch: readonly string[];
-	ignore: readonly string[];
 	shard: Shard;
 	grep: RegExp | undefined;
 }): string[] | undefined {
-	const durations = readDurations(path.join(options.repoRoot, DURATIONS_FILE));
+	const durations = readSpecDurations(options.repoRoot);
 	if (!durations) return undefined;
-	const files = globSync([...options.testMatch], { cwd: options.repoRoot })
-		.map((file) => file.replaceAll("\\", "/"))
-		.filter(
-			(file) =>
-				!options.ignore.some((glob) => path.matchesGlob(path.join(options.repoRoot, file), glob)),
-		)
-		.sort();
+	const files = discoverSpecFiles(options.repoRoot);
 	return idsForShard(files, weighSpecFiles(files, durations, options.grep), options.shard);
 }
 
@@ -42,9 +37,9 @@ export function specFilePattern(file: string): RegExp {
 	return new RegExp(`(^|[\\\\/])${escaped}$`);
 }
 
-function readDurations(file: string): Record<string, Record<string, number>> | undefined {
+export function readSpecDurations(repoRoot: string): SpecDurations | undefined {
 	try {
-		return JSON.parse(readFileSync(file, "utf8")) as Record<string, Record<string, number>>;
+		return JSON.parse(readFileSync(path.join(repoRoot, DURATIONS_FILE), "utf8")) as SpecDurations;
 	} catch {
 		return undefined;
 	}

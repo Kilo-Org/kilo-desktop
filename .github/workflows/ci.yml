@@ -180,14 +180,38 @@ jobs:
           --filter=@kilo-desktop/plugin-notebook
           --filter=@kilo-desktop/plugin-work-sessions
 
-  # Three shards, split by recorded test time (scripts/test-durations/e2e.json)
-  # after the PR's spec selection; each packages its own app (~1 min).
-  e2e-pr:
+  # Plans PR e2e before any runner packages the app: the specs the diff can
+  # reach (e2e/scripts/select-pr-e2e.ts) and a shard count sized by their
+  # recorded test time (plan-pr-e2e.ts). Docs-, test- and CI-only PRs plan
+  # zero shards and skip PR e2e; the merge queue still runs everything.
+  e2e-plan:
     if: github.event_name == 'pull_request'
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    outputs:
+      grep: ${{ steps.plan.outputs.grep }}
+      total: ${{ steps.plan.outputs.total }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Plan e2e for the changed areas
+        id: plan
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git diff --name-only "$BASE_SHA" HEAD | node e2e/scripts/plan-pr-e2e.ts
+
+  e2e-pr:
+    needs: e2e-plan
+    if: github.event_name == 'pull_request' && needs.e2e-plan.outputs.total != '0'
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: ${{ fromJSON(needs.e2e-plan.outputs.shards) }}
     runs-on: blacksmith-8vcpu-windows-2025
     timeout-minutes: 60
     env:
@@ -198,25 +222,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
-      # @smoke plus the full specs of every area the PR touches, so a
-      # plugin's non-smoke specs do not first run (and fail) in the merge queue.
-      - name: Select e2e specs for changed areas
-        id: e2e-selection
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          grep="$(git diff --name-only "$BASE_SHA" HEAD | node e2e/scripts/select-pr-e2e.ts)"
-          echo "E2E selection: $grep"
-          echo "grep=$grep" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/run-e2e
         with:
           script: test:e2e
-          grep: ${{ steps.e2e-selection.outputs.grep }}
-          shard: ${{ matrix.shard }}/3
+          grep: ${{ needs.e2e-plan.outputs.grep }}
+          shard: ${{ matrix.shard }}/${{ needs.e2e-plan.outputs.total }}
           report-name: playwright-report-pr-${{ matrix.shard }}
-          upload-on: always
+          # Results for refreshing scripts/test-durations; full reports on failure.
+          upload-on: results
 
   # Validate the combined merge-queue commit with the full suite on both
   # supported desktop platforms. This replaces, rather than repeats, PR smoke.
@@ -295,13 +308,15 @@ jobs:
   e2e-gate:
     name: e2e-smoke
     if: always()
-    needs: [e2e-pr, e2e-merge]
+    needs: [e2e-plan, e2e-pr, e2e-merge]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Verify required E2E jobs
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PLAN_RESULT: ${{ needs.e2e-plan.result }}
+          PLAN_TOTAL: ${{ needs.e2e-plan.outputs.total }}
           PR_RESULT: ${{ needs.e2e-pr.result }}
           MERGE_RESULT: ${{ needs.e2e-merge.result }}
         run: |
@@ -309,9 +324,15 @@ jobs:
             exit 0
           fi
 
+          # Nothing the PR changed can reach e2e (planned zero shards).
+          if [[ "$EVENT_NAME" == "pull_request" && "$PLAN_RESULT" == "success" && "$PLAN_TOTAL" == "0" && "$PR_RESULT" == "skipped" ]]; then
+            echo "No e2e specs selected for this PR."
+            exit 0
+          fi
+
           if [[ "$EVENT_NAME" == "merge_group" && "$MERGE_RESULT" == "success" ]]; then
             exit 0
           fi
 
-          echo "E2E gate failed: event=$EVENT_NAME pr=$PR_RESULT merge=$MERGE_RESULT"
+          echo "E2E gate failed: event=$EVENT_NAME plan=$PLAN_RESULT/$PLAN_TOTAL pr=$PR_RESULT merge=$MERGE_RESULT"
           exit 1

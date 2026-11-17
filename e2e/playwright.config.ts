@@ -5,32 +5,20 @@ import { defineConfig } from "@playwright/test";
 
 import { parseShard } from "../scripts/shard-plan.mjs";
 import { repoRoot } from "./utils/paths.js";
-import { unregisteredSpecGlobs } from "./utils/registered-specs.js";
 import { specFilePattern, specFilesForShard } from "./utils/shard-specs.js";
+import { SPEC_TEST_MATCH, specIgnoreGlobs } from "./utils/spec-files.js";
 
 const isCI = Boolean(process.env.CI);
 const failOnFlakyTests = process.env.PLAYWRIGHT_FAIL_ON_FLAKY_TESTS === "true";
-// Set by CI from scripts/select-pr-e2e.ts. An env var rather than `--grep`
+// Set by CI from e2e/scripts/plan-pr-e2e.ts. An env var rather than `--grep`
 // keeps regex metacharacters like `|` away from Windows shell quoting.
 const selectedGrep = process.env.E2E_GREP ? new RegExp(process.env.E2E_GREP) : undefined;
-const testMatch = ["e2e/specs/**/*.spec.ts", "plugins/*/e2e/specs/**/*.spec.ts"];
-// testIgnore matches against absolute paths. Anchoring to repoRoot ensures
-// running from inside a .kilo/worktrees/<name> checkout (where repoRoot is
-// inside .kilo/worktrees/) still discovers real tests and only ignores
-// sibling worktrees under the same .kilo/ directory.
-// Specs of plugins not yet rebuilt on the kernel are skipped until registered.
-const testIgnore = [
-	path.join(repoRoot, ".kilo", "**"),
-	path.join(repoRoot, "node_modules", "**"),
-	...unregisteredSpecGlobs(repoRoot),
-];
+const testIgnore = specIgnoreGlobs(repoRoot);
 // "current/total", e.g. "1/2", set per CI matrix leg. Shards split the spec
 // files by recorded duration (scripts/test-durations/e2e.json); without that
 // file, Playwright's own even split applies.
 const shard = parseShard(process.env.E2E_SHARD);
-const shardFiles = shard
-	? specFilesForShard({ repoRoot, testMatch, ignore: testIgnore, shard, grep: selectedGrep })
-	: undefined;
+const shardFiles = shard ? specFilesForShard({ repoRoot, shard, grep: selectedGrep }) : undefined;
 // Workers load this config too; log the plan once, from the runner.
 if (shard && shardFiles && process.env.TEST_WORKER_INDEX === undefined) {
 	console.log(`E2E shard ${shard.current}/${shard.total}: ${shardFiles.length} spec file(s)`);
@@ -51,7 +39,7 @@ const workers = Number(process.env.E2E_WORKERS ?? 2);
 export default defineConfig({
 	globalSetup: "./global-setup.ts",
 	testDir: repoRoot,
-	testMatch: shardFiles ? shardFiles.map(specFilePattern) : testMatch,
+	testMatch: shardFiles ? shardFiles.map(specFilePattern) : SPEC_TEST_MATCH,
 	testIgnore,
 	...(selectedGrep ? { grep: selectedGrep } : {}),
 	...(shard && !shardFiles && shard.total > 1 ? { shard } : {}),

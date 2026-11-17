@@ -36,7 +36,9 @@ inputs:
     required: false
     default: playwright-report
   upload-on:
-    description: When to upload the report artifact (failure or always).
+    description: >
+      When to upload the report artifact: failure, always, or results (the
+      full report on failure, only the JUnit and JSON results on success).
     required: false
     default: failure
 
@@ -103,5 +105,18 @@ runs:
           playwright-report/
           blob-report/
           test-results/
+        if-no-files-found: warn
+        retention-days: 30
+
+    # The small files scripts/record-test-durations.mjs needs, without the
+    # HTML report, traces and blob that make a full upload slow.
+    - name: Upload Playwright results summary
+      if: ${{ inputs.upload-on == 'results' && success() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.report-name }}
+        path: |
+          test-results/junit.xml
+          test-results/results.json
         if-no-files-found: warn
         retention-days: 30

@@ -1,10 +1,14 @@
 /**
  * Choose the Playwright `grep` for a pull request from its changed paths.
  *
- * PRs run only `@smoke`, so a plugin's non-smoke specs used to run for the
- * first time in the merge queue, where a failure ejects the PR. This widens
- * the PR run to the full specs of every area the PR touches:
+ * A PR runs the full specs of every area it touches, and nothing else: the
+ * merge queue runs the whole suite, so a break elsewhere is still caught
+ * before main. Keeping the PR run to what the diff can reach is what keeps
+ * PR CI fast.
  *
+ * - Files that cannot change the packaged app run nothing on their own:
+ *   docs and markdown, unit/browser/integration test files, and workflows
+ *   and actions other than the e2e harness (`IGNORED`).
  * - `plugins/<id>/…` runs `plugins/<id>/e2e/**` when that plugin has specs.
  * - Plugins whose behavior is exercised by specs elsewhere map through
  *   `RELATED_SPECS`: kilo.shell's specs live in `e2e/specs/shell` and kilo.core's
@@ -32,24 +36,31 @@
  *   view of kilo.work-sessions, so kilo.work-sessions (and `packages/pane-layout`)
  *   runs them too.
  * - Harness changes (`e2e/`, the run-e2e and install-test-runtime actions,
- *   and `ci.yml`, which wires this selection into the e2e jobs) run
- *   everything, as do changes every plugin is built on: the kernel, the
- *   bundled plugin list, the shared UI primitives and the hosts (`apps/`).
+ *   `ci.yml`, which wires this selection into the e2e jobs, and the shard
+ *   planner) run everything, as do changes every plugin is built on: the
+ *   kernel, the bundled plugin list, the shared UI primitives and the hosts
+ *   (`apps/`).
+ * - Any other change (root manifests and lockfile, shared configs, packages
+ *   without a mapped plugin) runs `@smoke`, a cross-area safety net.
+ * - No remaining change: an empty pattern, and the PR runs no e2e at all.
  *
  * Playwright matches `grep` against the test's title path, which starts with
  * the spec file path, so directory patterns select whole areas. Separators
  * are matched as `[\\/]` because Windows reports backslash paths.
  *
  * Usage: `git diff --name-only BASE HEAD | node e2e/scripts/select-pr-e2e.ts`
- * Prints the grep pattern on stdout.
+ * Prints the grep pattern on stdout (empty: no e2e). CI uses plan-pr-e2e.ts,
+ * which also sizes the shards.
  */
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SEPARATOR = String.raw`[\\/]`;
-const EVERYTHING = ".";
+export const EVERYTHING = ".";
+const SMOKE = "@smoke";
 const HARNESS_PATHS = [
+	"scripts/shard-plan.mjs",
 	"e2e/",
 	".github/actions/run-e2e/",
 	".github/actions/install-test-runtime/",
@@ -58,6 +69,20 @@ const HARNESS_PATHS = [
 	"packages/bundled-plugins/",
 	"packages/ui/",
 	"apps/",
+];
+
+/** Paths that cannot change the packaged app or how e2e runs. */
+const IGNORED: readonly RegExp[] = [
+	/\.mdx?$/,
+	/(^|\/)(LICENSE|NOTICE)[^/]*$/,
+	/^docs\//,
+	/^\.(agents|kilo|husky|vscode)\//,
+	/\.(test|browser\.test|integration\.test|app\.test)\.[cm]?[jt]sx?$/,
+	/(^|\/)__snapshots__\//,
+	/^scripts\/test-durations\//,
+	/^scripts\/[^/]+\.test\.mjs$/,
+	// Workflows and actions outside the e2e harness (see HARNESS_PATHS).
+	/^\.github\/(?!workflows\/ci\.yml$|actions\/(run-e2e|install-test-runtime)\/)/,
 ];
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -133,29 +158,37 @@ const PACKAGE_PLUGINS: Readonly<Record<string, string>> = {
 	"git-client": "git",
 };
 
-function selectPrE2eGrep(
+const isHarness = (changed: string) => HARNESS_PATHS.some((prefix) => changed.startsWith(prefix));
+const isIgnored = (changed: string) => IGNORED.some((pattern) => pattern.test(changed));
+
+export function selectPrE2eGrep(
 	changedPaths: readonly string[],
-	pluginHasSpecs: (pluginId: string) => boolean,
+	pluginHasSpecs: (pluginId: string) => boolean = pluginHasOwnSpecs,
 ): string {
-	const normalized = changedPaths.map((changed) => changed.trim().replaceAll("\\", "/"));
-	if (normalized.some((changed) => HARNESS_PATHS.some((prefix) => changed.startsWith(prefix)))) {
-		return EVERYTHING;
-	}
-	const patterns = new Set(["@smoke"]);
+	const normalized = changedPaths
+		.map((changed) => changed.trim().replaceAll("\\", "/"))
+		.filter(Boolean)
+		.filter((changed) => !isIgnored(changed));
+	if (normalized.some(isHarness)) return EVERYTHING;
+	const patterns = new Set<string>();
 	for (const changed of normalized) {
 		const pluginMatch = /^plugins\/([^/]+)\//.exec(changed)?.[1];
 		const packageMatch = /^packages\/([^/]+)\//.exec(changed)?.[1];
 		const pluginId = pluginMatch ?? (packageMatch ? PACKAGE_PLUGINS[packageMatch] : undefined);
-		if (!pluginId) continue;
+		if (!pluginId) {
+			patterns.add(SMOKE);
+			continue;
+		}
 		if (pluginHasSpecs(pluginId)) patterns.add(specDirectory("plugins", pluginId, "e2e"));
 		for (const related of RELATED_SPECS[pluginId] ?? []) patterns.add(related);
 	}
 	return [...patterns].join("|");
 }
 
-const changedPaths = readFileSync(0, "utf8").split("\n").filter(Boolean);
-process.stdout.write(
-	selectPrE2eGrep(changedPaths, (pluginId) =>
-		existsSync(path.join(repoRoot, "plugins", pluginId, "e2e", "specs")),
-	),
-);
+function pluginHasOwnSpecs(pluginId: string): boolean {
+	return existsSync(path.join(repoRoot, "plugins", pluginId, "e2e", "specs"));
+}
+
+if (import.meta.main) {
+	process.stdout.write(selectPrE2eGrep(readFileSync(0, "utf8").split("\n")));
+}

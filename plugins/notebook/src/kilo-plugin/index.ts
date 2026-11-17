@@ -399,6 +399,11 @@ async function readRuntime(session: Session): Promise<RuntimeStatus | null> {
 	}
 }
 
+function assertNotCancelled(context: Pick<ToolContext, "abort">): void {
+	if (context.abort.aborted)
+		throw new Error("The notebook call was cancelled; nothing was changed.");
+}
+
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -470,8 +475,8 @@ type RestartResultSession = {
 
 /**
  * Prefers `restartKernelResult()`, whose `running` outcome is confirmed by the
- * SDK. Older `restartKernel()` may resolve `false` or resolve before the new
- * kernel is visible; only `true` with a Running status counts as confirmed.
+ * SDK. Older `restartKernel()` may resolve `false`, `undefined`, or before the
+ * new kernel is visible; only an explicit `true` with a Running status counts.
  */
 async function restartKernel(session: Session): Promise<RestartReport> {
 	const typed = session as Session & Partial<RestartResultSession>;
@@ -485,8 +490,9 @@ async function restartKernel(session: Session): Promise<RestartReport> {
 			status: result.status,
 		};
 	}
+	// The public type is void; the native binding returns a boolean. Only an explicit true is evidence.
 	const restarted: unknown = await session.restartKernel();
-	return { confirmed: restarted !== false };
+	return { confirmed: restarted === true };
 }
 
 function dependencyTitle(
@@ -496,15 +502,17 @@ function dependencyTitle(
 ): string {
 	if (!sync) return "Notebook dependencies";
 	const outcome =
-		manager && !manager.matches
+		manager?.matches === false
 			? "requested package manager is not the running kernel's"
-			: {
-					applied: "",
-					completed_unconfirmed: "application unconfirmed",
-					restart_required: "restart required to use them",
-					failed: "environment not updated",
-					unknown: "sync outcome unknown",
-				}[sync.status];
+			: manager?.matches === null
+				? "running package manager unconfirmed"
+				: {
+						applied: "",
+						completed_unconfirmed: "application unconfirmed",
+						restart_required: "restart required to use them",
+						failed: "environment not updated",
+						unknown: "sync outcome unknown",
+					}[sync.status];
 	if (!outcome) return "Notebook dependencies";
 	return recorded
 		? `Notebook dependencies recorded; ${outcome}`
@@ -972,6 +980,8 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			},
 			async execute(args, context) {
 				const request = parseEnvironmentArgs(args);
+				const mutates = request.action === "select" || request.action === "apply";
+				if (mutates) assertNotCancelled(context);
 				const session = await sessions.open(args.notebook_id, context);
 				const capability = missingCapability(session, request);
 				if (capability) {
@@ -997,12 +1007,14 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						selection = await selectionSession.getEnvironmentSelection();
 						break;
 					case "select":
+						assertNotCancelled(context);
 						selection = await withSelectionGuidance("select", () =>
 							selectionSession.setEnvironmentSelection(request.target, request.expectedRevision),
 						);
 						break;
 					case "apply":
 						await requireExecutionApproval(context, args.notebook_id, { kind: "restart" });
+						assertNotCancelled(context);
 						selection = await withSelectionGuidance("apply", () =>
 							withTrustGuidance(session, () =>
 								selectionSession.applyEnvironmentSelection(request.expectedRevision),
@@ -1103,13 +1115,21 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (declaration && args.package_manager) {
 					declaration.package_manager = args.package_manager;
 				}
-				const [status, runtime] = await Promise.all([
-					session.getDependencyStatus(),
+				// After a mutation the declaration and sync verdict must reach the agent even if this read fails.
+				const [statusRead, runtime] = await Promise.all([
+					session.getDependencyStatus().then(
+						(value) => ({ ok: true as const, value }),
+						(error: unknown) => {
+							if (!declaration && !sync) throw error;
+							return { ok: false as const, error: errorMessage(error) };
+						},
+					),
 					readRuntime(session),
 				]);
+				const status = statusRead.ok ? statusRead.value : undefined;
 				const kernelError = runtime ? kernelErrorOf(runtime) : undefined;
 				const manager = declaration ? managerReport(args.package_manager, runtime) : undefined;
-				const typosquatWarnings = checkTyposquats(declaredDependencySpecs(status));
+				const typosquatWarnings = status ? checkTyposquats(declaredDependencySpecs(status)) : [];
 				return {
 					title: dependencyTitle(declaration !== undefined, sync, manager),
 					output: JSON.stringify({
@@ -1118,8 +1138,8 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						...(declaration ? { declaration } : {}),
 						...(sync ? { environment_sync: sync, kernel: projectKernel(runtime) } : {}),
 						...(manager ? { package_manager: manager } : {}),
-						status,
-						...approvalReport(status),
+						...(status ? { status, ...approvalReport(status) } : {}),
+						...(statusRead.ok ? {} : { status_error: statusRead.error }),
 						...(kernelError ? { kernel_error: kernelError } : {}),
 						...(typosquatWarnings.length ? { typosquat_warnings: typosquatWarnings } : {}),
 					}),
@@ -1128,7 +1148,9 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						action: args.action,
 						...(declaration ? { declaration_recorded: true } : {}),
 						...(sync ? { sync: sync.status } : {}),
-						...(manager && !manager.matches ? { package_manager_active: false } : {}),
+						...(manager && manager.matches !== true
+							? { package_manager_active: manager.matches === false ? false : "unknown" }
+							: {}),
 					},
 				};
 			},
@@ -1210,6 +1232,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				let restart: RestartReport | undefined;
 				if (args.action === "restart") {
 					await requireExecutionApproval(context, args.notebook_id, { kind: "restart" });
+					assertNotCancelled(context);
 					restart = await restartKernel(session);
 				}
 				const status = restart?.status ?? (await session.getRuntimeStatus());

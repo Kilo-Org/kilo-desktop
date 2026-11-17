@@ -123,8 +123,9 @@ export type ManagerReport =
 	| { requested: PackageManager; running: PackageManager; matches: true }
 	| {
 			requested: PackageManager;
+			/** null when the running manager cannot be told; `matches` is then null too. */
 			running: PackageManager | null;
-			matches: false;
+			matches: false | null;
 			application: "unconfirmed";
 			detail: string;
 			next_step: string;
@@ -154,7 +155,7 @@ export function managerReport(
 	return {
 		requested,
 		running,
-		matches: false,
+		matches: running === null ? null : false,
 		application: "unconfirmed",
 		detail,
 		next_step:

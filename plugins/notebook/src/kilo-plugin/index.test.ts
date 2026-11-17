@@ -541,7 +541,7 @@ describe("nteract Kilo plugin", () => {
 			package_manager: {
 				requested: "uv",
 				running: null,
-				matches: false,
+				matches: null,
 				application: "unconfirmed",
 				detail: expect.stringMatching(/could not be confirmed/),
 				next_step: expect.any(String),
@@ -587,11 +587,12 @@ describe("nteract Kilo plugin", () => {
 		);
 
 		expect(session.restartKernel).toHaveBeenCalledOnce();
-		expect(result.title).toBe("Notebook kernel restarted");
+		// A void legacy return is not evidence that a new kernel started.
+		expect(result.title).toBe("Notebook kernel restart not confirmed");
 		expect(JSON.parse(result.output)).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			action: "restart",
-			restart: { confirmed: true },
+			restart: { confirmed: false },
 			status: {
 				status: "idle",
 				lifecycle: "Running",
@@ -1962,6 +1963,74 @@ describe("nteract Kilo plugin", () => {
 			},
 		);
 
+		it("refuses an already-cancelled select or apply before opening the notebook", async () => {
+			const openNotebook = vi.fn();
+			const hooks = await createNteractKiloPlugin({ loadRuntimedNode: () => ({ openNotebook }) })();
+			const aborted = new AbortController();
+			aborted.abort();
+
+			for (const args of [
+				{ action: "select", target: "automatic", expected_revision: 3 },
+				{ action: "apply", expected_revision: 3 },
+			]) {
+				await expect(
+					hooks.tool.notebooks_environment.execute(
+						{ notebook_id: NOTEBOOK_ID, ...args } as never,
+						toolContext({ abort: aborted.signal }),
+					),
+				).rejects.toThrow(/cancelled/);
+			}
+			expect(openNotebook).not.toHaveBeenCalled();
+		});
+
+		it("does not stage a selection when the call is cancelled while the notebook opens", async () => {
+			const session = selectionSession();
+			const aborted = new AbortController();
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({
+					openNotebook: vi.fn(async () => {
+						aborted.abort();
+						return session;
+					}),
+				}),
+			})();
+
+			await expect(
+				hooks.tool.notebooks_environment.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "select", target: "automatic", expected_revision: 3 },
+					toolContext({ abort: aborted.signal }),
+				),
+			).rejects.toThrow(/cancelled/);
+			expect(session.setEnvironmentSelection).not.toHaveBeenCalled();
+		});
+
+		it("does not apply or restart when the call is cancelled while approval is pending", async () => {
+			const session = selectionSession({ revision: 4, selected: LUMEN });
+			const hooks = await hooksFor(session);
+			const aborted = new AbortController();
+			const ask = vi.fn(async (_request: AskRequest) => {
+				aborted.abort();
+			});
+			const context = { ...toolContext({ abort: aborted.signal }), ask: ask as never };
+
+			await expect(
+				hooks.tool.notebooks_environment.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "apply", expected_revision: 4 },
+					context,
+				),
+			).rejects.toThrow(/cancelled/);
+			await expect(
+				hooks.tool.notebooks_kernel.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "restart" },
+					context,
+				),
+			).rejects.toThrow(/cancelled/);
+
+			expect(ask).toHaveBeenCalledTimes(2);
+			expect(session.applyEnvironmentSelection).not.toHaveBeenCalled();
+			expect(session.restartKernel).not.toHaveBeenCalled();
+		});
+
 		it("changes nothing when the user denies the restart that apply needs", async () => {
 			const session = selectionSession({ revision: 4, selected: LUMEN });
 			const ask = vi.fn(async (_request: AskRequest) => {
@@ -2391,13 +2460,18 @@ describe("nteract Kilo plugin", () => {
 				"Launching",
 			);
 
-			const { output } = await dependencies(session, ADD_CONDA);
+			const { result, output } = await dependencies(session, ADD_CONDA);
 
 			expect(output.package_manager).toMatchObject({
 				running: null,
-				matches: false,
+				matches: null,
 				detail: expect.stringMatching(/could not be confirmed/),
 			});
+			expect(result.title).toBe(
+				"Notebook dependencies recorded; running package manager unconfirmed",
+			);
+			expect(result.title).not.toMatch(/is not the running kernel's/);
+			expect(result.metadata).toMatchObject({ package_manager_active: "unknown" });
 			expect(output.kernel).toEqual({
 				lifecycle: "Launching",
 				status: "starting",
@@ -2516,6 +2590,46 @@ describe("nteract Kilo plugin", () => {
 			expect(session.restartKernel).not.toHaveBeenCalled();
 		});
 
+		it("keeps the recorded declaration and unknown sync when the status read also fails", async () => {
+			const session = dependencySession({
+				typed: async () => {
+					throw new Error("Not connected");
+				},
+			});
+			session.addDependencies.mockImplementation(async () => {
+				session.getDependencyStatus.mockRejectedValue(new Error("Not connected"));
+			});
+
+			const { result, output } = await dependencies(session, {
+				action: "add",
+				packages: ["pandas"],
+			});
+
+			expect(session.addDependencies).toHaveBeenCalledOnce();
+			expect(output.declaration).toEqual({ recorded: true, packages: ["pandas"] });
+			expect(output.environment_sync).toMatchObject({ status: "unknown", error: "Not connected" });
+			expect(output.status_error).toBe("Not connected");
+			expect(output).not.toHaveProperty("status");
+			expect(result.title).toBe("Notebook dependencies recorded; sync outcome unknown");
+		});
+
+		it("keeps a sync-only verdict when the status read fails", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			session.getDependencyStatus.mockRejectedValue(new Error("daemon busy"));
+
+			const { output } = await dependencies(session, { action: "sync" });
+
+			expect(output.environment_sync.status).toBe("applied");
+			expect(output.status_error).toBe("daemon busy");
+		});
+
+		it("still fails a plain status read that cannot reach the daemon", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			session.getDependencyStatus.mockRejectedValue(new Error("daemon busy"));
+
+			await expect(dependencies(session, { action: "status" })).rejects.toThrow("daemon busy");
+		});
+
 		it("reports a sync-only action without a declaration", async () => {
 			const session = dependencySession({ legacy: async () => undefined });
 
@@ -2605,6 +2719,23 @@ describe("nteract Kilo plugin", () => {
 			);
 			return { result, output: JSON.parse(result.output) };
 		}
+
+		it.each([
+			["true with a Running status", true, RUNNING, true],
+			["true while still Launching", true, LAUNCHING, false],
+			["false", false, RUNNING, false],
+			["void", undefined, RUNNING, false],
+		])(
+			"treats a legacy restart returning %s as confirmed=%s",
+			async (_name, value, status, confirmed) => {
+				const { output } = await restart({
+					restartKernel: vi.fn(async () => value),
+					getRuntimeStatus: vi.fn(async () => status),
+				});
+
+				expect(output.restart).toEqual({ confirmed });
+			},
+		);
 
 		it("keeps a legacy restartKernel false instead of discarding it", async () => {
 			const { result, output } = await restart({

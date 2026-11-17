@@ -13,11 +13,12 @@ export interface ChatFollower {
 	/** Applies a chat (e.g. one just created) in order with the ones kilo.core announces. */
 	apply(chat: ChatSummary): void;
 	/**
-	 * Stops following chats whose work session was deleted, so a change the
-	 * server announces before their deletion lands (a busy chat keeps
-	 * updating) can't adopt them back into a new work session.
+	 * Stops following a deleted work session's chats, and any chat stamped
+	 * with its id, so a change the server announces before their deletion
+	 * lands (a busy chat keeps updating) or a chat created for it mid-delete
+	 * can't adopt them back into a new work session.
 	 */
-	forget(chatIds: readonly string[]): void;
+	forget(workSession: Pick<WorkSession, "id" | "chatIds">): void;
 	/** Writes to the Kilo server, best effort: logged, never thrown. */
 	write(
 		label: string,
@@ -36,9 +37,9 @@ export interface ChatFollower {
  * session's title (until the person renames it), directory and branch
  * current (a work session placed at creation keeps its own), and a chat
  * archived after the work session's last archive change archives it; a
- * deleted chat is detached. Chats of a deleted work session are forgotten
- * until the server confirms their deletion. Without kilo.core there are no
- * chats and nothing changes.
+ * deleted chat is detached. A deleted work session and its chats are
+ * forgotten while kilo.core's chats are present, so nothing adopts them
+ * back. Without kilo.core there are no chats and nothing changes.
  */
 export function followChats(
 	sdk: PluginSdk,
@@ -46,7 +47,8 @@ export function followChats(
 	options: { readonly createId: () => string; readonly after: Promise<unknown> },
 ): ChatFollower {
 	let chats: DomainObjectHandle<typeof Chats> | undefined;
-	const forgotten = new Set<string>();
+	const forgottenChats = new Set<string>();
+	const forgottenSessions = new Set<string>();
 
 	let queue: Promise<unknown> = options.after;
 	const inOrder = (task: () => void) => {
@@ -116,10 +118,11 @@ export function followChats(
 	}
 
 	function applyChat(chat: ChatSummary): void {
-		if (chat.parentId || forgotten.has(chat.id)) return;
+		if (chat.parentId || forgottenChats.has(chat.id)) return;
 		const workspaceId = knownWorkspace(chat.workspaceId);
 		let owner = registry.holding(chat.id);
 		if (!owner) {
+			if (chat.workSessionId && forgottenSessions.has(chat.workSessionId)) return;
 			const target = chat.workSessionId ? registry.find(chat.workSessionId) : undefined;
 			if (!target) return adopt(chat, workspaceId);
 			owner = join(target, chat);
@@ -171,7 +174,7 @@ export function followChats(
 				handle.on("updated", ({ after }) => inOrder(() => applyChat(after))),
 				handle.on("deleted", ({ chat }) =>
 					inOrder(() => {
-						forgotten.delete(chat.id);
+						forgottenChats.delete(chat.id);
 						detachChat(chat.id);
 					}),
 				),
@@ -182,6 +185,10 @@ export function followChats(
 			stop?.();
 			stop = undefined;
 			chats = undefined;
+			// Bounded by kilo.core's lifetime: a delete the server never
+			// confirmed is read fresh when the chats return.
+			forgottenChats.clear();
+			forgottenSessions.clear();
 		},
 	});
 	sdk.onDispose(() => stop?.());
@@ -189,7 +196,10 @@ export function followChats(
 	return {
 		current: () => chats,
 		apply: (chat) => inOrder(() => applyChat(chat)),
-		forget: (chatIds) => chatIds.forEach((chatId) => forgotten.add(chatId)),
+		forget: ({ id, chatIds }) => {
+			forgottenSessions.add(id);
+			for (const chatId of chatIds) forgottenChats.add(chatId);
+		},
 		async write(label, task) {
 			if (!chats) return;
 			try {

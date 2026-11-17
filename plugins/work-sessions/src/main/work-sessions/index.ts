@@ -138,7 +138,7 @@ export function activateWorkSessions(sdk: PluginSdk, options: WorkSessionsOption
 				const workSession = registry.find(id);
 				if (!workSession) return { deleted: false };
 				const orphaned = isOrphanedCopySession(registry.list(), id);
-				chats.forget(workSession.chatIds);
+				chats.forget(workSession);
 				registry.delete(workSession);
 				const deletes = workSession.chatIds.map((chatId) =>
 					chats.write("delete chat", (handle) => handle.methods.delete({ id: chatId })),

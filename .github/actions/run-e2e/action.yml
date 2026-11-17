@@ -82,9 +82,10 @@ runs:
         fi
         export E2E_WORKERS="$WORKERS"
         echo "Playwright workers: $E2E_WORKERS"
-        # A grep-narrowed PR run can leave a shard with no matching tests.
+        # A grep-narrowed PR run can leave a shard with no matching tests; a
+        # full-suite shard (merge queue) that collects nothing must fail.
         args=()
-        if [ -n "$E2E_SHARD" ]; then args+=(--pass-with-no-tests); fi
+        if [ -n "$E2E_SHARD" ] && [ -n "$E2E_GREP" ]; then args+=(--pass-with-no-tests); fi
         if [ "${{ inputs.xvfb }}" = "true" ]; then
           xvfb-run --auto-servernum pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }} "${args[@]}"
         else

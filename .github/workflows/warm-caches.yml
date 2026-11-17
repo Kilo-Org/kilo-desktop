@@ -24,9 +24,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Linux tests, and PR e2e (which restores the native caches too).
           - os: blacksmith-4vcpu-ubuntu-2404
-            native: false
-          # PR e2e and the Windows test leg.
+            native: true
+          # Merge-queue e2e and the Windows test leg.
           - os: blacksmith-8vcpu-windows-2025
             native: true
           # The macOS test leg and merge-queue e2e.

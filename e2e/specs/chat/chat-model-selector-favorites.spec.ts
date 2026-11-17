@@ -6,9 +6,14 @@ import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
  * provider family. Split from chat-model-selector.spec.ts so CI can run it on
  * its own shard.
  */
+// Favorites persist in kilo.core's storage under the app profile, which the
+// fixture's localStorage reset does not clear. Its own app profile keeps them
+// from reaching chat-model-selector.spec.ts's empty-favorites test.
+test.use({ appIsolationKey: "chat-model-favorites" });
+
 test.describe("Chat model selector", () => {
-	// Every test opens its own draft and the fixture clears localStorage after
-	// each, so the tests are independent and can run on any worker.
+	// Every test opens its own draft; favoriting different models in any order
+	// leaves each test's own favorites listed, so they can run on any worker.
 	test.describe.configure({ mode: "parallel" });
 
 	// One test per provider family (rather than one loop over all of them) so
@@ -35,7 +40,7 @@ test.describe("Chat model selector", () => {
 				const modelId = await chatModelSelectorPage.getPublisherModelId(publisherPrefix);
 				const modelName = await chatModelSelectorPage.getPublisherModelName(modelId);
 
-				await chatModelSelectorPage.toggleFavorite(modelId);
+				await chatModelSelectorPage.favorite(modelId);
 				await chatModelSelectorPage.verifyModelFavorited(modelId);
 				favoritedNames.push(modelName);
 				await chatModelSelectorPage.closeWithEscape();

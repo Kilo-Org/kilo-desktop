@@ -381,6 +381,21 @@ describe("changing chats on the server", () => {
 		expect(list()).toEqual([]);
 	});
 
+	it("keeps a deleted work session gone when a chat created for it arrives afterwards", async () => {
+		const core = new FakeCore();
+		core.chats = [chat("ses_a")];
+		const { workSessions, list } = await boot({ core });
+		await vi.waitFor(() => expect(list()).toHaveLength(1));
+		const { id } = list()[0]!;
+
+		await workSessions.methods.remove({ id });
+		// Created mid-delete (or from another window), so the delete never knew it.
+		core.upsert(chat("ses_late", { workSessionId: id }));
+		await settle();
+
+		expect(list()).toEqual([]);
+	});
+
 	it("still changes the work session when the server can't be reached", async () => {
 		const core = new FakeCore();
 		core.chats = [chat("ses_a")];

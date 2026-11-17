@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { parseAllDocuments } from "yaml";
+import { parse, parseAllDocuments } from "yaml";
 
 import { pruneProductionDependencies } from "./prune-production-dependencies.js";
 
@@ -650,14 +650,19 @@ describe("packaged production dependencies", () => {
 		".github/workflows/publish_helper.yml",
 		".github/workflows/sbom.yml",
 	])("%s installs packages into a fresh pnpm store", (file) => {
-		const workflow = readFileSync(path.join(workspaceRoot, file), "utf8");
-		const setup = workflow.slice(workflow.indexOf("uses: ./.github/actions/setup-node-pnpm"));
+		const workflow = parse(readFileSync(path.join(workspaceRoot, file), "utf8")) as Workflow;
+		const setups = Object.values(workflow.jobs)
+			.flatMap((job) => job.steps ?? [])
+			.filter((step) => step.uses === "./.github/actions/setup-node-pnpm");
 
-		expect(setup).toMatch(
-			/^uses: \.\/\.github\/actions\/setup-node-pnpm\s+with:\s+pnpm-cache: "false"/,
-		);
+		expect(setups.length).toBeGreaterThan(0);
+		for (const step of setups) expect(step.with?.["pnpm-cache"]).toBe("false");
 	});
 });
+
+interface Workflow {
+	jobs: Record<string, { steps?: { uses?: string; with?: Record<string, unknown> }[] }>;
+}
 
 type LockfileDependencies = Record<string, string | { version: string }>;
 type LockfileEntry = Partial<Record<DependencyField, LockfileDependencies>>;

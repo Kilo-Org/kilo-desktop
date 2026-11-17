@@ -256,6 +256,19 @@ describe("the workspace board", () => {
 		await vi.waitFor(() => expect(cards()).toMatchObject({ backlog: ["b"], review: ["c", "a"] }));
 	});
 
+	it("scrolls its columns sideways inside a narrow window without widening the page", async () => {
+		const { innerWidth, innerHeight } = window;
+		await page.viewport(700, innerHeight);
+		try {
+			await renderBoardColumns();
+			const strip = document.querySelector<HTMLElement>("[data-board-columns]")!;
+			expect(strip.scrollWidth).toBeGreaterThan(strip.clientWidth);
+			expect(document.documentElement.scrollWidth).toBe(document.documentElement.clientWidth);
+		} finally {
+			await page.viewport(innerWidth, innerHeight);
+		}
+	});
+
 	it("adds, names, renames, moves and deletes columns", async () => {
 		const { board, columns } = await renderBoardColumns();
 		await page.getByTestId("workspace-board-add-column").click();

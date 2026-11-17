@@ -40,11 +40,15 @@ function boot(handlers: LocalInferenceHostOptions["handlers"] = {}) {
 
 function SourceProbe() {
 	const [source] = useExtensions(ModelSource);
-	const state = source!.implementation!.useState();
+	const { State } = source!.implementation!;
 	return (
-		<div data-qa-id="source-probe">
-			{state.pending ? "pending" : `${state.status?.status}:${state.modelIds.join(",")}`}
-		</div>
+		<State>
+			{(state) => (
+				<div data-qa-id="source-probe">
+					{state.pending ? "pending" : `${state.status?.status}:${state.modelIds.join(",")}`}
+				</div>
+			)}
+		</State>
 	);
 }
 

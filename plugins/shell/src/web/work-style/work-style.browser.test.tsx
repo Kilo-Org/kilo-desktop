@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -24,6 +23,7 @@ import {
 	OnboardingStep,
 	SHELL_DEFINITIONS,
 	type OnboardingStepImplementation,
+	type OnboardingStepView,
 } from "../../contracts";
 import { activateWorkStyleStep } from "./index";
 
@@ -86,38 +86,26 @@ function telemetrySink() {
 	return { delivered, plugin };
 }
 
-const stepViews = new WeakMap<OnboardingStepImplementation, ComponentType<StepViewProps>>();
-
-interface StepViewProps {
-	readonly next: () => void;
-}
-
 /** Draws the step the way the onboarding host does: heading, body, aside and Continue. */
-function stepView(step: OnboardingStepImplementation): ComponentType<StepViewProps> {
-	let View = stepViews.get(step);
-	if (!View) {
-		View = function StepView({ next }: StepViewProps) {
-			const view = step.useStep({ next });
-			return (
-				<div>
-					<h2>{view.title}</h2>
-					{view.body}
-					{view.aside}
-					<button
-						type="button"
-						disabled={view.primary?.disabled}
-						onClick={view.primary?.onClick}
-						data-qa-id="onboarding-continue"
-					>
-						{view.primary?.label}
-					</button>
-				</div>
-			);
-		};
-		stepViews.set(step, View);
-	}
-	return View;
+function drawStep(view: OnboardingStepView) {
+	return (
+		<div>
+			<h2>{view.title}</h2>
+			{view.body}
+			{view.aside}
+			<button
+				type="button"
+				disabled={view.primary?.disabled}
+				onClick={view.primary?.onClick}
+				data-qa-id="onboarding-continue"
+			>
+				{view.primary?.label}
+			</button>
+		</div>
+	);
 }
+
+const selectStep = (step: OnboardingStepImplementation) => step.Step;
 
 async function openWorkStyleStep(options: BootOptions = {}) {
 	const core = fakeCore(options);
@@ -139,7 +127,11 @@ async function openWorkStyleStep(options: BootOptions = {}) {
 		methods: { setChoice: () => {} },
 	});
 	const next = vi.fn();
-	const slot = host.renderSlot(OnboardingStep, { next }, { select: stepView });
+	const slot = host.renderSlot(
+		OnboardingStep,
+		{ next, children: drawStep },
+		{ select: selectStep },
+	);
 	await expect
 		.element(page.getByRole("heading", { name: "Choose how you want to work" }))
 		.toBeVisible();
@@ -163,7 +155,7 @@ describe("work-style onboarding telemetry", () => {
 		await vi.waitFor(() => expect(next).toHaveBeenCalledOnce());
 
 		slot.unmount();
-		host!.renderSlot(OnboardingStep, { next }, { select: stepView });
+		host!.renderSlot(OnboardingStep, { next, children: drawStep }, { select: selectStep });
 		await expect.element(page.getByTestId("onboarding-work-style-step")).toBeVisible();
 
 		await vi.waitFor(() =>

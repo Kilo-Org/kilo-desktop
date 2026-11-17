@@ -98,6 +98,7 @@ describe("a draft agent pane", () => {
 
 	it("creates the session's chat on the first send and records it in the pane", async () => {
 		const host = await renderChat({ instructions: ["Prefer small diffs."] });
+		const draftThread = page.getByTestId("kilo-chat-thread").element();
 
 		await send("Fix the login form");
 
@@ -127,6 +128,8 @@ describe("a draft agent pane", () => {
 		expect(body.system).toContain('Additional workspace folder: "/projects/lib"');
 		expect(body.system).toContain("Prefer small diffs.");
 		await expect.element(page.getByText("Fix the login form")).toBeVisible();
+		// The thread that sent the first message keeps showing its chat.
+		expect(page.getByTestId("kilo-chat-thread").element()).toBe(draftThread);
 		expect(host.server.requestsTo("GET", "/session/ses_new_1/message").length).toBeLessThanOrEqual(
 			1,
 		);

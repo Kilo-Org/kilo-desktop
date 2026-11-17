@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"plugins": ["typescript", "unicorn"],
+	"plugins": ["typescript", "unicorn", "react"],
 	"categories": {
 		"correctness": "off"
 	},
@@ -431,6 +431,63 @@
 			"rules": {
 				"no-restricted-imports": "off"
 			}
+		},
+		{
+			"files": [
+				"apps/web/src/**/*.{ts,tsx}",
+				"packages/kernel/src/**/*.{ts,tsx}",
+				"packages/pane-layout/src/**/*.{ts,tsx}",
+				"packages/ui/src/**/*.{ts,tsx}",
+				"plugins/*/src/**/*.{ts,tsx}"
+			],
+			"excludeFiles": [
+				"**/main/**",
+				"**/test/**",
+				"**/e2e/**",
+				"**/*.test.ts",
+				"**/*.test.tsx",
+				"**/test-harness.tsx",
+				"**/test-helpers.tsx"
+			],
+			"rules": {
+				"react/exhaustive-effect-dependencies": "error",
+				"react/globals": "error",
+				"react/hooks": "error",
+				"react/immutability": "error",
+				"react/memo-dependencies": "error",
+				"react/preserve-manual-memoization": "error",
+				"react/purity": "error",
+				"react/refs": "error",
+				"react/set-state-in-effect": "error",
+				"react/set-state-in-render": "error",
+				"react/static-components": "error",
+				"react/unsupported-syntax": "error",
+				"kilo/no-component-in-factory": "error",
+				"kilo/no-hookless-use-function": "error",
+				"kilo/no-manual-memo": "error"
+			}
+		},
+		{
+			"files": [
+				"plugins/chat/src/web/selection/kilo-model-selector.tsx",
+				"plugins/environments/src/web/providers/conda/EnvironmentDetail.tsx",
+				"plugins/work-sessions/src/web/list/SessionList.tsx"
+			],
+			"rules": {
+				"kilo/no-manual-memo": [
+					"error",
+					{
+						"allowDirectives": true
+					}
+				]
+			}
+		},
+		{
+			"files": ["packages/ui/src/components/field.tsx", "packages/ui/src/components/sidebar.tsx"],
+			"rules": {
+				"kilo/no-manual-memo": "off"
+			}
 		}
-	]
+	],
+	"jsPlugins": ["./packages/oxlint-plugin/src/index.ts"]
 }

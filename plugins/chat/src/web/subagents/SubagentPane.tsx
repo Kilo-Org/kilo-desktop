@@ -1,6 +1,6 @@
 import { ReadonlyThreadProvider, useAuiState } from "@assistant-ui/react";
 import { BotIcon, CircleAlertIcon } from "lucide-react";
-import { useCallback, type FC, type ReactNode } from "react";
+import type { FC, ReactNode } from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -35,50 +35,42 @@ export const SubagentIcon: FC<{ className?: string }> = ({ className }) => (
  * origin's panes) and finds the child there.
  */
 export function createSubagentPane(services: ChatMirrorServices): FC<PaneProps> {
-	return function SubagentPane({ workSessionId, pane }) {
-		const childChatId = subagentPaneChildChatId(pane) ?? undefined;
-		const recordedParent = useDomainObjectState(
-			Chats,
-			useCallback(
-				(state: DomainObjectState<typeof Chats>) =>
-					childChatId ? (state.chats[childChatId]?.parentId ?? null) : null,
-				[childChatId],
-			),
-		);
-		const firstChat = useDomainObjectState(
-			WorkSessions,
-			useCallback(
-				(state: DomainObjectState<typeof WorkSessions>) =>
-					state.workSessions.find((candidate) => candidate.id === workSessionId)?.chatIds[0] ??
-					null,
-				[workSessionId],
-			),
-		);
-		const parentChatId = subagentPaneParentChatId(pane) ?? recordedParent ?? firstChat ?? null;
-		const workspaceFolders = useDomainObjectState(
-			Chats,
-			useCallback(
-				(state: DomainObjectState<typeof Chats>) =>
-					parentChatId ? state.chats[parentChatId]?.workspaceFolders : undefined,
-				[parentChatId],
-			),
-		);
+	return (props) => <SubagentPane {...props} services={services} />;
+}
 
-		return (
-			<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-subagent-pane">
-				<ChatMirror services={services} workSessionId={workSessionId} chatId={parentChatId}>
-					<ChatPaneOpeners workSessionId={workSessionId} chatId={childChatId ?? null}>
-						<TranscriptProviders
-							workSessionId={workSessionId}
-							workspaceFolders={workspaceFolders ?? []}
-						>
-							<SubagentView childSessionId={childChatId} />
-						</TranscriptProviders>
-					</ChatPaneOpeners>
-				</ChatMirror>
-			</div>
-		);
-	};
+function SubagentPane({
+	workSessionId,
+	pane,
+	services,
+}: PaneProps & { services: ChatMirrorServices }) {
+	const childChatId = subagentPaneChildChatId(pane) ?? undefined;
+	const recordedParent = useDomainObjectState(Chats, (state: DomainObjectState<typeof Chats>) =>
+		childChatId ? (state.chats[childChatId]?.parentId ?? null) : null,
+	);
+	const firstChat = useDomainObjectState(
+		WorkSessions,
+		(state: DomainObjectState<typeof WorkSessions>) =>
+			state.workSessions.find((candidate) => candidate.id === workSessionId)?.chatIds[0] ?? null,
+	);
+	const parentChatId = subagentPaneParentChatId(pane) ?? recordedParent ?? firstChat ?? null;
+	const workspaceFolders = useDomainObjectState(Chats, (state: DomainObjectState<typeof Chats>) =>
+		parentChatId ? state.chats[parentChatId]?.workspaceFolders : undefined,
+	);
+
+	return (
+		<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-subagent-pane">
+			<ChatMirror services={services} workSessionId={workSessionId} chatId={parentChatId}>
+				<ChatPaneOpeners workSessionId={workSessionId} chatId={childChatId ?? null}>
+					<TranscriptProviders
+						workSessionId={workSessionId}
+						workspaceFolders={workspaceFolders ?? []}
+					>
+						<SubagentView childSessionId={childChatId} />
+					</TranscriptProviders>
+				</ChatPaneOpeners>
+			</ChatMirror>
+		</div>
+	);
 }
 
 /**

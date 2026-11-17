@@ -108,14 +108,15 @@ export async function bootKernel(
 		routeShortcutsFromWindow(kernel);
 	}
 
-	function App() {
-		return (
-			<KernelProvider kernel={kernel}>
-				<KernelRoot />
-			</KernelProvider>
-		);
-	}
-	return { kernel, App };
+	return { kernel, App: () => <KernelApp kernel={kernel} /> };
+}
+
+function KernelApp({ kernel }: { readonly kernel: RendererKernel }) {
+	return (
+		<KernelProvider kernel={kernel}>
+			<KernelRoot />
+		</KernelProvider>
+	);
 }
 
 /**

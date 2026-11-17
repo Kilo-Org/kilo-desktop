@@ -1,10 +1,9 @@
-import { useMemo } from "react";
-
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 import type {
 	ModelSourceImplementation,
 	ModelSourceState,
+	ModelSourceStateProps,
 } from "@kilo-desktop/plugin-chat/contracts";
 
 import {
@@ -24,19 +23,17 @@ const selectModelIds = (state: LocalModelsState) =>
 		.map((model) => model.id)
 		.join("\n");
 
-function useLocalModelSourceState(): ModelSourceState {
+function LocalModelSourceState({ children }: ModelSourceStateProps) {
 	const status = useDomainObjectState(ModelServer, selectStatus);
 	const modelIds = useDomainObjectState(LocalModels, selectModelIds);
-	return useMemo(
-		() =>
-			status === null || status === undefined || modelIds === null || modelIds === undefined
-				? PENDING
-				: {
-						status: parseLocalInferenceStatus(status),
-						modelIds: modelIds ? modelIds.split("\n") : [],
-						pending: false,
-					},
-		[status, modelIds],
+	return children(
+		status === null || status === undefined || modelIds === null || modelIds === undefined
+			? PENDING
+			: {
+					status: parseLocalInferenceStatus(status),
+					modelIds: modelIds ? modelIds.split("\n") : [],
+					pending: false,
+				},
 	);
 }
 
@@ -54,7 +51,7 @@ export function localModelSource(
 		return handle.methods;
 	};
 	return {
-		useState: useLocalModelSourceState,
+		State: LocalModelSourceState,
 		start: async () => {
 			await methods().connect(undefined);
 		},

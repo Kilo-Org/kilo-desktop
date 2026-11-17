@@ -1,5 +1,5 @@
 import { RotateCcwIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 
 import {
 	chordFromKeyboardEvent,
@@ -53,9 +53,10 @@ function ShortcutField({
 	const kernel = useKernel();
 	const [recording, setRecording] = useState(false);
 	const [rejection, setRejection] = useState<string | null>(null);
-	useEffect(() => {
-		if (!recording) setRejection(null);
-	}, [recording]);
+	const stopRecording = () => {
+		setRecording(false);
+		setRejection(null);
+	};
 	useEffect(() => {
 		if (!recording) return;
 		kernel.keyboard.setRecording(true);
@@ -67,7 +68,7 @@ function ShortcutField({
 		event.preventDefault();
 		event.stopPropagation();
 		if (event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-			setRecording(false);
+			stopRecording();
 			return;
 		}
 		const chord = chordFromKeyboardEvent(event.nativeEvent);
@@ -81,7 +82,7 @@ function ShortcutField({
 			return;
 		}
 		onRecord(serializeChord(chord));
-		setRecording(false);
+		stopRecording();
 	};
 
 	return (
@@ -100,7 +101,7 @@ function ShortcutField({
 				data-qa-id={`shortcut-recorder-${commandKey}`}
 				data-recording={recording ? "true" : undefined}
 				onClick={() => setRecording(true)}
-				onBlur={() => setRecording(false)}
+				onBlur={stopRecording}
 				onKeyDown={onKeyDown}
 				className="focus-visible:ring-ring/50 flex h-full items-center gap-1.5 rounded-full px-2.5 outline-none focus-visible:ring-3"
 			>
@@ -137,18 +138,14 @@ function ShortcutField({
 export function ShortcutsSettings() {
 	const kernel = useKernel();
 	const { commands, overrides, resolution, keybindings, platform } = useShortcuts();
-	const titles = useMemo(
-		() => new Map<string, string>(commands.map((command) => [command.key, command.metadata.title])),
-		[commands],
+	const titles = new Map<string, string>(
+		commands.map((command) => [command.key, command.metadata.title]),
 	);
-	const takenBy = useMemo(() => {
-		const map = new Map<string, string>();
-		for (const { commands: contenders } of resolution.conflicts) {
-			const [winner, ...losers] = contenders;
-			for (const loser of losers) map.set(loser, titles.get(winner!) ?? winner!);
-		}
-		return map;
-	}, [resolution.conflicts, titles]);
+	const takenBy = new Map<string, string>();
+	for (const { commands: contenders } of resolution.conflicts) {
+		const [winner, ...losers] = contenders;
+		for (const loser of losers) takenBy.set(loser, titles.get(winner!) ?? winner!);
+	}
 	const groups = groupShortcutCommands(commands);
 	const hasOverrides = Object.keys(overrides).length > 0;
 

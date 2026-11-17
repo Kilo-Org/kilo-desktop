@@ -1,5 +1,5 @@
 import { DataRenderers, Tools, useAui } from "@assistant-ui/react";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import type { ComposerFolder } from "../../contracts";
 import { RevertPendingProvider } from "../checkpoints/revert-pending";
@@ -19,7 +19,7 @@ import { ChatLightboxProvider } from "./lightbox/chat-lightbox";
  */
 export function useTranscriptAui() {
 	const toolkit = useContributedToolkit();
-	const mcpApp = useMemo(() => ElectronMcpAppRenderer(), []);
+	const [mcpApp] = useState(() => ElectronMcpAppRenderer());
 	const aui = useAui({
 		dataRenderers: DataRenderers(),
 		tools: Tools({ toolkit, mcpApp }),

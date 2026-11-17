@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type DragEvent, type FormEvent } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -131,16 +131,37 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		invalidates: ["listEnvironments"],
 	});
 
+	function resetForm() {
+		setFilePath(null);
+		setFileName(null);
+		setFileContent(null);
+		setStagedHandle(null);
+		setName("");
+		setValidationError(null);
+	}
+
+	// A failed read leaves no usable file, so drop the selection and explain.
+	function failStage(): void {
+		resetForm();
+		setValidationError("Could not read the selected file. Select it again.");
+	}
+
+	// A new selection invalidates the previous file's staged handle (and its
+	// content, once nothing is selected).
+	const [stagedFor, setStagedFor] = useState(filePath);
+	if (stagedFor !== filePath) {
+		setStagedFor(filePath);
+		setStagedHandle(null);
+		if (!filePath) setFileContent(null);
+	}
+
+	const onStageFailed = useEffectEvent(failStage);
+
 	// Fetch file content when a file is selected and extract the env name.
 	useEffect(() => {
 		filePathRef.current = filePath;
 		const token = ++stageTokenRef.current;
-		if (!filePath) {
-			setFileContent(null);
-			setStagedHandle(null);
-			return;
-		}
-		setStagedHandle(null);
+		if (!filePath) return;
 		conda
 			.readEnvironmentFile({ filePath })
 			.then((result) => {
@@ -158,7 +179,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 			})
 			.catch(() => {
 				if (token !== stageTokenRef.current) return;
-				failStage();
+				onStageFailed();
 			});
 		return () => {
 			stageTokenRef.current += 1;
@@ -182,21 +203,6 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		}
 	}
 
-	// A failed read leaves no usable file, so drop the selection and explain.
-	function failStage(): void {
-		resetForm();
-		setValidationError("Could not read the selected file. Select it again.");
-	}
-
-	function resetForm() {
-		setFilePath(null);
-		setFileName(null);
-		setFileContent(null);
-		setStagedHandle(null);
-		setName("");
-		setValidationError(null);
-	}
-
 	function validate(): boolean {
 		if (!filePath || !stagedHandle) {
 			setValidationError("An environment file is required.");
@@ -214,30 +220,25 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		return true;
 	}
 
-	const handleDrop = useCallback(
-		(e: DragEvent<HTMLDivElement>) => {
-			e.preventDefault();
-			setIsDragging(false);
+	const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		setIsDragging(false);
 
-			const file = e.dataTransfer.files[0];
-			if (!file || !hasAcceptedExtension(file.name)) {
-				setValidationError("Only .yml and .yaml files are accepted.");
-				return;
-			}
+		const file = e.dataTransfer.files[0];
+		if (!file || !hasAcceptedExtension(file.name)) {
+			setValidationError("Only .yml and .yaml files are accepted.");
+			return;
+		}
 
-			const resolvedPath = pathForFile(file);
-			if (!resolvedPath) {
-				setValidationError(
-					"Could not resolve file path. Import from file requires the desktop app.",
-				);
-				return;
-			}
-			setValidationError(null);
-			setFilePath(resolvedPath);
-			setFileName(file.name);
-		},
-		[pathForFile],
-	);
+		const resolvedPath = pathForFile(file);
+		if (!resolvedPath) {
+			setValidationError("Could not resolve file path. Import from file requires the desktop app.");
+			return;
+		}
+		setValidationError(null);
+		setFilePath(resolvedPath);
+		setFileName(file.name);
+	};
 
 	async function handleBrowse() {
 		setValidationError(null);

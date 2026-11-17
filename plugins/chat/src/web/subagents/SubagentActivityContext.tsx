@@ -1,8 +1,9 @@
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { useStableCallback, useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { useChatConnection } from "../runtime/chat-connection";
 import { directoryClient } from "../runtime/kilo-client";
@@ -77,9 +78,8 @@ const sameActivity = (left: SubagentActivity, right: SubagentActivity) =>
 	left.directory === right.directory;
 
 const sameActivities = (left: readonly SubagentActivity[], right: readonly SubagentActivity[]) =>
-	left === right ||
-	(left.length === right.length &&
-		left.every((activity, index) => sameActivity(activity, right[index]!)));
+	left.length === right.length &&
+	left.every((activity, index) => sameActivity(activity, right[index]!));
 
 const isSubagentActive = (activity: SubagentActivity) => isActiveSubagentStatus(activity.status);
 
@@ -111,14 +111,10 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 	const chats = useDomainObject(Chats);
 	// Extras change with every streamed token; the activities rarely do. Keeping
 	// them (and the context value) while unchanged spares every message a render.
-	const derived = useMemo(() => deriveActivities(extras), [extras]);
-	const lastActivities = useRef(derived);
-	if (!sameActivities(lastActivities.current, derived)) lastActivities.current = derived;
-	const activities = lastActivities.current;
-	const activeActivities = useMemo(() => activities.filter(isSubagentActive), [activities]);
-	const activityByToolCallId = useMemo(
-		() => new Map(activities.map((activity) => [activity.toolCallId, activity])),
-		[activities],
+	const activities = useStableValue(deriveActivities(extras), sameActivities);
+	const activeActivities = activities.filter(isSubagentActive);
+	const activityByToolCallId = new Map(
+		activities.map((activity) => [activity.toolCallId, activity]),
 	);
 	const hasActiveSubagents = activeActivities.length > 0;
 	const [stoppingIds, setStoppingIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -148,24 +144,24 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 			await abortChat(sessionID, directory);
 		} catch (error) {
 			toast.error(error instanceof Error && error.message ? error.message : failureMessage);
-		} finally {
-			setStoppingIds((current) => {
-				const next = new Set(current);
-				for (const id of stoppingSessionIds) next.delete(id);
-				return next;
-			});
 		}
+		setStoppingIds((current) => {
+			const next = new Set(current);
+			for (const id of stoppingSessionIds) next.delete(id);
+			return next;
+		});
 	};
-	const stopSubagent = (target: SubagentStopTarget) =>
+	const stopSubagent = useStableCallback((target: SubagentStopTarget) =>
 		abortSessionTree(
 			target.childSessionId,
 			target.directory,
 			[target.childSessionId],
 			"Could not stop subagent",
-		);
+		),
+	);
 	// Stopping the parent's tree also catches subagents the UI does not see as
 	// active (stale status, nested subagents) and keeps the parent from resuming.
-	const stopAllSubagents = async () => {
+	const stopAllSubagents = useStableCallback(async () => {
 		if (!parentSessionId) {
 			await Promise.all(activeActivities.map(stopSubagent));
 			return;
@@ -176,21 +172,16 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 			activeActivities.map((activity) => activity.childSessionId),
 			"Could not stop subagents",
 		);
+	});
+	const value: Value = {
+		activities,
+		activeActivities,
+		activityByToolCallId,
+		hasActiveSubagents,
+		stoppingIds,
+		stopSubagent,
+		stopAllSubagents,
 	};
-	const actions = useRef({ stopSubagent, stopAllSubagents });
-	actions.current = { stopSubagent, stopAllSubagents };
-	const value = useMemo<Value>(
-		() => ({
-			activities,
-			activeActivities,
-			activityByToolCallId,
-			hasActiveSubagents,
-			stoppingIds,
-			stopSubagent: (target) => actions.current.stopSubagent(target),
-			stopAllSubagents: () => actions.current.stopAllSubagents(),
-		}),
-		[activities, activeActivities, activityByToolCallId, hasActiveSubagents, stoppingIds],
-	);
 	return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

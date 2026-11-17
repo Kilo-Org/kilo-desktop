@@ -1,7 +1,9 @@
 import { loadTableFile, setWasmUrl, SiftTable, type SiftSource } from "@nteract/sift";
 import siftWasmUrl from "@nteract/sift/sift.wasm?url";
 import csvWasmUrl from "@nteract/sift-csv/wasm?url";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
+
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import type { SiftRuntime, SiftTableSource, SiftTableViewProps } from "./sift-runtime.js";
 import { TABLE_LOAD_LIMITS } from "./table-limits.js";
@@ -54,29 +56,25 @@ function errorMessage(error: unknown): string {
  * its replacement and must not mark the new source failed.
  */
 function SiftTableView({ source, ariaLabel, onLoadStateChange, onError }: SiftTableViewProps) {
-	const callbacks = useRef({ onLoadStateChange, onError });
-	callbacks.current = { onLoadStateChange, onError };
-	const currentSource = useRef(source);
-	currentSource.current = source;
+	const callbacks = useLatestRef({ onLoadStateChange, onError });
+	const currentSource = useLatestRef(source);
 
-	const siftSource = useMemo<SiftSource>(
-		() => ({
-			kind: "loader",
-			load: async () => {
-				try {
-					return await loadSource(source);
-				} catch (error) {
-					if (currentSource.current === source) callbacks.current.onError(errorMessage(error));
-					throw error;
-				}
-			},
-		}),
-		[source],
-	);
+	const siftSource: SiftSource = {
+		kind: "loader",
+		load: () =>
+			loadSource(source).catch((error: unknown) => {
+				if (currentSource.current === source) callbacks.current.onError(errorMessage(error));
+				throw error;
+			}),
+	};
 
-	useEffect(() => {
+	// Each new source starts a fresh load.
+	const reportLoading = useEffectEvent((_source: SiftTableSource) => {
 		callbacks.current.onLoadStateChange("loading");
-	}, [siftSource]);
+	});
+	useEffect(() => {
+		reportLoading(source);
+	}, [source]);
 
 	return (
 		<div aria-label={ariaLabel} className="flex min-h-0 min-w-0 flex-1" role="group">

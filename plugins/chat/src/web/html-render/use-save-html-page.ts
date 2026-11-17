@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { FileObjectType, Opener, Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -17,6 +18,51 @@ export interface SaveHtmlPage {
 
 const joinPath = (directory: string, name: string) =>
 	`${directory.replace(/[\\/]+$/, "")}${directory.includes("\\") ? "\\" : "/"}${name}`;
+
+async function savePageToWorkspace({
+	pages,
+	panes,
+	workspaceDirectory,
+	workSessionId,
+	title,
+	html,
+}: {
+	readonly pages: DomainObjectHandle<typeof HtmlPages>;
+	/** Offers to open the saved file when set. */
+	readonly panes: DomainObjectHandle<typeof Panes> | null;
+	readonly workspaceDirectory: string;
+	readonly workSessionId: string;
+	readonly title: string;
+	readonly html: string;
+}): Promise<void> {
+	try {
+		const { relativePath } = await pages.methods.save({ workspaceDirectory, title, html });
+		toast.success(`Saved ${relativePath}`, {
+			description: workspaceDirectory,
+			...(panes
+				? {
+						action: {
+							label: "Open",
+							onClick: () =>
+								void panes.methods
+									.openObject({
+										workSessionId,
+										ref: {
+											type: FileObjectType.id,
+											id: joinPath(workspaceDirectory, relativePath),
+										},
+									})
+									.catch(() => undefined),
+						},
+					}
+				: {}),
+		});
+	} catch (error) {
+		toast.error("Couldn't save the page", {
+			description: error instanceof Error ? error.message : undefined,
+		});
+	}
+}
 
 /**
  * Saves a page as an `.html` file in the chat's primary workspace folder,
@@ -37,46 +83,18 @@ export function useSaveHtmlPage(): SaveHtmlPage | undefined {
 	const workSessionId = chat?.workSessionId;
 	const canOpen = panes !== null && fileOpeners.length > 0;
 
-	const save = useCallback(
-		async ({ title, html }: { readonly title: string; readonly html: string }) => {
-			if (!workspaceDirectory || !workSessionId || !pages) return;
-			setSaving(true);
-			try {
-				const { relativePath } = await pages.methods.save({
-					workspaceDirectory,
-					title,
-					html: injectHtmlRenderBootstrap(html, theme, { standalone: true }),
-				});
-				toast.success(`Saved ${relativePath}`, {
-					description: workspaceDirectory,
-					...(canOpen
-						? {
-								action: {
-									label: "Open",
-									onClick: () =>
-										void panes?.methods
-											.openObject({
-												workSessionId,
-												ref: {
-													type: FileObjectType.id,
-													id: joinPath(workspaceDirectory, relativePath),
-												},
-											})
-											.catch(() => undefined),
-								},
-							}
-						: {}),
-				});
-			} catch (error) {
-				toast.error("Couldn't save the page", {
-					description: error instanceof Error ? error.message : undefined,
-				});
-			} finally {
-				setSaving(false);
-			}
-		},
-		[canOpen, pages, panes, theme, workSessionId, workspaceDirectory],
-	);
+	const save = async ({ title, html }: { readonly title: string; readonly html: string }) => {
+		if (!workspaceDirectory || !workSessionId || !pages) return;
+		setSaving(true);
+		await savePageToWorkspace({
+			pages,
+			panes: canOpen ? panes : null,
+			workspaceDirectory,
+			workSessionId,
+			title,
+			html: injectHtmlRenderBootstrap(html, theme, { standalone: true }),
+		}).finally(() => setSaving(false));
+	};
 
 	return workspaceDirectory && workSessionId && pages ? { save, saving } : undefined;
 }

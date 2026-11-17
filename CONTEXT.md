@@ -21,6 +21,7 @@ packages/
 ├── ui/           @kilo-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
 ├── git-client/   @kilo-desktop/git-client   Node-only git client over the system git binary (resolved via `which` — no embedded binary); typed operations and error normalization ported from GitHub Desktop
 ├── pane-layout/  @kilo-desktop/pane-layout  Pane layout model shared by kilo.work-sessions and its windows
+├── oxlint-plugin/ @kilo-desktop/oxlint-plugin Kilo Desktop's own oxlint rules that keep renderer code compilable by React Compiler
 └── vite-plugin-externalize-deps/            Vite plugin that keeps native/runtime deps out of the main bundle
 
 e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda and kilo.workspace-board specs)
@@ -80,7 +81,7 @@ The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in s
 - **TypeScript 7**, strict, `verbatimModuleSyntax: true`
 - **ESM** everywhere (`"type": "module"`)
 - **Zod 4** for schemas (workspace catalog `^4.4.3`)
-- **React 19** — function components + hooks only
+- **React 19** — function components + hooks only, every one compiled by React Compiler (Oxc, `react({ compiler: true })`). `pnpm lint` enforces it: oxlint's `react/*` compiler rules, the local `@kilo-desktop/oxlint-plugin` (`kilo/no-manual-memo` bans `useMemo`/`useCallback`/`"use no memo"`, `kilo/no-hookless-use-function`, `kilo/no-component-in-factory`) and `scripts/check-react-compiler.mjs` for syntax the compiler cannot lower. Write plain values; for identity use `useStableCallback`/`useStableValue` (`@kilo-desktop/ui/hooks/use-stable`) and `useLatestRef`; extension points take components, never hooks. The only `"use no memo"` wraps TanStack Virtual, allowlisted per file in `.oxlintrc.json`
 - **TanStack Router** (file-based, hash history) + **TanStack Query**
 - **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives) — primitives are owned source: keep them close to stock and edit them directly, marking each deviation with a `// local:` comment (`rg "local:" packages/ui/src/components` lists them). Convention: default child icons are `size-3.5` (stock `size-4`). Upgrade with `npx shadcn@latest add <name> --dry-run --diff -c packages/ui` and merge by hand; re-point stock's `cn` import to `@kilo-desktop/ui/lib/utils`. `packages/ui` is stock primitives plus a few composites shared across plugin boundaries (e.g. `SummaryCard`, `ColorSwatchPicker`, `CopyButton`); consistency comes from using stock parts without visual call-site overrides, not from new wrappers. A look repeated within one plugin is a local component in that plugin.
 - **App themes** own the design tokens: palettes live in `APP_THEMES` (`packages/ui/src/themes/app-themes.ts`) and are injected as CSS custom properties; `apps/web/src/globals.css` maps them to Tailwind v4 utilities

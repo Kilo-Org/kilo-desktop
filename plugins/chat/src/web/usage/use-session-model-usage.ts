@@ -1,8 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useAuiState } from "@assistant-ui/react";
 
-import { useCallback } from "react";
-
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats, type ChatSummary } from "@kilo-desktop/plugin-core/contracts";
 
@@ -53,13 +51,10 @@ export function useComposerUsageView(): ComposerUsageView | undefined {
 	// A turn ending (or the chat changing) reads the usage again.
 	const activityEpoch = useDomainObjectState(
 		Chats,
-		useCallback(
-			(state: { chats: Record<string, ChatSummary> }) => {
-				const chat = sessionID ? state.chats[sessionID] : undefined;
-				return chat ? `${chat.updatedAt}:${chat.activity.status}` : "";
-			},
-			[sessionID],
-		),
+		(state: { chats: Record<string, ChatSummary> }) => {
+			const chat = sessionID ? state.chats[sessionID] : undefined;
+			return chat ? `${chat.updatedAt}:${chat.activity.status}` : "";
+		},
 	);
 	const directory = session?.directory ?? composerDirectory ?? connection?.globalDirectory ?? "";
 	const tokens = useAuiState((state) =>

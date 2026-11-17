@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { KernelTelemetry } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -19,6 +19,7 @@ import { Panes, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { MediaViewer, type LightboxItem } from "@kilo-desktop/ui/components/media-lightbox";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -190,42 +191,47 @@ function revealEditorLocation(
 
 const REVEAL_FILE_FRAMES = 60;
 
-export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewProps) {
+export function FilesView(props: FilesViewProps) {
+	return (
+		<FilesViewContent {...props} metadata={resolvedMetadata(props.pane, props.workspaceFolders)} />
+	);
+}
+
+interface FilesViewContentProps extends FilesViewProps {
+	/** `pane`'s metadata resolved by {@link resolvedMetadata}; computed by the parent so its identity is cached. */
+	readonly metadata: ReturnType<typeof resolvedMetadata>;
+}
+
+function FilesViewContent({
+	workSessionId,
+	pane,
+	workspaceFolders,
+	metadata,
+}: FilesViewContentProps) {
 	const documents = useDomainObject(Documents);
 	const panes = useDomainObject(Panes);
 	const telemetry = useDomainObject(KernelTelemetry);
 	const queryClient = useQueryClient();
 	const paneId = pane.id;
 	const title = pane.title;
-	const metadata = useMemo(
-		() => resolvedMetadata(pane, workspaceFolders),
-		[pane, workspaceFolders],
-	);
-	const paneRef = useRef(pane);
-	paneRef.current = pane;
-	const updatePane = useCallback(
-		(patch: PanePatch) => {
-			const current = paneRef.current;
-			if (!panes || samePane(current, patch)) return;
-			void panes.methods
-				.update({
-					workSessionId,
-					paneId: current.id,
-					...(patch.title === undefined ? {} : { title: patch.title }),
-					...(patch.iconKey === undefined ? {} : { iconKey: patch.iconKey }),
-					...(patch.metadata ? { metadata: { ...current.metadata, ...patch.metadata } } : {}),
-				})
-				.catch(() => undefined);
-		},
-		[panes, workSessionId],
-	);
+	const paneRef = useLatestRef(pane);
+	const updatePane = (patch: PanePatch) => {
+		const current = paneRef.current;
+		if (!panes || samePane(current, patch)) return;
+		void panes.methods
+			.update({
+				workSessionId,
+				paneId: current.id,
+				...(patch.title === undefined ? {} : { title: patch.title }),
+				...(patch.iconKey === undefined ? {} : { iconKey: patch.iconKey }),
+				...(patch.metadata ? { metadata: { ...current.metadata, ...patch.metadata } } : {}),
+			})
+			.catch(() => undefined);
+	};
 	const isActivePane = useDomainObjectState(
 		Panes,
-		useCallback(
-			(state: { byWorkSession: Readonly<Record<string, { activePaneId: string | null }>> }) =>
-				state.byWorkSession[workSessionId]?.activePaneId === paneId,
-			[paneId, workSessionId],
-		),
+		(state: { byWorkSession: Readonly<Record<string, { activePaneId: string | null }>> }) =>
+			state.byWorkSession[workSessionId]?.activePaneId === paneId,
 	);
 	const defaultWorkspaceDirectory =
 		workspaceFolders.find((folder) => folder.isPrimary)?.path ?? workspaceFolders[0]?.path;
@@ -264,22 +270,16 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 		readonly document: string;
 		readonly mode: DocumentMode;
 	} | null>(null);
-	const readFile = useCallback<ReadFile>(
-		async ({ workspaceDirectory: requestedDirectory, relativePath }) =>
-			isNotebookFile(relativePath)
-				? ({
-						kind: "unsupported",
-						reason: "preview-deferred",
-						byteLength: 0,
-					} satisfies FileReadResult)
-				: (documents?.methods.read({ workspaceDirectory: requestedDirectory, relativePath }) ??
-					documentsUnavailable()),
-		[documents],
-	);
-	const writeFile = useCallback<WriteFile>(
-		(args) => documents?.methods.write(args) ?? documentsUnavailable(),
-		[documents],
-	);
+	const readFile: ReadFile = async ({ workspaceDirectory: requestedDirectory, relativePath }) =>
+		isNotebookFile(relativePath)
+			? ({
+					kind: "unsupported",
+					reason: "preview-deferred",
+					byteLength: 0,
+				} satisfies FileReadResult)
+			: (documents?.methods.read({ workspaceDirectory: requestedDirectory, relativePath }) ??
+				documentsUnavailable());
+	const writeFile: WriteFile = (args) => documents?.methods.write(args) ?? documentsUnavailable();
 	const {
 		selectedPath,
 		workspaceDirectory: documentWorkspaceDirectory,
@@ -308,6 +308,11 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 		read: readFile,
 		write: writeFile,
 	});
+	const [notebookErrorPath, setNotebookErrorPath] = useState(selectedPath);
+	if (notebookErrorPath !== selectedPath) {
+		setNotebookErrorPath(selectedPath);
+		setNotebookOpenError(null);
+	}
 	useDocumentWatcher(
 		documentWorkspaceDirectory && selectedPath
 			? absoluteFilePath(documentWorkspaceDirectory, selectedPath)
@@ -319,10 +324,7 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 	// Single key source for the live query and the save invalidation: an open
 	// document always belongs to the active workspace folder, and if that
 	// folder disappears the visible tree is what needs refreshing.
-	const gitStatusQueryKey = useMemo(
-		() => filesGitStatusQueryKey(workspaceListDirectory),
-		[workspaceListDirectory],
-	);
+	const gitStatusQueryKey = filesGitStatusQueryKey(workspaceListDirectory);
 	const externalEditors = useExternalEditorActions({
 		...(externalEditorWorkspaceDirectory
 			? { workspaceDirectory: externalEditorWorkspaceDirectory }
@@ -349,154 +351,130 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 				: "edit";
 	const showDelimitedTable =
 		tableKind?.kind === "delimited" && file?.kind === "text" && documentMode === "table";
-	const setDocumentMode = useCallback(
-		(mode: DocumentMode) => {
-			if (!currentDocument) return;
-			if (mode === "table") {
-				// The editor unmounts in table mode; a retained handle would let
-				// Save read text from a detached editor instead of the live draft.
-				editorRef.current = null;
-				setAttachedEditor(null);
-			}
-			setChosenMode({ document: currentDocument, mode });
+	const setDocumentMode = (mode: DocumentMode) => {
+		if (!currentDocument) return;
+		if (mode === "table") {
+			// The editor unmounts in table mode; a retained handle would let
+			// Save read text from a detached editor instead of the live draft.
+			editorRef.current = null;
+			setAttachedEditor(null);
+		}
+		setChosenMode({ document: currentDocument, mode });
+	};
+	const editorOptions: EditorOptions<"file", undefined, undefined> = {
+		onAttach(editor) {
+			editorRef.current = editor;
+			setAttachedEditor(editor);
 		},
-		[currentDocument],
-	);
-	const editorOptions = useMemo<EditorOptions<"file", undefined, undefined>>(
-		() => ({
-			onAttach(editor) {
-				editorRef.current = editor;
-				setAttachedEditor(editor);
-			},
-			onChange(event) {
-				setDraft(event.file.contents);
-			},
-		}),
-		[setDraft],
-	);
+		onChange(event) {
+			setDraft(event.file.contents);
+		},
+	};
 
-	const openFileNow = useCallback(
-		async (
-			relativePath: string,
-			{
-				forceReload = false,
-				workspaceDirectory: requestedDirectory = activeWorkspaceDirectory,
+	const openFileNow = async (
+		relativePath: string,
+		{
+			forceReload = false,
+			workspaceDirectory: requestedDirectory = activeWorkspaceDirectory,
+			line,
+			column,
+			revealRequest,
+		}: {
+			readonly forceReload?: boolean;
+			readonly workspaceDirectory?: string;
+			readonly line?: number;
+			readonly column?: number;
+			readonly revealRequest?: string;
+		} = {},
+	) => {
+		if (!requestedDirectory) return;
+		// A source location can only be revealed in the editor, even if the
+		// same document is currently shown as a table.
+		if (line !== undefined) {
+			setChosenMode({ document: documentKey(requestedDirectory, relativePath), mode: "edit" });
+		}
+		const outcome = await openDocument({
+			workspaceDirectory: requestedDirectory,
+			relativePath,
+			...(line !== undefined ? { revealLine: line } : {}),
+			...(column !== undefined ? { revealColumn: column } : {}),
+			...(forceReload ? { forceReload: true } : {}),
+		});
+		if (outcome === "opened") {
+			const nextMetadata = {
+				workspaceDirectory: requestedDirectory,
+				relativePath,
+				...(line !== undefined ? { line: String(line) } : {}),
+				...(column !== undefined ? { column: String(column) } : {}),
+			};
+			handledFileRequestRef.current = fileRequestKey(
+				requestedDirectory,
+				relativePath,
 				line,
 				column,
 				revealRequest,
-			}: {
-				readonly forceReload?: boolean;
-				readonly workspaceDirectory?: string;
-				readonly line?: number;
-				readonly column?: number;
-				readonly revealRequest?: string;
-			} = {},
-		) => {
-			if (!requestedDirectory) return;
-			// A source location can only be revealed in the editor, even if the
-			// same document is currently shown as a table.
-			if (line !== undefined) {
-				setChosenMode({ document: documentKey(requestedDirectory, relativePath), mode: "edit" });
-			}
-			const outcome = await openDocument({
-				workspaceDirectory: requestedDirectory,
-				relativePath,
-				...(line !== undefined ? { revealLine: line } : {}),
-				...(column !== undefined ? { revealColumn: column } : {}),
-				...(forceReload ? { forceReload: true } : {}),
+			);
+			updatePane({
+				title: basename(relativePath),
+				iconKey: relativePath,
+				metadata: nextMetadata,
 			});
-			if (outcome === "opened") {
-				const nextMetadata = {
-					workspaceDirectory: requestedDirectory,
-					relativePath,
-					...(line !== undefined ? { line: String(line) } : {}),
-					...(column !== undefined ? { column: String(column) } : {}),
-				};
-				handledFileRequestRef.current = fileRequestKey(
-					requestedDirectory,
-					relativePath,
-					line,
-					column,
-					revealRequest,
-				);
-				updatePane({
-					title: basename(relativePath),
-					iconKey: relativePath,
-					metadata: nextMetadata,
-				});
-			}
-		},
-		[activeWorkspaceDirectory, openDocument, updatePane],
-	);
+		}
+	};
 
-	const discardCurrent = useCallback(async () => {
+	const discardCurrent = async () => {
 		discard();
-	}, [discard]);
+	};
 
-	const saveCurrent = useCallback(
-		async (force = false): Promise<boolean> => {
-			const currentDraft = editorRef.current?.getText() ?? draft;
-			const saved = await saveDocument(currentDraft, force);
-			if (saved) {
-				void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey });
-			}
-			return saved;
-		},
-		[draft, gitStatusQueryKey, queryClient, saveDocument],
-	);
+	const saveCurrent = async (force = false): Promise<boolean> => {
+		const currentDraft = editorRef.current?.getText() ?? draft;
+		const saved = await saveDocument(currentDraft, force);
+		if (saved) {
+			void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey });
+		}
+		return saved;
+	};
 
-	const requestAction = useCallback(
-		(action: PendingAction) => {
-			if (dirty) setPendingAction(() => action);
-			else void action();
-		},
-		[dirty],
-	);
-	const continuePendingAction = useCallback(async () => {
+	const requestAction = (action: PendingAction) => {
+		if (dirty) setPendingAction(() => action);
+		else void action();
+	};
+	const continuePendingAction = async () => {
 		const action = pendingAction;
 		setPendingAction(null);
 		await action?.();
-	}, [pendingAction]);
-	const cancelPendingAction = useCallback(() => {
+	};
+	const cancelPendingAction = () => {
 		setPendingAction(null);
 		handledFileRequestRef.current = null;
 		setSelectionSyncVersion((value) => value + 1);
-	}, []);
+	};
 
-	const track = useCallback(
-		(event: keyof typeof FILES_TELEMETRY_EVENTS, source: string) => {
-			void telemetry?.methods
-				.track({ event: FILES_TELEMETRY_EVENTS[event], data: { source } })
-				.catch(() => undefined);
-		},
-		[telemetry],
-	);
+	const track = (event: keyof typeof FILES_TELEMETRY_EVENTS, source: string) => {
+		void telemetry?.methods
+			.track({ event: FILES_TELEMETRY_EVENTS[event], data: { source } })
+			.catch(() => undefined);
+	};
 
-	const openFileFromTree = useCallback(
-		(relativePath: string) => {
-			if (!activeWorkspaceDirectory || !panes) return;
-			void openFile(panes, {
-				workSessionId,
-				path: absoluteFilePath(activeWorkspaceDirectory, relativePath),
-			}).then(
-				(opened) => {
-					if (!opened) return;
-					if (!isNotebookFile(relativePath)) track("fileOpened", "tree");
-					else if (opened.kind !== FILES_PANE_KIND) track("notebookOpened", "tree");
-				},
-				() => undefined,
-			);
-		},
-		[activeWorkspaceDirectory, panes, workSessionId, track],
-	);
+	const openFileFromTree = (relativePath: string) => {
+		if (!activeWorkspaceDirectory || !panes) return;
+		void openFile(panes, {
+			workSessionId,
+			path: absoluteFilePath(activeWorkspaceDirectory, relativePath),
+		}).then(
+			(opened) => {
+				if (!opened) return;
+				if (!isNotebookFile(relativePath)) track("fileOpened", "tree");
+				else if (opened.kind !== FILES_PANE_KIND) track("notebookOpened", "tree");
+			},
+			() => undefined,
+		);
+	};
 
-	const selectWorkspaceFolder = useCallback(
-		(directory: string) => {
-			setChosenWorkspaceDirectory(directory);
-			resetDocument();
-		},
-		[resetDocument],
-	);
+	const selectWorkspaceFolder = (directory: string) => {
+		setChosenWorkspaceDirectory(directory);
+		resetDocument();
+	};
 
 	useEffect(() => {
 		const relativePath = metadata?.relativePath;
@@ -595,8 +573,17 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 		});
 	}, [activeWorkspaceDirectory, explorerOnly, metadata, title, updatePane, workspaceFolders]);
 
+	// The document the editor shows: a different path, or a reload of the same
+	// one (e.g. discarding edits), recreates it and needs the reveal again.
+	const editorDocument = selectedPath ? `${selectedPath}:${reloadVersion}` : null;
 	useEffect(() => {
-		if (!attachedEditor || file?.kind !== "text" || !file.revision || revealLine === undefined)
+		if (
+			!attachedEditor ||
+			!editorDocument ||
+			file?.kind !== "text" ||
+			!file.revision ||
+			revealLine === undefined
+		)
 			return;
 		let frame = 0;
 		let attempts = 0;
@@ -611,14 +598,12 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 		};
 		frame = requestAnimationFrame(reveal);
 		return () => cancelAnimationFrame(frame);
-	}, [attachedEditor, file, reloadVersion, revealColumn, revealLine, selectedPath]);
+	}, [attachedEditor, editorDocument, file, revealColumn, revealLine]);
 
-	const dirtyRef = useRef(dirty);
-	dirtyRef.current = dirty;
-	const closeGuard = useMemo(
-		() => (dirty ? () => new Promise<boolean>((resolve) => setCloseRequest({ resolve })) : null),
-		[dirty],
-	);
+	const dirtyRef = useLatestRef(dirty);
+	const closeGuard = dirty
+		? () => new Promise<boolean>((resolve) => setCloseRequest({ resolve }))
+		: null;
 	useCloseGuard(workSessionId, paneId, closeGuard);
 
 	useEffect(() => {
@@ -633,67 +618,51 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [dirty, isActivePane, saveCurrent]);
 
-	const readForMarkdown = useCallback<ReadFile>(
-		(args) => documents?.methods.read(args) ?? documentsUnavailable(),
-		[documents],
-	);
-	const imagePreview = useMemo<LightboxItem | null>(
-		() =>
-			file?.kind === "image" && selectedPath
-				? {
-						kind: "image",
-						id: selectedPath,
-						src: `data:${file.mimeType};base64,${file.base64}`,
-						alt: selectedPath,
-						filename: basename(selectedPath),
-					}
-				: null,
-		[file, selectedPath],
-	);
+	const readForMarkdown: ReadFile = (args) =>
+		documents?.methods.read(args) ?? documentsUnavailable();
+	const imagePreview: LightboxItem | null =
+		file?.kind === "image" && selectedPath
+			? {
+					kind: "image",
+					id: selectedPath,
+					src: `data:${file.mimeType};base64,${file.base64}`,
+					alt: selectedPath,
+					filename: basename(selectedPath),
+				}
+			: null;
 	const delimiter = tableKind?.kind === "delimited" ? tableKind.delimiter : null;
 	const truncatedText = file?.kind === "text" && file.truncated;
 	// Tables are all-or-error: a truncated read is never parsed, because a cut
 	// point (even at a newline) can fall inside a quoted multi-line record.
-	const delimitedSource = useMemo<SiftTableSource | null>(
-		() =>
-			delimiter && showDelimitedTable && !truncatedText
-				? { kind: "csv", text: draft, delimiter }
-				: null,
-		[delimiter, draft, showDelimitedTable, truncatedText],
-	);
-	const binarySource = useMemo<SiftTableSource | null>(
-		() =>
-			file?.kind === "table"
-				? { kind: "bytes", format: file.format, bytes: bytesFromBase64(file.base64) }
-				: null,
-		[file],
-	);
-	const openInNotebookPanel = useCallback(async () => {
+	const delimitedSource: SiftTableSource | null =
+		delimiter && showDelimitedTable && !truncatedText
+			? { kind: "csv", text: draft, delimiter }
+			: null;
+	const binarySource: SiftTableSource | null =
+		file?.kind === "table"
+			? { kind: "bytes", format: file.format, bytes: bytesFromBase64(file.base64) }
+			: null;
+	const openInNotebookPanel = async () => {
 		if (!documentWorkspaceDirectory || !selectedPath) return;
 		setNotebookOpenError(null);
 		setNotebookOpening(true);
-		try {
-			const opened = panes
-				? await openFile(panes, {
-						workSessionId,
-						path: absoluteFilePath(documentWorkspaceDirectory, selectedPath),
-					})
-				: null;
-			if (!opened || opened.kind === FILES_PANE_KIND) {
-				setNotebookOpenError("The Notebook panel is unavailable.");
-				return;
-			}
-			track("notebookOpened", "files-button");
-		} catch (error) {
-			setNotebookOpenError(errorMessage(error));
-		} finally {
-			setNotebookOpening(false);
-		}
-	}, [documentWorkspaceDirectory, panes, selectedPath, workSessionId, track]);
-
-	useEffect(() => {
-		setNotebookOpenError(null);
-	}, [selectedPath]);
+		const opening = panes
+			? openFile(panes, {
+					workSessionId,
+					path: absoluteFilePath(documentWorkspaceDirectory, selectedPath),
+				})
+			: Promise.resolve(null);
+		await opening
+			.then((opened) => {
+				if (!opened || opened.kind === FILES_PANE_KIND) {
+					setNotebookOpenError("The Notebook panel is unavailable.");
+					return;
+				}
+				track("notebookOpened", "files-button");
+			})
+			.catch((error: unknown) => setNotebookOpenError(errorMessage(error)))
+			.finally(() => setNotebookOpening(false));
+	};
 
 	if (!activeWorkspaceDirectory) {
 		return (

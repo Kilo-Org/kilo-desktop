@@ -155,6 +155,14 @@ describe("domain registry — in process", () => {
 		expect(counter.lookup("zzz")).toBeNull();
 	});
 
+	it("hands out the same method function on every read, so React can memoize on it", async () => {
+		const kernel = createKernel({ process: "main", registrations: [host(), guest("acme.guest")] });
+		await kernel.activate();
+		const counter = kernel.sdkFor("acme.guest").domainObjects.get(Counter)!;
+
+		expect(counter.methods.increment).toBe(counter.methods.increment);
+	});
+
 	it("resolves a reference through the collection that owns its object type", async () => {
 		const kernel = createKernel({ process: "main", registrations: [host(), guest("acme.guest")] });
 		await kernel.activate();

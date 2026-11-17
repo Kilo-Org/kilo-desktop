@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { KernelWindows } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainObject } from "@kilo-desktop/kernel/web";
@@ -45,41 +45,68 @@ const saveBasisOf = (state: WorkSessionPanes) => `${basisOf(state)}|${state.acti
  * behind its own echo. A save is dropped when the panes changed since it was
  * queued: the newer state already says where they go.
  */
-function useCoalescedLayoutSave(
-	panes: ReturnType<typeof useDomainObject<typeof Panes>>,
-	workSessionId: string,
-	state: WorkSessionPanes,
-) {
-	const queued = useRef<{ basis: string; layout: PaneLayout } | null>(null);
-	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	const target = useRef({ panes, workSessionId, state });
-	target.current = { panes, workSessionId, state };
+function useCoalescedLayoutSave(workSessionId: string, state: WorkSessionPanes) {
+	const [saver] = useState(() => new CoalescedLayoutSave());
+	const basis = saveBasisOf(state);
+	useEffect(() => saver.supersede(workSessionId, basis), [saver, workSessionId, basis]);
+	// Leaving the session (or the canvas unmounting) saves what is waiting.
+	useEffect(() => () => saver.flush(workSessionId), [saver, workSessionId]);
+	return {
+		schedule: (panes: PanesHandle, layout: PaneLayout) =>
+			saver.schedule(panes, workSessionId, basis, layout),
+		queuedActivePaneId: () => saver.queuedActivePaneId(),
+	};
+}
 
-	const flush = () => {
-		clearTimeout(timer.current);
-		timer.current = undefined;
-		const waiting = queued.current;
-		queued.current = null;
-		const { panes: handle, workSessionId: id, state: current } = target.current;
-		if (!waiting || !handle || waiting.basis !== saveBasisOf(current)) return;
-		void saveLayout(handle, id, waiting.layout).catch(
+type PanesHandle = NonNullable<ReturnType<typeof useDomainObject<typeof Panes>>>;
+
+/**
+ * The layout waiting to be saved and its timer. Each queued layout carries the
+ * panes handle and session it was made in, so a flush after leaving the
+ * session still saves to the session the layout belongs to, and the save
+ * basis it was made from, so a newer state supersedes it.
+ */
+class CoalescedLayoutSave {
+	private queued: {
+		readonly panes: PanesHandle;
+		readonly workSessionId: string;
+		readonly basis: string;
+		readonly layout: PaneLayout;
+	} | null = null;
+	private timer: ReturnType<typeof setTimeout> | undefined;
+
+	schedule(panes: PanesHandle, workSessionId: string, basis: string, layout: PaneLayout) {
+		if (this.queued && this.queued.workSessionId !== workSessionId) this.flush();
+		this.queued = { panes, workSessionId, basis, layout };
+		clearTimeout(this.timer);
+		this.timer = setTimeout(() => this.flush(), LAYOUT_SAVE_DELAY_MS);
+	}
+
+	/** The active pane the waiting save will record, if one waits. */
+	queuedActivePaneId() {
+		return this.queued?.layout.activePaneId;
+	}
+
+	/** Drops the waiting save of `workSessionId` when its panes now have another basis. */
+	supersede(workSessionId: string, basis: string) {
+		if (this.queued?.workSessionId !== workSessionId || this.queued.basis === basis) return;
+		clearTimeout(this.timer);
+		this.timer = undefined;
+		this.queued = null;
+	}
+
+	/** Saves the waiting layout now; with `workSessionId`, only if it belongs to that session. */
+	flush(workSessionId?: string) {
+		if (workSessionId !== undefined && this.queued?.workSessionId !== workSessionId) return;
+		clearTimeout(this.timer);
+		this.timer = undefined;
+		const queued = this.queued;
+		this.queued = null;
+		if (!queued) return;
+		void saveLayout(queued.panes, queued.workSessionId, queued.layout).catch(
 			reportFailure("Could not save the layout", "The panes went back to where they were."),
 		);
-	};
-	const flushRef = useRef(flush);
-	flushRef.current = flush;
-	// Leaving the session (or the canvas unmounting) saves what is waiting.
-	useEffect(() => () => flushRef.current(), [workSessionId]);
-
-	return {
-		schedule(layout: PaneLayout) {
-			queued.current = { basis: saveBasisOf(target.current.state), layout };
-			clearTimeout(timer.current);
-			timer.current = setTimeout(() => flushRef.current(), LAYOUT_SAVE_DELAY_MS);
-		},
-		/** The active pane the waiting save will record, if one waits. */
-		queuedActivePaneId: () => queued.current?.layout.activePaneId,
-	};
+	}
 }
 
 /**
@@ -98,18 +125,18 @@ export function SessionCanvas({ workSession }: { readonly workSession: WorkSessi
 	const desktop = useContextKey("kernel/desktop");
 	const poppedOut = usePoppedOutPanes(workSession.id);
 	const canPopOut = desktop && windows !== null;
-	const derived = useMemo(() => sessionLayout(state, kinds.layoutKindOf), [kinds, state]);
+	const derived = sessionLayout(state, kinds.layoutKindOf);
 	const [pending, setPending] = useState<{ basis: string; layout: PaneLayout } | null>(null);
 	const basis = basisOf(state);
 	const layout = pending?.basis === basis ? pending.layout : derived;
-	const layoutSave = useCoalescedLayoutSave(panes, workSession.id, state);
-	const paneOrder = useMemo(() => panesInOrder(layout), [layout]);
+	const layoutSave = useCoalescedLayoutSave(workSession.id, state);
+	const paneOrder = panesInOrder(layout);
 	const shortcutHints = useShortcutHints("pane", paneOrder);
 
 	const changeLayout = (next: PaneLayout) => {
 		if (!panes || serializeLayout(next) === serializeLayout(layout)) return;
 		setPending({ basis, layout: next });
-		layoutSave.schedule(next);
+		layoutSave.schedule(panes, next);
 	};
 	const failed = (action: string) => reportFailure(`Could not ${action}`, "Nothing changed.");
 	const paneOf = (paneId: string) => state.panes.find((candidate) => candidate.id === paneId);

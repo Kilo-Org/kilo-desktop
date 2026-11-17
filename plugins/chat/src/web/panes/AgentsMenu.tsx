@@ -1,5 +1,5 @@
 import { BotIcon, ExternalLinkIcon, PlusIcon } from "lucide-react";
-import { useCallback, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { KernelWindows, type DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -51,14 +51,11 @@ export function workSessionChats(
 function usePaneWindowIds(workSessionId: string): ReadonlyMap<string, string> {
 	const serialized = useDomainObjectState(
 		KernelWindows,
-		useCallback(
-			(state: DomainObjectState<typeof KernelWindows>) =>
-				paneWindows(state)
-					.filter((window) => window.workSessionId === workSessionId)
-					.map((window) => `${window.paneId}\n${window.windowId}`)
-					.join("\t"),
-			[workSessionId],
-		),
+		(state: DomainObjectState<typeof KernelWindows>) =>
+			paneWindows(state)
+				.filter((window) => window.workSessionId === workSessionId)
+				.map((window) => `${window.paneId}\n${window.windowId}`)
+				.join("\t"),
 	);
 	return new Map(
 		serialized ? serialized.split("\t").map((entry) => entry.split("\n") as [string, string]) : [],
@@ -78,17 +75,11 @@ export function AgentsMenu({ workSession }: WorkSessionActionProps) {
 	const windows = useDomainObject(KernelWindows);
 	const workSessionPanes = useDomainObjectState(
 		Panes,
-		useCallback(
-			(state: DomainObjectState<typeof Panes>) =>
-				state.byWorkSession[workSession.id] ?? EMPTY_WORK_SESSION_PANES,
-			[workSession.id],
-		),
+		(state: DomainObjectState<typeof Panes>) =>
+			state.byWorkSession[workSession.id] ?? EMPTY_WORK_SESSION_PANES,
 	);
 	const chats =
-		useDomainObjectState(
-			Chats,
-			useCallback((state: DomainObjectState<typeof Chats>) => state.chats, []),
-		) ?? {};
+		useDomainObjectState(Chats, (state: DomainObjectState<typeof Chats>) => state.chats) ?? {};
 	const poppedOut = usePaneWindowIds(workSession.id);
 	if (!panes) return null;
 	const all = workSessionPanes?.panes ?? [];

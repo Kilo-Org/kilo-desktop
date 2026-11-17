@@ -1,5 +1,5 @@
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { useCallback, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 
 import type { DomainObjectMethods } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -57,22 +57,21 @@ function useExternalAppsActions() {
 	const apps = useDomainObject(ExternalApps);
 	const [pending, setPending] = useState(0);
 	const [error, setError] = useState<Error | null>(null);
-	const run = useCallback(
-		async <T,>(action: (methods: ExternalAppsMethods) => Promise<T>): Promise<T | undefined> => {
-			if (!apps) return undefined;
-			setPending((count) => count + 1);
-			setError(null);
-			try {
-				return await action(apps.methods);
-			} catch (caught) {
-				setError(caught instanceof Error ? caught : new Error(String(caught)));
-				return undefined;
-			} finally {
-				setPending((count) => count - 1);
-			}
-		},
-		[apps],
-	);
+	const run = async <T,>(
+		action: (methods: ExternalAppsMethods) => Promise<T>,
+	): Promise<T | undefined> => {
+		if (!apps) return undefined;
+		setPending((count) => count + 1);
+		setError(null);
+		let result: T | undefined;
+		try {
+			result = await action(apps.methods);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught : new Error(String(caught)));
+		}
+		setPending((count) => count - 1);
+		return result;
+	};
 	return { run, busy: pending > 0, error };
 }
 

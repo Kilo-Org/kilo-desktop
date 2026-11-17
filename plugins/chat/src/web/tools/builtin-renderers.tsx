@@ -1,4 +1,4 @@
-import { memo, type ComponentType } from "react";
+import type { ComponentType } from "react";
 
 import type { ToolRendererImplementation, ToolRendererProps } from "../../contracts";
 import { HtmlRenderToolUI } from "../html-render/HtmlRenderToolUI";
@@ -19,7 +19,7 @@ function renders(Component: ToolCallComponent): ToolRendererImplementation {
 		<Component {...props} />
 	);
 	Rendered.displayName = Component.displayName ?? Component.name;
-	return { component: memo(Rendered) };
+	return { component: Rendered };
 }
 
 /**

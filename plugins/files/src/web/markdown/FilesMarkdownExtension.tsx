@@ -112,8 +112,8 @@ function ResolvableFileLinkChip({
 
 	const resolveAndOpen = async () => {
 		setPending(true);
-		try {
-			const resolution = await queryClient.fetchQuery({
+		await queryClient
+			.fetchQuery({
 				queryKey: [
 					"kilo.files",
 					"resolve-file-link",
@@ -126,20 +126,21 @@ function ResolvableFileLinkChip({
 						relativePath: fileTarget.relativePath,
 					}) ?? documentsUnavailable(),
 				staleTime: RESOLVED_LINK_STALE_TIME_MS,
-			});
-			const [onlyPath] = resolution.paths;
-			if (resolution.paths.length === 1 && onlyPath !== undefined) {
-				openResolvedFile(onlyPath);
-			} else if (resolution.paths.length > 1) {
-				setCandidates(resolution.paths);
-			} else {
-				toast.error(notFoundMessage(fileTarget.relativePath, resolution.truncated));
-			}
-		} catch {
-			toast.error(`Could not open ${fileTarget.relativePath}.`);
-		} finally {
-			setPending(false);
-		}
+			})
+			.then((resolution) => {
+				const [onlyPath] = resolution.paths;
+				if (resolution.paths.length === 1 && onlyPath !== undefined) {
+					openResolvedFile(onlyPath);
+				} else if (resolution.paths.length > 1) {
+					setCandidates(resolution.paths);
+				} else {
+					toast.error(notFoundMessage(fileTarget.relativePath, resolution.truncated));
+				}
+			})
+			.catch(() => {
+				toast.error(`Could not open ${fileTarget.relativePath}.`);
+			})
+			.finally(() => setPending(false));
 	};
 
 	return (
@@ -233,16 +234,31 @@ function WorkspaceBareFileLink({
 	);
 }
 
-function withFileLinks<P extends object>(services: FileLinksServices, Component: ComponentType<P>) {
-	return function WithFileLinks(props: P) {
-		return (
-			<QueryClientProvider client={services.queries}>
-				<FileLinksContext.Provider value={services}>
-					<Component {...props} />
-				</FileLinksContext.Provider>
-			</QueryClientProvider>
-		);
-	};
+function FileLinksBoundary<P extends object>({
+	services,
+	component: Component,
+	componentProps,
+}: {
+	readonly services: FileLinksServices;
+	readonly component: ComponentType<P>;
+	readonly componentProps: P;
+}) {
+	return (
+		<QueryClientProvider client={services.queries}>
+			<FileLinksContext.Provider value={services}>
+				<Component {...componentProps} />
+			</FileLinksContext.Provider>
+		</QueryClientProvider>
+	);
+}
+
+function withFileLinks<P extends object>(
+	services: FileLinksServices,
+	Component: ComponentType<P>,
+): ComponentType<P> {
+	return (props: P) => (
+		<FileLinksBoundary services={services} component={Component} componentProps={props} />
+	);
 }
 
 /**

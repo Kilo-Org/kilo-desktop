@@ -1,5 +1,5 @@
 import { PuzzleIcon } from "lucide-react";
-import { useMemo, useSyncExternalStore, type ComponentType } from "react";
+import { useSyncExternalStore, type ComponentType } from "react";
 
 import type { Contribution, WhenExpression } from "@kilo-desktop/kernel";
 import { useExtensions, useSdk } from "@kilo-desktop/kernel/web";
@@ -43,61 +43,62 @@ export interface PaneKinds {
 export const implementationOf = (kind: PaneKindContribution | undefined) =>
 	kind?.implementation as PaneImplementation | undefined;
 
-/** Which kinds' `availableWhen` holds, as a string of 0s and 1s that changes with context keys. */
-function useAvailability(contributions: readonly PaneKindContribution[]): string {
+/** Kinds in their listing `order`; the sort is stable, so ties keep plugin order. */
+const byListingOrder = (contributions: readonly PaneKindContribution[]) =>
+	contributions.toSorted((a, b) => a.metadata.order - b.metadata.order);
+
+/**
+ * The contributed kinds in listing order, with which kinds' `availableWhen`
+ * holds as a string of 0s and 1s (by index) that changes with context keys.
+ */
+function useOrderedPaneKinds(): {
+	readonly contributions: readonly PaneKindContribution[];
+	readonly availability: string;
+} {
 	const sdk = useSdk();
+	const contributions = byListingOrder(useExtensions(PaneKind));
 	const read = () =>
 		contributions
 			.map((kind) =>
 				sdk.context.evaluate(kind.metadata.availableWhen as WhenExpression | undefined) ? "1" : "0",
 			)
 			.join("");
-	return useSyncExternalStore(sdk.context.subscribe, read, read);
-}
-
-/** Kinds in their listing `order`; the sort is stable, so ties keep plugin order. */
-function useOrdered(contributions: readonly PaneKindContribution[]) {
-	return useMemo(
-		() => [...contributions].sort((a, b) => a.metadata.order - b.metadata.order),
-		[contributions],
-	);
+	const availability = useSyncExternalStore(sdk.context.subscribe, read, read);
+	return { contributions, availability };
 }
 
 /** The pane kinds plugins contribute (`kilo.work-sessions/pane-kind`), shaped for the canvas and the New Session page. */
 export function usePaneKinds(): PaneKinds {
-	const contributions = useOrdered(useExtensions(PaneKind));
-	const availability = useAvailability(contributions);
+	const { contributions, availability } = useOrderedPaneKinds();
 
-	return useMemo(() => {
-		const byKey = new Map<string, PaneKindContribution>(
-			contributions.map((kind) => [kind.key, kind]),
-		);
-		const toCanvas = (kind: PaneKindContribution, index: number): CanvasPaneKind => {
-			const implementation = implementationOf(kind);
-			const available = availability[index] === "1";
-			return {
-				id: kind.key,
-				title: kind.metadata.title,
-				description: kind.metadata.description,
-				Icon: implementation?.icon ?? PuzzleIcon,
-				addable: implementation !== undefined,
-				unavailableHint: available
-					? undefined
-					: (kind.metadata.unavailableHint ?? `${kind.metadata.title} isn't available right now.`),
-				keepAlive: kind.metadata.keepAlive,
-				pinned: kind.metadata.launch.sessionHeader,
-				inTabGroups: kind.metadata.launch.tabGroup,
-				openCommand: kind.metadata.openCommand,
-			};
-		};
-		const shaped = contributions.map(toCanvas);
+	const byKey = new Map<string, PaneKindContribution>(
+		contributions.map((kind) => [kind.key, kind]),
+	);
+	const toCanvas = (kind: PaneKindContribution, index: number): CanvasPaneKind => {
+		const implementation = implementationOf(kind);
+		const available = availability[index] === "1";
 		return {
-			byKey,
-			inSession: shaped.filter((_, index) => contributions[index]!.metadata.launch.inSession),
-			newSession: shaped.filter(
-				(kind, index) => kind.addable && contributions[index]!.metadata.launch.newSession,
-			),
-			layoutKindOf: (kind) => byKey.get(kind)?.metadata.layoutKind ?? "tool",
+			id: kind.key,
+			title: kind.metadata.title,
+			description: kind.metadata.description,
+			Icon: implementation?.icon ?? PuzzleIcon,
+			addable: implementation !== undefined,
+			unavailableHint: available
+				? undefined
+				: (kind.metadata.unavailableHint ?? `${kind.metadata.title} isn't available right now.`),
+			keepAlive: kind.metadata.keepAlive,
+			pinned: kind.metadata.launch.sessionHeader,
+			inTabGroups: kind.metadata.launch.tabGroup,
+			openCommand: kind.metadata.openCommand,
 		};
-	}, [availability, contributions]);
+	};
+	const shaped = contributions.map(toCanvas);
+	return {
+		byKey,
+		inSession: shaped.filter((_, index) => contributions[index]!.metadata.launch.inSession),
+		newSession: shaped.filter(
+			(kind, index) => kind.addable && contributions[index]!.metadata.launch.newSession,
+		),
+		layoutKindOf: (kind) => byKey.get(kind)?.metadata.layoutKind ?? "tool",
+	};
 }

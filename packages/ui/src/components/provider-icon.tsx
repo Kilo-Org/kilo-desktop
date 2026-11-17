@@ -1,4 +1,11 @@
-import type { ComponentType, CSSProperties, ReactNode } from "react";
+import {
+	createElement,
+	type ComponentProps,
+	type ComponentType,
+	type CSSProperties,
+	type ReactElement,
+	type ReactNode,
+} from "react";
 // Deep-import Mono/Color SVGs only — the package barrel pulls `@lobehub/ui` / `antd`.
 import AlibabaColor from "@lobehub/icons/es/Alibaba/components/Color.js";
 import AlibabaMono from "@lobehub/icons/es/Alibaba/components/Mono.js";
@@ -135,18 +142,26 @@ function initialsFromLabel(label: string): string {
 	return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
-function resolveIcon(
+type LobeIconProps = ComponentProps<LobeIcon>;
+
+/**
+ * The registered icon as an element, or null when none is registered. Built
+ * with `createElement` from the module-level registry so render never picks a
+ * component type into a local.
+ */
+function renderRegisteredIcon(
 	entry: ProviderIconEntry | undefined,
 	variant: ProviderIconVariant,
-): LobeIcon | undefined {
+	props: LobeIconProps,
+): ReactElement | null {
 	if (!entry) {
-		return undefined;
+		return null;
 	}
 	switch (variant) {
 		case "color":
-			return entry.color ?? entry.mono;
+			return createElement(entry.color ?? entry.mono, props);
 		case "mono":
-			return entry.mono;
+			return createElement(entry.mono, props);
 		default: {
 			const _exhaustive: never = variant;
 			return _exhaustive;
@@ -188,17 +203,13 @@ export function ProviderIcon({
 	fallback,
 	fallbackLabel,
 }: ProviderIconProps) {
-	const iconKey = resolveProviderIconId(provider);
-	const Icon = resolveIcon(PROVIDER_ICONS[iconKey], variant);
-
-	if (Icon) {
-		return (
-			<Icon
-				size={size}
-				className={cn("shrink-0", className)}
-				{...(title ? { "aria-label": title, role: "img" as const } : { "aria-hidden": true })}
-			/>
-		);
+	const icon = renderRegisteredIcon(PROVIDER_ICONS[resolveProviderIconId(provider)], variant, {
+		size,
+		className: cn("shrink-0", className),
+		...(title ? { "aria-label": title, role: "img" as const } : { "aria-hidden": true }),
+	});
+	if (icon) {
+		return icon;
 	}
 
 	if (fallback !== undefined) {

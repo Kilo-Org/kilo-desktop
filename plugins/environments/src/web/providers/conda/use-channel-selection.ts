@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { defaultChannelSelection, selectableChannels } from "./channel-presentation";
 
@@ -9,28 +9,33 @@ import { defaultChannelSelection, selectableChannels } from "./channel-presentat
  * time with a handled error — there is no in-dialog sign-in step.
  */
 export function useChannelSelection(configured: string[] | undefined) {
-	const available = useMemo(() => selectableChannels(configured ?? []), [configured]);
-	const [selected, setSelected] = useState<string[]>([]);
+	const available = selectableChannels(configured ?? []);
+	const availableKey = available.join("\n");
+	const [selected, setSelected] = useState<string[]>(() => defaultChannelSelection(available));
+	const [seededFor, setSeededFor] = useState(availableKey);
 	const [open, setOpen] = useState(false);
 
-	useEffect(() => {
+	// Seed the defaults once channels arrive, without overriding a selection the
+	// user already made.
+	if (seededFor !== availableKey) {
+		setSeededFor(availableKey);
 		if (available.length > 0 && selected.length === 0) {
 			setSelected(defaultChannelSelection(available));
 		}
-	}, [available]); // eslint-disable-line react-hooks/exhaustive-deps
+	}
 
-	const toggle = useCallback((channel: string) => {
+	const toggle = (channel: string) => {
 		setSelected((prev) =>
 			prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel],
 		);
-	}, []);
+	};
 
 	function reset() {
 		setSelected(defaultChannelSelection(available));
 		setOpen(false);
 	}
 
-	const channelsArg = useMemo(() => (selected.length > 0 ? selected : undefined), [selected]);
+	const channelsArg = selected.length > 0 ? selected : undefined;
 	const allSelected = available.length > 0 && available.every((c) => selected.includes(c));
 	const summary = allSelected
 		? "All channels"

@@ -10,6 +10,7 @@ import {
 import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { useWorkspacePickerSource } from "@kilo-desktop/ui/components/workspace-picker";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import {
 	NewWorkSessionOption,
@@ -107,11 +108,9 @@ const SLOW_PENDING_MS = 300;
 /** `value`, but turning true only once it has stayed true for `delay` ms. */
 function useDelayedFlag(value: boolean, delay: number): boolean {
 	const [delayed, setDelayed] = useState(false);
+	if (!value && delayed) setDelayed(false);
 	useEffect(() => {
-		if (!value) {
-			setDelayed(false);
-			return;
-		}
+		if (!value) return;
 		const timer = setTimeout(() => setDelayed(true), delay);
 		return () => clearTimeout(timer);
 	}, [value, delay]);
@@ -254,24 +253,20 @@ export function NewWorkSessionPage() {
 	const startWith = (kind?: CanvasPaneKind) => {
 		if (creation.busy()) return;
 		setStartingKind(kind?.id ?? null);
+		const open = async (workSessionId: string) => {
+			await navigator?.methods.openWorkSession({ workSessionId });
+			if (kind && panes) await launchPane(panes, workSessionId, kind.id, kinds.layoutKindOf);
+			else if (!kind) await applyDefaultLayout(workSessionId);
+		};
 		creation
 			.create()
-			.then(async ({ session, release }) => {
-				try {
-					await navigator?.methods.openWorkSession({ workSessionId: session.id });
-					if (kind && panes) await launchPane(panes, session.id, kind.id, kinds.layoutKindOf);
-					else if (!kind) await applyDefaultLayout(session.id);
-				} finally {
-					release();
-				}
-			})
+			.then(({ session, release }) => open(session.id).finally(release))
 			.catch(reportFailure("Could not start session", "No session was created."))
 			.finally(() => setStartingKind(null));
 	};
 
 	// A tool's open shortcut starts it from this page (WorkSessionsWindow.openPane has no session to open it in).
-	const startWithRef = useRef(startWith);
-	startWithRef.current = startWith;
+	const startWithRef = useLatestRef(startWith);
 	useEffect(
 		() =>
 			registerNewWorkSessionStart((kindId) => {
@@ -279,7 +274,7 @@ export function NewWorkSessionPage() {
 				const kind = kinds.newSession.find((candidate) => candidate.id === kindId);
 				if (kind && !kind.unavailableHint) startWithRef.current(kind);
 			}),
-		[kinds.newSession],
+		[kinds.newSession, startWithRef],
 	);
 
 	const start = async (): Promise<StartedWorkSession> => {

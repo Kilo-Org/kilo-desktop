@@ -15,16 +15,17 @@ import {
 } from "lucide-react";
 import {
 	createContext,
-	memo,
 	use,
-	useCallback,
 	useEffect,
-	useMemo,
+	useImperativeHandle,
 	useRef,
 	useState,
 	type FC,
 	type KeyboardEvent,
 	type MouseEvent,
+	type ReactNode,
+	type Ref,
+	type RefObject,
 } from "react";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
@@ -32,7 +33,7 @@ import {
 	RenderContribution,
 	useDomainObject,
 	useDomainObjectState,
-	useDragSource,
+	dragSourceProps,
 	useExtensions,
 } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -99,7 +100,6 @@ import { WorkspaceSourceProvider } from "../shared/workspace-source";
 import {
 	activityOfSession,
 	deriveSessionRowState,
-	formatRelativeTimeLabel,
 	resolveSessionLocationLabel,
 	sessionRowCapabilities,
 	type SessionActivity,
@@ -347,6 +347,112 @@ function flattenSessionListSections(
 	return entries;
 }
 
+interface SessionListShape {
+	readonly sections: readonly SessionListSection[];
+	readonly pinnedSections: readonly SessionListSection[];
+	readonly groupedSections: readonly SessionListSection[];
+	/** Keys of the shelves with a header, which can be collapsed. */
+	readonly collapsibleKeys: readonly string[];
+}
+
+/** The list's shelves for the view, split into the pinned shelf and the rest. */
+function shapeSessionList(input: {
+	readonly sessions: readonly WorkSession[];
+	readonly activities: Readonly<Record<string, SessionActivity>>;
+	readonly workspaces: readonly Workspace[];
+	readonly view: SessionListView;
+	readonly pullRequests: ReturnType<typeof usePullRequestFacet>;
+}): SessionListShape {
+	const { sessions } = input;
+	const sections = buildSessionListSections({
+		entries: sessions.map((session, sourceIndex) => ({
+			id: session.id,
+			sessionId: session.id,
+			remoteId: session.id,
+			title: session.title,
+			sourceIndex,
+			archived: session.archived,
+		})),
+		activityBySessionId: input.activities,
+		workspaces: input.workspaces,
+		view: input.view,
+		pinnedIds: new Set(sessions.filter((session) => session.pinned).map((session) => session.id)),
+		pullRequestBySessionId: input.pullRequests,
+	});
+	return {
+		sections,
+		pinnedSections: sections.filter((section) => section.tone === "pinned"),
+		groupedSections: sections.filter((section) => section.tone !== "pinned"),
+		collapsibleKeys: sections.flatMap((section) => (section.label ? [section.key] : [])),
+	};
+}
+
+/** The sessions' live activities and the list's shelves for `view`. */
+function useSessionListShape(
+	sessions: readonly WorkSession[],
+	workspaces: readonly Workspace[],
+	view: SessionListView,
+	pullRequests: ReturnType<typeof usePullRequestFacet>,
+) {
+	const activities = useSessionActivities(sessions);
+	const shape = shapeSessionList({ sessions, activities, workspaces, view, pullRequests });
+	return { activities, shape };
+}
+
+/** The virtualised entries for the expanded shelves, with the session rows' ids in list order. */
+function flattenSessionList(
+	shape: SessionListShape,
+	expanded: Readonly<Record<string, boolean>>,
+	view: SessionListView,
+): {
+	readonly entries: readonly VirtualSessionListEntry[];
+	readonly rowOrder: readonly string[];
+	/** Rows that are not archived: the ones go-to-session shortcuts number. */
+	readonly visibleSessionIds: readonly string[];
+} {
+	const label = emptyWorkspaceLabel(view);
+	const entries = [
+		...flattenSessionListSections(shape.pinnedSections, expanded, {
+			spaceBeforeFirst: false,
+			emptyWorkspaceLabel: label,
+		}),
+		...flattenSessionListSections(shape.groupedSections, expanded, {
+			spaceBeforeFirst: shape.pinnedSections.length > 0,
+			emptyWorkspaceLabel: label,
+		}),
+	];
+	return {
+		entries,
+		rowOrder: entries.flatMap((entry) => (entry.kind === "row" ? [entry.row.id] : [])),
+		visibleSessionIds: entries.flatMap((entry) =>
+			entry.kind === "row" && !entry.row.archived ? [entry.row.id] : [],
+		),
+	};
+}
+
+/** The selected ids still in `rowOrder`, in list order. */
+function selectedRowIds(
+	rowOrder: readonly string[],
+	selection: { readonly ids: ReadonlySet<string> },
+): ReadonlySet<string> {
+	return new Set(rowOrder.filter((id) => selection.ids.has(id)));
+}
+
+/**
+ * The list's rows for the expanded shelves; publishes the visible sessions
+ * (`visibleWorkSessions`) and returns their go-to-session shortcut hints.
+ */
+function useSessionListRows(
+	shape: SessionListShape,
+	expanded: Readonly<Record<string, boolean>>,
+	view: SessionListView,
+) {
+	const { entries, rowOrder, visibleSessionIds } = flattenSessionList(shape, expanded, view);
+	useEffect(() => visibleWorkSessions.set(visibleSessionIds), [visibleSessionIds]);
+	const shortcutHints = useShortcutHints("work-session", visibleSessionIds);
+	return { entries, rowOrder, shortcutHints };
+}
+
 /** kilo.work-sessions' contribution to kilo.shell/left-sidebar. */
 export function SessionList() {
 	return (
@@ -365,29 +471,18 @@ function SessionListContent() {
 	const navigatorHandle = useDomainObject(WorkSessionsWindow);
 	const navigator = useDomainObjectState(WorkSessionsWindow, selectNavigator) ?? EMPTY_NAVIGATOR;
 
-	const view = useMemo(
-		() => ({ ...storedView, focus: navigator.focus }),
-		[navigator.focus, storedView],
-	);
-	const setFocus = useCallback(
-		(focus: string | null) => {
-			void navigatorHandle?.methods.setFocus({ focus });
-			workspaceSource.setActiveWorkspaceId(workspaceIdForFocus(focus));
-		},
-		[navigatorHandle, workspaceSource],
-	);
-	const updateView = useCallback(
-		(patch: Partial<SessionListView>) => {
-			const { focus, ...rest } = patch;
-			if (focus !== undefined) setFocus(focus);
-			if (Object.keys(rest).length > 0) update(rest);
-		},
-		[setFocus, update],
-	);
-	const open = useCallback(
-		(workSessionId: string) => void navigatorHandle?.methods.openWorkSession({ workSessionId }),
-		[navigatorHandle],
-	);
+	const view = { ...storedView, focus: navigator.focus };
+	const setFocus = (focus: string | null) => {
+		void navigatorHandle?.methods.setFocus({ focus });
+		workspaceSource.setActiveWorkspaceId(workspaceIdForFocus(focus));
+	};
+	const updateView = (patch: Partial<SessionListView>) => {
+		const { focus, ...rest } = patch;
+		if (focus !== undefined) setFocus(focus);
+		if (Object.keys(rest).length > 0) update(rest);
+	};
+	const open = (workSessionId: string) =>
+		void navigatorHandle?.methods.openWorkSession({ workSessionId });
 	const prefetch = usePrefetchWorkSession();
 
 	const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
@@ -403,139 +498,75 @@ function SessionListContent() {
 	const pullRequests = usePullRequestFacet();
 	const pullRequestFilterAvailable = pullRequests !== null;
 	const pullRequest = pullRequestFilterAvailable ? view.pullRequest : "all";
-	const resolvedView = useMemo(
-		() =>
-			focus === view.focus && pullRequest === view.pullRequest
-				? view
-				: { ...view, focus, pullRequest },
-		[focus, pullRequest, view],
+	const resolvedView =
+		focus === view.focus && pullRequest === view.pullRequest
+			? view
+			: { ...view, focus, pullRequest };
+	const show = visibleShowFields(resolvedView);
+	const { activities, shape } = useSessionListShape(
+		sessions,
+		workspaces,
+		resolvedView,
+		pullRequests,
 	);
-	const show = useMemo(() => visibleShowFields(resolvedView), [resolvedView]);
-	const activities = useSessionActivities(sessions);
 	const visits = useLastVisits();
-
-	const sections = useMemo(() => {
-		return buildSessionListSections({
-			entries: sessions.map((session, sourceIndex) => ({
-				id: session.id,
-				sessionId: session.id,
-				remoteId: session.id,
-				title: session.title,
-				sourceIndex,
-				archived: session.archived,
-			})),
-			activityBySessionId: activities,
-			workspaces,
-			view: resolvedView,
-			pinnedIds: new Set(sessions.filter((session) => session.pinned).map((session) => session.id)),
-			pullRequestBySessionId: pullRequests,
-		});
-	}, [activities, pullRequests, resolvedView, sessions, workspaces]);
-
-	const [pinnedSections, groupedSections] = useMemo(
-		() => [
-			sections.filter((section) => section.tone === "pinned"),
-			sections.filter((section) => section.tone !== "pinned"),
-		],
-		[sections],
-	);
-	const collapsibleKeys = sections.flatMap((section) => (section.label ? [section.key] : []));
-	const allCollapsed =
-		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
-	const emptyLabel = sessionListEmptyLabel(resolvedView, workspaces);
-	const newSessionInWorkspace = useCallback(
-		(workspaceId: string) => {
-			workspaceSource.setActiveWorkspaceId(workspaceId);
-			void navigatorHandle?.methods.closeWorkSession(undefined);
-		},
-		[navigatorHandle, workspaceSource],
-	);
 	const listRef = useRef<HTMLDivElement>(null);
-	const virtualEntries = useMemo(() => {
-		const label = emptyWorkspaceLabel(resolvedView);
-		return [
-			...flattenSessionListSections(pinnedSections, expanded, {
-				spaceBeforeFirst: false,
-				emptyWorkspaceLabel: label,
-			}),
-			...flattenSessionListSections(groupedSections, expanded, {
-				spaceBeforeFirst: pinnedSections.length > 0,
-				emptyWorkspaceLabel: label,
-			}),
-		];
-	}, [expanded, groupedSections, pinnedSections, resolvedView]);
-	const virtualizer = useVirtualizer({
-		count: virtualEntries.length,
-		getScrollElement: () => listRef.current,
-		estimateSize: (index) => {
-			const entry = virtualEntries[index];
-			const baseSize = entry?.kind === "header" ? SESSION_SHELF_HEADER_PX : SESSION_ROW_ESTIMATE_PX;
-			return baseSize + (entry?.spaceBefore ? SESSION_SECTION_GAP_PX : 0);
-		},
-		getItemKey: (index) => virtualEntries[index]?.key ?? index,
-		overscan: SESSION_LIST_OVERSCAN,
-		gap: 1,
-	});
-	useEffect(() => {
-		listRef.current?.scrollTo({ top: 0 });
-	}, [
+	const viewportRef = useRef<SessionListViewportHandle>(null);
+	const [selection, setSelection] = useState(EMPTY_SESSION_LIST_SELECTION);
+	const [deleting, setDeleting] = useState<readonly WorkSession[] | null>(null);
+	// Scroll back to the top whenever the list shows a different scope.
+	const listScope = JSON.stringify([
 		resolvedView.focus,
 		resolvedView.grouping,
 		resolvedView.ordering,
 		resolvedView.status,
 		resolvedView.pullRequest,
 	]);
+	const scrolledScopeRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (scrolledScopeRef.current === listScope) return;
+		scrolledScopeRef.current = listScope;
+		listRef.current?.scrollTo({ top: 0 });
+	}, [listScope]);
 
-	const visibleSessionIds = useMemo(
-		() =>
-			virtualEntries.flatMap((entry) =>
-				entry.kind === "row" && !entry.row.archived ? [entry.row.id] : [],
-			),
-		[virtualEntries],
-	);
-	useEffect(() => visibleWorkSessions.set(visibleSessionIds), [visibleSessionIds]);
-	const shortcutHints = useShortcutHints("work-session", visibleSessionIds);
+	const { sections, collapsibleKeys } = shape;
+	const {
+		entries: virtualEntries,
+		rowOrder,
+		shortcutHints,
+	} = useSessionListRows(shape, expanded, resolvedView);
+	const allCollapsed =
+		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
+	const emptyLabel = sessionListEmptyLabel(resolvedView, workspaces);
+	const newSessionInWorkspace = (workspaceId: string) => {
+		workspaceSource.setActiveWorkspaceId(workspaceId);
+		void navigatorHandle?.methods.closeWorkSession(undefined);
+	};
 
-	const sessionsById = useMemo(
-		() => new Map(sessions.map((session) => [session.id, session])),
-		[sessions],
-	);
+	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 
-	const [selection, setSelection] = useState(EMPTY_SESSION_LIST_SELECTION);
-	const [deleting, setDeleting] = useState<readonly WorkSession[] | null>(null);
-	const rowOrder = useMemo(
-		() => virtualEntries.flatMap((entry) => (entry.kind === "row" ? [entry.row.id] : [])),
-		[virtualEntries],
-	);
 	// Rows that leave the list (deleted, filtered, collapsed) drop out of the selection.
-	const selectedIds = useMemo(
-		() => new Set(rowOrder.filter((id) => selection.ids.has(id))),
-		[rowOrder, selection],
-	);
+	const selectedIds = selectedRowIds(rowOrder, selection);
 	const openId = navigator.view ? null : navigator.activeWorkSessionId;
-	const selectRow = useCallback(
-		(id: string, range: boolean) =>
-			setSelection((current) =>
-				extendSessionListSelection(current, { id, range, order: rowOrder, openId }),
-			),
-		[openId, rowOrder],
-	);
-	const clearSelection = useCallback(() => setSelection(EMPTY_SESSION_LIST_SELECTION), []);
-	const focusRow = useCallback(
-		(id: string) => {
-			const focus = () => {
-				const trigger = listRef.current?.querySelector<HTMLElement>(
-					`[data-session-id="${CSS.escape(id)}"] [data-qa-id="session-list-item-trigger"]`,
-				);
-				trigger?.focus();
-				return trigger;
-			};
-			virtualizer.scrollToIndex(virtualEntries.findIndex((entry) => entry.key === `row:${id}`));
-			// A row scrolled in from outside the window mounts on the next frame.
-			if (!focus()) requestAnimationFrame(focus);
-		},
-		[virtualEntries, virtualizer],
-	);
+	const selectRow = (id: string, range: boolean) =>
+		setSelection((current) =>
+			extendSessionListSelection(current, { id, range, order: rowOrder, openId }),
+		);
+	const clearSelection = () => setSelection(EMPTY_SESSION_LIST_SELECTION);
+	const focusRow = (id: string) => {
+		const focus = () => {
+			const trigger = listRef.current?.querySelector<HTMLElement>(
+				`[data-session-id="${CSS.escape(id)}"] [data-qa-id="session-list-item-trigger"]`,
+			);
+			trigger?.focus();
+			return trigger;
+		};
+		viewportRef.current?.scrollToIndex(
+			virtualEntries.findIndex((entry) => entry.key === `row:${id}`),
+		);
+		// A row scrolled in from outside the window mounts on the next frame.
+		if (!focus()) requestAnimationFrame(focus);
+	};
 	/** ↑/↓ move between sessions, ⇧↑/⇧↓ select a range, ⌘A/Ctrl+A selects every visible one. */
 	const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		if (event.target instanceof HTMLInputElement) return;
@@ -561,10 +592,10 @@ function SessionListContent() {
 	const onListClick = (event: MouseEvent<HTMLDivElement>) => {
 		if (!(event.target as Element).closest("[data-session-id], button, input")) clearSelection();
 	};
-	const deleteSelection = useCallback(() => {
+	const deleteSelection = () => {
 		setDeleting([...selectedIds].flatMap((id) => sessionsById.get(id) ?? []));
 		clearSelection();
-	}, [clearSelection, selectedIds, sessionsById]);
+	};
 	const hasSelection = selectedIds.size > 0;
 	useEffect(() => {
 		if (!hasSelection) return;
@@ -574,41 +605,23 @@ function SessionListContent() {
 		document.addEventListener("keydown", onKeyDown);
 		return () => document.removeEventListener("keydown", onKeyDown);
 	}, [clearSelection, hasSelection]);
-	const chrome = useMemo<SessionListChrome>(
-		() => ({
-			show,
-			// A session behind a sessions view is not the one shown.
-			activeWorkSessionId: navigator.view ? null : navigator.activeWorkSessionId,
-			workspaces,
-			sessions: sessionsHandle,
-			open,
-			intendToOpen: prefetch.intend,
-			cancelIntentToOpen: prefetch.cancel,
-			activities,
-			visits,
-			shortcutHints,
-			selectedIds,
-			selectRow,
-			clearSelection,
-			deleteSelection,
-		}),
-		[
-			activities,
-			clearSelection,
-			deleteSelection,
-			selectRow,
-			selectedIds,
-			navigator.activeWorkSessionId,
-			navigator.view,
-			open,
-			prefetch,
-			sessionsHandle,
-			shortcutHints,
-			show,
-			visits,
-			workspaces,
-		],
-	);
+	const chrome: SessionListChrome = {
+		show,
+		// A session behind a sessions view is not the one shown.
+		activeWorkSessionId: navigator.view ? null : navigator.activeWorkSessionId,
+		workspaces,
+		sessions: sessionsHandle,
+		open,
+		intendToOpen: prefetch.intend,
+		cancelIntentToOpen: prefetch.cancel,
+		activities,
+		visits,
+		shortcutHints,
+		selectedIds,
+		selectRow,
+		clearSelection,
+		deleteSelection,
+	};
 
 	return (
 		<div data-qa-id="kilo-thread-list" className="flex min-h-0 flex-1 flex-col">
@@ -670,66 +683,41 @@ function SessionListContent() {
 							/>
 							<NavigatorActions />
 						</div>
-						<div
-							ref={listRef}
-							data-qa-id="session-list-inbox"
+						<SessionListViewport
+							handleRef={viewportRef}
+							listRef={listRef}
+							entries={virtualEntries}
+							renderEntry={(entry) =>
+								entry.kind === "header" ? (
+									<SessionShelfHeader
+										tone={entry.tone}
+										label={entry.label}
+										workspace={workspaces.find((workspace) => workspace.id === entry.workspaceId)}
+										onNewSessionInWorkspace={newSessionInWorkspace}
+										expanded={entry.expanded}
+										onToggle={() => {
+											const nextExpanded = !entry.expanded;
+											if (entry.sectionKey === "archived") {
+												writeSessionListArchivedExpanded(nextExpanded);
+											}
+											setExpanded((current) => ({
+												...current,
+												[entry.sectionKey]: nextExpanded,
+											}));
+										}}
+									/>
+								) : entry.kind === "empty-workspace" ? (
+									<WorkspaceEmptyRow workspaceId={entry.workspaceId} label={entry.label} />
+								) : (
+									<SessionRowSlot
+										session={sessionsById.get(entry.row.id)}
+										indented={entry.indented}
+									/>
+								)
+							}
 							onKeyDown={onListKeyDown}
 							onClick={onListClick}
-							className="scroll-fade no-scrollbar relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
 						>
-							{virtualEntries.length > 0 ? (
-								<ul
-									role="list"
-									className="relative w-full min-w-0"
-									style={{ height: virtualizer.getTotalSize() }}
-									data-qa-id="session-list-virtual-list"
-								>
-									{virtualizer.getVirtualItems().map((virtualItem) => {
-										const entry = virtualEntries[virtualItem.index];
-										if (!entry) return null;
-										return (
-											<li
-												key={entry.key}
-												ref={virtualizer.measureElement}
-												data-index={virtualItem.index}
-												aria-posinset={virtualItem.index + 1}
-												aria-setsize={virtualEntries.length}
-												className="absolute top-0 left-0 w-full min-w-0 list-none"
-												style={{ transform: `translateY(${virtualItem.start}px)` }}
-											>
-												{entry.kind === "header" ? (
-													<SessionShelfHeader
-														tone={entry.tone}
-														label={entry.label}
-														workspace={workspaces.find(
-															(workspace) => workspace.id === entry.workspaceId,
-														)}
-														onNewSessionInWorkspace={newSessionInWorkspace}
-														expanded={entry.expanded}
-														onToggle={() => {
-															const nextExpanded = !entry.expanded;
-															if (entry.sectionKey === "archived") {
-																writeSessionListArchivedExpanded(nextExpanded);
-															}
-															setExpanded((current) => ({
-																...current,
-																[entry.sectionKey]: nextExpanded,
-															}));
-														}}
-													/>
-												) : entry.kind === "empty-workspace" ? (
-													<WorkspaceEmptyRow workspaceId={entry.workspaceId} label={entry.label} />
-												) : (
-													<SessionRowSlot
-														session={sessionsById.get(entry.row.id)}
-														indented={entry.indented}
-													/>
-												)}
-											</li>
-										);
-									})}
-								</ul>
-							) : null}
 							{emptyLabel && sections.length === 0 ? (
 								<div
 									data-qa-id="session-list-empty"
@@ -738,7 +726,7 @@ function SessionListContent() {
 									{emptyLabel}
 								</div>
 							) : null}
-						</div>
+						</SessionListViewport>
 						{selectedIds.size > 0 ? (
 							<div
 								data-qa-id="session-list-selection-hint"
@@ -863,7 +851,9 @@ function SearchSessionItem({
 			<span className="min-w-0 flex-1 truncate">{row.title}</span>
 			<span className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
 				{row.sublabel ? <span className="max-w-36 truncate">{row.sublabel}</span> : null}
-				<span className="tabular-nums">{formatRelativeTimeLabel(row.updatedAt, Date.now())}</span>
+				<span className="tabular-nums">
+					<SessionRelativeTime timestamp={row.updatedAt} />
+				</span>
 			</span>
 		</CommandItem>
 	);
@@ -893,13 +883,38 @@ function SearchWorkspaceItem({
 	);
 }
 
-/** Search (⌘K): sessions, then archived ones, then workspaces. */
-const SessionListSearch: FC<{
+/** Every session as a search row, most recently updated first. */
+function searchRows(
+	sessions: readonly WorkSession[],
+	workspaces: readonly Workspace[],
+): readonly SearchRow[] {
+	return sessions
+		.map((session): SearchRow => ({
+			id: session.id,
+			title: session.title,
+			sublabel: resolveSessionLocationLabel(activityOfSession(session), workspaces),
+			updatedAt: session.updatedAt,
+			archived: session.archived,
+		}))
+		.toSorted((left, right) => right.updatedAt - left.updatedAt);
+}
+
+interface SessionListSearchProps {
 	sessions: readonly WorkSession[];
 	workspaces: readonly Workspace[];
 	onSelectSession: (sessionId: string) => void;
 	onSelectWorkspace: (workspaceId: string) => void;
-}> = ({ sessions, workspaces, onSelectSession, onSelectWorkspace }) => {
+}
+
+/** Search (⌘K): sessions, then archived ones, then workspaces. */
+const SessionListSearch: FC<SessionListSearchProps> = ({ sessions, ...props }) => (
+	// Rows are built here, apart from the query state, so typing filters them without rebuilding.
+	<SessionListSearchDialog rows={searchRows(sessions, props.workspaces)} {...props} />
+);
+
+const SessionListSearchDialog: FC<
+	Omit<SessionListSearchProps, "sessions"> & { rows: readonly SearchRow[] }
+> = ({ rows, workspaces, onSelectSession, onSelectWorkspace }) => {
 	const open = useWorkSessionSearchOpen();
 	const [query, setQuery] = useState("");
 	const [scope, setScope] = useState<SearchScope>("all");
@@ -907,25 +922,14 @@ const SessionListSearch: FC<{
 	const showSessions = scope !== "workspaces";
 	const showWorkspaces = scope !== "chats" && !isUnavailable;
 
-	useEffect(() => {
-		if (open) return;
-		setQuery("");
-		setScope("all");
-	}, [open]);
-
-	const rows = useMemo(
-		() =>
-			sessions
-				.map((session): SearchRow => ({
-					id: session.id,
-					title: session.title,
-					sublabel: resolveSessionLocationLabel(activityOfSession(session), workspaces),
-					updatedAt: session.updatedAt,
-					archived: session.archived,
-				}))
-				.toSorted((left, right) => right.updatedAt - left.updatedAt),
-		[sessions, workspaces],
-	);
+	const [wasOpen, setWasOpen] = useState(open);
+	if (wasOpen !== open) {
+		setWasOpen(open);
+		if (!open) {
+			setQuery("");
+			setScope("all");
+		}
+	}
 
 	const normalizedQuery = query.trim().toLowerCase();
 	const matchingRows = rows.filter((row) =>
@@ -1206,6 +1210,90 @@ const WorkspaceEmptyRow: FC<{ workspaceId: string; label: string }> = ({ workspa
 	</div>
 );
 
+interface SessionListViewportHandle {
+	readonly scrollToIndex: (index: number) => void;
+}
+
+/**
+ * The scrolling inbox and its virtualized rows. It renders the scroll element
+ * itself so that element's ref is attached before the virtualizer's layout
+ * effect reads it.
+ */
+function SessionListViewport({
+	handleRef,
+	listRef,
+	entries,
+	renderEntry,
+	onKeyDown,
+	onClick,
+	children,
+}: {
+	readonly handleRef: Ref<SessionListViewportHandle>;
+	readonly listRef: RefObject<HTMLDivElement | null>;
+	readonly entries: readonly VirtualSessionListEntry[];
+	readonly renderEntry: (entry: VirtualSessionListEntry) => ReactNode;
+	readonly onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+	readonly onClick: (event: MouseEvent<HTMLDivElement>) => void;
+	readonly children: ReactNode;
+}) {
+	"use no memo"; // useVirtualizer returns a mutable instance the compiler cannot memoize around.
+	const virtualizer = useVirtualizer({
+		count: entries.length,
+		getScrollElement: () => listRef.current,
+		estimateSize: (index) => {
+			const entry = entries[index];
+			const baseSize = entry?.kind === "header" ? SESSION_SHELF_HEADER_PX : SESSION_ROW_ESTIMATE_PX;
+			return baseSize + (entry?.spaceBefore ? SESSION_SECTION_GAP_PX : 0);
+		},
+		getItemKey: (index) => entries[index]?.key ?? index,
+		overscan: SESSION_LIST_OVERSCAN,
+		gap: 1,
+	});
+	useImperativeHandle(
+		handleRef,
+		() => ({ scrollToIndex: (index) => virtualizer.scrollToIndex(index) }),
+		[virtualizer],
+	);
+
+	return (
+		<div
+			ref={listRef}
+			data-qa-id="session-list-inbox"
+			onKeyDown={onKeyDown}
+			onClick={onClick}
+			className="scroll-fade no-scrollbar relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+		>
+			{entries.length > 0 ? (
+				<ul
+					role="list"
+					className="relative w-full min-w-0"
+					style={{ height: virtualizer.getTotalSize() }}
+					data-qa-id="session-list-virtual-list"
+				>
+					{virtualizer.getVirtualItems().map((virtualItem) => {
+						const entry = entries[virtualItem.index];
+						if (!entry) return null;
+						return (
+							<li
+								key={entry.key}
+								ref={virtualizer.measureElement}
+								data-index={virtualItem.index}
+								aria-posinset={virtualItem.index + 1}
+								aria-setsize={entries.length}
+								className="absolute top-0 left-0 w-full min-w-0 list-none"
+								style={{ transform: `translateY(${virtualItem.start}px)` }}
+							>
+								{renderEntry(entry)}
+							</li>
+						);
+					})}
+				</ul>
+			) : null}
+			{children}
+		</div>
+	);
+}
+
 function SessionRowSlot({
 	session,
 	indented,
@@ -1217,13 +1305,7 @@ function SessionRowSlot({
 	return <SessionRow session={session} indented={indented} />;
 }
 
-const SessionRow = memo(function SessionRow({
-	session,
-	indented,
-}: {
-	session: WorkSession;
-	indented: boolean;
-}) {
+function SessionRow({ session, indented }: { session: WorkSession; indented: boolean }) {
 	const {
 		show,
 		activeWorkSessionId,
@@ -1246,7 +1328,7 @@ const SessionRow = memo(function SessionRow({
 	const [bulkMenu, setBulkMenu] = useState(false);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 	const { togglePinned, setArchived, askToDelete, dialogs } = useSessionActions(session);
-	const dragSource = useDragSource([{ type: WorkSessionObjectType.id, id: session.id }], {
+	const dragSource = dragSourceProps([{ type: WorkSessionObjectType.id, id: session.id }], {
 		disabled: isRenaming,
 	});
 	const isActive = session.id === activeWorkSessionId;
@@ -1463,7 +1545,7 @@ const SessionRow = memo(function SessionRow({
 			</DropdownMenuContent>
 		</ContextMenu.Root>
 	);
-});
+}
 
 /** Mounted while the right-click menu is open, so it reads the selection's current state. */
 function BulkMenuItems({ onDelete, onDone }: { onDelete: () => void; onDone: () => void }) {

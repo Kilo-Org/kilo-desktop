@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { KernelUpdater, type UpdaterState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 
@@ -77,14 +75,12 @@ const selectState = (state: UpdaterState) => state;
 export function useUpdates(): Updates | null {
 	const updater = useDomainObject(KernelUpdater);
 	const state = useDomainObjectState(KernelUpdater, selectState);
-	return useMemo(() => {
-		if (PREVIEW_UPDATES) return PREVIEW_UPDATES;
-		if (!updater) return null;
-		return {
-			state: state ?? null,
-			check: () => updater.methods.check(undefined),
-			setTrack: (track) => updater.methods.setTrack({ track }),
-			install: () => updater.methods.install(undefined),
-		};
-	}, [updater, state]);
+	if (PREVIEW_UPDATES) return PREVIEW_UPDATES;
+	if (!updater) return null;
+	return {
+		state: state ?? null,
+		check: () => updater.methods.check(undefined),
+		setTrack: (track) => updater.methods.setTrack({ track }),
+		install: () => updater.methods.install(undefined),
+	};
 }

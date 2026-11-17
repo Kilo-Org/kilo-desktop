@@ -137,7 +137,7 @@ describe("createMainPromptQueue", () => {
 			}),
 		);
 
-		// assistant-ui reads the queue straight after handing it a send.
+		// Before the prompt is prepared or main has answered.
 		expect(listener).toHaveBeenCalled();
 		expect(queue.adapter.items).toEqual([
 			expect.objectContaining({

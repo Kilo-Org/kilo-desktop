@@ -55,9 +55,8 @@ interface Handover {
  *   slash command, files) and queued in main, which sends it when the chat
  *   is idle. Send now stops the turn there.
  * - A prompt is listed the moment it is handed over, while it is prepared
- *   and until main's state lists it: assistant-ui checks right after a send
- *   whether the queue took it, and otherwise keeps showing the message in
- *   the transcript (a send with attachments) until the chat has it.
+ *   and until main's state lists it, so it never leaves the composer
+ *   without showing in the queue (its files read, its data sent to main).
  * - Edits answer at once from the mirrored state (the runtime asks
  *   synchronously); main holds the queue while one is open.
  */

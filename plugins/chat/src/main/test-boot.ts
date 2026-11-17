@@ -168,10 +168,26 @@ export class FakeCore {
 		provider.emit("deleted", { chat: gone });
 	}
 
-	/** Changes a chat's activity, as kilo.core's event stream reports it. */
+	/**
+	 * Changes a chat's activity, as kilo.core's event stream reports it: the
+	 * state first, then a turn's start or end in the same publication.
+	 */
 	setActivity(chatId: string, patch: Partial<ChatActivity>): void {
 		const current = this.chats!.state.chats[chatId]!;
-		this.upsert({ ...current, activity: { ...current.activity, ...patch } });
+		const activity = { ...current.activity, ...patch };
+		this.upsert({ ...current, activity });
+		const working = (status: ChatActivity["status"]) => status === "busy" || status === "retry";
+		if (!working(current.activity.status) && working(activity.status)) {
+			this.chats!.emit("turn-started", { chatId });
+		}
+		if (working(current.activity.status) && !working(activity.status)) {
+			this.chats!.emit("turn-ended", { chatId });
+		}
+	}
+
+	/** The server drained a chat whose turn ended, as kilo.core reports after the turn. */
+	completeWork(chatId: string): void {
+		this.chats!.emit("work-completed", { chatId });
 	}
 
 	setStatus(chatId: string, status: ChatActivity["status"]): void {

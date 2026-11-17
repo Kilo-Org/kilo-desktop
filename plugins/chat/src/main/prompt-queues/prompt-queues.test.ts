@@ -316,20 +316,35 @@ describe("queued prompts", () => {
 		expect(booted.core.prompts).toHaveLength(1);
 	});
 
-	it("follows kilo.core's turn events when a turn never shows in the status", async () => {
-		const { fake, setStatus, enqueue, sent } = await bootBusy();
+	it("doesn't take the last turn's late work-completed for the next prompt's turn", async () => {
+		const { fake, setStatus, enqueue, sent, turn } = await bootBusy();
 		await enqueue("First");
 		await enqueue("Second");
 		setStatus("ses_a", "idle");
 		await settle();
 		expect(sent()).toEqual(["First"]);
 
-		fake.chats!.emit("turn-started", { chatId: "ses_a" });
-		fake.chats!.emit("turn-ended", { chatId: "ses_a" });
+		fake.completeWork("ses_a");
+		await settle();
+		expect(sent()).toEqual(["First"]);
+
+		await turn();
+		expect(sent()).toEqual(["First", "Second"]);
+	});
+
+	it("sends only the Send now prompt when the stopped turn's work-completed comes late", async () => {
+		const { queue, fake, setStatus, enqueue, sent, items } = await bootBusy();
+		await enqueue("First");
+		const second = await enqueue("Second");
+
+		await queue.methods.steer({ chatId: "ses_a", id: second });
+		setStatus("ses_a", "idle");
+		await settle();
+		fake.completeWork("ses_a");
 		await settle();
 
-		expect(sent()).toEqual(["First", "Second"]);
-		fake.chats!.emit("work-completed", { chatId: "ses_unknown" });
+		expect(sent()).toEqual(["Second"]);
+		expect(items()).toEqual(["First"]);
 	});
 
 	it("is told off when kilo.core's chats are gone", async () => {

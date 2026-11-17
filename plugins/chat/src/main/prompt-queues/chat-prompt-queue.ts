@@ -28,7 +28,6 @@ export interface QueueHost {
  *
  * - `working` is kilo.core's status for the chat; null while unknown (not
  *   ready, or the chat isn't listed), which holds the queue like a turn does.
- *   kilo.core's turn events report a turn the status may not have shown yet.
  * - A prompt sent from idle starts a turn the status hasn't shown yet, so
  *   `awaitingStart` ignores idle reports until the chat is seen working
  *   (or `RUN_START_TIMEOUT_MS` passes): a stale idle must not send the next.

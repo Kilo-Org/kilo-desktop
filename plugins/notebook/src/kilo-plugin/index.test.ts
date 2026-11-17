@@ -2630,6 +2630,106 @@ describe("nteract Kilo plugin", () => {
 			await expect(dependencies(session, { action: "status" })).rejects.toThrow("daemon busy");
 		});
 
+		it("reports a removal that matched nothing as a no-op", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			session.removeDependencies.mockResolvedValue(0);
+
+			const { result, output } = await dependencies(session, {
+				action: "remove",
+				packages: ["polars"],
+			});
+
+			expect(output.declaration).toEqual({ recorded: false, packages: ["polars"], removed: 0 });
+			expect(output.environment_sync.status).toBe("applied");
+			expect(result.title).toBe("No notebook dependencies matched; nothing was removed");
+			expect(result.metadata).toMatchObject({ declaration_recorded: false });
+		});
+
+		it("does not invent a removal count when the binding returns nothing", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			session.removeDependencies.mockResolvedValue(undefined as never);
+
+			const { output } = await dependencies(session, { action: "remove", packages: ["polars"] });
+
+			expect(output.declaration).toEqual({ recorded: true, packages: ["polars"] });
+		});
+
+		it("does not edit dependencies when cancelled while approval is pending", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			const aborted = new AbortController();
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+			const context = {
+				...toolContext({ abort: aborted.signal }),
+				ask: vi.fn(async () => {
+					aborted.abort();
+				}) as never,
+			};
+
+			for (const action of ["add", "remove"]) {
+				await expect(
+					hooks.tool.notebooks_dependencies.execute(
+						{ notebook_id: NOTEBOOK_ID, action, packages: ["requests-oauthlib"] } as never,
+						context,
+					),
+				).rejects.toThrow(/cancelled; nothing was changed/);
+			}
+			await expect(
+				hooks.tool.notebooks_run_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, code: "1", dependencies: ["requests-oauthlib"] },
+					context,
+				),
+			).rejects.toThrow(/cancelled/);
+			expect(session.addDependencies).not.toHaveBeenCalled();
+			expect(session.removeDependencies).not.toHaveBeenCalled();
+			expect(session.syncEnvironmentResult).not.toHaveBeenCalled();
+			expect(session.runCell).not.toHaveBeenCalled();
+		});
+
+		it("says the declaration stays when cancelled after it was recorded", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			const aborted = new AbortController();
+			session.addDependencies.mockImplementation(async () => {
+				aborted.abort();
+				return undefined;
+			});
+
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+			await expect(
+				hooks.tool.notebooks_dependencies.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["pandas"] },
+					toolContext({ abort: aborted.signal }),
+				),
+			).rejects.toThrow(
+				/after pandas was recorded.*declaration stays.*environment sync did not run/s,
+			);
+			expect(session.syncEnvironmentResult).not.toHaveBeenCalled();
+		});
+
+		it("does not run code when run_cell is cancelled during the sync", async () => {
+			const aborted = new AbortController();
+			const session = dependencySession({
+				typed: async () => {
+					aborted.abort();
+					return APPLIED_EMPTY;
+				},
+			});
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+
+			await expect(
+				hooks.tool.notebooks_run_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, code: "import pandas", dependencies: ["pandas"] },
+					toolContext({ abort: aborted.signal }),
+				),
+			).rejects.toThrow(/after pandas was recorded.*the code did not run/s);
+			expect(session.runCell).not.toHaveBeenCalled();
+		});
+
 		it("reports a sync-only action without a declaration", async () => {
 			const session = dependencySession({ legacy: async () => undefined });
 
@@ -2736,6 +2836,45 @@ describe("nteract Kilo plugin", () => {
 				expect(output.restart).toEqual({ confirmed });
 			},
 		);
+
+		it("keeps a completed legacy restart when the status read fails, without restarting again", async () => {
+			const restartKernel = vi.fn(async () => true);
+			const { result, output } = await restart({
+				restartKernel,
+				getRuntimeStatus: vi.fn(async () => {
+					throw new Error("Not connected");
+				}),
+			});
+
+			expect(restartKernel).toHaveBeenCalledOnce();
+			expect(result.title).toBe("Notebook kernel restart not confirmed");
+			expect(output).toMatchObject({
+				restart: { confirmed: false },
+				status_error: "Not connected",
+				summary: expect.stringMatching(/restart request completed.*before retrying/s),
+			});
+		});
+
+		it("still throws when a plain status read fails", async () => {
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({
+					openNotebook: vi.fn(async () => ({
+						notebookId: NOTEBOOK_ID,
+						close: vi.fn(),
+						getRuntimeStatus: vi.fn(async () => {
+							throw new Error("Not connected");
+						}),
+					})),
+				}),
+			})();
+
+			await expect(
+				hooks.tool.notebooks_kernel.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "status" },
+					toolContext(),
+				),
+			).rejects.toThrow("Not connected");
+		});
 
 		it("keeps a legacy restartKernel false instead of discarding it", async () => {
 			const { result, output } = await restart({

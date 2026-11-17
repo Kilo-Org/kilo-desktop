@@ -404,6 +404,19 @@ function assertNotCancelled(context: Pick<ToolContext, "abort">): void {
 		throw new Error("The notebook call was cancelled; nothing was changed.");
 }
 
+/** Cancellation after a declaration landed: say so, since the edit is not undone. */
+function assertNotCancelledAfterRecording(
+	context: Pick<ToolContext, "abort">,
+	packages: readonly string[],
+	nextStep: string,
+): void {
+	if (!context.abort.aborted) return;
+	throw new Error(
+		`The notebook call was cancelled after ${packages.join(", ")} was recorded in the notebook's dependencies; ` +
+			`the declaration stays, and ${nextStep} did not run. Check notebooks_dependencies action status before retrying.`,
+	);
+}
+
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -499,7 +512,9 @@ function dependencyTitle(
 	recorded: boolean,
 	sync: SyncOutcome | undefined,
 	manager: ManagerReport | undefined,
+	nothingRemoved = false,
 ): string {
+	if (nothingRemoved) return "No notebook dependencies matched; nothing was removed";
 	if (!sync) return "Notebook dependencies";
 	const outcome =
 		manager?.matches === false
@@ -723,7 +738,13 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						kind: "add",
 						packages: args.dependencies,
 					});
+					assertNotCancelled(context);
 					await session.addDependencies(args.dependencies);
+					assertNotCancelledAfterRecording(
+						context,
+						args.dependencies,
+						"the environment sync and the code",
+					);
 					const sync = await syncOutcome(session);
 					if (sync.status !== "applied" && sync.status !== "completed_unconfirmed") {
 						throw new Error(
@@ -733,6 +754,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						);
 					}
 					dependencySync = sync;
+					assertNotCancelledAfterRecording(context, args.dependencies, "the code");
 				}
 				const result = await withTrustGuidance(session, () =>
 					session.runCell(args.code, {
@@ -1079,8 +1101,10 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 							kind: "add",
 							packages,
 						});
+						assertNotCancelled(context);
 						await session.addDependencies(packages, editOptions);
 						declaration = { recorded: true, packages };
+						assertNotCancelledAfterRecording(context, packages, "the environment sync");
 						sync = await syncOutcome(session);
 						break;
 					case "remove": {
@@ -1088,12 +1112,19 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 							kind: "remove",
 							packages,
 						});
+						assertNotCancelled(context);
+						// The native binding returns how many were removed; 0 means the notebook did not change.
 						const removed: unknown = await session.removeDependencies(packages, editOptions);
 						declaration = {
-							recorded: true,
+							recorded: removed !== 0,
 							packages,
 							...(typeof removed === "number" ? { removed } : {}),
 						};
+						if (removed !== 0) {
+							assertNotCancelledAfterRecording(context, packages, "the environment sync");
+						} else {
+							assertNotCancelled(context);
+						}
 						sync = await syncOutcome(session);
 						break;
 					}
@@ -1131,7 +1162,12 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				const manager = declaration ? managerReport(args.package_manager, runtime) : undefined;
 				const typosquatWarnings = status ? checkTyposquats(declaredDependencySpecs(status)) : [];
 				return {
-					title: dependencyTitle(declaration !== undefined, sync, manager),
+					title: dependencyTitle(
+						declaration?.recorded === true,
+						sync,
+						manager,
+						declaration?.removed === 0,
+					),
 					output: JSON.stringify({
 						notebook_id: args.notebook_id,
 						action: args.action,
@@ -1146,7 +1182,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					metadata: {
 						notebook_id: args.notebook_id,
 						action: args.action,
-						...(declaration ? { declaration_recorded: true } : {}),
+						...(declaration ? { declaration_recorded: declaration.recorded === true } : {}),
 						...(sync ? { sync: sync.status } : {}),
 						...(manager && manager.matches !== true
 							? { package_manager_active: manager.matches === false ? false : "unknown" }
@@ -1235,9 +1271,28 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					assertNotCancelled(context);
 					restart = await restartKernel(session);
 				}
-				const status = restart?.status ?? (await session.getRuntimeStatus());
-				const report = kernelStatusReport(status);
-				const confirmed = restart ? restart.confirmed && status.lifecycle === "Running" : undefined;
+				let status: RuntimeStatus | undefined = restart?.status;
+				let statusError: string | undefined;
+				if (!status) {
+					try {
+						status = await session.getRuntimeStatus();
+					} catch (error) {
+						// The restart request already completed; never let a failed read invite a second one.
+						if (!restart) throw error;
+						statusError = errorMessage(error);
+					}
+				}
+				const report = status
+					? kernelStatusReport(status)
+					: {
+							status_error: statusError,
+							summary:
+								"The restart request completed but the kernel status could not be read. " +
+								"Inspect with notebooks_kernel action status or notebooks_diagnose before retrying; another restart clears kernel state again.",
+						};
+				const confirmed = restart
+					? restart.confirmed && status?.lifecycle === "Running"
+					: undefined;
 				return {
 					title:
 						confirmed === undefined

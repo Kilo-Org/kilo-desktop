@@ -4,6 +4,14 @@ description: >
   GitHub Packages auth for the @anaconda scope. Callers must set
   NODE_AUTH_TOKEN (typically secrets.ANACONDA_PACKAGES_TOKEN).
 
+inputs:
+  pnpm-cache:
+    description: >
+      Restore the pnpm store from the Actions cache. Release builds pass
+      "false" so they install every package fresh from the registry.
+    required: false
+    default: "true"
+
 runs:
   using: composite
   steps:
@@ -13,6 +21,6 @@ runs:
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .nvmrc
-        cache: pnpm
+        cache: ${{ inputs.pnpm-cache == 'true' && 'pnpm' || '' }}
         registry-url: https://npm.pkg.github.com
         scope: "@anaconda"

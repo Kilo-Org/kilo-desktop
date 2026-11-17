@@ -18,6 +18,9 @@ export interface LostForkSearch {
 	readonly hold: ForkHold;
 }
 
+/** Successful reads that must all miss a fork before it is taken as never made. */
+const EMPTY_READS = 2;
+
 export interface LostForksDeps {
 	readonly holds: ForkHolds;
 	readonly unfinished: UnfinishedForks;
@@ -34,15 +37,20 @@ export interface LostForksDeps {
  * hold keeps it out of the published chats; releasing that hold would
  * publish a fork without the source's permission rules.
  *
- * A search settles on a read of the server's chats, or on the chats already
- * seen when they show the fork. Until one does, the search stays waiting
- * and keeps its hold, which also hides other new root chats in that work
- * session (the price of not knowing the fork's id); the caller retries the
- * read and settles waiting searches after each hydrate. Settling picks at
- * most one chat: the earliest new root chat in the source's directory with
- * its stamp and forked title whose id no fork call learned
- * (`ForkHolds.named`) and that isn't already unfinished. It is recorded as unfinished and discarded
- * like any fork left without rules. The server names forks only by their
+ * A search settles when a read of the server's chats (or the chats already
+ * seen) shows the fork, or when two successful reads in a row
+ * don't: the server may commit a fork after its request failed, so one
+ * empty read isn't proof it was never made. Until then the search stays
+ * waiting and keeps its hold, which also hides other new root chats in that
+ * work session (the price of not knowing the fork's id); the caller retries
+ * the read, backing off, and settles waiting searches after each hydrate. A
+ * fork the server commits only after the last read is still published
+ * without its rules.
+ *
+ * Settling picks at most one chat: the earliest new root chat in the
+ * source's directory with its stamp and forked title whose id no fork call
+ * learned (`ForkHolds.named`) and that isn't already unfinished. It is
+ * recorded as unfinished and discarded like any fork left without rules. The server names forks only by their
  * source, so another client's concurrent fork of the same chat can still be
  * mistaken for this one when this one was never made; the earliest match is
  * the likeliest to be this request's.
@@ -52,7 +60,8 @@ export interface LostForksDeps {
  */
 export class LostForks {
 	readonly #deps: LostForksDeps;
-	readonly #waiting = new Set<LostForkSearch>();
+	/** Waiting searches, with how many successful reads have missed each fork. */
+	readonly #waiting = new Map<LostForkSearch, number>();
 
 	constructor(deps: LostForksDeps) {
 		this.#deps = deps;
@@ -76,33 +85,40 @@ export class LostForks {
 			chats = await client.listChats();
 		} catch (error) {
 			this.#deps.warn(`Could not look for a fork whose request failed: ${errorText(error)}`);
-			chats = seen();
-			if (!this.#find(chats, search)) {
-				this.#waiting.add(search);
+			if (!this.#find(seen(), search)) {
+				this.#waiting.set(search, 0);
 				return true;
 			}
+			chats = seen();
 		}
-		await this.#settleAll(client, [search], chats);
-		return false;
+		this.#waiting.set(search, 0);
+		await this.#settleWaiting(client, [search], chats);
+		return this.#waiting.has(search);
 	}
 
-	/** Settles every waiting search against a complete read of the server's chats. */
+	/** Checks every waiting search against a complete read of the server's chats. */
 	settle(client: KiloChatClient, chats: Iterable<ChatInfo>): Promise<void> {
-		const searches = [...this.#waiting];
-		this.#waiting.clear();
-		return this.#settleAll(client, searches, chats);
+		return this.#settleWaiting(client, [...this.#waiting.keys()], chats);
 	}
 
-	async #settleAll(
+	async #settleWaiting(
 		client: KiloChatClient,
 		searches: readonly LostForkSearch[],
 		chats: Iterable<ChatInfo>,
 	): Promise<void> {
 		const listed = [...chats];
 		const discards: Promise<void>[] = [];
+		let released = false;
 		// Claims are synchronous, so each search sees the forks the ones before it claimed.
 		for (const search of searches) {
+			const misses = this.#waiting.get(search);
+			if (misses === undefined) continue;
 			const fork = this.#find(listed, search);
+			if (!fork && misses + 1 < EMPTY_READS) {
+				this.#waiting.set(search, misses + 1);
+				continue;
+			}
+			this.#waiting.delete(search);
 			if (fork) {
 				try {
 					this.#deps.unfinished.add({ id: fork.id, directory: search.directory });
@@ -113,8 +129,9 @@ export class LostForks {
 				discards.push(this.#deps.discard(client, search.directory, fork.id));
 			}
 			search.hold.release();
+			released = true;
 		}
-		if (searches.length > 0) this.#deps.republish();
+		if (released) this.#deps.republish();
 		await Promise.all(discards);
 	}
 

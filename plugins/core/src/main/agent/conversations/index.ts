@@ -131,10 +131,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  *   one whose rules fail, or that can't be persisted, is deleted, and one
  *   whose delete fails too (or that a crash left behind) is never published
  *   and is deleted again after each read of the chat list.
- *   A fork request that fails after the server made the fork keeps its
- *   hold until a read of the chats finds the fork by its title and stamp
- *   and discards it too (`LostForks`). A crash before the server answers,
- *   when the fork's id isn't known yet, is not covered.
+ *   A fork request that fails keeps its hold until a read of the chats
+ *   finds the fork by its title and stamp, which is then discarded too, or
+ *   until two reads in a row don't (`LostForks`). A fork the server commits
+ *   only after that, or a crash before the server answers, is not covered.
  * - Successful live root turns share one drain barrier until its matching
  *   stream acknowledgment: server reservations include descendants and queued
  *   report delivery. Dropped streams preserve intent but replace the token

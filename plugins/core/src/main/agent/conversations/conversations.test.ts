@@ -1561,6 +1561,48 @@ describe("forking chats", () => {
 		await eventually(() => expect(state().chats[retried.id]).toBeDefined());
 	});
 
+	it("still finds a lost fork the server only lists after the first read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.failing.add("fork");
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		// The server commits the fork after the request failed and the first read missed it.
+		const late = { ...stamped("ses_late"), title: "Chat ses_a (fork #1)" };
+		chats.chats.push(late);
+		chats.push({ type: "session.created", properties: { info: rawChat(late) } });
+
+		await eventually(() =>
+			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+				{ call: "delete", directory: "/projects/app", args: ["ses_late"] },
+			]),
+		);
+		expect(state().chats.ses_late).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_late"))).toEqual([]);
+	});
+
+	it("stops hiding new chats once a second read still shows no lost fork", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.failing.add("fork");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		const other = stamped("ses_other");
+		chats.chats.push(other);
+		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
+
+		await eventually(() => expect(state().chats.ses_other).toBeDefined());
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
+	});
+
 	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];

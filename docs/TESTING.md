@@ -34,7 +34,9 @@ queue and nightly run the full suite on their platform matrices; every E2E test 
 OS-matched packaged application.
 
 `e2e-plan` (`e2e/scripts/plan-pr-e2e.ts`) picks the specs and the number of Windows shards before
-any runner packages the app: about 75 s of recorded test time per shard, up to six. PR shards upload
+any runner packages the app: about 75 s of recorded test time per shard, up to six. `e2e-package`
+builds the packaged app once, alongside the plan, and every shard downloads it instead of packaging
+its own (~55 s each). PR shards upload
 only `junit.xml` and `results.json` on success (enough for `record-test-durations.mjs`) and the full
 report on failure.
 
@@ -51,7 +53,7 @@ median. A slow spec file can opt into `test.describe.configure({ mode:
 "parallel" })` when its tests are independent, so its tests spread across
 workers.
 
-Dependency caches (the pnpm store, the notebook runtime and the Kilo CLI) are saved on `main` by
+Dependency caches (pnpm itself, the pnpm store, the notebook runtime and the Kilo CLI) are saved on `main` by
 `.github/workflows/warm-caches.yml` after every merge, because a cache saved on a PR branch is
 invisible to other PRs. The pnpm store and Kilo CLI caches fall back to the closest older entry, so a
 lockfile change downloads only what changed.

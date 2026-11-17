@@ -30,6 +30,8 @@ export class FakeKiloChats implements KiloChatClient {
 	failWrites = false;
 	/** Calls (as recorded in `writes`, or `getPermission`) that fail with "offline". */
 	readonly failing = new Set<string>();
+	/** The server makes the fork, but its reply never arrives. */
+	loseForkReply = false;
 	/** Each chat's stored permission rules. */
 	permissionsById: Record<string, readonly PermissionRule[]> = {};
 	readonly writes: Write[] = [];
@@ -123,6 +125,7 @@ export class FakeKiloChats implements KiloChatClient {
 		this.chats.push(info);
 		this.push({ type: "session.created", properties: { info: rawChat(info) } });
 		await this.#gates.get("fork");
+		if (this.loseForkReply) throw new Error("connection reset");
 		return info;
 	}
 	async recordForkHandoff(directory: string, id: string) {

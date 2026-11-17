@@ -1392,6 +1392,74 @@ describe("forking chats", () => {
 		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
 	});
 
+	it("deletes a fork the server made though its reply was lost, never listing it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.loseForkReply = true;
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({
+			code: "UNAVAILABLE",
+			message: "Could not fork the chat: connection reset",
+		});
+
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
+			["fork", ["ses_a", "msg_2"]],
+			["delete", ["ses_fork_1"]],
+		]);
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("keeps hiding a fork whose reply was lost when deleting it fails, until a later read deletes it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.loseForkReply = true;
+		chats.failing.add("delete");
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		await reread(chats);
+		expect(state().chats.ses_fork_1).toBeUndefined();
+
+		chats.failing.delete("delete");
+		await reread(chats);
+
+		await eventually(() => expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]));
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("leaves other chats made in the work session meanwhile alone when a fork's reply was lost", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.loseForkReply = true;
+		const release = chats.hold("fork");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+
+		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await eventually(() => expect(chats.writes.map(({ call }) => call)).toEqual(["fork"]));
+		const other = stamped("ses_other");
+		chats.chats.push(other);
+		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
+		release();
+		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
+
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+		]);
+		await eventually(() => expect(state().chats.ses_other).toBeDefined());
+	});
+
 	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];

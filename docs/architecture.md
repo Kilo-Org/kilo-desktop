@@ -21,7 +21,7 @@ Electron shell is hardened. Every feature is a plugin on a product-agnostic kern
 | Validation      | Zod 4                                   | Domain-object and command contracts are Zod schemas in each plugin's `./contracts`    |
 | Package manager | pnpm, hoisted linker                    | Workspace catalog pins shared versions; Forge receives a frozen production deployment |
 | Testing         | Vitest 5 + Testing Library + Playwright | Unit tests, real-browser React tests, and packaged Electron smoke tests               |
-| Git hooks       | Husky + lint-staged                     | Linting and formatting run before commit                                              |
+| Git hooks       | Husky + lint-staged                     | Lint + format staged files on commit; lint, format and tsrs typecheck on push         |
 
 ## Repository layout
 

@@ -4,7 +4,7 @@ export function parseBadConfigValueErrorInfo(
 	stderr: string,
 ): { key: string; value: string } | null {
 	const errorEntry = Object.entries(GitErrorRegexes).find(
-		([_, v]) => v === GitErrorCode.BadConfigValue,
+		([, v]) => v === GitErrorCode.BadConfigValue,
 	);
 
 	if (errorEntry === undefined) {

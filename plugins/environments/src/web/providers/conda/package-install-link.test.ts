@@ -107,14 +107,12 @@ describe("readPackageInstallLink", () => {
 		}
 	});
 
-	it("rejects a channel with characters conda or the bridge could read differently", () => {
+	it("rejects a channel with invisible or non-ASCII characters", () => {
 		for (const bad of [
-			// The bridge strips Python whitespace, which includes these but JavaScript's trim does not.
 			"\u0085file:///tmp/channel",
 			"\u001cfile:///tmp/channel",
 			"\u200bconda-forge",
 			"conda-forge\u00a0--override-channels",
-			"s3://bucket/channel",
 		]) {
 			expect(install({ package: "numpy", channel: bad })).toEqual({
 				kind: "invalid",
@@ -123,10 +121,14 @@ describe("readPackageInstallLink", () => {
 		}
 	});
 
-	it("accepts an http(s) channel URL", () => {
+	it("accepts only http(s) channel URLs", () => {
 		expect(
 			install({ package: "numpy", channel: "https://repo.anaconda.cloud/repo/main-x" }),
 		).toMatchObject({ kind: "install", channel: "https://repo.anaconda.cloud/repo/main-x" });
+		expect(install({ package: "numpy", channel: "s3://bucket/channel" })).toEqual({
+			kind: "invalid",
+			reason: "invalid-channel",
+		});
 	});
 
 	it("rejects a package or version that conda would read as a package file", () => {

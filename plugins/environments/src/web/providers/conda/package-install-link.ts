@@ -52,9 +52,8 @@ const PACKAGE_FILE = /\.(?:conda|tar\.bz2)$/i;
 const NAMED_CHANNEL = /^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
 
 /**
- * Printable ASCII. The bridge strips Python whitespace (`\x1c`–`\x1f`, `\x85`),
- * which JavaScript's `trim` keeps, so anything else could reach conda as a
- * different channel than the one checked here.
+ * Printable ASCII, so a URL channel the dialog shows reads the same as the
+ * one conda gets: no invisible or look-alike characters.
  */
 const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
 

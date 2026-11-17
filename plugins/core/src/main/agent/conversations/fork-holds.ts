@@ -26,11 +26,17 @@ interface Hold {
  * what `publishChats` reads, which drops their descendants (the fork's
  * re-forked subagent chats) with them.
  *
- * Holds live only as long as the `fork` call; what outlives it (a fork whose
+ * Once any hold learns a fork's id, unnamed holds stop holding it: an
+ * unnamed hold kept for a lost fork (`LostForks`) must not hide a later fork
+ * of the same work session that succeeded.
+ *
+ * Holds live only as long as the `fork` call (or a lost fork's search); what outlives it (a fork whose
  * rules never landed) is `UnfinishedForks`', which skips forks still held.
  */
 export class ForkHolds {
 	readonly #holds = new Set<Hold>();
+	/** Forks whose id a hold learned: their own hold (or `UnfinishedForks`) decides, not an unnamed one. */
+	readonly #named = new Set<string>();
 
 	begin(workSessionId: string | null, known: Iterable<string>): ForkHold {
 		const hold: Hold = { workSessionId, known: new Set(known) };
@@ -38,11 +44,17 @@ export class ForkHolds {
 		return {
 			narrow: (id) => {
 				hold.id = id;
+				this.#named.add(id);
 			},
 			release: () => {
 				this.#holds.delete(hold);
 			},
 		};
+	}
+
+	/** Some fork call learned this id: it is that call's fork, never another request's. */
+	named(id: string): boolean {
+		return this.#named.has(id);
 	}
 
 	/** A fork in progress has this id: its own `fork` call decides what becomes of it. */
@@ -71,6 +83,7 @@ export class ForkHolds {
 		const info = record.info;
 		return (
 			!hold.known.has(id) &&
+			!this.#named.has(id) &&
 			info !== undefined &&
 			info.parentId === null &&
 			(readWorkSessionIdFromMetadata(info.metadata) ?? null) === hold.workSessionId

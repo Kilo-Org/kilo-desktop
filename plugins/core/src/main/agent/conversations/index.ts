@@ -21,7 +21,6 @@ import {
 	type PromptChatInput,
 	type ResolvedChatConfig,
 	type ServerConnection,
-	readWorkSessionIdFromMetadata,
 } from "../../../contracts";
 import type { SignedInState } from "../signed-in";
 import type { DeclinedSignIns } from "../tool-gateway/declined-sign-ins";
@@ -41,6 +40,7 @@ import {
 import { onlyCallers, PROMPT_ANSWERING_PLUGINS, PROMPTING_PLUGINS } from "../callers";
 import { ForkHolds } from "./fork-holds";
 import { forkedTitle } from "./fork-title";
+import { LostForks } from "./lost-forks";
 import { UnfinishedForks, type UnfinishedFork } from "./unfinished-forks";
 import type { KiloChatClient } from "./kilo-chat-client";
 import { UserMessageTracker } from "./user-messages";
@@ -131,10 +131,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  *   one whose rules fail, or that can't be persisted, is deleted, and one
  *   whose delete fails too (or that a crash left behind) is never published
  *   and is deleted again after each read of the chat list.
- *   A fork request that fails after the server made the fork is found by
- *   its title and stamp and discarded too (`discardLostFork`). A crash
- *   before the server answers, when the fork's id isn't known yet, is not
- *   covered.
+ *   A fork request that fails after the server made the fork keeps its
+ *   hold until a read of the chats finds the fork by its title and stamp
+ *   and discards it too (`LostForks`). A crash before the server answers,
+ *   when the fork's id isn't known yet, is not covered.
  * - Successful live root turns share one drain barrier until its matching
  *   stream acknowledgment: server reservations include descendants and queued
  *   report delivery. Dropped streams preserve intent but replace the token
@@ -149,6 +149,13 @@ export function provideConversations(
 	const store = new ConversationStore(now);
 	const forkHolds = new ForkHolds();
 	const unfinishedForks = new UnfinishedForks(options.storage);
+	const lostForks = new LostForks({
+		holds: forkHolds,
+		unfinished: unfinishedForks,
+		discard: (client, directory, id) => discardFork(client, directory, id),
+		republish: () => publish({ activity: ready }),
+		warn: (message) => sdk.logger.warn(message),
+	});
 	let ready = false;
 	let current: { key: string; client: KiloChatClient; connection: ServerConnection } | undefined;
 	const drains = new Map<string, { token: string; controller: AbortController } | null>();
@@ -257,16 +264,20 @@ export function provideConversations(
 				const sourceTitle = store.chats[id]?.info?.title ?? source.title;
 				const hold = forkHolds.begin(source.workSessionId, known);
 				let info;
+				let stillLooking = false;
 				try {
 					info = await serverCall("fork the chat", () =>
 						client.forkChat(directory, id, messageId),
 					).catch(async (error: unknown) => {
-						await discardLostFork(client, {
+						const search = {
 							directory,
 							workSessionId: source.workSessionId,
 							title: forkedTitle(sourceTitle),
 							known,
-						});
+							hold,
+						};
+						stillLooking = await lostForks.look(client, search, seenChats);
+						if (stillLooking) retryLostForks();
 						throw error;
 					});
 					const forkId = info.id;
@@ -286,7 +297,8 @@ export function provideConversations(
 					});
 					store.addInfos([info]);
 				} finally {
-					hold.release();
+					// A lost fork still being looked for stays held until `lostForks` settles it.
+					if (!stillLooking) hold.release();
 					publish({ activity: ready });
 				}
 				const chat: ChatSummary | undefined = provider.state.chats[info.id];
@@ -425,48 +437,36 @@ export function provideConversations(
 		store.apply({ type: "session.deleted", properties: { info: { id } } });
 	}
 
+	/** Every chat seen so far, as the server described it. */
+	function seenChats() {
+		return Object.values(store.chats).flatMap((record) => (record.info ? [record.info] : []));
+	}
+
+	let lostForkRetry: Promise<void> | undefined;
+
 	/**
-	 * A fork request can fail after the server made the fork (its reply was
-	 * lost), leaving a fork only its unnamed hold hides. Finds it in the
-	 * server's list by what the server gives every fork: a root chat new since
-	 * the fork began, in the source's directory, with its stamp and forked
-	 * title. Records and discards it while still held, so one that can't be
-	 * deleted stays hidden. Left unfound when the list can't be read, or when
-	 * the server makes the fork only after this read.
+	 * Reads the chat list again, backing off, until the waiting lost-fork
+	 * searches settle. Stops when the stream drops: the next hydrate settles
+	 * them instead.
 	 */
-	async function discardLostFork(
-		client: KiloChatClient,
-		fork: {
-			readonly directory: string;
-			readonly workSessionId: string | null;
-			readonly title: string;
-			readonly known: ReadonlySet<string>;
-		},
-	) {
-		let listed;
-		try {
-			listed = await client.listChats();
-		} catch (error) {
-			sdk.logger.warn(`Could not look for a fork whose request failed: ${errorText(error)}`);
-			return;
-		}
-		const lost = listed.filter(
-			(info) =>
-				!fork.known.has(info.id) &&
-				info.parentId === null &&
-				info.directory === fork.directory &&
-				info.title === fork.title &&
-				(readWorkSessionIdFromMetadata(info.metadata) ?? null) === fork.workSessionId,
-		);
-		for (const { id } of lost) {
-			try {
-				unfinishedForks.add({ id, directory: fork.directory });
-			} catch (error) {
-				// Still remembered (so hidden) for this run.
-				sdk.logger.warn(`Could not record the unfinished fork ${id}: ${errorText(error)}`);
+	function retryLostForks() {
+		lostForkRetry ??= (async () => {
+			let delay = firstDelay;
+			while (lostForks.waiting) {
+				const stream = activeStream;
+				if (!stream) return;
+				await sleep(delay, stream.signal);
+				if (stream.signal.aborted) return;
+				try {
+					await lostForks.settle(stream.client, await stream.client.listChats());
+				} catch (error) {
+					sdk.logger.warn(`Could not look for a fork whose request failed: ${errorText(error)}`);
+				}
+				delay = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
 			}
-			await discardFork(client, fork.directory, id);
-		}
+		})().finally(() => {
+			lostForkRetry = undefined;
+		});
 	}
 
 	/** The chats anyone may see: no fork held mid-fork or left unfinished. */
@@ -640,6 +640,9 @@ export function provideConversations(
 				delay = firstDelay;
 				if (activeStream === stream) {
 					stream.hydrated = true;
+					void lostForks.settle(client, seenChats()).catch((error: unknown) => {
+						sdk.logger.warn(`Could not settle lost forks: ${errorText(error)}`);
+					});
 					void retryUnfinishedForks(client, attempt.signal).catch((error: unknown) => {
 						sdk.logger.warn(`Could not clean up unfinished forks: ${errorText(error)}`);
 					});

@@ -1460,6 +1460,107 @@ describe("forking chats", () => {
 		await eventually(() => expect(state().chats.ses_other).toBeDefined());
 	});
 
+	it("finds a lost-reply fork among the chats it has seen when the list can't be read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.loseForkReply = true;
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+		chats.failList = true;
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+		]);
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("keeps a lost-reply fork it hasn't seen hidden until the list can be read, then deletes it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.loseForkReply = true;
+		chats.quietForks = true;
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+		chats.failList = true;
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		const created = chats.chats.find(({ id }) => id === "ses_fork_1")!;
+		chats.push({ type: "session.created", properties: { info: rawChat(created) } });
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
+
+		chats.failList = false;
+
+		await eventually(() =>
+			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+			]),
+		);
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("deletes only the earliest chat that looks like a lost-reply fork", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.loseForkReply = true;
+		const release = chats.hold("fork");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+
+		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await eventually(() => expect(chats.writes.map(({ call }) => call)).toEqual(["fork"]));
+		// Another client forks the same chat meanwhile: same title and stamp, made later.
+		const elsewhere = {
+			...stamped("ses_elsewhere"),
+			title: "Chat ses_a (fork #1)",
+			createdAt: 700,
+		};
+		chats.chats.push(elsewhere);
+		chats.push({ type: "session.created", properties: { info: rawChat(elsewhere) } });
+		release();
+		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
+
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+		]);
+		await eventually(() => expect(state().chats.ses_elsewhere).toBeDefined());
+	});
+
+	it("leaves a fork made after a lost reply alone while still looking for the lost one", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.loseForkReply = true;
+		chats.quietForks = true;
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+		chats.failList = true;
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		chats.loseForkReply = false;
+		chats.quietForks = false;
+
+		const retried = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		chats.failList = false;
+
+		await eventually(() =>
+			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+			]),
+		);
+		await eventually(() => expect(state().chats[retried.id]).toBeDefined());
+	});
+
 	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];

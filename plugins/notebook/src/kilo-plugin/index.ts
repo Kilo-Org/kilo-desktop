@@ -15,6 +15,21 @@ import {
 	requireDependencyApproval,
 	withTrustGuidance,
 } from "./dependency-approval";
+import { syncOutcome, type SyncOutcome } from "./dependency-sync";
+import {
+	CONDA_ENVIRONMENT_LIST_TOOL,
+	ENVIRONMENT_ACTIONS,
+	ENVIRONMENT_TARGETS,
+	type EnvironmentArgs,
+	type EnvironmentSelection,
+	inventoryReport,
+	missingCapability,
+	parseEnvironmentArgs,
+	projectKernel,
+	selectionReport,
+	type SelectionSession,
+	unsupportedReport,
+} from "./environment-selection";
 import { EXECUTE_PERMISSION, requireExecutionApproval } from "./execution-approval";
 
 type ToolAttachment = {
@@ -371,12 +386,78 @@ function formatKernelError(error: KernelError): string {
 }
 
 // Auxiliary context for other tools: a status read failure must not mask their result.
-async function readKernelError(session: Session): Promise<KernelError | undefined> {
+async function readRuntime(session: Session): Promise<RuntimeStatus | null> {
 	try {
-		return kernelErrorOf(await session.getRuntimeStatus());
+		return await session.getRuntimeStatus();
 	} catch {
-		return undefined;
+		return null;
 	}
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Selection writes are fenced by revision. A rejection (stale revision, an
+ * unknown prefix, trust) surfaces once; re-reading and resubmitting here could
+ * overwrite a choice someone else just made.
+ */
+async function withSelectionGuidance<T>(action: "select" | "apply", run: () => Promise<T>) {
+	try {
+		return await run();
+	} catch (error) {
+		throw new Error(
+			`Environment ${action} failed: ${errorMessage(error)} Nothing was retried. ` +
+				"Call notebooks_environment action status for the current selection and revision before trying again.",
+			{ cause: error },
+		);
+	}
+}
+
+const RUNTIME_IDENTITY_KEYS = [
+	"envSource",
+	"environmentId",
+	"environmentName",
+	"pythonVersion",
+] as const;
+
+/**
+ * Kernel status for a tool result. Identity fields describe the kernel only
+ * once it is Running; older SDKs keep the previous kernel's values during a
+ * launch, so they move under `unconfirmed`.
+ */
+function kernelStatusReport(status: RuntimeStatus) {
+	const record = status as unknown as Record<string, unknown>;
+	const reported = RUNTIME_IDENTITY_KEYS.filter((key) => Boolean(record[key]));
+	if (status.lifecycle === "Running" || reported.length === 0) return { status };
+	const rest = Object.fromEntries(
+		Object.entries(record).filter(
+			([key]) => !(RUNTIME_IDENTITY_KEYS as readonly string[]).includes(key),
+		),
+	);
+	return {
+		status: rest,
+		unconfirmed: Object.fromEntries(reported.map((key) => [key, record[key]])),
+		summary: `Kernel is ${status.lifecycle || "not running"}; its environment is not confirmed until it is Running. Check status again.`,
+	};
+}
+
+function dependencyTitle(recorded: boolean, sync: SyncOutcome | undefined): string {
+	if (!sync || sync.status === "applied") return "Notebook dependencies";
+	const outcome =
+		sync.status === "restart_required" ? "restart required to use them" : "environment not updated";
+	return recorded
+		? `Notebook dependencies recorded; ${outcome}`
+		: `Notebook environment sync: ${outcome}`;
+}
+
+/** Diagnosis keeps the env source of a failed or pending launch, labelled as not the running kernel's. */
+function diagnosedIdentity(status: RuntimeStatus) {
+	const identity = projectKernel(status);
+	if (!identity) return {};
+	const { lifecycle: _lifecycle, status: _status, ...fields } = identity;
+	return fields;
 }
 
 const APPROVAL_HINT =
@@ -575,7 +656,14 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						packages: args.dependencies,
 					});
 					await session.addDependencies(args.dependencies);
-					await withTrustGuidance(session, () => session.syncEnvironment());
+					const sync = await syncOutcome(session);
+					if (sync.status !== "applied") {
+						throw new Error(
+							`Recorded ${args.dependencies.join(", ")} in the notebook, but the environment sync ended ` +
+								`${sync.status}, so the code was not run: ${"error" in sync ? sync.error : ""} ` +
+								`${"next_step" in sync ? sync.next_step : ""}`.trimEnd(),
+						);
+					}
 				}
 				const result = await withTrustGuidance(session, () =>
 					session.runCell(args.code, {
@@ -781,6 +869,102 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			},
 		};
 
+		const environmentTool: ToolDefinition<EnvironmentArgs> = {
+			description:
+				"Inspect, stage, or apply the environment an open notebook's kernel runs in. " +
+				"To use an existing Conda environment, get its prefix from " +
+				`${CONDA_ENVIRONMENT_LIST_TOOL}, then select target conda with that prefix. ` +
+				"Never register a Jupyter kernelspec or edit the .ipynb to switch environments. " +
+				"select only stages the choice; apply restarts the kernel with it, asks the user first, and clears kernel variables. " +
+				"Both take expected_revision from the latest status or select result. " +
+				"list_kernelspecs lists installed kernelspecs for target kernelspec. " +
+				"A target is active only when the kernel is Running and reports that environment; " +
+				"staged, applying, and launching states are not active.",
+			args: {
+				notebook_id: NOTEBOOK_ID,
+				action: z.enum(ENVIRONMENT_ACTIONS),
+				target: z.enum(ENVIRONMENT_TARGETS).optional(),
+				prefix: z
+					.string()
+					.min(1)
+					.optional()
+					.describe(
+						`Absolute Conda prefix from ${CONDA_ENVIRONMENT_LIST_TOOL}; target conda only.`,
+					),
+				name: z
+					.string()
+					.min(1)
+					.optional()
+					.describe("Installed kernelspec name from list_kernelspecs; target kernelspec only."),
+				expected_revision: z
+					.number()
+					.int()
+					.nonnegative()
+					.optional()
+					.describe(
+						"Revision from the latest status or select result; required for select and apply.",
+					),
+			},
+			async execute(args, context) {
+				const request = parseEnvironmentArgs(args);
+				const session = await sessions.open(args.notebook_id, context);
+				const capability = missingCapability(session, request);
+				if (capability) {
+					const report = unsupportedReport(args.notebook_id, request.action, capability);
+					return {
+						title: "Notebook environment selection unsupported",
+						output: JSON.stringify(report),
+						metadata: { notebook_id: args.notebook_id, status: report.status, changed: false },
+					};
+				}
+				const selectionSession = session as unknown as SelectionSession;
+				if (request.action === "list_kernelspecs") {
+					const inventory = await selectionSession.listInstalledKernelspecs();
+					return {
+						title: "Installed kernelspecs",
+						output: JSON.stringify(inventoryReport(args.notebook_id, inventory)),
+						metadata: { notebook_id: args.notebook_id, count: inventory.kernelspecs.length },
+					};
+				}
+				let selection: EnvironmentSelection;
+				switch (request.action) {
+					case "status":
+						selection = await selectionSession.getEnvironmentSelection();
+						break;
+					case "select":
+						selection = await withSelectionGuidance("select", () =>
+							selectionSession.setEnvironmentSelection(request.target, request.expectedRevision),
+						);
+						break;
+					case "apply":
+						await requireExecutionApproval(context, args.notebook_id, { kind: "restart" });
+						selection = await withSelectionGuidance("apply", () =>
+							withTrustGuidance(session, () =>
+								selectionSession.applyEnvironmentSelection(request.expectedRevision),
+							),
+						);
+						break;
+				}
+				const report = selectionReport(
+					args.notebook_id,
+					request.action,
+					selection,
+					await readRuntime(session),
+				);
+				return {
+					title: "Notebook environment",
+					output: JSON.stringify(report),
+					metadata: {
+						notebook_id: args.notebook_id,
+						action: request.action,
+						revision: report.revision,
+						state: report.state,
+						active: report.active,
+					},
+				};
+			},
+		};
+
 		const dependenciesTool: ToolDefinition<{
 			notebook_id: string;
 			action: "status" | "add" | "remove" | "sync" | "approve_trust";
@@ -788,7 +972,10 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			package_manager?: "uv" | "conda" | "pixi";
 		}> = {
 			description:
-				"Inspect or update the notebook environment. Add and remove synchronize immediately. " +
+				"Inspect or edit the notebook's declared dependencies. Add and remove record the change in the notebook, " +
+				"then ask the daemon to sync it into the running kernel's environment; the result reports the recorded " +
+				"declaration and the sync outcome separately and never restarts the kernel. package_manager only picks " +
+				"which declaration to edit; it does not switch the kernel's environment (use notebooks_environment for that). " +
 				"Adding, removing, or approving asks the user first whenever it would approve packages " +
 				"the machine has not approved yet, including dependencies the notebook already declares; " +
 				"suspected typosquats are flagged in that prompt. Status reports what is waiting for approval.",
@@ -807,7 +994,8 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				const editOptions = args.package_manager
 					? { packageManager: args.package_manager }
 					: undefined;
-				const syncEnvironment = () => withTrustGuidance(session, () => session.syncEnvironment());
+				let declaration: Record<string, unknown> | undefined;
+				let sync: SyncOutcome | undefined;
 				switch (args.action) {
 					case "add":
 						await requireDependencyApproval(context, session, args.notebook_id, {
@@ -815,18 +1003,25 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 							packages,
 						});
 						await session.addDependencies(packages, editOptions);
-						await syncEnvironment();
+						declaration = { recorded: true, packages };
+						sync = await syncOutcome(session);
 						break;
-					case "remove":
+					case "remove": {
 						await requireDependencyApproval(context, session, args.notebook_id, {
 							kind: "remove",
 							packages,
 						});
-						await session.removeDependencies(packages, editOptions);
-						await syncEnvironment();
+						const removed: unknown = await session.removeDependencies(packages, editOptions);
+						declaration = {
+							recorded: true,
+							packages,
+							...(typeof removed === "number" ? { removed } : {}),
+						};
+						sync = await syncOutcome(session);
 						break;
+					}
 					case "sync":
-						await syncEnvironment();
+						sync = await syncOutcome(session);
 						break;
 					case "approve_trust":
 						if (
@@ -840,22 +1035,33 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					case "status":
 						break;
 				}
-				const [status, kernelError] = await Promise.all([
+				if (declaration && args.package_manager) {
+					declaration.package_manager = args.package_manager;
+				}
+				const [status, runtime] = await Promise.all([
 					session.getDependencyStatus(),
-					readKernelError(session),
+					readRuntime(session),
 				]);
+				const kernelError = runtime ? kernelErrorOf(runtime) : undefined;
 				const typosquatWarnings = checkTyposquats(declaredDependencySpecs(status));
 				return {
-					title: "Notebook dependencies",
+					title: dependencyTitle(declaration !== undefined, sync),
 					output: JSON.stringify({
 						notebook_id: args.notebook_id,
 						action: args.action,
+						...(declaration ? { declaration } : {}),
+						...(sync ? { environment_sync: sync, kernel: projectKernel(runtime) } : {}),
 						status,
 						...approvalReport(status),
 						...(kernelError ? { kernel_error: kernelError } : {}),
 						...(typosquatWarnings.length ? { typosquat_warnings: typosquatWarnings } : {}),
 					}),
-					metadata: { notebook_id: args.notebook_id, action: args.action },
+					metadata: {
+						notebook_id: args.notebook_id,
+						action: args.action,
+						...(declaration ? { declaration_recorded: true } : {}),
+						...(sync ? { sync: sync.status } : {}),
+					},
 				};
 			},
 		};
@@ -876,8 +1082,6 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					session.getRuntimeStatus(),
 					session.getDependencyStatus(),
 				]);
-				const errorMessage = (reason: unknown) =>
-					reason instanceof Error ? reason.message : String(reason);
 				const kernelError =
 					runtime.status === "fulfilled" ? kernelErrorOf(runtime.value) : undefined;
 				const pendingApproval =
@@ -895,7 +1099,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 								status: runtime.value.status,
 								...(runtime.value.activity ? { activity: runtime.value.activity } : {}),
 								starting_phase: runtime.value.startingPhase,
-								env_source: runtime.value.envSource,
+								...diagnosedIdentity(runtime.value),
 								name: runtime.value.name,
 								language: runtime.value.language,
 							}
@@ -944,7 +1148,11 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				const status = await session.getRuntimeStatus();
 				return {
 					title: "Notebook kernel",
-					output: JSON.stringify({ notebook_id: args.notebook_id, action: args.action, status }),
+					output: JSON.stringify({
+						notebook_id: args.notebook_id,
+						action: args.action,
+						...kernelStatusReport(status),
+					}),
 					metadata: { notebook_id: args.notebook_id, action: args.action },
 				};
 			},
@@ -1002,6 +1210,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			tool: {
 				notebooks_create_cell: createCell,
 				notebooks_dependencies: dependenciesTool,
+				notebooks_environment: environmentTool,
 				notebooks_diagnose: diagnose,
 				notebooks_edit_cells: editCells,
 				notebooks_execute: execute,

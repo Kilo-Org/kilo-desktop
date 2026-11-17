@@ -34,6 +34,7 @@ export function createFakeHostServices() {
 		title: path.split("/").at(-1) ?? path,
 	});
 	let saveResult: NotebookSaveResult = { outcome: "saved" };
+	const channelReviewPreviewChanged = vi.fn((_enabled: boolean) => undefined);
 	const disposed = vi.fn(async () => undefined);
 	const started = vi.fn(async () => daemon);
 	const opened = vi.fn((path: string) => openFile(path));
@@ -65,6 +66,7 @@ export function createFakeHostServices() {
 			connect: async (port, args, windowId) => {
 				connections.push({ port, args, windowId });
 			},
+			setChannelReviewPreviewEnabled: channelReviewPreviewChanged,
 			dispose: disposed,
 		};
 	};
@@ -72,6 +74,7 @@ export function createFakeHostServices() {
 	return {
 		create,
 		created,
+		channelReviewPreviewChanged,
 		connections,
 		defaultSaveDirectories,
 		started,

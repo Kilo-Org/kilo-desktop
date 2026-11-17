@@ -13,6 +13,7 @@ import { WORK_SESSIONS_DEFINITIONS } from "@kilo-desktop/plugin-work-sessions/co
 import manifest from "../../plugin.json";
 import {
 	FILE_OBJECT_TYPE,
+	NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG,
 	NOTEBOOK_COMMANDS,
 	NOTEBOOK_DEFINITIONS,
 	NOTEBOOK_HOST,
@@ -62,7 +63,17 @@ describe("kilo.notebook manifest", () => {
 		expect(keys("kernel/service")).toEqual([RUNTIMED_SERVICE_KEY]);
 		expect(contributions("kernel/flag").map((entry) => entry.id)).toEqual([
 			NOTEBOOK_TELEMETRY_FLAG,
+			NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG,
 		]);
+	});
+
+	it("declares channel-review preview as default off", () => {
+		expect(contributions("kernel/flag")).toContainEqual(
+			expect.objectContaining({
+				id: "notebook-channel-review-preview",
+				default: false,
+			}),
+		);
 	});
 
 	it("adds its Kilo plugin from its resources and gives the server its environment", () => {

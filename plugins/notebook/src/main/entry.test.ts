@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	KernelDialogs,
+	KernelFlagSource,
+	type FlagValue,
 	KernelError,
 	KernelOs,
 	KernelServices,
@@ -21,6 +23,7 @@ import {
 
 import {
 	FILE_OBJECT_TYPE,
+	NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG,
 	NOTEBOOK_HOST_PORT,
 	NOTEBOOK_PANE_KIND,
 	NOTEBOOK_TELEMETRY_FLAG,
@@ -64,6 +67,59 @@ const ownMessages = (messages: unknown[][]) =>
 	messages.filter(([message]) => !String(message).startsWith("[kilo.notebook] Contribution"));
 
 describe("kilo.notebook in main", () => {
+	it("keeps channel-review preview disabled by default", async () => {
+		const host = await boot();
+		await host.notebooks.methods.status(undefined);
+		expect(host.services.options()).toMatchObject({ channelReviewPreviewEnabled: false });
+	});
+
+	it.each([true, false, "true", 1])(
+		"enables channel-review preview only for boolean true (%s)",
+		async (value) => {
+			const host = await boot({ flags: { [NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG]: value } });
+			await host.notebooks.methods.status(undefined);
+			expect(host.services.options()).toMatchObject({
+				channelReviewPreviewEnabled: value === true,
+			});
+		},
+	);
+
+	it("follows channel-review preview changes and revokes it when the source is removed", async () => {
+		const host = await boot();
+		await host.notebooks.methods.status(undefined);
+		let values: Record<string, FlagValue> = { [NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG]: true };
+		const listeners = new Set<() => void>();
+		const sourceContribution = host.main.kernelSdk.extensions.add(
+			KernelFlagSource,
+			{ id: "preview-test" },
+			{
+				values: () => values,
+				identify: () => undefined,
+				subscribe: (listener) => {
+					listeners.add(listener);
+					return () => listeners.delete(listener);
+				},
+			},
+		);
+		await vi.waitFor(() =>
+			expect(host.services.channelReviewPreviewChanged).toHaveBeenLastCalledWith(true),
+		);
+		values = { [NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG]: false };
+		for (const listener of listeners) listener();
+		await vi.waitFor(() =>
+			expect(host.services.channelReviewPreviewChanged).toHaveBeenLastCalledWith(false),
+		);
+		values = { [NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG]: true };
+		for (const listener of listeners) listener();
+		await vi.waitFor(() =>
+			expect(host.services.channelReviewPreviewChanged).toHaveBeenLastCalledWith(true),
+		);
+		sourceContribution.remove();
+		await vi.waitFor(() =>
+			expect(host.services.channelReviewPreviewChanged).toHaveBeenLastCalledWith(false),
+		);
+	});
+
 	it("uses the stable singleton for the pinned notebook release", async () => {
 		vi.stubEnv("RUNTIMED_SOCKET_PATH", "");
 		const host = await boot({ useDefaultSocket: true });

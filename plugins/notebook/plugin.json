@@ -145,6 +145,11 @@
 					"id": "notebook-host-telemetry",
 					"description": "Lets the notebook runtime send its own telemetry, when the person allows data collection.",
 					"default": false
+				},
+				{
+					"id": "notebook-channel-review-preview",
+					"description": "Enables the opt-in notebook channel-review preview.",
+					"default": false
 				}
 			],
 			"kilo.chat/permission-renderer": [

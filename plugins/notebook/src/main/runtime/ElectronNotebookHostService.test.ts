@@ -174,6 +174,343 @@ describe("ElectronNotebookHostService", () => {
 		});
 	});
 
+	it("enables preview readiness only for an opted-in owner handshake", async () => {
+		const native = relay("preview");
+		Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.createRelay.mockResolvedValueOnce(native);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		expect(mocks.createRelay).toHaveBeenCalledWith(
+			expect.objectContaining({ scopedChannelReviewV1: true }),
+		);
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: true,
+			relay_generation: 1,
+			connection_scope: "owner",
+		});
+		await service.dispose();
+	});
+
+	it.each([
+		[undefined, "owner", undefined],
+		[false, "owner", undefined],
+		["true", "owner", undefined],
+		[true, undefined, undefined],
+		[true, "peer", undefined],
+		[true, "owner", "https://hosted/notebook"],
+	])(
+		"fails closed for verdict %s, scope %s and hosted URL %s",
+		async (verdict, scope, hostedUrl) => {
+			const native = relay("preview");
+			Object.assign(native.info, {
+				connectionScope: scope,
+				scopedChannelReviewV1: verdict,
+				hostedNotebookUrl: hostedUrl,
+			});
+			mocks.createRelay.mockResolvedValueOnce(native);
+			const service = new ElectronNotebookHostService({
+				platform: fakePlatform(),
+				channelReviewPreviewEnabled: true,
+			});
+			await service.connect(
+				port(),
+				{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+				"42",
+			);
+			expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+				scoped_channel_review_v1: false,
+			});
+			await service.dispose();
+		},
+	);
+
+	it("ignores an unsolicited positive verdict when the flag is off", async () => {
+		const native = relay("preview");
+		Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.createRelay.mockResolvedValueOnce(native);
+		const service = new ElectronNotebookHostService({ platform: fakePlatform() });
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		expect(mocks.createRelay.mock.lastCall?.[0]).not.toHaveProperty("scopedChannelReviewV1");
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		await service.dispose();
+	});
+
+	it("clears readiness on relay loss and negotiates a newer epoch on reconnect", async () => {
+		const first = relay("preview"),
+			second = relay("preview");
+		for (const native of [first, second])
+			Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.createRelay.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		vi.mocked(first.onClose).mock.calls[0]?.[0]();
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		await handler.invoke("daemon.reconnect", { force: true });
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: true,
+			relay_generation: 2,
+		});
+		await service.dispose();
+	});
+
+	it("revokes a live preview without restoring stale readiness when the flag returns", async () => {
+		const native = relay("preview");
+		Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.createRelay.mockResolvedValueOnce(native);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		service.setChannelReviewPreviewEnabled(false);
+		expect(server.emit).toHaveBeenCalledWith("daemon.disconnected", undefined);
+		expect(native.close).toHaveBeenCalled();
+		service.setChannelReviewPreviewEnabled(true);
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		const servedRelay = mocks.serve.mock.calls[0]![0].relay;
+		await expect(servedRelay.send(new Uint8Array([1]))).rejects.toThrow(/closed/);
+		await service.dispose();
+	});
+
+	it("keeps readiness disabled while reconnect is pending or fails", async () => {
+		const native = relay("preview");
+		Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.createRelay.mockResolvedValueOnce(native);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		let reject!: (error: Error) => void;
+		mocks.createRelay.mockImplementationOnce(
+			() =>
+				new Promise((_resolve, fail) => {
+					reject = fail;
+				}),
+		);
+		const reconnect = handler.invoke("daemon.reconnect", { force: true });
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		reject(new Error("offline"));
+		await expect(reconnect).rejects.toThrow("offline");
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		await service.dispose();
+	});
+
+	it("rejects a handshake completed after preview revocation", async () => {
+		const native = relay("preview");
+		Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		let resolve!: (value: RelaySession) => void;
+		mocks.createRelay.mockImplementationOnce(
+			() =>
+				new Promise((done) => {
+					resolve = done;
+				}),
+		);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		const connecting = service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		await vi.waitFor(() => expect(mocks.createRelay).toHaveBeenCalled());
+		service.setChannelReviewPreviewEnabled(false);
+		service.setChannelReviewPreviewEnabled(true);
+		resolve(native);
+		await expect(connecting).rejects.toThrow(/preview changed/);
+		expect(native.close).toHaveBeenCalledOnce();
+		expect(mocks.serve).not.toHaveBeenCalled();
+		await service.dispose();
+	});
+
+	it("does not replay a previous relay close after a new handshake", async () => {
+		const first = relay("preview"),
+			second = relay("preview");
+		for (const native of [first, second])
+			Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.createRelay.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		const staleClose = vi.mocked(first.onClose).mock.calls[0]![0];
+		await handler.invoke("daemon.reconnect", { force: true });
+		staleClose();
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: true,
+			relay_generation: 2,
+		});
+		await service.dispose();
+	});
+
+	it("does not publish a reconnect revoked while the previous relay closes", async () => {
+		const first = relay("preview"),
+			second = relay("preview");
+		for (const native of [first, second])
+			Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		let finishClose!: () => void;
+		vi.mocked(first.close).mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finishClose = resolve;
+				}),
+		);
+		mocks.createRelay.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		const reconnect = handler.invoke("daemon.reconnect", { force: true });
+		await vi.waitFor(() => expect(first.close).toHaveBeenCalled());
+		service.setChannelReviewPreviewEnabled(false);
+		service.setChannelReviewPreviewEnabled(true);
+		finishClose();
+		await expect(reconnect).rejects.toThrow(/superseded/);
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		expect(second.close).toHaveBeenCalled();
+		await service.dispose();
+	});
+
+	it("opts in on interactive file connections", async () => {
+		const native = relay("preview", "/tmp/preview.ipynb");
+		Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		mocks.openRelayPath.mockResolvedValueOnce(native);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{
+				notebookId: "preview",
+				workSessionId: "w",
+				title: "Preview",
+				notebookPath: "/tmp/preview.ipynb",
+			},
+			"42",
+		);
+		expect(mocks.openRelayPath).toHaveBeenCalledWith(
+			"/tmp/preview.ipynb",
+			expect.objectContaining({ scopedChannelReviewV1: true }),
+		);
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: true,
+		});
+		await service.dispose();
+	});
+
+	it("coalesces repeated reconnect requests and resumes only one current epoch", async () => {
+		const first = relay("preview"),
+			second = relay("preview");
+		for (const native of [first, second])
+			Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		let resolve!: (native: RelaySession) => void;
+		mocks.createRelay.mockResolvedValueOnce(first).mockImplementationOnce(
+			() =>
+				new Promise((done) => {
+					resolve = done;
+				}),
+		);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		const one = handler.invoke("daemon.reconnect", { force: true });
+		const two = handler.invoke("daemon.reconnect", { force: true });
+		expect(mocks.createRelay).toHaveBeenCalledTimes(2);
+		resolve(second);
+		await Promise.all([one, two]);
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: true,
+			relay_generation: 2,
+		});
+		await service.dispose();
+	});
+
+	it("does not send through a replacement when retiring the old relay fails", async () => {
+		const first = relay("preview"),
+			second = relay("preview");
+		for (const native of [first, second])
+			Object.assign(native.info, { connectionScope: "owner", scopedChannelReviewV1: true });
+		vi.mocked(first.close).mockRejectedValueOnce(new Error("close failed"));
+		mocks.createRelay.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		const service = new ElectronNotebookHostService({
+			platform: fakePlatform(),
+			channelReviewPreviewEnabled: true,
+		});
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		await expect(handler.invoke("daemon.reconnect", { force: true })).rejects.toThrow(
+			"close failed",
+		);
+		expect(second.close).toHaveBeenCalled();
+		expect(await handler.invoke("daemon.getReadyInfo", undefined)).toMatchObject({
+			scoped_channel_review_v1: false,
+		});
+		await expect(mocks.serve.mock.calls[0]![0].relay.send(new Uint8Array([1]))).rejects.toThrow(
+			/closed/,
+		);
+		await service.dispose();
+	});
+
 	it("connects a scoped peer to the external singleton and exposes no socket to the renderer", async () => {
 		const platform = fakePlatform();
 		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
@@ -620,6 +957,34 @@ describe("ElectronNotebookHostService", () => {
 		);
 
 		expect(delivered).toEqual(bootstrap);
+	});
+
+	it("preserves replacement bootstrap frames until reconnect validation completes", async () => {
+		const first = relay("preview"),
+			second = relay("preview");
+		const bootstrap = new Uint8Array([0, 8, 9]);
+		second.onFrame = vi.fn((listener) => {
+			listener(bootstrap);
+			return () => undefined;
+		});
+		mocks.createRelay.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		const frames: Uint8Array[] = [];
+		mocks.serve.mockImplementation(
+			(options: { handler: ElectronNotebookHostHandler; relay: RelaySession }) => {
+				handler = options.handler;
+				options.relay.onFrame((frame) => frames.push(frame));
+				return server;
+			},
+		);
+		const service = new ElectronNotebookHostService({ platform: fakePlatform() });
+		await service.connect(
+			port(),
+			{ notebookId: "preview", workSessionId: "w", title: "Preview" },
+			"42",
+		);
+		await handler.invoke("daemon.reconnect", { force: true });
+		expect(frames).toEqual([bootstrap]);
+		await service.dispose();
 	});
 
 	it("closes the native relay if Electron host setup fails", async () => {

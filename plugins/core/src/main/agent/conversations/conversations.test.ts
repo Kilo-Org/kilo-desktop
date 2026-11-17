@@ -1603,6 +1603,27 @@ describe("forking chats", () => {
 		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
 	});
 
+	it("reads again after a hydrate that missed a lost fork, so its hold doesn't outlive the search", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.failing.add("fork");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+		chats.failList = true;
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		// The stream drops before the retry reads; the reconnect's hydrate is the first good read.
+		chats.failList = false;
+		await reread(chats);
+		const other = stamped("ses_other");
+		chats.chats.push(other);
+		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
+
+		await eventually(() => expect(state().chats.ses_other).toBeDefined());
+	});
+
 	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];

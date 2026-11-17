@@ -446,8 +446,8 @@ export function provideConversations(
 
 	/**
 	 * Reads the chat list again, backing off, until the waiting lost-fork
-	 * searches settle. Stops when the stream drops: the next hydrate settles
-	 * them instead.
+	 * searches settle. Stops when the stream drops (it exits at once, so it is
+	 * gone before the reconnect); each hydrate restarts it while searches wait.
 	 */
 	function retryLostForks() {
 		lostForkRetry ??= (async () => {
@@ -642,9 +642,11 @@ export function provideConversations(
 				delay = firstDelay;
 				if (activeStream === stream) {
 					stream.hydrated = true;
+					// `settle` counts this read synchronously: a search it didn't settle needs another.
 					void lostForks.settle(client, seenChats()).catch((error: unknown) => {
 						sdk.logger.warn(`Could not settle lost forks: ${errorText(error)}`);
 					});
+					if (lostForks.waiting) retryLostForks();
 					void retryUnfinishedForks(client, attempt.signal).catch((error: unknown) => {
 						sdk.logger.warn(`Could not clean up unfinished forks: ${errorText(error)}`);
 					});

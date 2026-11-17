@@ -11,6 +11,7 @@
 		"kilo.work-sessions/window": "optional",
 		"kilo.work-sessions/work-session-menu": "optional",
 		"kilo.work-sessions/work-session-list-action": "optional",
+		"kilo.work-sessions/work-session-grouping": "optional",
 		"kilo.work-sessions/work-sessions-view": "optional",
 		"kilo.work-sessions/workspaces": "optional",
 		"kilo.shell/dialog": "optional"
@@ -37,6 +38,15 @@
 			"kilo.work-sessions/work-session-list-action": [
 				{
 					"id": "board",
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.work-sessions/work-session-grouping": [
+				{
+					"id": "board",
+					"title": "Workspace Board",
 					"when": {
 						"all": ["kernel/flag:workspace-board"]
 					}

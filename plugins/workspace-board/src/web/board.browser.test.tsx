@@ -175,6 +175,34 @@ describe("the workspace board", () => {
 		await vi.waitFor(() => expect(cards().done).toEqual([]));
 	});
 
+	it("groups the session list by its columns, showing only sessions on the board", async () => {
+		await renderBoard({
+			sessions: [session("a", { title: "Fix login" }), session("b", { title: "Not on the board" })],
+		});
+
+		await openRowMenu("Fix login");
+		await page.getByTestId("session-menu-kilo.workspace-board/add-to-board").hover();
+		await page.getByTestId("session-menu-kilo.workspace-board/add-to-board-review").click();
+		await page.getByTestId("session-list-view-menu").click();
+		await page.getByRole("menuitem", { name: /^Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace Board" }).click();
+		await userEvent.keyboard("{Escape}{Escape}");
+
+		await expect.element(list().getByRole("button", { name: "Review" })).toBeVisible();
+		await expect.element(row("Fix login")).toBeVisible();
+		await expect.element(row("Not on the board")).not.toBeInTheDocument();
+		await expect.element(list().getByRole("button", { name: "Backlog" })).toBeVisible();
+		await expect.element(list().getByTestId("session-list-group-empty-done")).toBeVisible();
+
+		await openRowMenu("Fix login");
+		await page.getByTestId("session-menu-kilo.workspace-board/move-on-board").hover();
+		await page.getByTestId("session-menu-kilo.workspace-board/move-on-board-done").click();
+		await expect.element(list().getByTestId("session-list-group-empty-review")).toBeVisible();
+		await expect
+			.element(list().getByTestId("session-list-group-empty-done"))
+			.not.toBeInTheDocument();
+	});
+
 	it("offers the session menu on a card, renaming the session in place", async () => {
 		const {
 			board,

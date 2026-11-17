@@ -503,6 +503,7 @@ Isolation is generic: a session records `local`, `new-copy` or
 | `kilo.work-sessions/work-session-menu`        | additive  | An item in a session's menu                                                                                    |
 | `kilo.work-sessions/work-session-decoration`  | additive  | A badge or hover detail shown with a session                                                                   |
 | `kilo.work-sessions/work-session-facet`       | additive  | A generic filter: facts about sessions with their own label and values                                         |
+| `kilo.work-sessions/work-session-grouping`    | additive  | A way to group the session list into the plugin's categories (the board's columns)                             |
 | `kilo.work-sessions/work-sessions-view`       | additive  | Another view of the sessions, shown in place of the open session                                               |
 | `kilo.work-sessions/work-session-action`      | additive  | A button in the open session's header                                                                          |
 | `kilo.work-sessions/work-session-list-action` | additive  | A button in the session list's header                                                                          |
@@ -1232,6 +1233,7 @@ and the work sessions placed in them, with a revision).
 | --------------------------------------------- | ----------------------------------------------------------------------------- |
 | `kilo.work-sessions/work-sessions-view`       | `board`                                                                       |
 | `kilo.work-sessions/work-session-list-action` | `board`                                                                       |
+| `kilo.work-sessions/work-session-grouping`    | `board`                                                                       |
 | `kilo.work-sessions/work-session-menu`        | `add-to-board`, `move-on-board`, `remove-from-board`                          |
 | `kilo.shell/dialog`                           | `clear-board`                                                                 |
 | `kernel/command`                              | `open`, `add-column`, `clear` (origin's ids)                                  |
@@ -1269,6 +1271,16 @@ and the work sessions placed in them, with a revision).
   kilo.workbench did.
 - **Tests.** `src/main/test-boot.ts` boots main with a work sessions stand-in;
   `src/test/board-host.tsx` boots the real board over `renderWorkSessions`.
+- **The board's columns group the session list.** kilo.work-sessions gained
+  `work-session-grouping` (a source of ordered categories of work session
+  ids, offered under the view menu's Grouping beside status, workspace and
+  updated; the stored choice is the contribution's key). Chosen, the list
+  shows only sessions on the board: one shelf per column in the board's
+  order (empty columns stay, with a note, as on the board), cards in their column's order (the Ordering option hides),
+  pins kept in their column, archived ones on the Archived shelf; the status
+  and workspace filters still apply. Without the contribution (flag off) the
+  list shows status grouping and keeps the stored choice. Rows don't take
+  drops yet.
 
 ---
 

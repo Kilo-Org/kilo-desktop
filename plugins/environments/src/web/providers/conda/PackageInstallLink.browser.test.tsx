@@ -152,9 +152,9 @@ describe("an anaconda.org install link", () => {
 		await expect.element(screen.getByTestId("environments-install-link-env")).toHaveLength(3);
 	});
 
-	it("asks anaconda.org's main channel as Anaconda's pkgs/main", async () => {
+	it("asks anaconda.org's main channel as conda's default channels", async () => {
 		const resolveChannel = vi.fn(async ({ channel }: CondaChannelsResolveInput) =>
-			resolved(channel, true, { name: "defaults", configuredBy: ["defaults"] }),
+			resolved(channel, true, { isMultichannel: true }),
 		);
 		await renderLink({
 			search: link({ package: "numpy", channel: "main" }),
@@ -164,7 +164,7 @@ describe("an anaconda.org install link", () => {
 		await expect
 			.element(screen.getByTestId("environments-install-link-dialog"))
 			.toHaveAttribute("data-step", "target");
-		expect(resolveChannel).toHaveBeenCalledWith({ channel: "pkgs/main" });
+		expect(resolveChannel).toHaveBeenCalledWith({ channel: "defaults" });
 	});
 
 	it("installs from the link's channel first, even when it is configured", async () => {

@@ -37,8 +37,8 @@ describe("readPackageInstallLink", () => {
 		});
 	});
 
-	it("reads anaconda.org's main channel as Anaconda's pkgs/main, not conda's bare main", () => {
-		expect(install({ package: "numpy", channel: "main" })).toMatchObject({ channel: "pkgs/main" });
+	it("reads anaconda.org's main channel as conda's default channels, not conda's bare main", () => {
+		expect(install({ package: "numpy", channel: "main" })).toMatchObject({ channel: "defaults" });
 		expect(install({ package: "numpy", channel: "conda-forge" })).toMatchObject({
 			channel: "conda-forge",
 		});

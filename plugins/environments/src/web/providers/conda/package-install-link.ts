@@ -48,7 +48,7 @@ const EXACT_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+!]*$/;
 /** conda's MatchSpec reads a spec with this ending as a package file path, not a package. */
 const PACKAGE_FILE = /\.(?:conda|tar\.bz2)$/i;
 
-/** A named channel, optionally with a label: `conda-forge`, `pkgs/main`, `bioconda/label/dev`. */
+/** A named channel, optionally with a label: `conda-forge`, `defaults`, `bioconda/label/dev`. */
 const NAMED_CHANNEL = /^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$/;
 
 /**
@@ -59,10 +59,13 @@ const NAMED_CHANNEL = /^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\/[A-Za-z0-9_][A-Za-z0-9._
 const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
 
 /**
- * anaconda.org's `main` is Anaconda's `defaults` main; conda reads a bare
- * `main` as `<channel_alias>/main`, a different channel.
+ * anaconda.org's `main` stands for conda's default channels (its page says
+ * `conda install <name>`). conda reads a bare `main` as `<channel_alias>/main`,
+ * and `pkgs/main` only names Anaconda's main while `default_channels` is
+ * unchanged: with Anaconda's commercial repository configured, conda looks for
+ * `pkgs/main` on anaconda.org, where it does not exist.
  */
-const ANACONDA_ORG_CHANNELS: Readonly<Record<string, string>> = { main: "pkgs/main" };
+const ANACONDA_ORG_CHANNELS: Readonly<Record<string, string>> = { main: "defaults" };
 
 /** The sources telemetry reports by name; any other is `other`. */
 const KNOWN_SOURCES = new Set(["dot-org"]);

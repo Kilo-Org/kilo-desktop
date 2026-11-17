@@ -110,6 +110,25 @@ export class TerminalPage {
 		});
 	}
 
+	/** Moves keyboard focus to the pane's tab in the host document, out of the terminal frame. */
+	async focusPaneTab(paneId: string): Promise<void> {
+		await getLocatorByTestId(`${TAB_PREFIX}${paneId}`).focus();
+	}
+
+	async focusTerminal(paneId: string): Promise<void> {
+		await click(this.frame(paneId).getByTestId("ghostty-terminal"));
+	}
+
+	/** The cursor blinks only while focused; `data-focused` mirrors that state. */
+	async verifyFocused(paneId: string, focused: boolean): Promise<void> {
+		await expectElementToHaveAttribute(
+			this.frame(paneId).getByTestId("ghostty-terminal"),
+			"data-focused",
+			String(focused),
+			{ message: `Terminal ${paneId} should ${focused ? "" : "not "}report keyboard focus` },
+		);
+	}
+
 	frame(paneId: string): FrameLocator {
 		return getLocatorByTestId(`chat-pane-${paneId}`).getByTestId("terminal-frame").contentFrame();
 	}

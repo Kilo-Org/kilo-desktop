@@ -56,6 +56,8 @@ export class TerminalFrameController {
 	#gutterSyncFrame: number | null = null;
 	#scrollbarSyncFrame: number | null = null;
 	#scrollbarDrag: { readonly pointerId: number; readonly offset: number } | null = null;
+	#focusListening = false;
+	#focusSyncTimer: number | null = null;
 
 	constructor(options: {
 		readonly hostWindow: Window;
@@ -99,6 +101,7 @@ export class TerminalFrameController {
 		this.#elements.scrollbar.removeEventListener("pointerup", this.#onScrollbarPointerUp);
 		this.#elements.scrollbar.removeEventListener("lostpointercapture", this.#onScrollbarPointerUp);
 		this.#elements.scrollbar.removeEventListener("keydown", this.#onScrollbarKeyDown);
+		this.#stopFocusTracking();
 		this.#resizeObserver?.disconnect();
 		if (this.#gutterSyncFrame !== null) cancelAnimationFrame(this.#gutterSyncFrame);
 		if (this.#scrollbarSyncFrame !== null) cancelAnimationFrame(this.#scrollbarSyncFrame);
@@ -201,6 +204,7 @@ export class TerminalFrameController {
 		this.#fitAddon = new FitAddon();
 		this.#terminal.loadAddon(this.#fitAddon);
 		this.#terminal.open(this.#elements.container);
+		this.#startFocusTracking();
 		// Replay must use the visible geometry. Replaying into Ghostty's default
 		// 80-column buffer and fitting afterward corrupts restored alternate screens.
 		this.#fitAddon.fit();
@@ -216,6 +220,53 @@ export class TerminalFrameController {
 			this.#handleServerMessage(parsed.data);
 		};
 		this.#port.start();
+	}
+
+	#startFocusTracking(): void {
+		const { container } = this.#elements;
+		container.addEventListener("focusin", this.#onFocusChange);
+		container.addEventListener("focusout", this.#onFocusChange);
+		this.#window.addEventListener("focus", this.#onFocusChange);
+		this.#window.addEventListener("blur", this.#onFocusChange);
+		this.#focusListening = true;
+		this.#syncFocus();
+	}
+
+	#stopFocusTracking(): void {
+		if (!this.#focusListening) return;
+		this.#focusListening = false;
+		const { container } = this.#elements;
+		container.removeEventListener("focusin", this.#onFocusChange);
+		container.removeEventListener("focusout", this.#onFocusChange);
+		this.#window.removeEventListener("focus", this.#onFocusChange);
+		this.#window.removeEventListener("blur", this.#onFocusChange);
+		if (this.#focusSyncTimer !== null) this.#window.clearTimeout(this.#focusSyncTimer);
+		this.#focusSyncTimer = null;
+	}
+
+	// A focus move fires focusout then focusin, with activeElement on <body> in
+	// between (microtasks run there too). Settling on a later task reports the
+	// final owner once, so internal moves don't restart the blink.
+	readonly #onFocusChange = () => {
+		if (this.#focusSyncTimer !== null) return;
+		this.#focusSyncTimer = this.#window.setTimeout(() => {
+			this.#focusSyncTimer = null;
+			this.#syncFocus();
+		}, 0);
+	};
+
+	/**
+	 * Mirrors a native terminal's focus cue: the cursor blinks only while the
+	 * terminal itself owns keyboard input, and holds steady otherwise.
+	 */
+	#syncFocus(): void {
+		const terminal = this.#terminal;
+		if (!terminal || this.#disposed) return;
+		const { container } = this.#elements;
+		const document = this.#window.document;
+		const focused = document.hasFocus() && container.contains(document.activeElement);
+		if (terminal.options.cursorBlink !== focused) terminal.options.cursorBlink = focused;
+		container.dataset.focused = String(focused);
 	}
 
 	#applyTheme(theme: TerminalTheme): void {

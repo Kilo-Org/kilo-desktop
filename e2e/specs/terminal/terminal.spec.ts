@@ -14,6 +14,12 @@ test.describe("Terminal @smoke @packaged", () => {
 		await terminalPage.run(first, "echo terminal-one-marker");
 		await terminalPage.verifyOutputContains(first, "terminal-one-marker");
 
+		await terminalPage.verifyFocused(first, true);
+		await terminalPage.focusPaneTab(first);
+		await terminalPage.verifyFocused(first, false);
+		await terminalPage.focusTerminal(first);
+		await terminalPage.verifyFocused(first, true);
+
 		const second = await terminalPage.addTerminal();
 		await terminalPage.run(second, "echo terminal-two-marker");
 		await terminalPage.verifyOutputContains(second, "terminal-two-marker");

@@ -20,8 +20,11 @@ async function bootBusy(options: { chats?: string[] } = {}) {
 	const queue = booted.chatSdk.domainObjects.get(PromptQueues)!;
 	const fake = booted.core;
 	const setStatus = (chatId: string, status: "busy" | "idle") => fake.setStatus(chatId, status);
-	const enqueue = async (text: string, extra: { steer?: boolean } = {}) =>
-		(await queue.methods.enqueue({ chatId: "ses_a", prompt: prompt(text), ...extra })).id;
+	const enqueue = async (text: string, extra: { steer?: boolean } = {}) => {
+		const id = `p_${text}`;
+		await queue.methods.enqueue({ chatId: "ses_a", id, prompt: prompt(text), ...extra });
+		return id;
+	};
 	const sent = () => fake.prompts.map((input) => (input.parts[0] as { text: string }).text);
 	const items = () => queue.getState().queues.ses_a?.items.map((item) => item.text) ?? [];
 	/** One turn: the server starts the prompt just sent, then finishes it. */
@@ -44,6 +47,7 @@ describe("queued prompts", () => {
 
 		await queue.methods.enqueue({
 			chatId: "ses_a",
+			id: "p_1",
 			prompt: prompt("Then add tests", {
 				attachmentParts: [attachment],
 				attachmentPreview: { name: "shot.png", src: attachment.url },
@@ -59,7 +63,7 @@ describe("queued prompts", () => {
 		expect(queue.getState().queues.ses_a).toEqual({
 			items: [
 				{
-					id: expect.any(String),
+					id: "p_1",
 					prompt: "Then add tests",
 					text: "Then add tests",
 					attachmentPreview: { name: "shot.png", src: attachment.url },
@@ -122,10 +126,21 @@ describe("queued prompts", () => {
 		expect(sent()).toEqual(["Now"]);
 	});
 
+	it("keeps the id the window chose, and ignores the same prompt queued again", async () => {
+		const { queue, enqueue, items } = await bootBusy();
+
+		const id = await enqueue("Once");
+		await enqueue("Once");
+
+		expect(items()).toEqual(["Once"]);
+		expect(queue.getState().queues.ses_a?.items[0]?.id).toBe(id);
+	});
+
 	it("runs a queued slash command as one", async () => {
 		const { queue, fake, setStatus } = await bootBusy();
 		await queue.methods.enqueue({
 			chatId: "ses_a",
+			id: "p_1",
 			prompt: prompt("/review the diff", {
 				command: { name: "review", arguments: "the diff" },
 				agent: "code",
@@ -211,7 +226,12 @@ describe("queued prompts", () => {
 		const { queue, setStatus, sent, items } = await bootBusy();
 		setStatus("ses_a", "idle");
 
-		await queue.methods.enqueue({ chatId: "ses_a", prompt: prompt("Unsent"), failed: true });
+		await queue.methods.enqueue({
+			chatId: "ses_a",
+			id: "p_1",
+			prompt: prompt("Unsent"),
+			failed: true,
+		});
 		await settle();
 
 		expect(sent()).toEqual([]);
@@ -306,7 +326,7 @@ describe("queued prompts", () => {
 	it("holds prompts while the chat's status is unknown", async () => {
 		const booted = await bootChatMain({ chats: [chat("ses_a")], ready: false, workSessions: null });
 		const queue = booted.chatSdk.domainObjects.get(PromptQueues)!;
-		await queue.methods.enqueue({ chatId: "ses_a", prompt: prompt("Soon") });
+		await queue.methods.enqueue({ chatId: "ses_a", id: "p_1", prompt: prompt("Soon") });
 		await settle();
 		expect(booted.core.prompts).toEqual([]);
 
@@ -354,7 +374,8 @@ describe("queued prompts", () => {
 			removableCore: true,
 		});
 		const queue = booted.chatSdk.domainObjects.get(PromptQueues)!;
-		const { id } = await queue.methods.enqueue({ chatId: "ses_a", prompt: prompt("Orphan") });
+		const id = "p_1";
+		await queue.methods.enqueue({ chatId: "ses_a", id, prompt: prompt("Orphan") });
 		await booted.setCorePresent(false);
 
 		await queue.methods.steer({ chatId: "ses_a", id });
@@ -370,7 +391,7 @@ describe("queued prompts", () => {
 		await expect(
 			as("kilo.core")
 				.get(PromptQueues)!
-				.methods.enqueue({ chatId: "ses_a", prompt: prompt("Hi") }),
+				.methods.enqueue({ chatId: "ses_a", id: "p_1", prompt: prompt("Hi") }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 	});
 });

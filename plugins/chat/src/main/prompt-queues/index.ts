@@ -25,7 +25,6 @@ const isWorking = (status: ChatStatus) => status === "busy" || status === "retry
 export function activatePromptQueues(sdk: PluginSdk): void {
 	const queues = new Map<string, ChatPromptQueue>();
 	let chats: ChatsHandle | null = null;
-	let counter = 0;
 
 	const chatOnly = (caller: DomainObjectCaller) => {
 		if (caller.pluginId !== CHAT_PLUGIN_ID) {
@@ -55,17 +54,14 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 	function queueOf(chatId: string): ChatPromptQueue {
 		let queue = queues.get(chatId);
 		if (!queue) {
-			queue = new ChatPromptQueue(
-				{
-					send: (prompt) => send(chatId, prompt),
-					abort: async () => {
-						if (!chats) throw new Error("Kilo chats aren't available.");
-						await chats.methods.abort({ id: chatId });
-					},
-					changed: () => publish(),
+			queue = new ChatPromptQueue({
+				send: (prompt) => send(chatId, prompt),
+				abort: async () => {
+					if (!chats) throw new Error("Kilo chats aren't available.");
+					await chats.methods.abort({ id: chatId });
 				},
-				() => `queued-${++counter}`,
-			);
+				changed: () => publish(),
+			});
 			queues.set(chatId, queue);
 			queue.setWorking(workingOf(chatId));
 		}
@@ -102,13 +98,12 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 		initialState: { queues: {} },
 		methods: {
 			enqueue: on(
-				(queue, { prompt, steer, failed }) => ({
-					id: queue.enqueue(prompt, {
+				(queue, { id, prompt, steer, failed }) =>
+					queue.enqueue(id, prompt, {
 						...(steer ? { steer } : {}),
 						...(failed ? { failed } : {}),
 					}),
-				}),
-				{ id: "" },
+				undefined,
 				true,
 			),
 			steer: on((queue, { id }) => queue.steer(id), undefined),

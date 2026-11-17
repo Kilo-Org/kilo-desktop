@@ -32,11 +32,17 @@ export interface MainPromptQueueOptions {
 
 const NO_QUEUE: ChatQueue = { items: [], paused: false, editing: null, sending: false };
 
-/** A prompt on its way to main's queue, listed until main lists it. */
+type QueueAction = (queue: PromptQueueHandle, chatId: string) => Promise<unknown>;
+
+/** A prompt on its way to main's queue, listed under the id main will know it by. */
 interface Handover {
 	readonly item: PromptQueueItem;
-	/** Main's id for it, and the state this window had when main answered. */
-	queued?: { readonly id: string; readonly seen: ChatQueue };
+	/** What the person did to its row before main had it, done once main has. */
+	readonly held: QueueAction[];
+	/** Deleted before it reached main, so it isn't queued at all. */
+	removed: boolean;
+	/** The state this window had when main answered. */
+	answered?: ChatQueue;
 }
 
 /**
@@ -54,9 +60,11 @@ interface Handover {
  * - Anything else is prepared here (what the composer chose, mentions,
  *   slash command, files) and queued in main, which sends it when the chat
  *   is idle. Send now stops the turn there.
- * - A prompt is listed the moment it is handed over, while it is prepared
- *   and until main's state lists it, so it never leaves the composer
- *   without showing in the queue (its files read, its data sent to main).
+ * - A prompt is listed the moment it is handed over, under the id it is
+ *   queued with in main, while it is prepared and until main's state lists
+ *   it, so it never leaves the composer without showing in the queue. What
+ *   the person does to its row meanwhile waits for main to have it; a delete
+ *   before then keeps it from being queued at all.
  * - Edits answer at once from the mirrored state (the runtime asks
  *   synchronously); main holds the queue while one is open.
  */
@@ -68,7 +76,6 @@ export function createMainPromptQueue(
 	let running = false;
 	let view = NO_QUEUE;
 	let handovers: Handover[] = [];
-	let handoverCount = 0;
 	let version = 0;
 	let localDraft: { id: string; text: string } | undefined;
 
@@ -82,7 +89,7 @@ export function createMainPromptQueue(
 		steer: (message) => void enqueue(message, message.steer === true),
 		move: (id, placement) => {
 			if (placement.lane === "steer") {
-				call((queue, chatId) => queue.methods.steer({ chatId, id }));
+				forward(id, (queue, chatId) => queue.methods.steer({ chatId, id }));
 				return;
 			}
 			const ids = reorderedIds(
@@ -96,12 +103,22 @@ export function createMainPromptQueue(
 			const text = message.content
 				.flatMap((part) => (part.type === "text" ? [part.text] : []))
 				.join("");
-			call(async (queue, chatId) => {
+			forward(id, async (queue, chatId) => {
 				const prepared = await prepareText(text.trim(), options.prompt());
 				await queue.methods.commitEdit({ chatId, id, text: prepared });
 			});
 		},
-		remove: (id) => call((queue, chatId) => queue.methods.remove({ chatId, id })),
+		remove: (id) => {
+			const removal: QueueAction = (queue, chatId) => queue.methods.remove({ chatId, id });
+			const handover = waitingHandover(id);
+			if (!handover) {
+				call(removal);
+				return;
+			}
+			handover.removed = true;
+			handover.held.push(removal);
+			dropHandover(handover);
+		},
 		__internal_notifyCancelled: () => call((queue, chatId) => queue.methods.stopped({ chatId })),
 	};
 
@@ -121,7 +138,9 @@ export function createMainPromptQueue(
 	}
 
 	function publish(): void {
-		adapter.items = [...view.items, ...handovers.map((handover) => handover.item)].map(toItemState);
+		const listed = new Set(view.items.map((item) => item.id));
+		const unlisted = handovers.filter((handover) => !listed.has(handover.item.id));
+		adapter.items = [...view.items, ...unlisted.map((handover) => handover.item)].map(toItemState);
 		version += 1;
 		for (const listener of listeners) listener();
 	}
@@ -130,14 +149,16 @@ export function createMainPromptQueue(
 	 * Main's state may reach this window before or after its answer: either it
 	 * lists the prompt, or the next state after the answer has dealt with it.
 	 */
-	function landed({ queued }: Handover, current: ChatQueue): boolean {
-		if (!queued) return false;
-		return current !== queued.seen || current.items.some((item) => item.id === queued.id);
+	function landed({ item, answered }: Handover, current: ChatQueue): boolean {
+		if (!answered) return false;
+		return current !== answered || current.items.some(({ id }) => id === item.id);
 	}
 
 	function handOver(message: AppendMessage): Handover {
 		const handover: Handover = {
-			item: { id: `handover-${++handoverCount}`, ...queueItemOf(message) },
+			item: { id: crypto.randomUUID(), ...queueItemOf(message) },
+			held: [],
+			removed: false,
 		};
 		handovers = [...handovers, handover];
 		publish();
@@ -149,11 +170,23 @@ export function createMainPromptQueue(
 		publish();
 	}
 
-	function call(action: (queue: PromptQueueHandle, chatId: string) => Promise<unknown>): void {
+	/** The listed prompt `id` while main doesn't have it yet. */
+	function waitingHandover(id: string): Handover | undefined {
+		return handovers.find((handover) => handover.item.id === id && !handover.answered);
+	}
+
+	function call(action: QueueAction): void {
 		const queue = options.queue();
 		const chatId = options.chatId();
 		if (!queue || !chatId) return;
 		action(queue, chatId).catch(options.onError);
+	}
+
+	/** Runs an action on prompt `id` now, or once main has it. */
+	function forward(id: string, action: QueueAction): void {
+		const handover = waitingHandover(id);
+		if (handover) handover.held.push(action);
+		else call(action);
 	}
 
 	function sendsDirectly(steer: boolean): boolean {
@@ -194,13 +227,16 @@ export function createMainPromptQueue(
 		const handover = handOver(message);
 		try {
 			const prompt = await prepareQueuedPrompt(message, chatId, options.prompt());
-			const { id } = await queue.methods.enqueue({
+			if (handover.removed) return;
+			await queue.methods.enqueue({
 				chatId,
+				id: handover.item.id,
 				prompt,
 				...(flags.steer ? { steer: true } : {}),
 				...(flags.failed ? { failed: true } : {}),
 			});
-			handover.queued = { id, seen: readView() };
+			handover.answered = readView();
+			for (const action of handover.held) call(action);
 			refresh();
 		} catch (error) {
 			dropHandover(handover);
@@ -235,11 +271,11 @@ export function createMainPromptQueue(
 		resume: () => call((queue, chatId) => queue.methods.resume({ chatId })),
 		reorder: (ids) => call((queue, chatId) => queue.methods.reorder({ chatId, ids: [...ids] })),
 		beginEdit(id) {
-			const item = view.items.find((candidate) => candidate.id === id);
+			const item = view.items.find((candidate) => candidate.id === id) ?? waitingHandover(id)?.item;
 			if (!item) return undefined;
 			const draft = view.editing?.id === id ? view.editing.draft : item.text;
 			localDraft = { id, text: draft };
-			call((queue, chatId) => queue.methods.beginEdit({ chatId, id }));
+			forward(id, (queue, chatId) => queue.methods.beginEdit({ chatId, id }));
 			return draft;
 		},
 		setEditDraft(text) {

@@ -97,14 +97,16 @@ export const PromptQueues = defineDomainObject({
 		 * Queues a prompt; sent at once when the chat is idle and the queue
 		 * isn't paused. `steer` sends it now (stopping the turn); `failed` puts
 		 * back a prompt the window could not send, paused rather than retried.
+		 * The window picks `id`, so the prompt keeps one identity from the
+		 * moment it lists it; an id already queued is ignored.
 		 */
 		enqueue: method(
-			chatTarget.extend({
+			itemTarget.extend({
 				prompt: queuedPromptSchema,
 				steer: z.boolean().optional(),
 				failed: z.boolean().optional(),
 			}),
-			z.object({ id: z.string() }),
+			nothing,
 		),
 		/** Send now: stops the chat's turn, then sends this prompt. */
 		steer: method(itemTarget, nothing),

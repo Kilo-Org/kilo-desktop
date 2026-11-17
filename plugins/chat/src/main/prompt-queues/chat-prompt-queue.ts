@@ -48,10 +48,7 @@ export class ChatPromptQueue {
 	#awaitingStart = false;
 	#startTimer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(
-		private readonly host: QueueHost,
-		private readonly nextId: () => string,
-	) {}
+	constructor(private readonly host: QueueHost) {}
 
 	/** Nothing to keep: a queue made again later reads the chat's status afresh. */
 	get empty(): boolean {
@@ -75,8 +72,8 @@ export class ChatPromptQueue {
 		return { items, paused, editing: this.#editing, sending };
 	}
 
-	enqueue(prompt: QueuedPrompt, options: { steer?: boolean; failed?: boolean }): string {
-		const id = this.nextId();
+	enqueue(id: string, prompt: QueuedPrompt, options: { steer?: boolean; failed?: boolean }): void {
+		if (this.#entries.some((entry) => entry.id === id)) return;
 		const sendsFromIdle =
 			!options.steer && !options.failed && this.#idle() && this.#operation === "idle";
 		this.#entries = [...this.#entries, { id, prompt, visible: true }];
@@ -85,7 +82,6 @@ export class ChatPromptQueue {
 		if (options.steer) this.steer(id);
 		else if (sendsFromIdle) this.#dispatch(id);
 		else this.#advance();
-		return id;
 	}
 
 	steer(id: string): void {

@@ -7,9 +7,17 @@ import { defaultChannelSelection, selectableChannels } from "./channel-presentat
  * packages). Defaults to every selectable channel; the user can toggle any
  * channel off/on freely. Channels backed by an Anaconda API key fail at fetch
  * time with a handled error — there is no in-dialog sign-in step.
+ *
+ * `extra` channels (an install link's channel) are offered and selected
+ * alongside the configured ones, even before `configured` is known. The
+ * selection is seeded once, from what is offered when the first channels
+ * arrive.
  */
-export function useChannelSelection(configured: string[] | undefined) {
-	const available = useMemo(() => selectableChannels(configured ?? []), [configured]);
+export function useChannelSelection(configured: string[] | undefined, extra?: readonly string[]) {
+	const available = useMemo(
+		() => [...new Set([...selectableChannels(configured ?? []), ...(extra ?? [])])],
+		[configured, extra],
+	);
 	const [selected, setSelected] = useState<string[]>([]);
 	const [open, setOpen] = useState(false);
 

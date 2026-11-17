@@ -12,6 +12,8 @@ import { withMcpWarmup } from "./with-mcp-warmup";
 export interface CreatedChat {
 	readonly id: string;
 	readonly directory: string | null;
+	/** The work session the chat was created in, when the creator knows it. */
+	readonly workSessionId?: string;
 }
 
 export interface ChatBackendOptions extends PromptOptions {

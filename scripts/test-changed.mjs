@@ -56,9 +56,15 @@ console.log(
 		: `test:changed: running tests that import the ${changed.length} changed file(s)`,
 );
 
+// pnpm is a .cmd shim on Windows, which Node only runs through a shell; the
+// shell joins arguments unquoted, so quote them.
+const SHELL = process.platform === "win32";
+const shellArgs = (args) =>
+	SHELL ? args.map((arg) => (/[\s"&|<>^]/.test(arg) ? `"${arg}"` : arg)) : args;
+
 const result = spawnSync(
 	"pnpm",
-	[
+	shellArgs([
 		"exec",
 		"turbo",
 		"run",
@@ -67,7 +73,10 @@ const result = spawnSync(
 		"--concurrency=50%",
 		"--output-logs=errors-only",
 		...vitestArgs,
-	],
-	{ stdio: "inherit", env: { ...process.env, TURBO_SCM_BASE: base } },
+	]),
+	{ stdio: "inherit", shell: SHELL, env: { ...process.env, TURBO_SCM_BASE: base } },
 );
+if (result.error) {
+	console.error(`test:changed: could not start pnpm: ${result.error.message}`);
+}
 process.exit(result.status ?? 1);

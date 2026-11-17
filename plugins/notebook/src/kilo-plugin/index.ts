@@ -732,6 +732,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
 				const session = await sessions.open(args.notebook_id, context);
 				await requireExecutionApproval(context, args.notebook_id, { kind: "run", code: args.code });
+				assertNotCancelled(context);
 				let dependencySync: SyncOutcome | undefined;
 				if (args.dependencies?.length) {
 					await requireDependencyApproval(context, session, args.notebook_id, {
@@ -1129,6 +1130,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 						break;
 					}
 					case "sync":
+						assertNotCancelled(context);
 						sync = await syncOutcome(session);
 						break;
 					case "approve_trust":
@@ -1137,6 +1139,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 								kind: "approve",
 							})
 						) {
+							assertNotCancelled(context);
 							await session.approveTrust(undefined);
 						}
 						break;
@@ -1159,7 +1162,8 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				]);
 				const status = statusRead.ok ? statusRead.value : undefined;
 				const kernelError = runtime ? kernelErrorOf(runtime) : undefined;
-				const manager = declaration ? managerReport(args.package_manager, runtime) : undefined;
+				const manager =
+					declaration?.recorded === true ? managerReport(args.package_manager, runtime) : undefined;
 				const typosquatWarnings = status ? checkTyposquats(declaredDependencySpecs(status)) : [];
 				return {
 					title: dependencyTitle(

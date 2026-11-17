@@ -2637,9 +2637,16 @@ describe("nteract Kilo plugin", () => {
 			const { result, output } = await dependencies(session, {
 				action: "remove",
 				packages: ["polars"],
+				package_manager: "conda",
 			});
 
-			expect(output.declaration).toEqual({ recorded: false, packages: ["polars"], removed: 0 });
+			expect(output.declaration).toEqual({
+				recorded: false,
+				packages: ["polars"],
+				removed: 0,
+				package_manager: "conda",
+			});
+			expect(output).not.toHaveProperty("package_manager");
 			expect(output.environment_sync.status).toBe("applied");
 			expect(result.title).toBe("No notebook dependencies matched; nothing was removed");
 			expect(result.metadata).toMatchObject({ declaration_recorded: false });
@@ -2685,6 +2692,43 @@ describe("nteract Kilo plugin", () => {
 			expect(session.removeDependencies).not.toHaveBeenCalled();
 			expect(session.syncEnvironmentResult).not.toHaveBeenCalled();
 			expect(session.runCell).not.toHaveBeenCalled();
+		});
+
+		it("does not run a cell without dependencies when cancelled during execution approval", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			const aborted = new AbortController();
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+			await expect(
+				hooks.tool.notebooks_run_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, code: "1" },
+					{
+						...toolContext({ abort: aborted.signal }),
+						ask: vi.fn(async () => {
+							aborted.abort();
+						}) as never,
+					},
+				),
+			).rejects.toThrow(/cancelled/);
+			expect(session.runCell).not.toHaveBeenCalled();
+			expect(session.addDependencies).not.toHaveBeenCalled();
+		});
+
+		it("does not sync an already-cancelled dependency call", async () => {
+			const session = dependencySession({ typed: async () => APPLIED_EMPTY });
+			const aborted = new AbortController();
+			aborted.abort();
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+			await expect(
+				hooks.tool.notebooks_dependencies.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "sync" },
+					toolContext({ abort: aborted.signal }),
+				),
+			).rejects.toThrow(/cancelled/);
+			expect(session.syncEnvironmentResult).not.toHaveBeenCalled();
 		});
 
 		it("says the declaration stays when cancelled after it was recorded", async () => {

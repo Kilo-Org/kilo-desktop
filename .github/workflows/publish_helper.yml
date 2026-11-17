@@ -91,6 +91,8 @@ jobs:
 
       - name: Setup Node and pnpm
         uses: ./.github/actions/setup-node-pnpm
+        with:
+          pnpm-cache: "false"
 
       - name: Install Linux maker prerequisites
         if: matrix.os == 'linux'
@@ -108,8 +110,6 @@ jobs:
         run: pnpm install --lockfile-only --ignore-scripts
 
       - uses: ./plugins/notebook/actions/setup-native
-
-      - uses: ./plugins/core/actions/setup-cli
 
       - uses: ./.github/actions/cache-electron-rebuild
 

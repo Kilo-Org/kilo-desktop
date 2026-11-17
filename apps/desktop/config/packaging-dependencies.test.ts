@@ -614,17 +614,14 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@kilo-desktop\/plugin-\*"/);
 	});
 
-	it("caches the Kilo CLI on every packaging host", () => {
+	it("caches the Kilo CLI on test packaging hosts", () => {
 		const setupCli = readFileSync(
 			path.join(workspaceRoot, "plugins/core/actions/setup-cli/action.yml"),
 			"utf8",
 		);
 		const workflows = [
 			".github/actions/run-e2e/action.yml",
-			".github/workflows/build.yml",
 			".github/workflows/pr_macos_build.yml",
-			".github/workflows/publish_helper.yml",
-			".github/workflows/sbom.yml",
 		].map((file) => readFileSync(path.join(workspaceRoot, file), "utf8"));
 
 		expect(setupCli).toContain("plugins/core/resources/kilo");
@@ -635,6 +632,30 @@ describe("packaged production dependencies", () => {
 		for (const workflow of workflows) {
 			expect(workflow).toContain("./plugins/core/actions/setup-cli");
 		}
+	});
+
+	// Release builds package exactly what the lockfile installs.
+	it.each([
+		".github/workflows/build.yml",
+		".github/workflows/publish_helper.yml",
+		".github/workflows/sbom.yml",
+	])("%s stages the Kilo CLI from the installed package", (file) => {
+		const workflow = readFileSync(path.join(workspaceRoot, file), "utf8");
+
+		expect(workflow).not.toContain("./plugins/core/actions/setup-cli");
+	});
+
+	it.each([
+		".github/workflows/build.yml",
+		".github/workflows/publish_helper.yml",
+		".github/workflows/sbom.yml",
+	])("%s installs packages into a fresh pnpm store", (file) => {
+		const workflow = readFileSync(path.join(workspaceRoot, file), "utf8");
+		const setup = workflow.slice(workflow.indexOf("uses: ./.github/actions/setup-node-pnpm"));
+
+		expect(setup).toMatch(
+			/^uses: \.\/\.github\/actions\/setup-node-pnpm\s+with:\s+pnpm-cache: "false"/,
+		);
 	});
 });
 

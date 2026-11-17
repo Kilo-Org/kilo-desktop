@@ -20,12 +20,6 @@ inputs:
       config splits spec files by recorded duration (scripts/test-durations/e2e.json).
     required: false
     default: ""
-  packaged-app:
-    description: >
-      Name of an artifact holding a packaged app (apps/desktop/out) from an
-      earlier job. When set, the app is downloaded instead of packaged here.
-    required: false
-    default: ""
   workers:
     description: >
       Parallel Playwright workers (one packaged app each), passed as
@@ -66,36 +60,13 @@ runs:
         runtime: playwright-deps
         package-name: "@kilo-desktop/e2e"
 
-    # Inputs to packaging only; the harness reads the CLI from the packaged app.
-    - if: inputs.packaged-app == ''
-      uses: ./plugins/notebook/actions/setup-native
+    - uses: ./plugins/notebook/actions/setup-native
 
-    - if: inputs.packaged-app == ''
-      uses: ./plugins/core/actions/setup-cli
+    - uses: ./plugins/core/actions/setup-cli
 
     - name: Package desktop for e2e
-      if: inputs.packaged-app == ''
       shell: bash
       run: pnpm --filter @kilo-desktop/desktop run package:e2e
-
-    - name: Download the packaged desktop app
-      if: inputs.packaged-app != ''
-      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-      with:
-        name: ${{ inputs.packaged-app }}
-        path: ${{ runner.temp }}/packaged-app
-
-    # A tarball (see e2e-package in ci.yml) keeps executable bits and symlinks,
-    # which artifact uploads drop.
-    - name: Unpack the packaged desktop app
-      if: inputs.packaged-app != ''
-      shell: bash
-      run: |
-        mkdir -p apps/desktop
-        # Relative paths only: Git Bash's GNU tar reads "C:\..." as a remote
-        # host:path, and macOS's bsdtar has no --force-local.
-        mv "$RUNNER_TEMP/packaged-app/desktop-out.tar" apps/desktop/
-        (cd apps/desktop && tar -xf desktop-out.tar && rm desktop-out.tar)
 
     - name: Run e2e
       shell: bash

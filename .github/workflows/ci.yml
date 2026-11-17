@@ -205,41 +205,8 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
           git diff --name-only "$BASE_SHA" HEAD | node e2e/scripts/plan-pr-e2e.ts
 
-  # Packages the e2e app once for every PR shard (~55 s each otherwise). It
-  # starts alongside e2e-plan, so it costs no extra wall time unless the plan
-  # selects nothing, in which case its result is never used.
-  e2e-package:
-    if: github.event_name == 'pull_request'
-    runs-on: blacksmith-8vcpu-windows-2025
-    timeout-minutes: 30
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: ./plugins/notebook/actions/setup-native
-      - uses: ./plugins/core/actions/setup-cli
-      - name: Package desktop for e2e
-        shell: bash
-        run: |
-          pnpm --filter @kilo-desktop/desktop run package:e2e
-          # Relative paths only: Git Bash's GNU tar reads "C:\..." as a remote
-          # host:path, and macOS's bsdtar has no --force-local.
-          (cd apps/desktop && tar -cf desktop-out.tar out)
-          mv apps/desktop/desktop-out.tar "$RUNNER_TEMP/desktop-out.tar"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: e2e-packaged-app-windows
-          path: ${{ runner.temp }}/desktop-out.tar
-          if-no-files-found: error
-          retention-days: 1
-          # Already compact; compressing ~500 MB costs more than it saves.
-          compression-level: 0
-
   e2e-pr:
-    needs: [e2e-plan, e2e-package]
+    needs: e2e-plan
     if: github.event_name == 'pull_request' && needs.e2e-plan.outputs.total != '0'
     strategy:
       fail-fast: false
@@ -260,7 +227,6 @@ jobs:
           script: test:e2e
           grep: ${{ needs.e2e-plan.outputs.grep }}
           shard: ${{ matrix.shard }}/${{ needs.e2e-plan.outputs.total }}
-          packaged-app: e2e-packaged-app-windows
           report-name: playwright-report-pr-${{ matrix.shard }}
           # Results for refreshing scripts/test-durations; full reports on failure.
           upload-on: results
@@ -342,7 +308,7 @@ jobs:
   e2e-gate:
     name: e2e-smoke
     if: always()
-    needs: [e2e-plan, e2e-package, e2e-pr, e2e-merge]
+    needs: [e2e-plan, e2e-pr, e2e-merge]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Verify required E2E jobs

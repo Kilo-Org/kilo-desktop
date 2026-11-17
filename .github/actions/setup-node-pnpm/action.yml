@@ -15,25 +15,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Read the pinned pnpm version
-      if: inputs.pnpm-cache == 'true'
-      id: pnpm-version
-      shell: bash
-      run: |
-        spec="$(grep -oE '"packageManager": *"[^"]+"' package.json | grep -oE 'pnpm@[^"]+')"
-        echo "spec=$spec" >> "$GITHUB_OUTPUT"
-
-    # pnpm/action-setup bootstraps pnpm with npm and then downloads the pinned
-    # @pnpm/exe (~24 MB) from the registry on every job; on a slow registry
-    # path that took up to ~110 s. Restoring its install directory lets it
-    # reuse the binary. Release builds (pnpm-cache "false") fetch it fresh.
-    - name: Cache pnpm itself
-      if: inputs.pnpm-cache == 'true'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/setup-pnpm
-        key: setup-pnpm-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-version.outputs.spec }}
-
     - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
     - name: Install Node

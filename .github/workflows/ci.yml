@@ -283,7 +283,7 @@ jobs:
   # One HTML report for the sharded macOS leg. Informational only: the gate
   # below depends on the test jobs, never on this merge.
   e2e-merge-report:
-    if: always() && (github.event_name == 'merge_group' || github.event_name == 'pull_request') # TEMP-MQ-TEST
+    if: always() && github.event_name == 'merge_group'
     needs: e2e-merge
     runs-on: blacksmith-2vcpu-ubuntu-2404
     env:

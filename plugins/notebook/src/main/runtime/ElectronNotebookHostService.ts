@@ -83,6 +83,8 @@ export interface NotebookTitleChanged {
 export interface ElectronNotebookHostServiceOptions {
 	readonly platform: NotebookHostPlatform;
 	readonly runtimeChannel?: BuildChannel;
+	/** Default-off UI literacy, never permission to fetch or install channels. */
+	readonly channelReviewPreviewEnabled?: boolean;
 	readonly socketPath?: string;
 	readonly runtimedBinaryPath?: string;
 	readonly createDaemonManager?: (
@@ -117,6 +119,9 @@ interface PendingNotebookSave {
 }
 
 interface NotebookHostSession {
+	relayGeneration: number;
+	channelReviewRequested: boolean;
+	channelReviewReady: boolean;
 	readonly notebookId: string;
 	readonly workSessionId: string;
 	readonly relay: ReconnectableRelay;
@@ -166,6 +171,7 @@ function notebookTitleState(title: string): { readonly dirty: boolean; readonly 
 class ReconnectableRelay implements ElectronRelaySession {
 	#current: RelaySession;
 	#closed = false;
+	#available = true;
 	readonly #frameListeners = new Set<(frame: Uint8Array) => void>();
 	readonly #closeListeners = new Set<() => void>();
 	#pendingFrames: Uint8Array[] = [];
@@ -175,6 +181,7 @@ class ReconnectableRelay implements ElectronRelaySession {
 
 	constructor(relay: RelaySession) {
 		this.#current = relay;
+		this.#available = !relay.closed;
 		this.#attach();
 	}
 
@@ -183,7 +190,8 @@ class ReconnectableRelay implements ElectronRelaySession {
 	}
 
 	send(frame: Uint8Array | ArrayBuffer): Promise<void> {
-		if (this.#closed) return Promise.reject(new Error("The notebook relay is closed."));
+		if (this.#closed || !this.#available)
+			return Promise.reject(new Error("The notebook relay is closed."));
 		return this.#current.send(frame);
 	}
 
@@ -207,17 +215,42 @@ class ReconnectableRelay implements ElectronRelaySession {
 		return () => this.#closeListeners.delete(listener);
 	}
 
+	suspend(): void {
+		this.#available = false;
+		this.#pendingFrames = [];
+	}
+
+	disconnect(): Promise<void> {
+		this.suspend();
+		return this.#current.close();
+	}
+
 	async replace(relay: RelaySession): Promise<void> {
 		if (this.#closed) {
 			await relay.close();
 			throw new Error("The notebook relay is closed.");
 		}
 		const previous = this.#current;
+		this.suspend();
 		this.#detachFrame();
 		this.#detachClose();
+		try {
+			await previous.close();
+		} catch (error) {
+			await relay.close();
+			throw error;
+		}
+		if (this.#closed) {
+			await relay.close();
+			throw new Error("The notebook relay is closed.");
+		}
 		this.#current = relay;
-		this.#attach();
-		await previous.close();
+	}
+
+	resume(): void {
+		this.#available = !this.#closed && !this.#current.closed;
+		// Native relay buffers bootstrap frames until onFrame subscribes.
+		if (this.#available) this.#attach();
 	}
 
 	async close(): Promise<void> {
@@ -232,7 +265,9 @@ class ReconnectableRelay implements ElectronRelaySession {
 	}
 
 	#attach(): void {
+		const attached = this.#current;
 		this.#detachFrame = this.#current.onFrame((frame) => {
+			if (!this.#available || this.#current !== attached) return;
 			if (this.#frameListeners.size === 0 || this.#drainingPending) {
 				this.#pendingFrames.push(Uint8Array.from(frame));
 				return;
@@ -240,6 +275,8 @@ class ReconnectableRelay implements ElectronRelaySession {
 			for (const listener of this.#frameListeners) listener(frame);
 		});
 		this.#detachClose = this.#current.onClose(() => {
+			if (this.#current !== attached) return;
+			this.suspend();
 			for (const listener of this.#closeListeners) listener();
 		});
 	}
@@ -295,9 +332,16 @@ function normalizeDialogOptions(value: unknown): NotebookDialogOptions | undefin
  * twice. Dirty state and save operations remain session-local and are always
  * settled when that connection is removed. New scratch rooms inherit the
  * connected chat's working directory at creation.
+ * Channel-review preview is UI literacy, not consent: only opted-in local
+ * owner handshakes with an explicit daemon verdict become ready. Each relay
+ * epoch gets a monotonic generation; loss, revocation and superseded connects
+ * cannot re-enable a stale review. The daemon still authorizes every action.
  */
 export class ElectronNotebookHostService {
 	readonly #platform: NotebookHostPlatform;
+	#channelReviewPreviewEnabled: boolean;
+	#relayGeneration = 0;
+	#previewRevision = 0;
 	readonly #socketPath: string;
 	readonly #daemonManager: RuntimedDaemonManagerLike;
 	readonly #sessions = new Map<string, NotebookHostSession>();
@@ -308,6 +352,7 @@ export class ElectronNotebookHostService {
 
 	constructor(options: ElectronNotebookHostServiceOptions) {
 		this.#platform = options.platform;
+		this.#channelReviewPreviewEnabled = options.channelReviewPreviewEnabled === true;
 		this.#onNotebookConnected = options.onNotebookConnected;
 		this.#onNotebookDisconnected = options.onNotebookDisconnected;
 		this.#socketPath =
@@ -471,18 +516,25 @@ export class ElectronNotebookHostService {
 			);
 		}
 		let openedFileRelay = this.#takeOpenedFileRelay(args.notebookId, args.notebookPath);
-		const createSession = () => {
-			if (openedFileRelay) {
-				const relay = openedFileRelay;
+		const createSession = async () => {
+			const requested = this.#channelReviewPreviewEnabled;
+			const previewRevision = this.#previewRevision;
+			if (openedFileRelay && requested) {
+				await openedFileRelay.close();
 				openedFileRelay = undefined;
-				return Promise.resolve(relay);
+			}
+			if (openedFileRelay) {
+				const native = openedFileRelay;
+				openedFileRelay = undefined;
+				return { native, requested: false, previewRevision };
 			}
 			const relayOptions = {
 				socketPath: this.#socketPath,
 				peerLabel: `kilo-desktop:${args.workSessionId}`,
 				description: args.title,
+				...(requested ? { scopedChannelReviewV1: true } : {}),
 			};
-			return args.notebookPath
+			const native = await (args.notebookPath
 				? openRelayPath(args.notebookPath, relayOptions)
 				: createRelay({
 						notebookId: args.notebookId,
@@ -490,10 +542,27 @@ export class ElectronNotebookHostService {
 						packageManager: "conda",
 						...(args.workingDirectory ? { workingDir: args.workingDirectory } : {}),
 						...relayOptions,
-					});
+					}));
+			if (requested && previewRevision !== this.#previewRevision) {
+				await native.close();
+				throw new Error(
+					"Channel review preview changed while connecting. Reconnect to review again.",
+				);
+			}
+			return { native, requested, previewRevision };
 		};
-		const relay = new ReconnectableRelay(await createSession());
+		const first = await createSession();
+		if (first.requested && first.previewRevision !== this.#previewRevision) {
+			await first.native.close();
+			throw new Error(
+				"Channel review preview changed while connecting. Reconnect to review again.",
+			);
+		}
+		const relay = new ReconnectableRelay(first.native);
 		const session: NotebookHostSession = {
+			relayGeneration: ++this.#relayGeneration,
+			channelReviewRequested: first.requested,
+			channelReviewReady: !first.native.closed,
 			notebookId: args.notebookId,
 			workSessionId: args.workSessionId,
 			relay,
@@ -503,18 +572,52 @@ export class ElectronNotebookHostService {
 			pendingSave: undefined,
 		};
 		let server: ElectronNotebookHostServer | null = null;
-		const reconnect = async () => {
+		let reconnectAttempt = 0;
+		const reconnectOnce = async () => {
 			if (!server) throw new Error("The Electron notebook host is not connected.");
+			const attempt = ++reconnectAttempt;
+			session.channelReviewReady = false;
+			relay.suspend();
 			server.emit("transport.status", "reconnecting");
 			try {
-				await relay.replace(await createSession());
-				server.emit("daemon.ready", readyInfo(relay.info));
+				const next = await createSession();
+				if (attempt !== reconnectAttempt) {
+					await next.native.close();
+					throw new Error("The notebook reconnect was superseded.");
+				}
+				await relay.replace(next.native);
+				if (
+					attempt !== reconnectAttempt ||
+					(next.requested && next.previewRevision !== this.#previewRevision)
+				) {
+					await next.native.close();
+					throw new Error("The notebook reconnect was superseded.");
+				}
+				relay.resume();
+				session.channelReviewRequested = next.requested;
+				session.channelReviewReady = !next.native.closed;
+				session.relayGeneration = ++this.#relayGeneration;
+				server.emit("daemon.ready", this.#readyInfo(session));
 				server.emit("transport.status", "online");
 			} catch (error) {
-				server.emit("transport.status", "offline");
+				if (attempt === reconnectAttempt) {
+					relay.suspend();
+					session.channelReviewReady = false;
+					server.emit("transport.status", "offline");
+				}
 				throw error;
 			}
 		};
+		let pendingReconnect: Promise<void> | undefined;
+		const reconnect = () =>
+			(pendingReconnect ??= reconnectOnce().finally(() => {
+				pendingReconnect = undefined;
+			}));
+
+		const unlistenRelayClose = relay.onClose(() => {
+			session.channelReviewReady = false;
+			server?.emit("daemon.disconnected", undefined);
+		});
 		let unlistenFocus: (() => void) | undefined;
 		let onClose: (() => void) | undefined;
 		try {
@@ -532,6 +635,9 @@ export class ElectronNotebookHostService {
 			onClose = () => {
 				if (cleaned) return;
 				cleaned = true;
+				++reconnectAttempt;
+				session.channelReviewReady = false;
+				unlistenRelayClose();
 				port.off("close", onClose!);
 				unlistenFocus?.();
 				if (this.#sessions.get(session.notebookId) === session) {
@@ -549,7 +655,7 @@ export class ElectronNotebookHostService {
 			this.#sessions.set(session.notebookId, session);
 			if (previous && previous !== session) void previous.server?.close();
 			port.on("close", onClose);
-			connectedServer.emit("daemon.ready", readyInfo(relay.info));
+			connectedServer.emit("daemon.ready", this.#readyInfo(session));
 			connectedServer.emit(
 				"window.focusChanged",
 				this.#platform.host?.window.isFocused(windowId) ?? true,
@@ -561,10 +667,47 @@ export class ElectronNotebookHostService {
 			});
 		} catch (error) {
 			onClose?.();
+			unlistenRelayClose();
 			if (server) await server.close();
 			else await relay.close();
 			throw error;
 		}
+	}
+
+	setChannelReviewPreviewEnabled(enabled: boolean): void {
+		const next = enabled === true;
+		if (next === this.#channelReviewPreviewEnabled) return;
+		this.#channelReviewPreviewEnabled = next;
+		++this.#previewRevision;
+		if (next) return; // Enabling never upgrades an existing handshake.
+		for (const session of this.#sessions.values()) {
+			if (!session.channelReviewRequested) continue;
+			session.channelReviewReady = false;
+			session.channelReviewRequested = false;
+			session.server?.emit("daemon.disconnected", undefined);
+			void session.relay.disconnect().catch((error: unknown) => {
+				this.#platform.logger.warn("Could not close a revoked notebook preview relay.", error);
+			});
+		}
+	}
+
+	#readyInfo(session: NotebookHostSession) {
+		// Until the published binding grows the negotiated verdict, absence is false.
+		const info = session.relay.info as RelayInfo & {
+			scopedChannelReviewV1?: unknown;
+			hostedNotebookUrl?: unknown;
+		};
+		return {
+			...readyInfo(info),
+			relay_generation: session.relayGeneration,
+			scoped_channel_review_v1:
+				this.#channelReviewPreviewEnabled &&
+				session.channelReviewRequested &&
+				session.channelReviewReady &&
+				info.scopedChannelReviewV1 === true &&
+				info.connectionScope === "owner" &&
+				!info.hostedNotebookUrl,
+		};
 	}
 
 	async dispose(): Promise<void> {
@@ -643,7 +786,7 @@ export class ElectronNotebookHostService {
 					};
 				}
 				case "daemon.getReadyInfo":
-					return readyInfo(session.relay.info);
+					return this.#readyInfo(session);
 				case "blobs.getPort": {
 					const info = session.relay.info;
 					if (info.blobPort === undefined)

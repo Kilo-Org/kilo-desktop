@@ -57,6 +57,7 @@ import { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	DEFAULT_NOTEBOOK_SETTINGS,
+	NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG,
 	NOTEBOOK_HOST,
 	NOTEBOOK_HOST_PORT,
 	NOTEBOOK_PANE_KIND,
@@ -98,6 +99,7 @@ export interface NotebookHostServiceLike {
 	openFile(path: string): Promise<NotebookOpenFileResult>;
 	save(notebookId: string): Promise<NotebookSaveResult>;
 	setDefaultSaveDirectory(notebookId: string, directory: string | null): void;
+	setChannelReviewPreviewEnabled?(enabled: boolean): void;
 	connect(
 		port: ElectronMainPort,
 		args: ElectronNotebookConnectionArgs,
@@ -323,6 +325,14 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 					removed: () => followConsent(false),
 				}),
 			);
+			let hostService: NotebookHostServiceLike | undefined;
+			let channelReviewPreviewEnabled = false;
+			const followChannelReviewPreview = (next: unknown) => {
+				const enabled = next === true;
+				if (enabled === channelReviewPreviewEnabled) return;
+				channelReviewPreviewEnabled = enabled;
+				hostService?.setChannelReviewPreviewEnabled?.(enabled);
+			};
 			let flag: unknown;
 			const followFlag = (next: unknown) => {
 				if (next === flag) return;
@@ -334,11 +344,22 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 				sdk.domainObjects.track(KernelFlags, {
 					added: (handle) => {
 						followFlag(handle.getState().flags[NOTEBOOK_TELEMETRY_FLAG]?.value);
+						followChannelReviewPreview(
+							handle.getState().flags[NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG]?.value,
+						);
 						sdk.onDispose(
-							handle.subscribe((state) => followFlag(state.flags[NOTEBOOK_TELEMETRY_FLAG]?.value)),
+							handle.subscribe((state) => {
+								followFlag(state.flags[NOTEBOOK_TELEMETRY_FLAG]?.value);
+								followChannelReviewPreview(
+									state.flags[NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG]?.value,
+								);
+							}),
 						);
 					},
-					removed: () => followFlag(undefined),
+					removed: () => {
+						followFlag(undefined);
+						followChannelReviewPreview(undefined);
+					},
 				}),
 			);
 
@@ -364,12 +385,12 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 				},
 			} as NotebookHostPlatform["events"]);
 
-			let hostService: NotebookHostServiceLike | undefined;
 			const acquire = () =>
 				(hostService ??= options.createHostService({
 					platform,
 					...(explicitSocket ? { socketPath: explicitSocket } : {}),
 					runtimeChannel,
+					channelReviewPreviewEnabled,
 					...(runtimedBinaryPath ? { runtimedBinaryPath } : {}),
 					onNotebookConnected: ({ notebookId, untitled }) => {
 						if (untitled) notebookState.markCreatedHere(notebookId);

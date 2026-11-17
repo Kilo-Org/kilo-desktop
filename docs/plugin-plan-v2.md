@@ -885,6 +885,10 @@ resolving a pane's notebook).
 
 #### What building step 9 settled
 
+The channel-review preview now uses a default-off kernel flag and negotiated
+owner-only relay readiness. Production artifact pins and daemon authentication
+are unchanged; see the [integration brief](../plugins/notebook/docs/integration-brief.md#default-off-channel-review-preview).
+
 - **A straight port, origin's ids kept.** Command `kilo.notebook/open` (⌘⇧J),
   tools `list_open`, `open`, `open_file` (`desktop_notebook_*`, sign-in
   required, not offered to external apps, as origin), service `runtimed`,
@@ -1486,6 +1490,9 @@ changed function or `data-qa-id` rather than the path.
 
 ## Deferred decisions
 
+Channel-review preview rollout remains deferred until matching reviewed UI,
+native binding and authenticated candidate artifacts are available.
+
 Things a step ran into and left open on purpose. Settle each before the step
 that needs it; remove it from here when it is settled.
 
@@ -1495,6 +1502,10 @@ that needs it; remove it from here when it is settled.
 | `agent.mode` is always written.     | —                      | The contract defaults it to `subagent`; decide whether omitting it should let Kilo pick its own default.                                                                                                            |
 
 ## Follow-ups
+
+- Qualify notebook channel review in the hermetic packaged harness with matching
+  authenticated artifacts before enabling the default-off preview. Unit/integration
+  coverage is not positive packaged E2E qualification.
 
 Work we know is owed, by the step that should do it. Tick off (delete) when
 done.

@@ -104,3 +104,26 @@ plugin uses the stable singleton, independently of Kilo Desktop's own release tr
 
 See [embedding-decisions.md](./embedding-decisions.md) for the durable decisions and rejected
 alternatives.
+
+## Default-off channel review preview
+
+`notebook-channel-review-preview` uses the existing kernel flag framework and defaults to false.
+It advertises UI literacy only on interactive local notebook relay connections, not file discovery
+or agent/tool sessions. It does not approve metadata queries, package downloads, or installation.
+
+Readiness requires an explicitly requested handshake whose effective verdict is exactly true,
+with owner scope and no hosted notebook URL. The host assigns a monotonic relay generation and
+clears effective readiness on disconnect, reconnect, flag revocation and failed negotiation.
+Revocation closes an opted-in relay; enabling the flag again requires a fresh handshake. Missing,
+unknown or legacy binding verdicts stay disabled. Repeated reconnect requests share one negotiation.
+
+The production UI, daemon and `@runtimed/node` pins remain unchanged. This adapter prepares for
+[nteract#5116](https://github.com/nteract/nteract/pull/5116), which is not yet a published dependency.
+Current published bindings therefore remain fail-closed even when the flag is true. ID-only review
+actions still travel over the existing relay; the daemon remains the authority for review scope,
+consent, epoch and stale-ID validation. No new plugin extension point or permission is introduced.
+
+Positive packaged E2E is a separate gate: it needs matching reviewed UI/native binding and a
+candidate daemon accepted by ordinary pinned-digest or Developer-ID authentication, plus the existing
+hermetic profile harness. Neither this flag nor `RUNTIMED_SOCKET_PATH` bypasses that authentication.
+Do not enable this preview as a substitute for release qualification.

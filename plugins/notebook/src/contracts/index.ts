@@ -34,6 +34,9 @@ export const NOTEBOOK_TOOL_IDS = ["list_open", "open", "open_file"] as const;
 /** The flag that lets the notebook runtime send its own telemetry (with consent). */
 export const NOTEBOOK_TELEMETRY_FLAG = "notebook-host-telemetry";
 
+/** Enables the opt-in channel-review preview in the notebook host. */
+export const NOTEBOOK_CHANNEL_REVIEW_PREVIEW_FLAG = "notebook-channel-review-preview";
+
 /**
  * The notebook Kilo plugin (`notebooks_*` tools), added to Kilo as a
  * `kilo.core/agent-extension` from `${resources}/kilo-plugin/index.js`.

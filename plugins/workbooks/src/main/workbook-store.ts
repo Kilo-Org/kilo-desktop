@@ -4,6 +4,7 @@ import {
 	DEFAULT_PAGES_MCP_SERVER,
 	Workbooks,
 	workbookSchema,
+	type AddWorkbookInput,
 	type Workbook,
 	type WorkbookBackend,
 	type WorkbookTemplate,
@@ -19,23 +20,29 @@ interface SavedWorkbooks extends Record<string, unknown> {
 
 export interface WorkbookStoreDeps {
 	readonly template: (id: string) => WorkbookTemplate | undefined;
-	/** The workspace's name and the folder whose Kilo instance holds the MCP connection. */
-	readonly workspace: (
-		id: string,
-	) => { readonly name: string; readonly directory?: string } | undefined;
-	readonly pages: (backend: WorkbookBackend, directory: string | undefined) => PagesToolCaller;
+	/** A workspace's name, shown in a new workbook's Pages description. */
+	readonly workspace: (id: string) => { readonly name: string } | undefined;
+	readonly pages: (backend: WorkbookBackend) => PagesToolCaller;
 	readonly now?: () => Date;
 	readonly newId?: () => string;
 }
 
+export interface WorkbookStore {
+	/** Records that a work session started on the workbook, in a workspace or (null) none. */
+	recordUse(id: string, workspaceId: string | null): void;
+}
+
 /**
- * Provides `kilo.workbooks/workbooks`: every workspace's workbook references,
+ * Provides `kilo.workbooks/workbooks`: the person's workbook references,
  * saved in this plugin's kv store. Saved entries are re-validated on load and
  * any that no longer parse are dropped (with a warning) rather than failing
- * the plugin. The store holds references only; the content is in Pages, and
- * `create` records a workbook only once its whole Pages copy has succeeded.
+ * the plugin; entries saved while a workbook belonged to one workspace are
+ * read as used there. The store holds references only; the content is in
+ * Pages, and `create` records a workbook only once its whole Pages copy has
+ * succeeded. Each reference also keeps the workspaces it was used in, which
+ * only orders the picker.
  */
-export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void {
+export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): WorkbookStore {
 	const now = deps.now ?? (() => new Date());
 	const newId = deps.newId ?? (() => globalThis.crypto.randomUUID());
 	const store = mainHost(sdk).storage.kv<SavedWorkbooks>({
@@ -45,7 +52,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 
 	const loaded: Workbook[] = [];
 	for (const saved of store.get("workbooks")) {
-		const parsed = workbookSchema.safeParse(saved);
+		const parsed = workbookSchema.safeParse(fromWorkspaceScoped(saved));
 		if (parsed.success) loaded.push(parsed.data);
 		else sdk.logger.warn("Dropped a saved workbook that no longer matches its schema.");
 	}
@@ -56,14 +63,16 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 			create: async ({ workspaceId, templateId, name, values }) => {
 				const template = deps.template(templateId);
 				if (!template) throw new KernelError("NOT_FOUND", `No workbook template "${templateId}".`);
-				const workspace = deps.workspace(workspaceId);
-				if (!workspace) throw new KernelError("NOT_FOUND", `No workspace "${workspaceId}".`);
+				const workspace = workspaceId === null ? undefined : deps.workspace(workspaceId);
+				if (workspaceId !== null && !workspace) {
+					throw new KernelError("NOT_FOUND", `No workspace "${workspaceId}".`);
+				}
 				const backend: WorkbookBackend = { kind: "pages-mcp", server: DEFAULT_PAGES_MCP_SERVER };
-				const content = await createWorkbookContent(deps.pages(backend, workspace.directory), {
+				const content = await createWorkbookContent(deps.pages(backend), {
 					template,
 					name,
 					values,
-					workspaceLabel: workspace.name,
+					...(workspace ? { workspaceLabel: workspace.name } : {}),
 				});
 				return addWorkbook({ workspaceId, name, templateId, backend, ...content });
 			},
@@ -83,7 +92,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 			},
 			progress: async ({ workbookId }) => {
 				const workbook = find(workbookId);
-				const pages = deps.pages(workbook.backend, deps.workspace(workbook.workspaceId)?.directory);
+				const pages = deps.pages(workbook.backend);
 				const page = (itemType: string, id?: string) =>
 					workbook.sections.find((section) =>
 						id ? section.id === id : section.itemType === itemType,
@@ -112,7 +121,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 			},
 			kickoff: async ({ workbookId, focus, fresh }) => {
 				const workbook = find(workbookId);
-				const pages = deps.pages(workbook.backend, deps.workspace(workbook.workspaceId)?.directory);
+				const pages = deps.pages(workbook.backend);
 				const [brief, guide] = await Promise.all([
 					readMarkdown(pages, { project_id: workbook.projectId }),
 					readMarkdown(pages, { page_id: workbook.guidePageId }),
@@ -150,10 +159,31 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 		}
 	}
 
-	function addWorkbook(input: Omit<Workbook, "id" | "createdAt">): Workbook {
-		const workbook: Workbook = { ...input, id: newId(), createdAt: now().toISOString() };
+	function addWorkbook({ workspaceId, ...reference }: AddWorkbookInput): Workbook {
+		const createdAt = now().toISOString();
+		const workbook: Workbook = {
+			...reference,
+			id: newId(),
+			createdAt,
+			lastUsedAt: createdAt,
+			usedIn: workspaceId ? [{ workspaceId, lastUsedAt: createdAt }] : [],
+		};
 		save([...workbooks.state.workbooks, workbook]);
 		return workbook;
+	}
+
+	function recordUse(id: string, workspaceId: string | null) {
+		const current = workbooks.state.workbooks.find((workbook) => workbook.id === id);
+		if (!current) return;
+		const lastUsedAt = now().toISOString();
+		const usedIn = workspaceId
+			? [
+					...current.usedIn.filter((use) => use.workspaceId !== workspaceId),
+					{ workspaceId, lastUsedAt },
+				]
+			: current.usedIn;
+		const used = { ...current, lastUsedAt, usedIn };
+		save(workbooks.state.workbooks.map((workbook) => (workbook.id === id ? used : workbook)));
 	}
 
 	function find(id: string): Workbook {
@@ -166,4 +196,18 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 		store.set({ workbooks: next });
 		workbooks.setState({ workbooks: next });
 	}
+
+	return { recordUse };
+}
+
+/** A reference saved while workbooks belonged to one workspace, read as used there since it was created. */
+function fromWorkspaceScoped(saved: unknown): unknown {
+	if (typeof saved !== "object" || saved === null || "usedIn" in saved) return saved;
+	const { workspaceId, ...reference } = saved as { workspaceId?: unknown; createdAt?: unknown };
+	if (typeof workspaceId !== "string" || typeof reference.createdAt !== "string") return saved;
+	return {
+		...reference,
+		lastUsedAt: reference.createdAt,
+		usedIn: [{ workspaceId, lastUsedAt: reference.createdAt }],
+	};
 }

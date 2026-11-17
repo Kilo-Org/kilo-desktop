@@ -11,7 +11,7 @@ const connection = {
 };
 
 describe("kiloPagesCaller", () => {
-	it("calls the tool on Kilo's MCP connection for the directory, with Basic auth", async () => {
+	it("calls the tool on Kilo's global MCP connection, with Basic auth", async () => {
 		const requests: { url: string; init: RequestInit }[] = [];
 		const pages = kiloPagesCaller({
 			connect: async () => connection,
@@ -20,12 +20,11 @@ describe("kiloPagesCaller", () => {
 				return Response.json({ content: [{ type: "text", text: '{"page_id":"p1"}' }] });
 			},
 			server: "pages",
-			directory: "/repo",
 		});
 
 		await expect(pages.call("create_page", { title: "Plan" })).resolves.toEqual({ page_id: "p1" });
 		expect(requests[0]!.url).toBe(
-			"http://127.0.0.1:4321/experimental/mcp/call-tool?directory=%2Frepo",
+			"http://127.0.0.1:4321/experimental/mcp/call-tool?directory=%2Fruntime",
 		);
 		expect(requests[0]!.init.headers).toMatchObject({
 			authorization: `Basic ${Buffer.from("kilo:secret").toString("base64")}`,

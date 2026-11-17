@@ -23,7 +23,7 @@ import {
 	SessionWorkbooks,
 	WorkbookTemplates,
 	Workbooks,
-	workbooksIn,
+	workbooksFor,
 	type TemplateSummary,
 	type Workbook,
 } from "../contracts";
@@ -53,11 +53,13 @@ function filterByKeywords(value: string, search: string, keywords?: string[]): n
  * Workbooks on the New Session page (`kilo.work-sessions/new-work-session-section`):
  * one "Workbook" tile, in the style of the page's tool tiles, that opens a
  * searchable picker built to the dropdown standard (as the workspace picker):
- * the workspace's workbooks, then "New workbook" pinned under the list, which
- * opens the New workbook wizard. Picking a workbook selects it (the tile then
- * names it) and shows a "Start session" tile beside it: the go action, which
- * starts the session where the page says (workspace, isolation), its composer
- * holding the kick-off, unsent. A failure is a toast.
+ * every workbook, those used in the page's workspace first, then "New
+ * workbook" pinned under the list, which opens the New workbook wizard.
+ * Workbooks aren't tied to a workspace, so the tile shows with or without
+ * one. Picking a workbook selects it (the tile then names it) and shows a
+ * "Start session" tile beside it: the go action, which starts the session
+ * where the page says (workspace, isolation), its composer holding the
+ * kick-off, unsent. A failure is a toast.
  */
 export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessionSectionProps) {
 	const deps: StartDeps = {
@@ -66,18 +68,16 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 		composer: useDomainObject(Composer),
 		start,
 	};
-	const workbooks = workbooksIn(
-		useDomainObjectState(Workbooks, selectWorkbooks) ?? [],
-		workspaceId,
-	);
+	const all = useDomainObjectState(Workbooks, selectWorkbooks) ?? [];
+	const { here, elsewhere } = workbooksFor(all, workspaceId);
 	const templates = useDomainObjectState(WorkbookTemplates, selectTemplates) ?? [];
 	const [open, setOpen] = useState(false);
 	const [commandValue, setCommandValue] = useState(NO_SELECTION);
 	const [creating, setCreating] = useState(false);
 	const [running, setRunning] = useState(false);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
-	// A selection that left the workspace (forgotten, or another workspace) is no selection.
-	const selected = workbooks.find((workbook) => workbook.id === selectedId) ?? null;
+	// A forgotten workbook is no selection.
+	const selected = all.find((workbook) => workbook.id === selectedId) ?? null;
 	const [error, setError] = useState<string | null>(null);
 
 	const startExisting = async (workbook: Workbook) => {
@@ -99,7 +99,6 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 	};
 
 	const create = async (templateId: string, name: string, values: Record<string, string>) => {
-		if (workspaceId === null) return;
 		setRunning(true);
 		setError(null);
 		try {
@@ -119,7 +118,29 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 		}
 	};
 
-	if (workspaceId === null) return null;
+	const workbookRow = (workbook: Workbook) => {
+		const template = templates.find((candidate) => candidate.id === workbook.templateId);
+		const Icon = templateIcon(template?.icon);
+		return (
+			<CommandItem
+				key={workbook.id}
+				value={workbook.id}
+				keywords={[workbook.name, template?.name ?? workbook.templateId]}
+				data-qa-id={`workbooks-continue-${workbook.id}`}
+				data-checked={workbook.id === selected?.id}
+				onSelect={() => select(workbook)}
+			>
+				<Icon className="text-muted-foreground" />
+				<span className="min-w-0 flex-1 truncate">{workbook.name}</span>
+				<span className="text-muted-foreground shrink-0 text-xs">
+					{template?.name ?? workbook.templateId}
+				</span>
+			</CommandItem>
+		);
+	};
+	// Headings only when there is a split to show.
+	const grouped = here.length > 0 && elsewhere.length > 0;
+
 	return (
 		<div
 			data-qa-id="workbooks-section"
@@ -137,7 +158,7 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 						<button
 							type="button"
 							disabled={disabled || running}
-							title="Choose a workbook in this workspace, or start a new one."
+							title="Choose a workbook, or start a new one."
 							aria-label={selected ? `Workbook: ${selected.name}` : "Choose a workbook"}
 							data-qa-id="workbooks-picker-trigger"
 							onKeyDown={onTriggerKeyDown}
@@ -177,34 +198,18 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 						<CommandInput placeholder="Search workbooks" />
 						<CommandList className="scroll-fade">
 							<CommandEmpty>
-								{workbooks.length === 0
-									? "No workbooks in this workspace yet."
-									: "No workbooks found."}
+								{all.length === 0 ? "No workbooks yet." : "No workbooks found."}
 							</CommandEmpty>
-							<CommandGroup>
-								{workbooks.map((workbook) => {
-									const template = templates.find(
-										(candidate) => candidate.id === workbook.templateId,
-									);
-									const Icon = templateIcon(template?.icon);
-									return (
-										<CommandItem
-											key={workbook.id}
-											value={workbook.id}
-											keywords={[workbook.name, template?.name ?? workbook.templateId]}
-											data-qa-id={`workbooks-continue-${workbook.id}`}
-											data-checked={workbook.id === selected?.id}
-											onSelect={() => select(workbook)}
-										>
-											<Icon className="text-muted-foreground" />
-											<span className="min-w-0 flex-1 truncate">{workbook.name}</span>
-											<span className="text-muted-foreground shrink-0 text-xs">
-												{template?.name ?? workbook.templateId}
-											</span>
-										</CommandItem>
-									);
-								})}
-							</CommandGroup>
+							{here.length > 0 ? (
+								<CommandGroup heading={grouped ? "This workspace" : undefined}>
+									{here.map(workbookRow)}
+								</CommandGroup>
+							) : null}
+							{elsewhere.length > 0 ? (
+								<CommandGroup heading={grouped ? "Other workbooks" : undefined}>
+									{elsewhere.map(workbookRow)}
+								</CommandGroup>
+							) : null}
 						</CommandList>
 						{/* Outside the list, so it must opt out of cmdk hiding it while filtering. */}
 						<CommandSeparator alwaysRender />

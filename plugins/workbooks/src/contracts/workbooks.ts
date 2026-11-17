@@ -25,10 +25,20 @@ export const workbookSectionRefSchema = z.object({
 });
 export type WorkbookSectionRef = z.output<typeof workbookSectionRefSchema>;
 
-/** A workbook in a workspace: which template it came from and where each part of it lives. */
+/** A workspace a workbook has been used in, and when it last was. */
+export const workbookUseSchema = z.object({
+	workspaceId: z.string().min(1),
+	lastUsedAt: z.string(),
+});
+export type WorkbookUse = z.output<typeof workbookUseSchema>;
+
+/**
+ * A workbook: which template it came from and where each part of it lives.
+ * Workbooks belong to the person, not to a workspace; the workspaces it has
+ * been used in only order the picker.
+ */
 export const workbookSchema = z.object({
 	id: z.string().min(1),
-	workspaceId: z.string().min(1),
 	name: z.string().min(1),
 	templateId: z.string().min(1),
 	backend: workbookBackendSchema,
@@ -38,17 +48,25 @@ export const workbookSchema = z.object({
 	guidePageId: z.string().min(1),
 	sections: z.array(workbookSectionRefSchema),
 	createdAt: z.string(),
+	/** When a work session last started on it (its creation, until then). */
+	lastUsedAt: z.string(),
+	usedIn: z.array(workbookUseSchema),
 });
 export type Workbook = z.output<typeof workbookSchema>;
 
-export const addWorkbookInputSchema = workbookSchema.omit({ id: true, createdAt: true });
+/** The workspace a workbook is added or created in, its first use; null for none. */
+const originWorkspaceSchema = z.string().min(1).nullable();
+
+export const addWorkbookInputSchema = workbookSchema
+	.omit({ id: true, createdAt: true, lastUsedAt: true, usedIn: true })
+	.extend({ workspaceId: originWorkspaceSchema });
 export type AddWorkbookInput = z.output<typeof addWorkbookInputSchema>;
 
 /** The Kilo MCP server workbooks are created on until a backend can be chosen. */
 export const DEFAULT_PAGES_MCP_SERVER = "pages";
 
 export const createWorkbookInputSchema = z.object({
-	workspaceId: z.string().min(1),
+	workspaceId: originWorkspaceSchema,
 	templateId: z.string().min(1),
 	name: z.string().trim().min(1).max(200),
 	/** Brief field values by field id; the template's required fields must be filled. */
@@ -73,15 +91,16 @@ export const workbookProgressSchema = z.object({
 export type WorkbookProgress = z.output<typeof workbookProgressSchema>;
 
 /**
- * Every workspace's workbooks, kept by kilo.workbooks (the workbooks
- * themselves live in Pages). Forgetting a workbook removes only the reference.
+ * The person's workbooks, kept by kilo.workbooks (the workbooks themselves
+ * live in Pages). Forgetting a workbook removes only the reference. Starting a
+ * work session on one (`session-workbooks` `setActive`) records the use.
  */
 export const Workbooks = defineDomainObject({
 	id: "kilo.workbooks/workbooks",
 	home: "main",
 	state: z.object({ workbooks: z.array(workbookSchema) }),
 	methods: {
-		/** Copies a template into a new Pages Project and adds it to the workspace. */
+		/** Copies a template into a new Pages Project and records it. */
 		create: method(createWorkbookInputSchema, workbookSchema),
 		/** Adds a reference to a workbook that already exists in Pages. */
 		add: method(addWorkbookInputSchema, workbookSchema),
@@ -95,12 +114,22 @@ export const Workbooks = defineDomainObject({
 	lookup: (state, id) => state.workbooks.find((workbook) => workbook.id === id),
 });
 
-/** A workspace's workbooks, newest first. */
-export function workbooksIn(
+/**
+ * Workbooks as the picker lists them: those used in the workspace, most
+ * recently used there first, then the rest by when they were last used.
+ * Without a workspace, every workbook is elsewhere.
+ */
+export function workbooksFor(
 	workbooks: readonly Workbook[],
 	workspaceId: string | null | undefined,
-): Workbook[] {
-	return workbooks
-		.filter((workbook) => workbook.workspaceId === workspaceId)
-		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+): { here: Workbook[]; elsewhere: Workbook[] } {
+	const usedHere = (workbook: Workbook) =>
+		workbook.usedIn.find((use) => use.workspaceId === workspaceId)?.lastUsedAt;
+	const here = workbooks
+		.filter((workbook) => workspaceId && usedHere(workbook))
+		.sort((a, b) => usedHere(b)!.localeCompare(usedHere(a)!));
+	const elsewhere = workbooks
+		.filter((workbook) => !here.includes(workbook))
+		.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
+	return { here, elsewhere };
 }

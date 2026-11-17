@@ -8,8 +8,8 @@ export interface NewWorkbookContent {
 	readonly name: string;
 	/** Brief field values by field id. */
 	readonly values: Readonly<Record<string, string>>;
-	/** Shown in the Project's description so workbooks are recognisable in Pages itself. */
-	readonly workspaceLabel: string;
+	/** The workspace it's created in, shown in the Project's description so workbooks are recognisable in Pages itself. */
+	readonly workspaceLabel?: string;
 	readonly nonce?: () => string;
 }
 
@@ -47,7 +47,7 @@ export function missingRequiredFields(
  * Copies a template into a new Pages Project, all at once: the Project, its
  * document replaced by the filled-in Brief, then the guide and every section
  * as Pages, in template order. A failure part-way leaves a partial Project in
- * Pages (reported to the caller); nothing is recorded in the workspace until
+ * Pages (reported to the caller); nothing is recorded until
  * the whole copy succeeds.
  */
 export async function createWorkbookContent(
@@ -63,7 +63,9 @@ export async function createWorkbookContent(
 
 	const project = (await pages.call("create_project", {
 		title: name,
-		description: `Workbook · ${template.name} · workspace: ${content.workspaceLabel}`,
+		description: content.workspaceLabel
+			? `Workbook · ${template.name} · workspace: ${content.workspaceLabel}`
+			: `Workbook · ${template.name}`,
 		nonce: nonce(),
 	})) as { project_id?: string; url?: string };
 	const projectId = project?.project_id;

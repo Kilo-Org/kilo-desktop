@@ -85,14 +85,12 @@ async function renderSection(
 	slots.push(
 		booted.host.renderSlot(NewWorkSessionSection, {
 			workspaceId: options.workspaceId === undefined ? "ws-1" : options.workspaceId,
-			directory: "/repo",
+			directory: options.workspaceId === null ? null : "/repo",
 			disabled: false,
 			start: options.start ?? pageStart(log),
 		}),
 	);
-	if (options.workspaceId !== null) {
-		await expect.element(page.getByTestId("workbooks-section")).toBeVisible();
-	}
+	await expect.element(page.getByTestId("workbooks-section")).toBeVisible();
 	return { ...booted, started, log };
 }
 
@@ -198,7 +196,7 @@ describe("Start from a workbook on the New Session page", () => {
 		expect(started[0]!.text).toContain("adding anything worth keeping to Notes");
 	});
 
-	it("lists the workspace's workbooks with their template, and searches them", async () => {
+	it("lists workbooks with their template, and searches them", async () => {
 		const { host } = await renderSection();
 		const create = (name: string, templateId: string) =>
 			host.invoke(Workbooks, "create", {
@@ -280,11 +278,11 @@ describe("Start from a workbook on the New Session page", () => {
 		await expect.element(page.getByTestId("workbooks-new-dialog")).toBeVisible();
 	});
 
-	it("offers New workbook in an empty workspace's picker, and closes the wizard on Cancel", async () => {
+	it("offers New workbook in an empty picker, and closes the wizard on Cancel", async () => {
 		await renderSection();
 
 		await openPicker();
-		await expect.element(page.getByText("No workbooks in this workspace yet.")).toBeVisible();
+		await expect.element(page.getByText("No workbooks yet.")).toBeVisible();
 		await userEvent.click(page.getByTestId("workbooks-new"));
 		await expect.element(page.getByTestId("workbooks-new-dialog")).toBeVisible();
 		await userEvent.click(page.getByRole("button", { name: "Cancel" }));
@@ -346,9 +344,69 @@ describe("Start from a workbook on the New Session page", () => {
 		await expect.element(page.getByTestId("workbooks-picker")).not.toBeInTheDocument();
 	});
 
-	it("shows nothing: workbooks belong to a workspace", async () => {
-		await renderSection({ workspaceId: null });
+	it("puts the workspace's workbooks first, then the others under their own heading", async () => {
+		const { host } = await renderSection();
+		const add = (name: string, workspaceId: string | null) =>
+			host.invoke(Workbooks, "create", {
+				workspaceId,
+				templateId: "blank",
+				name,
+				values: { goal: "g" },
+			});
+		const elsewhere = await add("Started without a workspace", null);
+		const here = await add("Started here", "ws-1");
 
-		await expect.element(page.getByTestId("workbooks-section")).not.toBeInTheDocument();
+		await openPicker();
+
+		await expect.element(page.getByText("This workspace")).toBeVisible();
+		await expect.element(page.getByText("Other workbooks")).toBeVisible();
+		const rows = [
+			...page
+				.getByTestId("workbooks-picker")
+				.element()
+				.querySelectorAll("[data-qa-id^='workbooks-continue-']"),
+		].map((row) => row.getAttribute("data-qa-id"));
+		expect(rows).toEqual([`workbooks-continue-${here.id}`, `workbooks-continue-${elsewhere.id}`]);
+	});
+
+	it("lists only one group, without headings, when there's no split", async () => {
+		const { host } = await renderSection();
+		await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "blank",
+			name: "Only here",
+			values: { goal: "g" },
+		});
+
+		await openPicker();
+
+		await expect.element(page.getByText("Only here")).toBeVisible();
+		await expect.element(page.getByText("This workspace")).not.toBeInTheDocument();
+	});
+
+	it("works without a workspace: lists every workbook and creates new ones outside any", async () => {
+		const { host, log } = await renderSection({ workspaceId: null });
+		const existing = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "blank",
+			name: "From a workspace",
+			values: { goal: "g" },
+		});
+
+		await openPicker();
+		await expect.element(page.getByTestId(`workbooks-continue-${existing.id}`)).toBeVisible();
+		await expect.element(page.getByText("This workspace")).not.toBeInTheDocument();
+		await userEvent.click(page.getByTestId("workbooks-new"));
+		await userEvent.click(page.getByTestId("workbooks-template-blank"));
+		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Scratch");
+		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Poke at things");
+		await userEvent.click(page.getByTestId("workbooks-create"));
+
+		await expect.poll(() => log.opened).toEqual(["wses_1"]);
+		const created = host.renderer.kernelSdk.domainObjects
+			.get(Workbooks)!
+			.getState()
+			.workbooks.find((workbook) => workbook.name === "Scratch");
+		expect(created?.usedIn).toEqual([]);
 	});
 });

@@ -8,21 +8,23 @@ export interface KiloPagesOptions {
 	readonly fetch: (input: URL, init: RequestInit) => Promise<Response>;
 	/** The Kilo MCP server name the Pages tools live on (the user's `pages` entry). */
 	readonly server: string;
-	/** The directory whose Kilo instance holds the MCP connection; Kilo connects MCP servers per directory. */
-	readonly directory?: string;
 }
 
 /**
  * Calls Pages tools through Kilo's own MCP connection
  * (`POST /experimental/mcp/call-tool`), so the app needs no Pages credentials
- * of its own: the user signs in to the `pages` MCP entry once.
+ * of its own: the user signs in to the `pages` MCP entry once. Kilo connects
+ * MCP servers per directory; calls go to its global instance (the app's own
+ * runtime folder, as account and model lookups do), so workbooks work from
+ * any session, in a workspace or not. That needs the `pages` entry in global
+ * Kilo config, not a project's.
  */
 export function kiloPagesCaller(options: KiloPagesOptions): PagesToolCaller {
 	return {
 		async call(tool, args) {
 			const connection = await options.connect();
 			const url = new URL("/experimental/mcp/call-tool", connection.baseUrl);
-			if (options.directory) url.searchParams.set("directory", options.directory);
+			url.searchParams.set("directory", connection.globalDirectory);
 			const token = Buffer.from(`${connection.username}:${connection.password}`).toString("base64");
 			const response = await options.fetch(url, {
 				method: "POST",

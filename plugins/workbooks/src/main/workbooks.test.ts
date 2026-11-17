@@ -1,23 +1,31 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 
-import { Workbooks, workbooksIn, type AddWorkbookInput, type Workbook } from "../contracts";
+import {
+	SessionWorkbooks,
+	Workbooks,
+	workbooksFor,
+	type AddWorkbookInput,
+	type Workbook,
+} from "../contracts";
 import { FakePages } from "../test/fake-pages";
-import { bootWorkbooks } from "../test/hosts";
+import { bootWorkbooks, workSession } from "../test/hosts";
 
 const hosts: PluginHost[] = [];
 
 afterEach(async () => {
+	vi.useRealTimers();
 	await Promise.all(hosts.splice(0).map((host) => host.dispose()));
 });
 
 async function boot(
 	storage = createMemoryStorage("/memory/kilo.workbooks"),
 	pages = new FakePages(),
+	options: Omit<Parameters<typeof bootWorkbooks>[0] & {}, "storage" | "pages"> = {},
 ) {
-	const { host, directories } = await bootWorkbooks({ storage, pages });
+	const { host, directories } = await bootWorkbooks({ ...options, storage, pages });
 	hosts.push(host);
 	return {
 		host,
@@ -40,15 +48,26 @@ const input = (overrides: Partial<AddWorkbookInput> = {}): AddWorkbookInput => (
 });
 
 describe("workbooks", () => {
-	it("adds a workbook to a workspace, with an id and creation time", async () => {
+	it("adds a workbook, used in the workspace it was added in", async () => {
 		const { host, workbooks } = await boot();
 
 		const added = await host.invoke(Workbooks, "add", input());
 
-		expect(added).toMatchObject({ ...input(), id: expect.any(String) });
+		const { workspaceId: _, ...reference } = input();
+		expect(added).toMatchObject({ ...reference, id: expect.any(String) });
 		expect(Date.parse(added.createdAt)).not.toBeNaN();
+		expect(added.lastUsedAt).toBe(added.createdAt);
+		expect(added.usedIn).toEqual([{ workspaceId: "ws-1", lastUsedAt: added.createdAt }]);
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([added]);
 		expect(workbooks.lookup(added.id)).toEqual(added);
+	});
+
+	it("adds a workbook outside any workspace", async () => {
+		const { host } = await boot();
+
+		const added = await host.invoke(Workbooks, "add", input({ workspaceId: null }));
+
+		expect(added.usedIn).toEqual([]);
 	});
 
 	it("keeps workbooks across restarts", async () => {
@@ -60,6 +79,28 @@ describe("workbooks", () => {
 		const second = await boot(first.storage);
 
 		expect(second.workbooks.getState().workbooks).toEqual([added]);
+	});
+
+	it("reads workbooks saved while they belonged to one workspace as used there", async () => {
+		const storage = createMemoryStorage("/memory/kilo.workbooks");
+		const { workspaceId: _, ...reference } = input();
+		storage.kv({ namespace: "workbooks", defaults: { workbooks: [] as unknown[] } }).set({
+			workbooks: [
+				{ ...reference, id: "old", workspaceId: "ws-1", createdAt: "2026-11-16T00:00:00.000Z" },
+			],
+		});
+
+		const { workbooks } = await boot(storage);
+
+		expect(workbooks.getState().workbooks).toEqual([
+			{
+				...reference,
+				id: "old",
+				createdAt: "2026-11-16T00:00:00.000Z",
+				lastUsedAt: "2026-11-16T00:00:00.000Z",
+				usedIn: [{ workspaceId: "ws-1", lastUsedAt: "2026-11-16T00:00:00.000Z" }],
+			},
+		]);
 	});
 
 	it("renames and forgets workbooks", async () => {
@@ -98,8 +139,8 @@ describe("workbooks", () => {
 });
 
 describe("creating a workbook", () => {
-	it("copies the template into Pages through the workspace's folder and records it", async () => {
-		const { host, pages, directories, workbooks } = await boot();
+	it("copies the template into Pages and records it as used in its workspace", async () => {
+		const { host, pages, workbooks } = await boot();
 
 		const created = await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
@@ -109,12 +150,11 @@ describe("creating a workbook", () => {
 		});
 
 		expect(created).toMatchObject({
-			workspaceId: "ws-1",
 			name: "Fix the server bug",
 			templateId: "coding",
 			backend: { kind: "pages-mcp", server: "pages" },
+			usedIn: [{ workspaceId: "ws-1", lastUsedAt: created.createdAt }],
 		});
-		expect(directories).toEqual(["/repo"]);
 		expect(pages.projects.get(created.projectId)?.description).toBe(
 			"Workbook · Coding · workspace: Kilo Desktop",
 		);
@@ -122,7 +162,21 @@ describe("creating a workbook", () => {
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
 	});
 
-	it("reaches Pages through Kilo's MCP connection by default", async () => {
+	it("creates a workbook outside any workspace", async () => {
+		const { host, pages } = await boot();
+
+		const created = await host.invoke(Workbooks, "create", {
+			workspaceId: null,
+			templateId: "blank",
+			name: "Scratch",
+			values: { goal: "Trying things out" },
+		});
+
+		expect(created.usedIn).toEqual([]);
+		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Blank");
+	});
+
+	it("reaches Pages through Kilo's global MCP connection by default", async () => {
 		const { host, pages, directories } = await bootWorkbooks({ viaKilo: true });
 		hosts.push(host);
 
@@ -134,7 +188,7 @@ describe("creating a workbook", () => {
 		});
 
 		expect(pages.projects.get(created.projectId)?.title).toBe("Via Kilo");
-		expect(new Set(directories)).toEqual(new Set(["/repo"]));
+		expect(new Set(directories)).toEqual(new Set(["/runtime"]));
 	});
 
 	it("records nothing when Pages fails, and refuses unknown templates and workspaces", async () => {
@@ -157,18 +211,71 @@ describe("creating a workbook", () => {
 	});
 });
 
-describe("workbooksIn", () => {
-	const workbook = (id: string, workspaceId: string, createdAt: string) =>
-		({ ...input({ workspaceId }), id, createdAt }) as Workbook;
+describe("using a workbook in a work session", () => {
+	it("records the session's workspace, and when it was last used", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-11-17T10:00:00.000Z"));
+		const { host, workbooks } = await boot(undefined, undefined, {
+			sessions: [workSession("wses_a", "ws-2"), workSession("wses_b")],
+		});
+		const added = await host.invoke(Workbooks, "add", input());
+		const current = () => workbooks.getState().workbooks.find((entry) => entry.id === added.id);
 
-	it("lists one workspace's workbooks, newest first", () => {
-		const all = [
-			workbook("a", "ws-1", "2026-01-01T00:00:00Z"),
-			workbook("b", "ws-2", "2026-01-02T00:00:00Z"),
-			workbook("c", "ws-1", "2026-01-03T00:00:00Z"),
-		];
+		vi.setSystemTime(new Date("2026-11-17T11:00:00.000Z"));
+		await host.invoke(SessionWorkbooks, "setActive", {
+			workSessionId: "wses_a",
+			workbookId: added.id,
+		});
 
-		expect(workbooksIn(all, "ws-1").map((entry) => entry.id)).toEqual(["c", "a"]);
-		expect(workbooksIn(all, null)).toEqual([]);
+		await expect
+			.poll(() => current()?.usedIn)
+			.toEqual([
+				{ workspaceId: "ws-1", lastUsedAt: "2026-11-17T10:00:00.000Z" },
+				{ workspaceId: "ws-2", lastUsedAt: "2026-11-17T11:00:00.000Z" },
+			]);
+		expect(current()?.lastUsedAt).toBe("2026-11-17T11:00:00.000Z");
+
+		vi.setSystemTime(new Date("2026-11-17T12:00:00.000Z"));
+		await host.invoke(SessionWorkbooks, "setActive", {
+			workSessionId: "wses_b",
+			workbookId: added.id,
+		});
+
+		await expect.poll(() => current()?.lastUsedAt).toBe("2026-11-17T12:00:00.000Z");
+		expect(current()?.usedIn.map((use) => use.workspaceId)).toEqual(["ws-1", "ws-2"]);
+	});
+});
+
+describe("workbooksFor", () => {
+	const workbook = (id: string, lastUsedAt: string, usedIn: Record<string, string> = {}) =>
+		({
+			id,
+			lastUsedAt,
+			usedIn: Object.entries(usedIn).map(([workspaceId, at]) => ({ workspaceId, lastUsedAt: at })),
+		}) as Workbook;
+
+	const all = [
+		workbook("a", "2026-01-05T00:00:00Z", {
+			"ws-1": "2026-01-01T00:00:00Z",
+			"ws-2": "2026-01-05T00:00:00Z",
+		}),
+		workbook("b", "2026-01-02T00:00:00Z", { "ws-2": "2026-01-02T00:00:00Z" }),
+		workbook("c", "2026-01-03T00:00:00Z", { "ws-1": "2026-01-03T00:00:00Z" }),
+		workbook("d", "2026-01-04T00:00:00Z"),
+	];
+	const ids = (list: readonly Workbook[]) => list.map((entry) => entry.id);
+
+	it("puts the workspace's workbooks first, by when they were last used there, then the rest", () => {
+		const { here, elsewhere } = workbooksFor(all, "ws-1");
+
+		expect(ids(here)).toEqual(["c", "a"]);
+		expect(ids(elsewhere)).toEqual(["d", "b"]);
+	});
+
+	it("lists every workbook by when it was last used without a workspace", () => {
+		const { here, elsewhere } = workbooksFor(all, null);
+
+		expect(here).toEqual([]);
+		expect(ids(elsewhere)).toEqual(["a", "d", "c", "b"]);
 	});
 });

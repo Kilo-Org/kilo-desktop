@@ -200,8 +200,10 @@ describe("workbook tools", () => {
 describe("workbooks missing a section", () => {
 	it("say which sections there are", async () => {
 		const { call, host, workbook } = await boot();
+		const { id: _, createdAt: __, lastUsedAt: ___, usedIn: ____, ...reference } = workbook;
 		const bare = await host.invoke(Workbooks, "add", {
-			...workbook,
+			...reference,
+			workspaceId: null,
 			name: "Bare",
 			sections: [{ id: "notes", title: "Notes", itemType: "note", pageId: workbook.guidePageId }],
 		});

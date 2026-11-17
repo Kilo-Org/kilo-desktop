@@ -13,6 +13,7 @@ import {
 	WorkSessions,
 	Workspaces,
 	type StartedWorkSession,
+	type WorkSession,
 	type Workspace,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -34,6 +35,24 @@ const unused = () => {
 	throw new KernelError("UNAVAILABLE", "not in this test");
 };
 
+/** A work session as kilo.work-sessions holds it, in a workspace or (null) none. */
+export function workSession(id: string, workspaceId: string | null = null): WorkSession {
+	return {
+		id,
+		title: "",
+		titleSource: "default",
+		pinned: false,
+		archived: false,
+		archiveChangedAt: 0,
+		workspaceId,
+		branch: null,
+		directory: null,
+		chatIds: [],
+		createdAt: 0,
+		updatedAt: 0,
+	};
+}
+
 /** Lets a test delete a work session, as kilo.work-sessions would announce it. */
 export interface WorkSessionsControl {
 	delete(id: string): void;
@@ -43,6 +62,7 @@ export interface WorkSessionsControl {
 export function workSessionsStandIn(
 	workspaces: Workspace[] = [WORKSPACE],
 	control: { current?: WorkSessionsControl } = {},
+	workSessions: WorkSession[] = [],
 ) {
 	return {
 		manifest: workSessionsManifest,
@@ -58,27 +78,11 @@ export function workSessionsStandIn(
 					methods: new Proxy({}, { get: () => unused }) as never,
 				});
 				const sessions = sdk.domainObjects.provide(WorkSessions, {
-					initialState: { workSessions: [] },
+					initialState: { workSessions },
 					methods: new Proxy({}, { get: () => unused }) as never,
 				});
 				control.current = {
-					delete: (id) =>
-						sessions.emit("deleted", {
-							workSession: {
-								id,
-								title: "",
-								titleSource: "default",
-								pinned: false,
-								archived: false,
-								archiveChangedAt: 0,
-								workspaceId: null,
-								branch: null,
-								directory: null,
-								chatIds: [],
-								createdAt: 0,
-								updatedAt: 0,
-							},
-						}),
+					delete: (id) => sessions.emit("deleted", { workSession: workSession(id) }),
 				};
 			},
 		}),
@@ -196,6 +200,7 @@ export type GuestPlugin = Parameters<typeof createPluginHost>[0][number];
 export interface WorkbooksHost {
 	readonly host: PluginHost;
 	readonly pages: FakePages;
+	/** The Kilo instance (by directory) each Pages call went to, when reached through Kilo. */
 	readonly directories: (string | undefined)[];
 }
 
@@ -208,6 +213,8 @@ export async function bootWorkbooks(
 		/** Reach Pages the real way: through a (stand-in) Kilo server over HTTP. */
 		readonly viaKilo?: boolean;
 		readonly workSessions?: { current?: WorkSessionsControl };
+		/** The work sessions kilo.work-sessions starts with. */
+		readonly sessions?: WorkSession[];
 		readonly started?: StartedChat[];
 		/** The `workbooks` flag; on unless a test turns it off. */
 		readonly flag?: boolean;
@@ -219,22 +226,13 @@ export async function bootWorkbooks(
 	const host = await createPluginHost(
 		[
 			options.viaKilo ? coreWithServer() : coreRegistration,
-			workSessionsStandIn([WORKSPACE], options.workSessions),
+			workSessionsStandIn([WORKSPACE], options.workSessions, options.sessions),
 			shellRegistration,
 			chatStandIn(options.started ?? []),
 			{
 				manifest,
 				definitions: WORKBOOKS_DEFINITIONS,
-				main: createWorkbooksMainEntry(
-					options.viaKilo
-						? {}
-						: {
-								pages: (_backend, directory) => {
-									directories.push(directory);
-									return pages;
-								},
-							},
-				),
+				main: createWorkbooksMainEntry(options.viaKilo ? {} : { pages: () => pages }),
 				web: workbooksWebEntry,
 			},
 			...(options.others ?? []),

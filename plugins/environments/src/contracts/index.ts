@@ -115,6 +115,20 @@ export const PERMISSION_RENDERERS = {
 export const ENVIRONMENTS_TELEMETRY_EVENTS = {
 	environmentCreated: "environment-created",
 	environmentRemoved: "environment-removed",
+	packageInstallLinkReceived: "package-install-link-received",
+	packageInstallLinkRejected: "package-install-link-rejected",
+} as const;
+
+/**
+ * Its `kilo.shell/deep-link` contribution: anaconda.org's "Install via Desktop"
+ * (`kilo-desktop://packages/install?package=<name>[&version=…][&channel=…]`),
+ * opened on the settings page with the action as `packageAction`.
+ */
+export const PACKAGE_INSTALL_DEEP_LINK = {
+	id: "package-install",
+	host: "packages",
+	pathParam: "packageAction",
+	query: ["package", "version", "channel", "source"],
 } as const;
 
 const nothing = z.undefined();

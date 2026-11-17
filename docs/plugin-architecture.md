@@ -1298,8 +1298,12 @@ with contributors today; candidate points are in the extensibility map (§7).
 │                                    local-file warning (bash, answers) — 12a
 │   kernel/service ................. conda bridge (daemon, first use) — 12a
 │   kilo.shell/settings-section .... Conda Environments (when flag) — 12a
-│   kilo.telemetry/telemetry-event . Environment Created / Removed — 12a
-│ ◆ conda (main: envs, packages, channels, repodata; job-progress, setup-requested)
+│   kilo.shell/deep-link ........... packages (pathParam packageAction): anaconda.org's
+│                                    "Install via Desktop" links
+│   kilo.telemetry/telemetry-event . Environment Created / Removed, Package Install Link
+│                                    Received / Rejected — 12a
+│ ◆ conda (main: envs, packages, channels (resolveChannel), repodata; job-progress,
+│   setup-requested)
 │   conda-runtime (main: ensureEnvironment for plugin-owned environments) — 12a
 ╰───────────────────────────────────────────────────────────────────────────────
 
@@ -1378,7 +1382,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.shell      | `settings-category`    | A              | `{id, title, priority}`: a sidebar heading; categories ordered by priority, empty ones hidden; unknown category → General                                                                                           | shell                                                                                                            |
 | kilo.shell      | `settings-section`     | A              | `{id, title, category: <settings-category key>, priority, schema \| component, when}`; ordered within its category                                                                                                  | shell, telemetry, updates, account, agent, workbench, chat, notebook, environments, local-inference, marketplace |
 | kilo.shell      | `status-bar-item`      | A              | `{id, title, kind: view \| action \| popover, align: start \| end, command?, priority, when}` + `Component` \| `useTrigger` with `run` or `Content`; the bar hides while no item renders                            | local-inference                                                                                                  |
-| kilo.shell      | `deep-link`            | A              | `{host, to, params}`                                                                                                                                                                                                | local-inference                                                                                                  |
+| kilo.shell      | `deep-link`            | A              | `{host, to, params}`                                                                                                                                                                                                | local-inference, environments                                                                                    |
 | kilo.shell      | `about-section`        | A              | Component: a block of Settings → About, ordered by priority around the shell's Support (200)                                                                                                                        | shell, updates                                                                                                   |
 | kilo.shell      | `support-row`          | A              | Row component in About → Support                                                                                                                                                                                    | agent                                                                                                            |
 | kilo.shell      | `account-panel`        | A              | Panel component in Settings → Account, ordered by priority; an empty panel leaves no frame                                                                                                                          | account, anaconda-account                                                                                        |

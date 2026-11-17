@@ -27,6 +27,7 @@ import {
 	ENVIRONMENTS_SETTINGS_SECTION,
 	ENVIRONMENTS_TELEMETRY_EVENTS,
 	MUTATING_CONDA_TOOL_IDS,
+	PACKAGE_INSTALL_DEEP_LINK,
 	PERMISSION_RENDERERS,
 } from "./index";
 
@@ -55,7 +56,7 @@ describe("kilo.environments manifest", () => {
 
 	const key = (id: string) => `${ENVIRONMENTS_PLUGIN_ID}/${id}`;
 
-	it("keeps origin's domain objects, service, settings section, flag and events", () => {
+	it("keeps origin's domain objects, service, settings section and flag, and declares its events", () => {
 		expect([Conda.id, CondaRuntime.id]).toEqual([
 			"kilo.environments/conda",
 			"kilo.environments/conda-runtime",
@@ -75,6 +76,18 @@ describe("kilo.environments manifest", () => {
 		expect(contributions("kernel/telemetry-event").map((entry) => entry.id)).toEqual(
 			Object.values(ENVIRONMENTS_TELEMETRY_EVENTS),
 		);
+	});
+
+	it("routes anaconda.org's install links to the settings page", () => {
+		expect(contributions("kilo.shell/deep-link")).toEqual([
+			{
+				id: PACKAGE_INSTALL_DEEP_LINK.id,
+				host: PACKAGE_INSTALL_DEEP_LINK.host,
+				path: `/settings/${ENVIRONMENTS_SETTINGS_SECTION}`,
+				pathParam: PACKAGE_INSTALL_DEEP_LINK.pathParam,
+				query: [...PACKAGE_INSTALL_DEEP_LINK.query],
+			},
+		]);
 	});
 
 	it("keeps origin's tool wire names, offered to external apps as origin's default did", () => {

@@ -63,6 +63,15 @@ async function renderButton(open: readonly string[] = ["ses_new", "ses_popped"])
 		});
 		main.windowEvents.opened("w9", { role: "secondary", view: PANE_WINDOW_VIEW });
 	}
+	renderMenu(renderer, WORK_SESSION);
+	return { ...host, windows };
+}
+
+/** kilo.chat's Agents contribution, rendered for `session` as the header does. */
+function renderMenu(
+	renderer: Awaited<ReturnType<typeof renderAgentPane>>["host"]["renderer"],
+	session: WorkSession,
+) {
 	const contribution = renderer.extensions
 		.list(WorkSessionAction)
 		.find((candidate) => candidate.key.endsWith("agents"))!;
@@ -72,12 +81,11 @@ async function renderButton(open: readonly string[] = ["ses_new", "ses_popped"])
 			<div className="relative z-50">
 				<RenderContribution<WorkSessionActionProps>
 					contribution={contribution}
-					props={{ workSession: WORK_SESSION }}
+					props={{ workSession: session }}
 				/>
 			</div>
 		</KernelProvider>,
 	);
-	return { ...host, windows };
 }
 
 describe("the Agents button", () => {
@@ -128,7 +136,7 @@ describe("the Agents button", () => {
 		expect(sessions.calls.open).toHaveBeenCalledWith(expect.objectContaining({ placement: "tab" }));
 	});
 
-	it("starts a new agent as a draft tab of the active group", async () => {
+	it("starts a new agent as a draft tab of the active pane's group, as reopening does", async () => {
 		const { panes, sessions } = await renderButton();
 		const before = panes().panes.length;
 
@@ -139,9 +147,22 @@ describe("the Agents button", () => {
 		const opened = panes().panes.at(-1)!;
 		expect(opened.kind).toBe(AGENT_PANE_KIND);
 		expect(paneChatId(opened)).toBeNull();
+		// "tab", not the default own column: kilo.work-sessions adds it to the active pane's group.
 		expect(sessions.calls.open).toHaveBeenCalledWith(
 			expect.objectContaining({ kind: AGENT_PANE_KIND, placement: "tab" }),
 		);
+	});
+
+	it("offers New agent alone, with no separator, in a work session without chats", async () => {
+		const empty = workSession({ chatIds: [] });
+		const { renderer } = (await renderAgentPane({ chatWeb: agentPanesWeb, workSession: empty }))
+			.host;
+		renderMenu(renderer, empty);
+
+		await page.getByTestId("agents-menu-button").click();
+
+		await expect.element(page.getByTestId("agents-menu-new")).toBeVisible();
+		expect(page.getByTestId("agents-menu").getByRole("separator").query()).toBeNull();
 	});
 
 	it("leaves the Closed section out when every chat is open", async () => {

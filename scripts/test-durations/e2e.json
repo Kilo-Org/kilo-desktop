@@ -1,0 +1,265 @@
+{
+	"e2e/specs/anaconda/anaconda-account.spec.ts": {
+		"Anaconda account › contributes a signed-out Anaconda row to Account settings @smoke": 2.2
+	},
+	"e2e/specs/browser/browser-loopback-guard.spec.ts": {
+		"Browser loopback guard @smoke @packaged › blocks a remote page from embedding a loopback sub-resource": 2.2,
+		"Browser loopback guard @smoke @packaged › navigates directly to a loopback dev server and adopts its title": 1.3
+	},
+	"e2e/specs/browser/browser.spec.ts": {
+		"Browser tab @smoke @packaged › navigates an embedded guest and adopts its page title": 1.5
+	},
+	"e2e/specs/chat/chat-approval-selector.spec.ts": {
+		"Chat approval selector › Escape closes the menu without changing the approval mode": 1.4,
+		"Chat approval selector › Manual and Auto labels always match the selected radio item": 2,
+		"Chat approval selector › clicking outside closes the menu without changing the approval mode": 1.3,
+		"Chat approval selector › defaults to Manual and opens the approval menu @smoke": 2,
+		"Chat approval selector › selecting Auto updates the label and checked state and persists across reload @smoke": 3,
+		"Chat approval selector › selecting Manual again persists across reload": 3.5,
+		"Chat approval selector › the approval choice applies across persisted chats": 5.8
+	},
+	"e2e/specs/chat/chat-attachments.spec.ts": {
+		"Chat attachments › uploads an image, sends it, and renders the mock model's reply @smoke @packaged": 25.9
+	},
+	"e2e/specs/chat/chat-composer.spec.ts": {
+		"Chat composer › enables send once the composer has text @smoke": 0.6,
+		"Chat composer › starts an unscoped session's chat in its own folder @packaged": 1.9,
+		"Chat composer › starts the session's chat in its workspace on the first send @smoke @packaged": 3.3
+	},
+	"e2e/specs/chat/chat-mode-selector.spec.ts": {
+		"Chat mode selector › Escape closes the menu without changing the selection": 0.9,
+		"Chat mode selector › clicking outside closes the menu without changing the selection": 0.8,
+		"Chat mode selector › defaults to Code and lists the built-in modes in order @smoke": 0.9,
+		"Chat mode selector › every rendered mode updates the trigger label when selected": 1.7,
+		"Chat mode selector › lists exactly the modes the Kilo CLI reports @smoke": 0.8,
+		"Chat mode selector › records each mode as the created session agent": 6.6,
+		"Chat mode selector › records the Plan mode as the created session agent @smoke": 2.8,
+		"Chat mode selector › records the last selected mode when the mode changes before sending": 2.3,
+		"Chat mode selector › selecting a mode updates the trigger label and its checked state": 1.3,
+		"Chat mode selector › the mode is scoped to the chat": 2.3
+	},
+	"e2e/specs/chat/chat-model-selector.spec.ts": {
+		"Chat model selector › Escape closes the menu and switching rails keeps the search box visible": 6,
+		"Chat model selector › favoriting Kilo Gateway models turns their star active and lists them under Favorites @smoke": 63.5,
+		"Chat model selector › opens a well-formed info tooltip for a Kilo Gateway model @smoke": 6.6,
+		"Chat model selector › shows a well-formed, non-overlapping info tooltip for Kilo Gateway models @reg": 146.4,
+		"Chat model selector › shows only the favorites empty message in the list": 5.5,
+		"Chat model selector › shows the local model server empty state": 8.7,
+		"Chat model selector › shows the model search box with its placeholder @smoke": 5.5,
+		"Chat model selector › shows the model trigger and opens the menu @smoke": 5.8,
+		"Chat model selector › shows the provider rail with the Favorites button @smoke": 5.7
+	},
+	"e2e/specs/chat/desktop-tools.spec.ts": {
+		"Desktop agent tools @packaged › serves kilo.chat's tools to Kilo through kilo.core's gateway @smoke": 0.1
+	},
+	"e2e/specs/chat/find.spec.ts": {
+		"Chat transcript find @smoke @packaged › opens a scoped find bar on the platform find chord": 0.9
+	},
+	"e2e/specs/chat/kilo-chat.spec.ts": {
+		"kilo.chat @smoke › starts a work session from the New Session page with a prompt, shows the reply and titles the session": 15.9
+	},
+	"e2e/specs/chat/new-chat.spec.ts": {
+		"New chat › an Agent pane added to a session opens with the composer docked at the bottom @smoke": 0.9,
+		"New chat › the New Session page welcomes without a workspace and shows tools below the session starter @smoke": 0.7
+	},
+	"e2e/specs/chat/welcome-shortcuts.spec.ts": {
+		"Welcome shortcuts @packaged › opens Files with an explanation when no workspace is selected": 0.7,
+		"Welcome shortcuts @packaged › opens Files with the selected workspace's file list @smoke": 0.5,
+		"Welcome shortcuts @packaged › opens a Browser and loads a page from the welcome page @smoke": 1,
+		"Welcome shortcuts @packaged › opens a Notebook from the welcome page": 4,
+		"Welcome shortcuts @packaged › opens a working Terminal from the welcome page @smoke": 3.5
+	},
+	"e2e/specs/core/kilo-core.spec.ts": {
+		"kilo.core @smoke @packaged › starts the packaged Kilo server once the terms are accepted and signs in the e2e identity": 4.5
+	},
+	"e2e/specs/developer/diagnostics.spec.ts": {
+		"Diagnostics @smoke › lists the kernel, the running plugins and the developer flag under Developer": 0.6
+	},
+	"e2e/specs/environments/environments.spec.ts": {
+		"Conda environments @smoke › activates and registers the conda bridge service": 0.4
+	},
+	"e2e/specs/files/files.spec.ts": {
+		"Files @packaged › auto-refreshes the tree when files change on disk @smoke": 2.6,
+		"Files @packaged › opens the bundled files pane and exposes a workspace file": 1.4,
+		"Files @packaged › reloads an open file when it changes on disk": 2.2,
+		"Files @packaged › shows git status decorations for a worktree-root workspace": 1.3
+	},
+	"e2e/specs/files/table-viewer.spec.ts": {
+		"Files table viewer @packaged › saves the CSV draft shown in the table view": 2.4,
+		"Files table viewer @packaged › shows a Parquet file as a read-only Sift table @smoke": 2
+	},
+	"e2e/specs/git/branch-selector.spec.ts": {
+		"Git branch selector › opens the grouped branch popover in the launcher": 1.6
+	},
+	"e2e/specs/git/changes.spec.ts": {
+		"Git changes live reload @packaged › reflects working tree edits and terminal commits": 8.3,
+		"Git changes pane @smoke @packaged › opens the Changes pane in a work session and streams the modified file": 1.8,
+		"Git changes pane file actions @packaged › opens a changed file in a Files pane from its diff header": 2.3,
+		"Git changes pane init › initializes a plain folder from the Changes pane's error state": 2.2
+	},
+	"e2e/specs/git/init.spec.ts": {
+		"Git init › initializes a plain folder from the chat's composer footer @smoke @packaged": 3.2,
+		"Git init › swaps the footer button for the branch label when git init runs outside the app": 3.4
+	},
+	"e2e/specs/git/worktrees.spec.ts": {
+		"Git worktrees @packaged › a new session can reuse an existing worktree": 6,
+		"Git worktrees @packaged › local sessions keep the checkout's branch picker": 1,
+		"Git worktrees @packaged › starts a session in a new worktree and removes the worktree when the session is deleted @smoke": 11
+	},
+	"e2e/specs/kernel/boot.spec.ts": {
+		"Kernel boot @smoke @packaged › starts the bundled plugins over an isolated kernel bridge, without its own screen": 0.1,
+		"Kernel boot @smoke @packaged › starts with no plugins in safe mode and offers a normal restart": 1.3
+	},
+	"e2e/specs/local-inference/local-model-server.spec.ts": {
+		"Local Model Server @smoke › opens Local Model Server settings and offers the model sources": 1
+	},
+	"e2e/specs/marketplace/marketplace.spec.ts": {
+		"Agent Behavior settings @smoke › installs and removes a global MCP": 6.9
+	},
+	"e2e/specs/notebook/notebook-signed-out.spec.ts": {
+		"Notebook signed out @smoke @packaged › offers a Notebook pane that asks a signed-out user to sign in": 0.6
+	},
+	"e2e/specs/notebook/notebook.spec.ts": {
+		"Notebook @smoke @packaged › offers a Notebook pane to a signed-in user": 2.2
+	},
+	"e2e/specs/shell/about-kilo-config.spec.ts": {
+		"About settings: Kilo config › shows the existing global kilo.jsonc path, enables show in file manager, and reveals that exact file": 2,
+		"About settings: Kilo config › verifies kilo config row when the global kilo.jsonc does not exist": 0.7
+	},
+	"e2e/specs/shell/about.spec.ts": {
+		"About settings › offers the terms of service and shows the third-party notices the app ships @smoke @packaged": 7.9,
+		"About settings › reads the version and update state and offers the application logs @smoke @packaged": 0.8,
+		"About settings › show in file manager reveals the log file path shown in the Application logs row": 0.6,
+		"About settings › verifies about page layout": 0.5,
+		"About settings › verifies application logs row": 0.5,
+		"About settings › verifies support section": 0.5,
+		"About settings › verifies update status without an update feed": 0.5,
+		"About settings › verifies update track": 0.5,
+		"About settings › verifies version details": 0.5
+	},
+	"e2e/specs/shell/account-signed-out.spec.ts": {
+		"Account settings signed out @smoke › verifies account state after reopening settings": 1,
+		"Account settings signed out @smoke › verifies kilo row when not signed in": 2.6
+	},
+	"e2e/specs/shell/account.spec.ts": {
+		"Account settings @smoke › shows the signed-in account at the foot of the sidebar": 0.7,
+		"Account settings @smoke › verifies account page layout": 2.3,
+		"Account settings @smoke › verifies kilo row when signed in": 0.6
+	},
+	"e2e/specs/shell/ai-providers.spec.ts": {
+		"AI Providers settings › opens AI Providers with the Kilo Gateway panel above the AI providers kilo.core lists @smoke": 6.4
+	},
+	"e2e/specs/shell/app-menu.spec.ts": {
+		"Native app menu @smoke @packaged › offers shell's commands and runs the one chosen": 0.2
+	},
+	"e2e/specs/shell/appearance.spec.ts": {
+		"Appearance color theme and accent @regression @packaged › applies an accent color and keeps it after a reload": 3.6,
+		"Appearance color theme and accent @regression @packaged › applies every color theme from the picker": 7.7,
+		"Appearance color theme and accent @regression @packaged › restores the theme's accent color": 3.1,
+		"Appearance sidebar vibrancy @regression @packaged › turns sidebar vibrancy back on": 2.9,
+		"Appearance sidebar vibrancy @regression @packaged › turns sidebar vibrancy off and keeps it off after a reload": 2.8,
+		"Appearance text size @smoke @packaged › adjusts and persists the chat text size": 2.6,
+		"Appearance text size @smoke @packaged › adjusts and persists the interface text size": 2.5,
+		"Appearance text size @smoke @packaged › limits the chat text size to its supported range": 1.6,
+		"Appearance text size @smoke @packaged › limits the interface text size to its supported range": 1.8,
+		"Appearance text size @smoke @packaged › resets the chat text size to its default": 2.7,
+		"Appearance text size @smoke @packaged › resets the interface text size to its default": 2.9
+	},
+	"e2e/specs/shell/boot.spec.ts": {
+		"Shell boot @smoke @packaged › loads the renderer over the custom protocol with an isolated preload": 0
+	},
+	"e2e/specs/shell/context-menu.spec.ts": {
+		"Native context menu @smoke @packaged › offers native edit actions when right-clicking a text field": 0.2
+	},
+	"e2e/specs/shell/external-ai-apps.spec.ts": {
+		"External AI apps @packaged › pairs an external app, serves it Desktop tools, and revokes it @smoke": 2.7
+	},
+	"e2e/specs/shell/frame.spec.ts": {
+		"Shell frame @smoke @packaged › shrinks an empty top bar while the sidebar is docked": 0.2
+	},
+	"e2e/specs/shell/keyboard-shortcuts.spec.ts": {
+		"Keyboard shortcuts @smoke › dispatches app shortcuts captured in the main process": 0.4,
+		"Keyboard shortcuts @smoke › runs a command chosen in the command palette": 0.4
+	},
+	"e2e/specs/shell/onboarding.spec.ts": {
+		"Onboarding › walks a fresh profile through the terms, sign-in, work style, workspace and features steps": 5.6
+	},
+	"e2e/specs/shell/privacy.spec.ts": {
+		"Privacy @smoke › defaults on and keeps the opt-out saved by the host": 1.5
+	},
+	"e2e/specs/shell/settings-overview.spec.ts": {
+		"Settings overview › verifies the settings UI and sections for a signed-in user": 3.1,
+		"Settings overview › verifies the settings UI and sign-in prompts on gated sections for a signed-out user": 7.5
+	},
+	"e2e/specs/shell/settings-search.spec.ts": {
+		"Settings search › verifies clearing search with the clear icon": 0.3,
+		"Settings search › verifies search with invalid data": 0.2,
+		"Settings search › verifies search with two-letter data": 0.2,
+		"Settings search › verifies search with valid data": 0.1
+	},
+	"e2e/specs/shell/settings.spec.ts": {
+		"Settings @smoke › opens Appearance settings from the app bar": 0.4
+	},
+	"e2e/specs/shell/theme.spec.ts": {
+		"Theme @smoke @packaged › restores the palette and native chrome after an app restart": 13.9,
+		"Theme @smoke @packaged › syncs native appearance live when switching between Light, System, and Dark": 1.5
+	},
+	"e2e/specs/terminal/terminal.spec.ts": {
+		"Terminal @smoke @packaged › runs isolated shells in a terminal-only session": 26.7
+	},
+	"e2e/specs/work-sessions/kilo-work-sessions.spec.ts": {
+		"kilo.work-sessions @smoke › adds a workspace, starts an empty session in it from the New Session page, then renames and pins it": 3.8
+	},
+	"e2e/specs/work-sessions/layout-presets.spec.ts": {
+		"Session layout presets @smoke › saves the current panes as the default layout and applies it to new sessions after a reload": 4.8
+	},
+	"e2e/specs/work-sessions/pane-tab-menu.spec.ts": {
+		"Pane tab menu @smoke › right-clicking a tab shows its menu instead of the native one, and closes the tab": 2.4
+	},
+	"e2e/specs/work-sessions/session-list.spec.ts": {
+		"Session list @packaged › starts, renames, pins, archives and deletes a session @smoke": 4.1
+	},
+	"e2e/specs/work-sessions/sidemenu-bulk-actions.spec.ts": {
+		"Side menu bulk actions @packaged › restores an archived selection, and offers no Archive for it": 3
+	},
+	"e2e/specs/work-sessions/sidemenu-sessions.spec.ts": {
+		"Side menu with sessions @packaged › abandons an inline rename on Escape, keeping the old title": 7,
+		"Side menu with sessions @packaged › archiving a session moves it onto the Archived shelf": 2.1,
+		"Side menu with sessions @packaged › keeps a session pinned across a window reload": 7.6,
+		"Side menu with sessions @packaged › keeps the Archived shelf expanded across a window reload": 3.9,
+		"Side menu with sessions @packaged › keeps the old title when the new one is blank": 7.2,
+		"Side menu with sessions @packaged › offers the row actions for a listed session @smoke": 7.1,
+		"Side menu with sessions @packaged › pinning a session adds the Pinned shelf and unpinning removes it": 7.2,
+		"Side menu with sessions @packaged › says why the session search is empty, per query and scope": 7.5,
+		"Side menu with sessions @packaged › selects a session with the row's Shift+Click shortcut": 6.5
+	},
+	"e2e/specs/work-sessions/sidemenu-unavailable-folders.spec.ts": {
+		"Side menu workspace filter @packaged › warns about folders it cannot reach, and opens the workspace's settings": 1.2
+	},
+	"e2e/specs/work-sessions/sidemenu-virtualization.spec.ts": {
+		"Side menu with a long history @packaged › keeps the row list as tall as the whole history": 23.6,
+		"Side menu with a long history @packaged › mounts only the rows near the viewport, and reaches the rest by scrolling @smoke": 17.2,
+		"Side menu with a long history @packaged › walks the arrow keys past the mounted window, scrolling rows in as it goes": 19.2
+	},
+	"e2e/specs/work-sessions/sidemenu.spec.ts": {
+		"Side menu on a new account @packaged › offers Sign in while no account is signed in": 2.7,
+		"Side menu on a new account @packaged › opens the session list options menu from the grouping header": 0.3,
+		"Side menu on a new account @packaged › opens the session search dialog and dismisses it with Escape": 0.5,
+		"Side menu on a new account @packaged › shows the chat actions, session list, and footer controls @smoke": 0.6,
+		"Side menu on a new account @packaged › starts with no sessions, and so no Pinned or Archived shelf": 0.2
+	},
+	"e2e/specs/work-sessions/work-sessions.spec.ts": {
+		"Work sessions @packaged › creates two sessions, switches between them and keeps both across a reload @smoke": 6.3
+	},
+	"e2e/specs/work-sessions/workspace-watcher.spec.ts": {
+		"Workspace watcher @smoke @packaged › publishes a file-change batch for a registered workspace folder": 0.6
+	},
+	"e2e/specs/work-sessions/workspaces.spec.ts": {
+		"Workspaces @packaged › adds a workspace from the folder picker and lists it @smoke": 1.3
+	},
+	"e2e/specs/workspace-board/workspace-board.spec.ts": {
+		"Workspace board @packaged › places a session on the board, drags it between columns, and keeps it after reload @smoke": 2.9,
+		"Workspace board @packaged › pops the board out, opens a session from its window, and docks it back": 2.2,
+		"Workspace board @packaged › takes a session list row dropped on a column": 1.1
+	}
+}

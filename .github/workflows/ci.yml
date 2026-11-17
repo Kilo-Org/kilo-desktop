@@ -40,6 +40,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check
+      - run: pnpm test:scripts
 
   # Bundled plugins build outside the monorepo: manifests, exports and
   # declared dependencies for every plugin, then each one is copied with
@@ -72,16 +73,77 @@ jobs:
       # 16 GB runner on a full (uncached) check; the kernel kills one (exit 137).
       - run: pnpm exec turbo run check --affected --concurrency=4
 
+  # Linux runs every Vitest tier (unit, integration, browser) in three shards,
+  # split by recorded per-package duration (scripts/test-durations/coverage.json).
+  # PRs run only the tests the diff can reach; lockfile, manifest, tsconfig and
+  # test-config changes widen that to full suites (scripts/test-changed.mjs).
+  # The merge queue runs every package's full suite with the 80% coverage gate.
+  test-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    concurrency:
+      group: test-linux-${{ matrix.shard }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      GIT_CONFIG_NOSYSTEM: "true"
+    steps:
+      - name: Isolate git config
+        shell: bash
+        run: |
+          : > "$RUNNER_TEMP/kilo-test-gitconfig"
+          echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/kilo-test-gitconfig" >> "$GITHUB_ENV"
+      # Depth 2: a PR checks out its merge commit, whose first parent (HEAD^1)
+      # is the base it merges into — the base for change selection.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/turbo-cache
+        with:
+          key-suffix: linux-${{ matrix.shard }}
+      - uses: ./.github/actions/install-test-runtime
+        with:
+          runtime: electron
+          package-name: "@kilo-desktop/desktop"
+      - uses: ./.github/actions/install-test-runtime
+        with:
+          runtime: playwright
+          package-name: "@kilo-desktop/web"
+          with-deps: "true"
+      - name: Run the tests this PR can reach
+        if: github.event_name == 'pull_request'
+        run: node scripts/test-changed.mjs HEAD^1 --shard ${{ matrix.shard }}/3 --concurrency 2
+      - name: Run every package with the coverage gate
+        if: github.event_name != 'pull_request'
+        run: node scripts/test-changed.mjs --all --task coverage --shard ${{ matrix.shard }}/3 --concurrency 2
+
+  # Keeps the Linux leg's name, the required branch-protection check, now that
+  # its work is sharded across test-linux.
+  test-linux-gate:
+    name: test (blacksmith-4vcpu-ubuntu-2404)
+    if: always()
+    needs: test-linux
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - name: Verify Linux test shards
+        shell: bash
+        env:
+          RESULT: ${{ needs.test-linux.result }}
+        run: |
+          echo "test-linux: $RESULT"
+          [[ "$RESULT" == "success" ]]
+
   test:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          [
-            blacksmith-4vcpu-ubuntu-2404,
-            blacksmith-8vcpu-windows-2025,
-            blacksmith-6vcpu-macos-latest,
-          ]
+        os: [blacksmith-8vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
     runs-on: ${{ matrix.os }}
     concurrency:
       # Windows runners contend over native modules and SQLite files.
@@ -105,25 +167,10 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/turbo-cache
-      # Full coverage, including browser projects, runs once. The platform
-      # matrix legs below retain checks for real Git and filesystem behavior.
-      - if: runner.os == 'Linux'
-        uses: ./.github/actions/install-test-runtime
-        with:
-          runtime: electron
-          package-name: "@kilo-desktop/desktop"
-      - if: runner.os == 'Linux'
-        uses: ./.github/actions/install-test-runtime
-        with:
-          runtime: playwright
-          package-name: "@kilo-desktop/web"
-          with-deps: "true"
-      - if: runner.os == 'Linux'
-        run: pnpm exec turbo run coverage --affected --concurrency=2
-      # Turbo-managed platform tests: cached, and the packages run
-      # concurrently instead of one pnpm --filter invocation at a time.
+      # Coverage, including browser projects, runs in test-linux. These legs
+      # keep checks for real Git and filesystem behavior per platform, as
+      # Turbo-managed tasks: cached, and the packages run concurrently.
       - name: Run platform compatibility tests
-        if: runner.os != 'Linux'
         shell: bash
         run: >-
           pnpm exec turbo run test:platform
@@ -133,8 +180,14 @@ jobs:
           --filter=@kilo-desktop/plugin-notebook
           --filter=@kilo-desktop/plugin-work-sessions
 
+  # Three shards, split by recorded test time (scripts/test-durations/e2e.json)
+  # after the PR's spec selection; each packages its own app (~1 min).
   e2e-pr:
     if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: blacksmith-8vcpu-windows-2025
     timeout-minutes: 60
     env:
@@ -161,7 +214,8 @@ jobs:
         with:
           script: test:e2e
           grep: ${{ steps.e2e-selection.outputs.grep }}
-          report-name: playwright-report-smoke
+          shard: ${{ matrix.shard }}/3
+          report-name: playwright-report-pr-${{ matrix.shard }}
           upload-on: always
 
   # Validate the combined merge-queue commit with the full suite on both

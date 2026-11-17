@@ -8,10 +8,18 @@
 | Integration | `*.integration.test.ts`  | Vitest node, serial            | Every PR                            |
 | Component   | `*.browser.test.tsx`     | Vitest Chromium                | Every PR                            |
 | App-level   | `*.app.test.tsx`         | Vitest Chromium                | Every PR (composition / routing)    |
-| E2E smoke   | `@smoke` + changed areas | Playwright + packaged Electron | Every PR (Windows)                  |
+| E2E smoke   | `@smoke` + changed areas | Playwright + packaged Electron | Every PR (Windows, 3 shards)        |
 | E2E full    | all specs                | Playwright + packaged Electron | Nightly matrix + merge queue        |
 
 Coverage gate: **80%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
+
+On Linux, CI runs every Vitest tier in three shards, split by recorded
+per-package duration (`scripts/test-durations/coverage.json`). PRs run only the
+tests the diff can reach (`scripts/test-changed.mjs`: Vitest `--changed`
+against the PR base, widened to full suites when a lockfile, manifest,
+tsconfig, test config or setup file changes). The merge queue runs every
+package's full suite with the coverage gate. Windows and macOS run the
+platform compatibility tests.
 
 App-level tests cover the kernel boot with the bundled plugins. Plugin journeys belong in browser component tests (in a booted test kernel) and e2e (protocol / IPC / packaging).
 
@@ -23,12 +31,23 @@ touches (`e2e/scripts/select-pr-e2e.ts`): a change under `plugins/<id>/` runs
 the full suite on their platform matrices; every E2E test launches an
 OS-matched packaged application.
 
-Playwright runs two workers (`E2E_WORKERS` overrides; set `1` to serialize
-while debugging). Each worker owns its app and profile and stops only its own
+Playwright runs two workers locally and one per 2 vCPUs in CI (4 on the
+8-vCPU Windows runner, 3 on macOS, 2 on Linux), set by the `run-e2e` action
+(`E2E_WORKERS` overrides; set `1` to serialize while debugging). Each worker owns its app and profile and stops only its own
 process tree; orphaned app instances are swept once in global setup and
-teardown. The macOS merge-queue leg is additionally split into two shards
-(`E2E_SHARD=current/total`), and `e2e-merge-report` merges their blob reports
-into one HTML report. E2E jobs do not download a Playwright browser — specs use
+teardown. PR E2E runs in three Windows shards and the macOS merge-queue leg in
+two (`E2E_SHARD=current/total`); `e2e-merge-report` merges the macOS blob
+reports into one HTML report. Shards split spec files by recorded test time
+(`scripts/test-durations/e2e.json`, read by `e2e/utils/shard-specs.ts`) so the
+slow specs do not stack on one shard; a spec with no recorded time gets the
+median. A slow spec file can opt into `test.describe.configure({ mode:
+"parallel" })` when its tests are independent, so its tests spread across
+workers.
+
+Refresh the recorded durations when specs or packages change a lot:
+`node scripts/record-test-durations.mjs e2e <junit.xml>...` with the JUnit
+reports from the CI e2e artifacts, and `node scripts/record-test-durations.mjs
+coverage .turbo/runs/<id>.json` after `turbo run coverage --force --summarize`. E2E jobs do not download a Playwright browser — specs use
 `_electron.launch`; Linux only installs Chromium's system libraries for Electron.
 
 Specs that need their own app share a worker by `appIsolationKey`. A feature
@@ -127,7 +146,7 @@ plugins/<dir>/e2e/                         # a plugin's own e2e
 2. On a failed or timed-out attempt the fixture attaches **screenshot**, **page HTML**, **console logs** (renderer), **main-process.log** (Electron main stdout/stderr for that test, including sidecar lifecycle), **kilo-cli.log** (the profile's Kilo CLI log), and **electron-trace** (a Playwright trace of the app window with DOM snapshots and a screencast). Playwright's own `trace` option only records its browser fixtures, so its trace for Electron specs holds test steps only.
 3. When the worker app itself fails to start (for example the Kilo server never reports a listening URL), there is no test to attach files to yet: the error message carries the tail of the main-process output and Kilo CLI log instead, so it appears directly in the CI log.
 4. Open `playwright-report/index.html` (`npx playwright show-report`). CI also uploads JUnit XML and a Playwright blob report for machine-readable diagnostics.
-5. CI retries twice. PR and merge-queue checks tolerate a retry pass, while nightly sets `PLAYWRIGHT_FAIL_ON_FLAKY_TESTS=true` and fails on any flaky result. Flaky specs must still be fixed (no quarantine tag).
+5. CI retries once. PR and merge-queue checks tolerate a retry pass, but every test that passed only on retry is flagged as a GitHub warning and listed in the job summary (`e2e/scripts/report-flaky.ts`). Nightly sets `PLAYWRIGHT_FAIL_ON_FLAKY_TESTS=true` and fails on any flaky result. Flaky specs must be fixed (no quarantine tag); the goal is zero retries.
 
 ## Plugin test obligations
 

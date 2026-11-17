@@ -15,7 +15,16 @@ inputs:
     required: false
     default: ""
   shard:
-    description: Optional Playwright shard as "current/total" (e.g. 1/2), passed as E2E_SHARD.
+    description: >
+      Optional shard as "current/total" (e.g. 1/2), passed as E2E_SHARD. The
+      config splits spec files by recorded duration (scripts/test-durations/e2e.json).
+    required: false
+    default: ""
+  workers:
+    description: >
+      Parallel Playwright workers (one packaged app each), passed as
+      E2E_WORKERS. Empty: one per 2 vCPUs (minimum 2), so bigger runners run
+      more apps at once before a job needs more shards.
     required: false
     default: ""
   xvfb:
@@ -63,12 +72,27 @@ runs:
         SKIP_BUILD: "true"
         E2E_GREP: ${{ inputs.grep }}
         E2E_SHARD: ${{ inputs.shard }}
+        WORKERS: ${{ inputs.workers }}
       run: |
-        if [ "${{ inputs.xvfb }}" = "true" ]; then
-          xvfb-run --auto-servernum pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }}
-        else
-          pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }}
+        if [ -z "$WORKERS" ]; then
+          cpus="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+          WORKERS=$(( cpus / 2 > 2 ? cpus / 2 : 2 ))
         fi
+        export E2E_WORKERS="$WORKERS"
+        echo "Playwright workers: $E2E_WORKERS"
+        # A grep-narrowed PR run can leave a shard with no matching tests.
+        args=()
+        if [ -n "$E2E_SHARD" ]; then args+=(--pass-with-no-tests); fi
+        if [ "${{ inputs.xvfb }}" = "true" ]; then
+          xvfb-run --auto-servernum pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }} "${args[@]}"
+        else
+          pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }} "${args[@]}"
+        fi
+
+    - name: Report flaky tests
+      if: ${{ !cancelled() }}
+      shell: bash
+      run: node e2e/scripts/report-flaky.ts test-results/results.json
 
     - name: Upload Playwright results
       if: ${{ inputs.upload-on == 'always' || failure() }}

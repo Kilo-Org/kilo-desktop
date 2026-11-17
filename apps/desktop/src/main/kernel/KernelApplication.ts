@@ -33,7 +33,10 @@ import {
 import { getAppIdentity } from "$config/app-identity.js";
 import { requestDevRelaunch } from "$config/dev-relaunch.js";
 
-import { restoreNativeThemeFromPreferences } from "../platform/native-theme.js";
+import {
+	repaintOnSystemColorSchemeChange,
+	restoreNativeThemeFromPreferences,
+} from "../platform/native-theme.js";
 import { ElectronApp } from "../platform/ElectronApp.js";
 import { buildFallbackMenuTemplate } from "../platform/ElectronAppMenu.js";
 import { ElectronBrowserHost } from "../platform/ElectronBrowserHost.js";
@@ -201,7 +204,10 @@ export class KernelApplication {
 
 		await this.#app.whenReady();
 		this.#menus.refresh();
-		this.#disposers.push(this.#shortcuts.install());
+		this.#disposers.push(
+			this.#shortcuts.install(),
+			repaintOnSystemColorSchemeChange(this.#windows),
+		);
 		if (this.#isDevelopment) electronDebug({ showDevTools: false });
 
 		const developmentOrigin = getWebDevServerUrl();

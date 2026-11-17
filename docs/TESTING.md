@@ -51,6 +51,11 @@ median. A slow spec file can opt into `test.describe.configure({ mode:
 "parallel" })` when its tests are independent, so its tests spread across
 workers.
 
+Dependency caches (the pnpm store, the notebook runtime and the Kilo CLI) are saved on `main` by
+`.github/workflows/warm-caches.yml` after every merge, because a cache saved on a PR branch is
+invisible to other PRs. The pnpm store and Kilo CLI caches fall back to the closest older entry, so a
+lockfile change downloads only what changed.
+
 Refresh the recorded durations when specs or packages change a lot:
 `node scripts/record-test-durations.mjs e2e <junit.xml>...` with the JUnit
 reports from the CI e2e artifacts, and `node scripts/record-test-durations.mjs

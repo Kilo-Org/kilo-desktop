@@ -51,6 +51,8 @@ import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog";
 import { environmentDisplayName } from "./environment-display";
 import { isProviderNotReadyError } from "./environments-error-message";
 import { ListViewMenu, type SortDirection } from "./ListViewMenu";
+import { PackageInstallRequestDialog } from "./PackageInstallRequestDialog";
+import { usePackageInstallLink } from "./use-package-install-link";
 import { useProviderNotReadySince } from "./useProviderNotReadySince";
 
 /**
@@ -108,8 +110,28 @@ type DialogState =
  * list and its header actions until the user goes back. While the list is
  * still loading, a selected prefix shows the detail loading state instead of
  * the list skeleton.
+ *
+ * An anaconda.org install link opens its flow on top of whichever view shows.
  */
 export function EnvironmentsPanel() {
+	const [installRequest, dismissInstallRequest] = usePackageInstallLink();
+	const [, setSelectedPrefix] = useSelectedEnvironment();
+	return (
+		<>
+			<EnvironmentsPanelContent />
+			{installRequest ? (
+				<PackageInstallRequestDialog
+					key={installRequest.id}
+					request={installRequest}
+					onDone={dismissInstallRequest}
+					onOpenEnvironment={setSelectedPrefix}
+				/>
+			) : null}
+		</>
+	);
+}
+
+function EnvironmentsPanelContent() {
 	const conda = useConda();
 	const envs = useQuery({
 		...condaQueryOptions(conda, "listEnvironments"),

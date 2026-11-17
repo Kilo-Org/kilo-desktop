@@ -41,6 +41,32 @@ describe("resolveDeepLink", () => {
 		expect(resolveDeepLink("kilo-desktop://model-catalog", catalog)?.search).toEqual({});
 	});
 
+	it("carries an action segment and its listed parameters together (anaconda.org install links)", () => {
+		const packages = [
+			link(
+				"packages",
+				"/settings/environments",
+				["package", "version", "channel", "source"],
+				"packageAction",
+			),
+		];
+		expect(
+			resolveDeepLink(
+				"kilo-desktop://packages/install?package=scikit-learn&version=1.5.2&channel=conda-forge%2Flabel%2Fdev&source=dot-org&env=%2Fopt",
+				packages,
+			),
+		).toEqual({
+			path: "/settings/environments",
+			search: {
+				packageAction: "install",
+				package: "scikit-learn",
+				version: "1.5.2",
+				channel: "conda-forge/label/dev",
+				source: "dot-org",
+			},
+		});
+	});
+
 	it("returns null for unknown hosts and malformed URLs", () => {
 		expect(resolveDeepLink("kilo-desktop://nowhere", links)).toBeNull();
 		expect(resolveDeepLink("not a url", links)).toBeNull();

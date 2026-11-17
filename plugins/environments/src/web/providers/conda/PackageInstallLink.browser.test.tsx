@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { KernelError, type KernelLogger } from "@kilo-desktop/kernel";
+import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
 
 import type {
@@ -330,6 +331,40 @@ describe("an anaconda.org install link", () => {
 				search: { env: "/opt/anaconda3/envs/linked" },
 			});
 		});
+	});
+
+	it("keeps a newer link's flow open when an install from an earlier link finishes", async () => {
+		let finishInstall!: (result: { jobId: string; envName: string; installed: [] }) => void;
+		const { host } = await renderLink({
+			search: link({ package: "numpy", channel: "conda-forge" }),
+			installPackages: () =>
+				new Promise((resolve) => {
+					finishInstall = resolve;
+				}),
+		});
+
+		await userEvent.click(screen.getByRole("button", { name: "Install into dev" }));
+		const install = screen.getByTestId("environments-conda-add-pkg-install-btn");
+		await expect.element(install, { timeout: 4000 }).toBeEnabled();
+		await userEvent.click(install);
+		await expect.element(install).toHaveTextContent("Installing…");
+
+		// Another link arrives while that install is still running.
+		await host.main.kernelSdk.domainObjects.get(Navigation)!.methods.navigate({
+			path: "/settings/environments",
+			search: link({ package: "pandas" }),
+		});
+		const dialog = screen.getByTestId("environments-install-link-dialog");
+		await expect.element(dialog).toMatchTextContent("Install pandas");
+
+		finishInstall({ jobId: "j", envName: "dev", installed: [] });
+		await expect.element(screen.getByText("Packages installed")).toBeVisible();
+		expect(host.navigations.at(-1)).toEqual({
+			path: "/settings/environments",
+			search: { env: "/opt/anaconda3/envs/dev" },
+		});
+		expect(dialog.elements()).toHaveLength(1);
+		await expect.element(dialog).toMatchTextContent("Install pandas");
 	});
 
 	it("says when an older bridge could only compare channel names", async () => {

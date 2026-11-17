@@ -60,6 +60,12 @@ export function usePackageInstallLink(): readonly [TakenPackageInstallRequest | 
 		}
 	}, [search, navigation, windowId, track, logger]);
 
-	const dismiss = useCallback(() => setRequest(null), []);
+	// Bound to the request it was handed with: a flow a newer link replaced can
+	// still finish (an install keeps running) and must not close the newer one.
+	const requestId = request?.id;
+	const dismiss = useCallback(
+		() => setRequest((current) => (current?.id === requestId ? null : current)),
+		[requestId],
+	);
 	return [request, dismiss] as const;
 }

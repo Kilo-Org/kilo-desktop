@@ -225,7 +225,10 @@ jobs:
         shell: bash
         run: |
           pnpm --filter @kilo-desktop/desktop run package:e2e
-          tar -cf "$RUNNER_TEMP/desktop-out.tar" -C apps/desktop out
+          # Relative paths only: Git Bash's GNU tar reads "C:\..." as a remote
+          # host:path, and macOS's bsdtar has no --force-local.
+          (cd apps/desktop && tar -cf desktop-out.tar out)
+          mv apps/desktop/desktop-out.tar "$RUNNER_TEMP/desktop-out.tar"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-packaged-app-windows

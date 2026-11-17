@@ -92,7 +92,10 @@ runs:
       shell: bash
       run: |
         mkdir -p apps/desktop
-        tar -xf "$RUNNER_TEMP/packaged-app/desktop-out.tar" -C apps/desktop
+        # Relative paths only: Git Bash's GNU tar reads "C:\..." as a remote
+        # host:path, and macOS's bsdtar has no --force-local.
+        mv "$RUNNER_TEMP/packaged-app/desktop-out.tar" apps/desktop/
+        (cd apps/desktop && tar -xf desktop-out.tar && rm desktop-out.tar)
 
     - name: Run e2e
       shell: bash

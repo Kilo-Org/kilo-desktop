@@ -19,7 +19,7 @@
 //
 // Usage: node scripts/check-react-compiler.mjs [path-prefix…]   (`pnpm lint` runs this)
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -43,16 +43,27 @@ const MAY_HOLD_COMPONENTS = /forwardRef|memo|\b(?:[A-Z]|use[A-Z0-9])/;
 const OPT_OUT = new Set(["use no memo", "use no forget"]);
 
 function rendererFiles(prefixes) {
-	const tracked = execFileSync(
+	// Untracked files too (still honouring .gitignore), so a component that is
+	// not `git add`ed yet is checked; deleted ones are still listed as cached.
+	const files = execFileSync(
 		"git",
-		["ls-files", "--", ...SOURCES.flatMap((dir) => [`${dir}/**/*.ts`, `${dir}/**/*.tsx`])],
+		[
+			"ls-files",
+			"--cached",
+			"--others",
+			"--exclude-standard",
+			"--deduplicate",
+			"--",
+			...SOURCES.flatMap((dir) => [`${dir}/**/*.ts`, `${dir}/**/*.tsx`]),
+		],
 		{ cwd: root, encoding: "utf8" },
 	)
 		.split("\n")
-		.filter((file) => file && !NOT_RENDERER.test(file));
+		.filter((file) => file && !NOT_RENDERER.test(file) && existsSync(path.join(root, file)));
+	if (files.length === 0) throw new Error("No renderer sources matched; check SOURCES.");
 	return prefixes.length
-		? tracked.filter((file) => prefixes.some((prefix) => file.startsWith(prefix)))
-		: tracked;
+		? files.filter((file) => prefixes.some((prefix) => file.startsWith(prefix)))
+		: files;
 }
 
 /** 1-based line ranges of every function body that opts out with a directive. */

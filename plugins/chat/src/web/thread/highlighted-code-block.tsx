@@ -1,60 +1,14 @@
 import type { SyntaxHighlighterProps } from "@assistant-ui/react-markdown";
-import {
-	getHighlighterIfLoaded,
-	getSharedHighlighter,
-	type DiffsHighlighter,
-	type DiffsStreamTokenizer,
-	type ThemedToken,
-} from "@pierre/diffs";
+import type { DiffsHighlighter, DiffsStreamTokenizer, ThemedToken } from "@pierre/diffs";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { useDiffTheme } from "../tools/diff-theme";
 import { tokenStyle } from "./token-style";
+import { useLoadedHighlighter } from "./use-loaded-highlighter";
 
 /** Past this a block stays plain: every token becomes a DOM node. */
 const MAX_HIGHLIGHT_LENGTH = 50_000;
 const TOKENIZE_MAX_LINE_LENGTH = 1_000;
-const PLAIN_LANGUAGES = new Set(["", "text", "txt", "plain", "plaintext"]);
-
-/**
- * The window's shared Shiki highlighter (the one file previews use) once it
- * has `language` and `theme` loaded; until then, or for a language Shiki
- * lacks, nothing. Loading is lazy so a reply without code pays nothing. A
- * failed load is not remembered: it may be a missing grammar, but it may also
- * be a theme or chunk failure that a later block can recover from.
- */
-function useLoadedHighlighter(language: string, theme: string): DiffsHighlighter | undefined {
-	const highlightable = !PLAIN_LANGUAGES.has(language);
-	const key = `${theme}\n${language}`;
-	// What this block's own load found. Held in state, not re-read from the
-	// shared highlighter: React Compiler caches that read on its arguments, so
-	// a render after the load would still see the miss.
-	const [load, setLoad] = useState<{
-		readonly key: string;
-		readonly highlighter: DiffsHighlighter | undefined;
-	} | null>(null);
-	const loaded = !highlightable
-		? undefined
-		: load?.key === key
-			? load.highlighter
-			: getHighlighterIfLoaded({ theme, lang: language });
-
-	useEffect(() => {
-		if (!highlightable || loaded) return;
-		let cancelled = false;
-		getSharedHighlighter({ themes: [theme], langs: [language], preferredHighlighter: "shiki-js" })
-			.catch(() => undefined)
-			.finally(() => {
-				if (!cancelled)
-					setLoad({ key, highlighter: getHighlighterIfLoaded({ theme, lang: language }) });
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [highlightable, loaded, key, language, theme]);
-
-	return loaded;
-}
 
 function tokenNode(token: ThemedToken, foreground: string): ReactNode {
 	const style = tokenStyle(token, foreground);
@@ -193,7 +147,7 @@ class BlockHighlighter {
  */
 function HighlightedCode({ code, language }: { readonly code: string; readonly language: string }) {
 	const { shiki: theme } = useDiffTheme();
-	const highlighter = useLoadedHighlighter(language, theme);
+	const highlighter = useLoadedHighlighter(language, theme, code);
 	const [blockHighlighter] = useState(() => new BlockHighlighter());
 	useEffect(() => () => blockHighlighter.dispose(), [blockHighlighter]);
 	return blockHighlighter.render(highlighter, language, theme, code);

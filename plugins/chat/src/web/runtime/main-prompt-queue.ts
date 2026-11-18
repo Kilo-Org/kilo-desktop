@@ -27,6 +27,8 @@ export interface MainPromptQueueOptions {
 	/** Whether kilo.core reports the chat working (the queue in main waits on the same). */
 	readonly chatWorking: () => boolean;
 	readonly prompt: () => QueuePromptOptions;
+	/** The thread handed a message over to be sent or queued. */
+	readonly onTaken?: () => void;
 	readonly onError: (error: unknown) => void;
 }
 
@@ -197,6 +199,7 @@ export function createMainPromptQueue(
 	}
 
 	async function enqueue(message: AppendMessage, steer: boolean): Promise<void> {
+		options.onTaken?.();
 		if (message.startRun === false || sendsDirectly(steer)) {
 			await sendDirectly(message);
 			return;

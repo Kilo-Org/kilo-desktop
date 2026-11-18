@@ -332,6 +332,12 @@ export interface ChatThreadProps {
 	readonly onChatId: (chatId: string | undefined) => void;
 	readonly onPrompted?: (chatId: string) => void;
 	readonly onPromptFailed?: (chatId: string) => void;
+	/**
+	 * The thread's unmount is final (the New Session page): a first message it
+	 * hadn't sent yet goes to main's prompt queue, or else to the work
+	 * session's draft. Not for a pane a hidden Activity keeps sending.
+	 */
+	readonly handOverFirstPrompt?: boolean;
 	readonly focusRoot: () => void;
 	/** What shows the thread: the transcript and composer, or the New Session page's composer. */
 	readonly children: ReactNode;
@@ -347,6 +353,7 @@ export function ChatThread({
 	focus,
 	paneId,
 	focusRoot,
+	handOverFirstPrompt,
 	children,
 	...options
 }: ChatThreadProps) {
@@ -368,6 +375,13 @@ export function ChatThread({
 			// Only text parts are rewritten; the rest pass through as they came.
 			return resolveMentionParts(parts as readonly MentionPart[], sources.current, context);
 		},
+		...(handOverFirstPrompt
+			? {
+					firstPromptHandover: {
+						keepDraft: (workSessionId: string, text: string) => focus.setDraft(workSessionId, text),
+					},
+				}
+			: {}),
 	});
 	const aui = useTranscriptAui();
 	const getSelection = () => selection.current;

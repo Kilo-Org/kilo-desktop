@@ -51,7 +51,9 @@ export function BoardView({ focus, openWorkSession, detached, renderers }: WorkS
 				data-board-columns
 				{...reorder.stripProps}
 				// A size container, so columns can cap their cards at the strip's height (cqh).
-				className="@container-size flex min-h-0 flex-1 items-start gap-3 overflow-x-auto p-2"
+				// Positioned, so absolute descendants (sr-only labels) in columns scrolled out of
+				// view stay inside the scroller instead of widening the page.
+				className="@container-size relative flex min-h-0 flex-1 items-start gap-3 overflow-x-auto p-2"
 			>
 				{columns.map((column, index) => (
 					<Fragment key={column.id}>

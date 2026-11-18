@@ -2,6 +2,7 @@ import type {
 	Channel,
 	CondaChannelsAddInput,
 	CondaChannelsListResult,
+	CondaChannelsResolveResult,
 	CondaDistribution,
 	CondaEnv,
 	CondaEnvsCloneInput,
@@ -136,6 +137,8 @@ export interface CondaBackend {
 		ctx?: CondaCallContext,
 	): Promise<CondaChannelsListResult>;
 	removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
+	/** Resolves a channel with conda's channel model and whether configured channels provide it. */
+	resolveChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsResolveResult>;
 
 	/**
 	 * Aggregate available packages from the channel repodata index.

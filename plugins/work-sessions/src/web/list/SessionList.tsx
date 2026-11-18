@@ -107,10 +107,12 @@ import {
 import {
 	buildSessionListSections,
 	readSessionListArchivedExpanded,
+	resolveSessionListGrouping,
 	SESSION_LIST_STATUS_LABELS,
 	visibleShowFields,
 	workspaceIdForFocus,
 	writeSessionListArchivedExpanded,
+	type SessionListContributedGrouping,
 	type SessionListSection,
 	type SessionListSectionRow,
 	type SessionListShowField,
@@ -134,6 +136,7 @@ import { useSessionActions } from "./session-renderers";
 import { SessionRelativeTime, SessionRowGlyph } from "./session-row-display";
 import { usePrefetchWorkSession } from "./use-prefetch-work-session";
 import { SessionRowHoverCard } from "./session-row-hover-card";
+import { useContributedGroupings } from "./use-contributed-groupings";
 import { usePullRequestFacet } from "./use-pull-request-facet";
 import { useSessionListView } from "./use-session-list-view";
 import { WorkspaceFilter } from "./WorkspaceFilter";
@@ -253,9 +256,9 @@ type VirtualSessionListEntry =
 			spaceBefore: boolean;
 	  }
 	| {
-			kind: "empty-workspace";
+			kind: "empty-section";
 			key: string;
-			workspaceId: string;
+			qaId: string;
 			label: string;
 			spaceBefore: boolean;
 	  };
@@ -271,8 +274,8 @@ function filteredEmptyLabel(view: Pick<SessionListView, "status" | "pullRequest"
 	return null;
 }
 
-/** The note under an empty workspace group. */
-function emptyWorkspaceLabel(view: Pick<SessionListView, "status" | "pullRequest">): string {
+/** The note under an empty workspace group or category. */
+function emptySectionLabel(view: Pick<SessionListView, "status" | "pullRequest">): string {
 	return filteredEmptyLabel(view) ?? "No sessions yet";
 }
 
@@ -280,11 +283,12 @@ function emptyWorkspaceLabel(view: Pick<SessionListView, "status" | "pullRequest
 function sessionListEmptyLabel(
 	view: Pick<SessionListView, "focus" | "status" | "pullRequest">,
 	workspaces: readonly { id: string; name: string }[],
+	grouping: SessionListContributedGrouping | undefined,
 ): string | null {
 	if (view.focus === UNSCOPED_WORKSPACE_FOCUS) return "No sessions outside a workspace";
 	const focusedWorkspace = workspaces.find((workspace) => workspace.id === view.focus);
 	if (focusedWorkspace) return `No sessions in ${focusedWorkspace.name}`;
-	return filteredEmptyLabel(view);
+	return filteredEmptyLabel(view) ?? (grouping ? `No sessions in ${grouping.title}` : null);
 }
 
 /**
@@ -296,10 +300,18 @@ function archivedShelfExpandedFor(status: SessionListView["status"]): boolean {
 	return status === "archived" || readSessionListArchivedExpanded();
 }
 
+/** Workspace groups and categories stay when empty, with a note; other shelves go. */
+function emptySectionQaId(section: SessionListSection): string | null {
+	if (section.workspaceId) return `session-list-workspace-empty-${section.workspaceId}`;
+	if (section.tone === "group")
+		return `session-list-group-empty-${section.key.slice("group:".length)}`;
+	return null;
+}
+
 function flattenSessionListSections(
 	sections: readonly SessionListSection[],
 	expanded: Readonly<Record<string, boolean>>,
-	options: { spaceBeforeFirst: boolean; emptyWorkspaceLabel: string },
+	options: { spaceBeforeFirst: boolean; emptySectionLabel: string },
 ): VirtualSessionListEntry[] {
 	const entries: VirtualSessionListEntry[] = [];
 	let firstEntry = true;
@@ -323,12 +335,13 @@ function flattenSessionListSections(
 		}
 
 		if (!isExpanded) continue;
-		if (section.workspaceId && section.rows.length === 0) {
+		const qaId = emptySectionQaId(section);
+		if (qaId && section.rows.length === 0) {
 			entries.push({
-				kind: "empty-workspace",
+				kind: "empty-section",
 				key: `empty:${section.key}`,
-				workspaceId: section.workspaceId,
-				label: options.emptyWorkspaceLabel,
+				qaId,
+				label: options.emptySectionLabel,
 				spaceBefore: false,
 			});
 		}
@@ -362,6 +375,7 @@ function shapeSessionList(input: {
 	readonly workspaces: readonly Workspace[];
 	readonly view: SessionListView;
 	readonly pullRequests: ReturnType<typeof usePullRequestFacet>;
+	readonly groupings: readonly SessionListContributedGrouping[];
 }): SessionListShape {
 	const { sessions } = input;
 	const sections = buildSessionListSections({
@@ -378,6 +392,7 @@ function shapeSessionList(input: {
 		view: input.view,
 		pinnedIds: new Set(sessions.filter((session) => session.pinned).map((session) => session.id)),
 		pullRequestBySessionId: input.pullRequests,
+		groupings: input.groupings,
 	});
 	return {
 		sections,
@@ -393,9 +408,17 @@ function useSessionListShape(
 	workspaces: readonly Workspace[],
 	view: SessionListView,
 	pullRequests: ReturnType<typeof usePullRequestFacet>,
+	groupings: readonly SessionListContributedGrouping[],
 ) {
 	const activities = useSessionActivities(sessions);
-	const shape = shapeSessionList({ sessions, activities, workspaces, view, pullRequests });
+	const shape = shapeSessionList({
+		sessions,
+		activities,
+		workspaces,
+		view,
+		pullRequests,
+		groupings,
+	});
 	return { activities, shape };
 }
 
@@ -410,15 +433,15 @@ function flattenSessionList(
 	/** Rows that are not archived: the ones go-to-session shortcuts number. */
 	readonly visibleSessionIds: readonly string[];
 } {
-	const label = emptyWorkspaceLabel(view);
+	const label = emptySectionLabel(view);
 	const entries = [
 		...flattenSessionListSections(shape.pinnedSections, expanded, {
 			spaceBeforeFirst: false,
-			emptyWorkspaceLabel: label,
+			emptySectionLabel: label,
 		}),
 		...flattenSessionListSections(shape.groupedSections, expanded, {
 			spaceBeforeFirst: shape.pinnedSections.length > 0,
-			emptyWorkspaceLabel: label,
+			emptySectionLabel: label,
 		}),
 	];
 	return {
@@ -496,6 +519,9 @@ function SessionListContent() {
 	}
 	const focus = resolveWorkspaceFocus(view.focus, workspaces);
 	const pullRequests = usePullRequestFacet();
+	const groupings = useContributedGroupings();
+	const groupingId = resolveSessionListGrouping(view, groupings);
+	const contributedGrouping = groupings.find((grouping) => grouping.id === groupingId);
 	const pullRequestFilterAvailable = pullRequests !== null;
 	const pullRequest = pullRequestFilterAvailable ? view.pullRequest : "all";
 	const resolvedView =
@@ -508,6 +534,7 @@ function SessionListContent() {
 		workspaces,
 		resolvedView,
 		pullRequests,
+		groupings,
 	);
 	const visits = useLastVisits();
 	const listRef = useRef<HTMLDivElement>(null);
@@ -537,7 +564,7 @@ function SessionListContent() {
 	} = useSessionListRows(shape, expanded, resolvedView);
 	const allCollapsed =
 		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
-	const emptyLabel = sessionListEmptyLabel(resolvedView, workspaces);
+	const emptyLabel = sessionListEmptyLabel(resolvedView, workspaces, contributedGrouping);
 	const newSessionInWorkspace = (workspaceId: string) => {
 		workspaceSource.setActiveWorkspaceId(workspaceId);
 		void navigatorHandle?.methods.closeWorkSession(undefined);
@@ -658,6 +685,7 @@ function SessionListContent() {
 							/>
 							<SessionListViewMenu
 								view={resolvedView}
+								groupings={groupings}
 								pullRequestFilterAvailable={pullRequestFilterAvailable}
 								onViewChange={updateView}
 								onReset={() => {
@@ -706,8 +734,8 @@ function SessionListContent() {
 											}));
 										}}
 									/>
-								) : entry.kind === "empty-workspace" ? (
-									<WorkspaceEmptyRow workspaceId={entry.workspaceId} label={entry.label} />
+								) : entry.kind === "empty-section" ? (
+									<EmptySectionRow qaId={entry.qaId} label={entry.label} />
 								) : (
 									<SessionRowSlot
 										session={sessionsById.get(entry.row.id)}
@@ -1065,6 +1093,7 @@ const shelfHeaderTones = {
 	workspace: shelfMutedTone,
 	pinned: shelfMutedTone,
 	updated: shelfMutedTone,
+	group: shelfMutedTone,
 } as const;
 
 const SessionShelfHeader: FC<{
@@ -1200,9 +1229,9 @@ const WorkspaceShelfActions: FC<{
 };
 
 /** Mirrors an indented row's glyph slot so the note lines up with session titles. */
-const WorkspaceEmptyRow: FC<{ workspaceId: string; label: string }> = ({ workspaceId, label }) => (
+const EmptySectionRow: FC<{ qaId: string; label: string }> = ({ qaId, label }) => (
 	<div
-		data-qa-id={`session-list-workspace-empty-${workspaceId}`}
+		data-qa-id={qaId}
 		className="mx-px box-content flex h-5 min-w-0 items-center gap-1.5 py-1 pr-2.5 pl-2 select-none"
 	>
 		<span aria-hidden className="w-4 shrink-0" />

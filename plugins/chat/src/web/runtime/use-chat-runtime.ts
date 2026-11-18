@@ -1,6 +1,6 @@
-import type { AssistantRuntime } from "@assistant-ui/react";
+import type { AssistantRuntime, Attachment, CompleteAttachment } from "@assistant-ui/react";
 import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
@@ -9,7 +9,9 @@ import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { PromptQueues } from "../../contracts";
 import { KiloAttachmentAdapter } from "./attachment-adapter";
 import { createChatBackend, type ChatBackendOptions } from "./chat-backend";
+import { createFirstPromptHandover, type UnsentMessage } from "./first-prompt-handover";
 import { createMainPromptQueue } from "./main-prompt-queue";
+import type { QueuePromptOptions } from "./queued-prompt";
 
 const isWorking = (status: string | undefined) => status === "busy" || status === "retry";
 
@@ -19,17 +21,63 @@ export interface ChatRuntimeOptions extends Omit<ChatBackendOptions, "getSystem"
 	readonly getSystem: NonNullable<ChatBackendOptions["getSystem"]>;
 	/** The thread's chat id once it is known (a draft's after its first send). */
 	readonly onChatId?: (chatId: string | undefined) => void;
+	/**
+	 * Read once, at mount. For a thread whose unmount is final (the New
+	 * Session page's): a draft's first message it hadn't sent when it
+	 * unmounted goes to main's prompt queue, else its text to the work
+	 * session's draft through `keepDraft` (`createFirstPromptHandover`).
+	 */
+	readonly firstPromptHandover?: {
+		readonly keepDraft: (workSessionId: string, text: string) => void;
+	};
 }
+
+function queuePromptOptions(current: ChatRuntimeOptions): QueuePromptOptions {
+	return {
+		getSystem: current.getSystem,
+		...(current.getAgent ? { getAgent: current.getAgent } : {}),
+		...(current.getModel ? { getModel: current.getModel } : {}),
+		...(current.getVariant ? { getVariant: current.getVariant } : {}),
+		...(current.getKnownCommandNames ? { getKnownCommandNames: current.getKnownCommandNames } : {}),
+		...(current.resolveParts ? { resolveParts: current.resolveParts } : {}),
+	};
+}
+
+const isComplete = (attachment: Attachment): attachment is CompleteAttachment =>
+	attachment.status.type === "complete";
+
+/**
+ * Notes each composer draft with something in it: the send empties the
+ * composer before the runtime asks for the chat, so while the chat is
+ * requested the last one noted is the message being sent. (Kilo's attachments
+ * are complete once added, so a send never waits on them.)
+ */
+function followDraft(runtime: AssistantRuntime, note: (message: UnsentMessage) => void) {
+	const composer = runtime.thread.composer;
+	const noteCurrent = () => {
+		const { text, attachments } = composer.getState();
+		if (!text.trim() && attachments.length === 0) return;
+		note({ text, attachments: attachments.filter(isComplete) });
+	};
+	noteCurrent();
+	return composer.subscribe(noteCurrent);
+}
+
+type FirstPromptHandover = ReturnType<typeof createFirstPromptHandover>;
 
 /** The runtime's backend over `services`, calling the latest options through `latest`. */
 function chatRuntimeBackend(
 	services: ChatRuntimeOptions["services"],
 	latest: RefObject<ChatRuntimeOptions>,
+	handover: FirstPromptHandover | null,
 ) {
 	return createChatBackend({
 		services,
 		directoryOf: (chatId) => latest.current.directoryOf(chatId),
-		createChat: () => latest.current.createChat(),
+		createChat: () => {
+			const create = () => latest.current.createChat();
+			return handover ? handover.createChat(create) : create();
+		},
 		onCreateFailed: (error) => latest.current.onCreateFailed?.(error),
 		getSystem: (chatId) => latest.current.getSystem(chatId),
 		getAgent: () => latest.current.getAgent?.(),
@@ -54,21 +102,40 @@ function chatRuntimeBackend(
  */
 export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 	const latest = useLatestRef(options);
+	const queue = useDomainObject(PromptQueues);
+	const conversations = useDomainObject(Chats);
+	const domains = useLatestRef({ queue, conversations });
+	const [handover] = useState(() =>
+		options.firstPromptHandover
+			? createFirstPromptHandover({
+					queue: () => domains.current.queue,
+					prompt: () => queuePromptOptions(latest.current),
+					keepDraft: (workSessionId, text) =>
+						latest.current.firstPromptHandover?.keepDraft(workSessionId, text),
+					onError: (error) => console.error("[kilo.chat] First message handover", error),
+				})
+			: null,
+	);
+	useEffect(() => {
+		if (!handover) return;
+		handover.attach();
+		return () => handover.detach();
+	}, [handover]);
 	// One backend per services: a new one would swap the runtime's registry.
 	const [owned, setOwned] = useState(() => ({
 		services: options.services,
-		backend: chatRuntimeBackend(options.services, latest),
+		backend: chatRuntimeBackend(options.services, latest, handover),
 	}));
 	if (owned.services !== options.services) {
-		setOwned({ services: options.services, backend: chatRuntimeBackend(options.services, latest) });
+		setOwned({
+			services: options.services,
+			backend: chatRuntimeBackend(options.services, latest, handover),
+		});
 	}
 	const backend = owned.backend;
 	const [adapters] = useState(() => ({ attachments: new KiloAttachmentAdapter() }));
 	const [initialChatId] = useState(options.chatId);
 	const threadChatId = useRef(initialChatId);
-	const queue = useDomainObject(PromptQueues);
-	const conversations = useDomainObject(Chats);
-	const domains = useLatestRef({ queue, conversations });
 	const createQueue = () =>
 		createMainPromptQueue({
 			queue: () => domains.current.queue,
@@ -78,22 +145,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 				const chats = domains.current.conversations?.getState().chats;
 				return !!chatId && isWorking(chats?.[chatId]?.activity.status);
 			},
-			prompt: () => {
-				const current = latest.current;
-				return {
-					getSystem: current.getSystem,
-					...(current.getAgent ? { getAgent: current.getAgent } : {}),
-					...(current.getModel ? { getModel: current.getModel } : {}),
-					...(current.getVariant ? { getVariant: current.getVariant } : {}),
-					...(current.getKnownCommandNames
-						? { getKnownCommandNames: current.getKnownCommandNames }
-						: {}),
-					...(current.resolveParts ? { resolveParts: current.resolveParts } : {}),
-				};
-			},
+			prompt: () => queuePromptOptions(latest.current),
+			...(handover ? { onTaken: () => handover.taken() } : {}),
 			onError: (error) => console.error("[kilo.chat] Queued prompt", error),
 		});
-	return useOpenCodeRuntime({
+	const runtime = useOpenCodeRuntime({
 		backend,
 		...(initialChatId ? { initialSessionId: initialChatId } : {}),
 		onThreadIdChange: (chatId) => {
@@ -107,4 +163,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 		},
 		adapters,
 	});
+	useEffect(
+		() => (handover ? followDraft(runtime, (message) => handover.noteDraft(message)) : undefined),
+		[handover, runtime],
+	);
+	return runtime;
 }

@@ -115,7 +115,11 @@ export interface ChatHostOptions {
 	 * composer) instead of the work session's panes, starting work sessions
 	 * as kilo.work-sessions does.
 	 */
-	readonly starter?: { readonly isolation?: WorkSessionIsolation };
+	readonly starter?: {
+		readonly isolation?: WorkSessionIsolation;
+		/** Holds each start until it settles, as a worktree still being made does. */
+		readonly holdStart?: Promise<unknown>;
+	};
 }
 
 const CHAT_PANE_KINDS: readonly string[] = [
@@ -267,6 +271,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	/** The New Session page around kilo.chat's starter, starting work sessions as kilo.work-sessions does. */
 	function Starter({
 		isolation,
+		holdStart,
 		focusRequest,
 	}: NonNullable<ChatHostOptions["starter"]> & { focusRequest: number }) {
 		const [starting, setStarting] = useState(false);
@@ -275,6 +280,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		const start = async (): Promise<StartedWorkSession> => {
 			starterCalls.start();
 			setStarting(true);
+			await holdStart;
 			const domain = renderer.kernelSdk.domainObjects.get(WorkSessions)!;
 			const created = await domain.methods
 				.create({ workspaceId, ...(isolation ? { isolation } : {}) })

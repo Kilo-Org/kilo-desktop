@@ -17,7 +17,7 @@ catalog:
   "@sentry/react": 11.10.0
   "@sentry/vite-plugin": 11.10.0
   atomically: ^2.1.1
-  electron: ^45.1.0
+  electron: ^45.3.3
   electron-log: ^5.4.3
   execa: ^10.2.1
   p-limit: ^7.3.2
@@ -29,7 +29,7 @@ catalog:
   react-use: ^17.6.1
   type-fest: ^5.8.0
   typescript: ^7.0.2
-  vite: ^8.1.5
+  vite: ^8.3.8
   vitest: 5.1.0
   "@vitest/coverage-v8": 5.1.0
   "@tanstack/react-query": ^5.107.1
@@ -94,7 +94,9 @@ minimumReleaseAge: 0
 
 # @anaconda/playwright-utils is only on GitHub Packages. The desktop bridge
 # payloads are published to npmjs and pinned there with pnpm's built-in
-# `npmjs:` registry prefix (plugins/environments/package.json).
+# `npmjs:` registry prefix (plugins/environments/package.json). A payload not
+# yet on npmjs can be tested from GitHub Packages by pinning it without the
+# prefix, so the scope below resolves it.
 registries:
   default: https://registry.npmjs.org/
   "@anaconda": https://npm.pkg.github.com/

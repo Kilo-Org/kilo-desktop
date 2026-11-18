@@ -27,13 +27,17 @@ export const SESSION_LIST_STATUS_FILTERS = [
 export const SESSION_LIST_PULL_REQUEST_FILTERS = ["all", "any", "open"] as const;
 
 export type SessionListGrouping = (typeof SESSION_LIST_GROUPINGS)[number];
+/** A `kilo.work-sessions/work-session-grouping` contribution, by its key (`<plugin>/<id>`). */
+export type ContributedGroupingId = `${string}/${string}`;
+export type SessionListGroupingId = SessionListGrouping | ContributedGroupingId;
 export type SessionListOrdering = (typeof SESSION_LIST_ORDERINGS)[number];
 export type SessionListShowField = (typeof SESSION_LIST_SHOW_FIELDS)[number];
 export type SessionListStatusFilter = (typeof SESSION_LIST_STATUS_FILTERS)[number];
 export type SessionListPullRequestFilter = (typeof SESSION_LIST_PULL_REQUEST_FILTERS)[number];
 
 export type SessionListView = {
-	grouping: SessionListGrouping;
+	/** Stays a contributed grouping's id while that grouping is missing, so it returns with its plugin. */
+	grouping: SessionListGroupingId;
 	ordering: SessionListOrdering;
 	show: readonly SessionListShowField[];
 	status: SessionListStatusFilter;
@@ -59,6 +63,13 @@ export const DEFAULT_SESSION_LIST_VIEW: SessionListView = {
  * `kilo.work-sessions/work-session-facet` `pull-request` facet (git).
  */
 export type SessionListPullRequests = Readonly<Record<string, { state?: string } | undefined>>;
+
+/** A plugin's grouping and its current categories (`kilo.work-sessions/work-session-grouping`). */
+export type SessionListContributedGrouping = {
+	id: ContributedGroupingId;
+	title: string;
+	groups: readonly { id: string; label: string; workSessionIds: readonly string[] }[];
+};
 
 export const SESSION_LIST_GROUPING_LABELS: Record<SessionListGrouping, string> = {
 	lifecycle: "Status",
@@ -108,7 +119,8 @@ export type SessionListSectionTone =
 	| "active"
 	| "archived"
 	| "workspace"
-	| "updated";
+	| "updated"
+	| "group";
 
 export type SessionListSectionRow = {
 	id: string;
@@ -136,6 +148,10 @@ function isMember<T extends string>(value: unknown, allowed: readonly T[]): valu
 	return typeof value === "string" && (allowed as readonly string[]).includes(value);
 }
 
+export function isContributedGroupingId(value: unknown): value is ContributedGroupingId {
+	return typeof value === "string" && /^[^/\s]+\/[^/\s]+$/.test(value);
+}
+
 function normalizeShow(value: unknown): SessionListShowField[] {
 	if (!Array.isArray(value)) return [];
 	return SESSION_LIST_SHOW_FIELDS.filter((field) => value.includes(field));
@@ -145,9 +161,10 @@ export function parseSessionListView(value: unknown): SessionListView {
 	if (!value || typeof value !== "object") return DEFAULT_SESSION_LIST_VIEW;
 	const record = value as Record<string, unknown>;
 	return {
-		grouping: isMember(record.grouping, SESSION_LIST_GROUPINGS)
-			? record.grouping
-			: DEFAULT_SESSION_LIST_VIEW.grouping,
+		grouping:
+			isMember(record.grouping, SESSION_LIST_GROUPINGS) || isContributedGroupingId(record.grouping)
+				? record.grouping
+				: DEFAULT_SESSION_LIST_VIEW.grouping,
 		ordering: isMember(record.ordering, SESSION_LIST_ORDERINGS)
 			? record.ordering
 			: DEFAULT_SESSION_LIST_VIEW.ordering,
@@ -174,9 +191,22 @@ export function isDefaultSessionListView(view: SessionListView): boolean {
 	);
 }
 
-/** Workspace grouping is only meaningful across all workspaces. */
-export function resolveSessionListGrouping(view: SessionListView): SessionListGrouping {
+/**
+ * The grouping the list shows: status grouping stands in for workspace
+ * grouping while a workspace is focused (one workspace makes one group), and
+ * for a contributed grouping that isn't there (its plugin is off).
+ */
+export function resolveSessionListGrouping(
+	view: SessionListView,
+	contributed: readonly Pick<SessionListContributedGrouping, "id">[] = [],
+): SessionListGroupingId {
 	if (view.grouping === "workspace" && view.focus) return "lifecycle";
+	if (
+		isContributedGroupingId(view.grouping) &&
+		!contributed.some((grouping) => grouping.id === view.grouping)
+	) {
+		return "lifecycle";
+	}
 	return view.grouping;
 }
 
@@ -399,6 +429,39 @@ function updatedSections(
 		}));
 }
 
+/**
+ * A shelf per category, rows in the category's own order; the list's ordering
+ * doesn't apply, so the list matches the grouping's own view (a board's
+ * columns). Empty categories keep their shelf, as that view keeps them.
+ */
+function contributedSections(
+	rows: Enriched[],
+	grouping: SessionListContributedGrouping,
+): SessionListSection[] {
+	const rowsBySessionId = new Map(
+		rows.flatMap((row) => (row.sessionId === undefined ? [] : [[row.sessionId, row] as const])),
+	);
+	const shown = new Set<string>();
+	return grouping.groups.map((group) => {
+		const groupRows = group.workSessionIds.flatMap((workSessionId) => {
+			const row = rowsBySessionId.get(workSessionId);
+			if (!row || shown.has(workSessionId)) return [];
+			shown.add(workSessionId);
+			return [row];
+		});
+		return {
+			key: `group:${group.id}`,
+			label: group.label,
+			tone: "group" as const,
+			rows: toRows(groupRows),
+		};
+	});
+}
+
+function contributedSessionIds(grouping: SessionListContributedGrouping): ReadonlySet<string> {
+	return new Set(grouping.groups.flatMap((group) => group.workSessionIds));
+}
+
 /** Matches the row's PR badge: sessions sharing a checkout share its pull request. */
 function matchesPullRequestFilter(
 	sessionId: string | undefined,
@@ -415,8 +478,10 @@ function matchesPullRequestFilter(
  * Groups filtered session-list entries for the sidebar. Status grouping
  * partitions attention into its own first section. Workspace and updated
  * grouping keep those sessions in their folder/day, sorted to the top.
- * Pinned active sessions are a separate first section in every mode, while
- * archived sessions always occupy the final shelf.
+ * Pinned active sessions are a separate first section in every built-in
+ * mode, while archived sessions always occupy the final shelf. A contributed
+ * grouping shows only the sessions in its categories, pinned ones included
+ * in theirs.
  */
 export function buildSessionListSections(args: {
 	entries: readonly SessionListViewEntry[];
@@ -426,12 +491,20 @@ export function buildSessionListSections(args: {
 	pinnedIds?: ReadonlySet<string>;
 	/** `null`/absent when pull request status is unavailable; the filter is then ignored. */
 	pullRequestBySessionId?: SessionListPullRequests | null;
+	/** Plugins' groupings; the view may choose one by id. */
+	groupings?: readonly SessionListContributedGrouping[];
 	now?: number;
 }): SessionListSection[] {
-	const pinnedIds = args.pinnedIds ?? new Set<string>();
-	const grouping = resolveSessionListGrouping(args.view);
+	const groupings = args.groupings ?? [];
+	const groupingId = resolveSessionListGrouping(args.view, groupings);
+	const contributed = groupings.find((grouping) => grouping.id === groupingId);
+	const inContributed = contributed ? contributedSessionIds(contributed) : null;
+	const pinnedIds = contributed ? new Set<string>() : (args.pinnedIds ?? new Set<string>());
 	const pullRequests = args.pullRequestBySessionId;
 	const rows = enrich(args.entries, args.activityBySessionId, args.workspaces).filter((row) => {
+		if (inContributed && !(row.sessionId !== undefined && inContributed.has(row.sessionId))) {
+			return false;
+		}
 		if (args.view.status !== "all" && row.lifecycle !== args.view.status) return false;
 		if (!matchesWorkspaceFocus(row.activity?.workspaceId, args.view.focus)) return false;
 		if (
@@ -442,7 +515,7 @@ export function buildSessionListSections(args: {
 		return true;
 	});
 
-	const pullAttention = grouping === "lifecycle";
+	const pullAttention = groupingId === "lifecycle";
 	const attention = pullAttention
 		? sortRows(
 				rows.filter((row) => row.lifecycle === "attention"),
@@ -479,6 +552,31 @@ export function buildSessionListSections(args: {
 		});
 	}
 
+	if (contributed) {
+		// Archived sessions only ever land in the Archived shelf, so under that
+		// filter every category would be empty.
+		if (args.view.status !== "archived") {
+			sections.push(...contributedSections(unpinned, contributed));
+		}
+	} else if (!isContributedGroupingId(groupingId)) {
+		pushBuiltInSections(sections, groupingId, unpinned, args);
+	}
+	if (archived.length > 0) {
+		sections.push({ key: "archived", label: "Archived", tone: "archived", rows: toRows(archived) });
+	}
+	return sections;
+}
+
+function pushBuiltInSections(
+	sections: SessionListSection[],
+	grouping: SessionListGrouping,
+	unpinned: Enriched[],
+	args: {
+		workspaces: readonly { id: string; name: string }[];
+		view: SessionListView;
+		now?: number;
+	},
+): void {
 	switch (grouping) {
 		case "lifecycle": {
 			const active = sortRows(unpinned, args.view.ordering);
@@ -503,10 +601,6 @@ export function buildSessionListSections(args: {
 			return _exhaustive;
 		}
 	}
-	if (archived.length > 0) {
-		sections.push({ key: "archived", label: "Archived", tone: "archived", rows: toRows(archived) });
-	}
-	return sections;
 }
 
 export function visibleShowFields(view: SessionListView): SessionListShowField[] {

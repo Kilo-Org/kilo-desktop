@@ -1246,6 +1246,142 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("resolveChannel()", () => {
+		it("sends conda_tools.resolve_channel and maps its snake_case result as exact", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "conda_tools.resolve_channel") {
+					return Promise.resolve({
+						channel: "pkgs/main",
+						name: "defaults",
+						is_multichannel: false,
+						base_urls: ["https://repo.anaconda.com/pkgs/main"],
+						urls: ["https://repo.anaconda.com/pkgs/main/osx-arm64"],
+						configured: true,
+						configured_by: ["defaults"],
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.resolveChannel("pkgs/main");
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda_tools.resolve_channel",
+				{ channel: "pkgs/main" },
+				expect.anything(),
+			);
+			expect(result).toEqual({
+				channel: "pkgs/main",
+				name: "defaults",
+				isMultichannel: false,
+				baseUrls: ["https://repo.anaconda.com/pkgs/main"],
+				configured: true,
+				configuredBy: ["defaults"],
+				exact: true,
+			});
+		});
+
+		describe("on a bridge that predates resolve_channel", () => {
+			function olderBridge(configured: string[]) {
+				mockConnection.sendRequest.mockImplementation((method: string) => {
+					if (isHealthCheck(method)) return Promise.resolve({});
+					if (method === "conda_tools.resolve_channel") {
+						return Promise.reject(new ResponseError(-32601, "Method Not Found"));
+					}
+					if (method === "conda_tools.list_channels") {
+						return Promise.resolve(configured.map((name) => ({ name })));
+					}
+					return Promise.resolve({});
+				});
+			}
+
+			it("matches the configured channel names exactly instead", async () => {
+				olderBridge(["defaults", "conda-forge"]);
+
+				const backend = createBackend();
+
+				expect(await backend.resolveChannel("conda-forge")).toEqual({
+					channel: "conda-forge",
+					name: "conda-forge",
+					isMultichannel: false,
+					baseUrls: [],
+					configured: true,
+					configuredBy: ["conda-forge"],
+					exact: false,
+				});
+				// Without conda's channel model, `defaults` does not cover pkgs/main.
+				expect(await backend.resolveChannel("pkgs/main")).toMatchObject({
+					configured: false,
+					configuredBy: [],
+					exact: false,
+				});
+			});
+
+			it("masks a channel token in what it echoes", async () => {
+				olderBridge(["https://conda.anaconda.org/t/abc123/private"]);
+
+				const backend = createBackend();
+				const result = await backend.resolveChannel("https://conda.anaconda.org/t/abc123/private");
+
+				expect(result).toMatchObject({ configured: true, exact: false });
+				expect(JSON.stringify(result)).not.toContain("abc123");
+				expect(result.channel).toBe("https://conda.anaconda.org/t/<TOKEN>/private");
+			});
+		});
+
+		it("reports conda:validation as INVALID_CHANNEL", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				return Promise.reject(
+					new ResponseError(-32602, "Invalid params", {
+						code: "conda:validation",
+						message: "Invalid channel.",
+					}),
+				);
+			});
+
+			const backend = createBackend();
+			await expect(backend.resolveChannel("http://[bad")).rejects.toThrow(
+				/^INVALID_CHANNEL: Invalid channel\.$/,
+			);
+		});
+
+		it("classifies its other failures like every other method", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				return Promise.reject(new Error("connection reset"));
+			});
+
+			const backend = createBackend();
+			await expect(backend.resolveChannel("conda-forge")).rejects.toThrow(
+				"PROVIDER_NOT_READY: anaconda-bridge-sidecar error: connection reset",
+			);
+		});
+
+		it("leaves other methods' conda:validation and MethodNotFound handling unchanged", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "conda.install") {
+					return Promise.reject(
+						new ResponseError(-32602, "Invalid params", {
+							code: "conda:validation",
+							message: "bad spec",
+						}),
+					);
+				}
+				return Promise.reject(new ResponseError(-32601, "Method Not Found"));
+			});
+
+			const backend = createBackend();
+			await expect(backend.install({ name: "dev", packages: ["numpy"] })).rejects.toThrow(
+				"INVALID_MATCHSPEC: bad spec",
+			);
+			await expect(backend.listChannels()).rejects.toThrow("PROVIDER_NOT_READY");
+		});
+	});
+
 	describe("removeChannel()", () => {
 		it("sends conda_tools.remove_channel then returns updated channels", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {

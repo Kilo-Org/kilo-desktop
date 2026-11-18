@@ -83,7 +83,10 @@ function workspaceFolders(
  * the server refused it, so the pane shows why). A work session whose chat
  * can't be created is discarded again, the message going back to the
  * composer. Either way the starter ends a start with `open` or `discard`,
- * which the New Session page waits for. Each `focusRequest` (New session)
+ * which the New Session page waits for. The page may close first (another
+ * session opened while a worktree is made): the message then goes to main's
+ * prompt queue once the chat exists, or else to the new work session's draft,
+ * and the work session isn't opened. Each `focusRequest` (New session)
  * focuses the composer.
  */
 export function createChatSessionStarter(services: AgentPaneServices): FC<WorkSessionStarterProps> {
@@ -124,7 +127,7 @@ function ChatSessionStarter({
 				object: chatPaneObject(chat.id),
 			});
 			started.current = workSession;
-			return { id: chat.id, directory: chat.directory };
+			return { id: chat.id, directory: chat.directory, workSessionId: workSession.workSessionId };
 		} catch (error) {
 			await workSession.discard().catch(() => undefined);
 			throw error;
@@ -181,6 +184,7 @@ function ChatSessionStarter({
 						onChatId={() => undefined}
 						onPrompted={openStarted}
 						onPromptFailed={openStarted}
+						handOverFirstPrompt
 						focusRoot={() => focusComposerIn(rootRef.current)}
 					>
 						<StarterComposer />

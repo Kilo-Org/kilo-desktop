@@ -41,6 +41,7 @@ import {
 	SelectedPackagesPane,
 	selectedPackageToSpec,
 	usePackageSelection,
+	type PackageInstallPreset,
 } from "./PackageSearch";
 import { useChannelSelection } from "./use-channel-selection";
 import { usePackageSearch } from "./use-package-search";
@@ -49,6 +50,10 @@ interface AddPackageDialogProps {
 	env: CondaEnv;
 	open: boolean;
 	onClose: () => void;
+	/** Opens with these packages selected and channels added; read on mount. */
+	preset?: PackageInstallPreset;
+	/** Called when an install finishes while the dialog is open, before it closes. */
+	onInstalled?: () => void;
 }
 
 /** Wait this long after the last selection change before asking the solver. */
@@ -60,7 +65,13 @@ const PREVIEW_DEBOUNCE_MS = 1500;
  * pane with Create environment; below the selection, a solver preview lists
  * the transitive dependency changes the install would make.
  */
-export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) {
+export function AddPackageDialog({
+	env,
+	open,
+	onClose,
+	preset,
+	onInstalled,
+}: AddPackageDialogProps) {
 	const conda = useConda();
 	const install = useCondaMutation(conda, "installPackages", {
 		invalidates: ["listPackages", "findRepodata"],
@@ -68,12 +79,12 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 
 	const targetName = env.name || "base";
 	const displayName = environmentDisplayName(env);
-	const [query, setQuery] = useState("");
-	const selection = usePackageSelection();
+	const [query, setQuery] = useState(() => preset?.packages[0]?.name ?? "");
+	const selection = usePackageSelection(preset?.packages);
 	const { selected } = selection;
 
 	const prefixQuery = useCondaQuery(conda, "prefixOptions");
-	const channels = useChannelSelection(prefixQuery.data?.channels);
+	const channels = useChannelSelection(prefixQuery.data?.channels, preset?.channels);
 	const search = usePackageSearch({
 		conda,
 		open,
@@ -245,6 +256,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
 				resetForm();
+				onInstalled?.();
 				onClose();
 			},
 			(reason) => {
@@ -310,6 +322,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 									customized={channels.customized}
 									qaId="environments-conda-add-pkg-channels-btn"
 									availableChannels={channels.available}
+									linkChannels={channels.linkChannels}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
 								/>

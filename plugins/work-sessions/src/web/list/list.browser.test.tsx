@@ -8,6 +8,8 @@ import {
 	WorkSessionListAction,
 	WorkSessionAction,
 	WorkSessionFacet,
+	WorkSessionGrouping,
+	type WorkSessionGroup,
 	type WorkSessionActionProps,
 	type WorkSessionPullRequestState,
 	WorkSessionDecoration,
@@ -101,6 +103,11 @@ const row = (title: string) =>
 	list()
 		.getByTestId(/^session-list-(archived-)?item$/)
 		.filter({ hasText: title });
+const titles = () =>
+	list()
+		.getByTestId("session-list-item-title")
+		.elements()
+		.map((element) => element.textContent);
 const openRowMenu = async (title: string) => {
 	await row(title).hover();
 	await row(title).getByTestId("session-list-item-more").click();
@@ -457,11 +464,6 @@ describe("view options", () => {
 		await page.getByRole("menuitemradio", { name: option }).click();
 		await userEvent.keyboard("{Escape}{Escape}");
 	};
-	const titles = () =>
-		list()
-			.getByTestId("session-list-item-title")
-			.elements()
-			.map((element) => element.textContent);
 
 	it("orders by title, filters by status and resets", async () => {
 		await renderWorkSessions({
@@ -664,6 +666,73 @@ describe("contributions", () => {
 		current = { ...states, c: "open" };
 		for (const listener of listeners) listener();
 		await expect.element(row("No PR")).toBeVisible();
+	});
+
+	it("groups by a plugin's categories, showing only the sessions in them", async () => {
+		const listeners = new Set<() => void>();
+		let groups: readonly WorkSessionGroup[] = [
+			{ id: "doing", label: "Doing", workSessionIds: ["b", "a"] },
+			{ id: "done", label: "Done", workSessionIds: [] },
+		];
+		const groupingPlugin = {
+			manifest: {
+				manifestVersion: 1,
+				id: "test.grouping",
+				displayName: "Grouping",
+				version: "1.0.0",
+				contributes: {
+					extensions: {
+						"kilo.work-sessions/work-session-grouping": [{ id: "board", title: "Board" }],
+					},
+				},
+			},
+			web: {
+				activate(sdk: PluginSdk) {
+					sdk.extensions.implement(WorkSessionGrouping, "board", {
+						get: () => groups,
+						subscribe: (listener) => {
+							listeners.add(listener);
+							return () => listeners.delete(listener);
+						},
+					});
+				},
+			} satisfies PluginEntry,
+		};
+		await renderWorkSessions({
+			workSessions: [
+				workSession("a", { title: "Apple", updatedAt: NOW - 1_000 }),
+				workSession("b", { title: "Banana", updatedAt: NOW - 5_000 }),
+				workSession("c", { title: "Off the board", pinned: true }),
+			],
+			guests: [groupingPlugin],
+		});
+
+		await page.getByTestId("session-list-view-menu").click();
+		await page.getByRole("menuitem", { name: /^Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Board" }).click();
+		await userEvent.keyboard("{Escape}{Escape}");
+
+		await expect.element(list().getByRole("button", { name: "Doing" })).toBeVisible();
+		await vi.waitFor(() => expect(titles()).toEqual(["Banana", "Apple"]));
+		await expect.element(row("Off the board")).not.toBeInTheDocument();
+		await expect.element(list().getByRole("button", { name: "Done" })).toBeVisible();
+		await expect
+			.element(list().getByTestId("session-list-group-empty-done"))
+			.toHaveTextContent("No sessions yet");
+
+		groups = [
+			{ id: "doing", label: "Doing", workSessionIds: ["b"] },
+			{ id: "done", label: "Done", workSessionIds: ["a"] },
+		];
+		for (const listener of listeners) listener();
+		await expect
+			.element(list().getByTestId("session-list-group-empty-done"))
+			.not.toBeInTheDocument();
+		await vi.waitFor(() => expect(titles()).toEqual(["Banana", "Apple"]));
+
+		groups = [];
+		for (const listener of listeners) listener();
+		await expect.element(page.getByText("No sessions in Board")).toBeVisible();
 	});
 
 	it("offers no pull request filter without a facet", async () => {

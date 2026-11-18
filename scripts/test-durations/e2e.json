@@ -1,0 +1,285 @@
+{
+	"e2e/specs/anaconda/anaconda-account.spec.ts": {
+		"Anaconda account \u203a contributes a signed-out Anaconda row to Account settings @smoke": 1.7
+	},
+	"e2e/specs/browser/browser-loopback-guard.spec.ts": {
+		"Browser loopback guard @smoke @packaged \u203a blocks a remote page from embedding a loopback sub-resource": 1.8,
+		"Browser loopback guard @smoke @packaged \u203a navigates directly to a loopback dev server and adopts its title": 1.6
+	},
+	"e2e/specs/browser/browser.spec.ts": {
+		"Browser tab @smoke @packaged \u203a navigates an embedded guest and adopts its page title": 4.4
+	},
+	"e2e/specs/chat/chat-approval-selector.spec.ts": {
+		"Chat approval selector \u203a Escape closes the menu without changing the approval mode": 2.1,
+		"Chat approval selector \u203a Manual and Auto labels always match the selected radio item": 1.8,
+		"Chat approval selector \u203a clicking outside closes the menu without changing the approval mode": 2,
+		"Chat approval selector \u203a defaults to Manual and opens the approval menu @smoke": 3.2,
+		"Chat approval selector \u203a selecting Auto updates the label and checked state and persists across reload @smoke": 3.6,
+		"Chat approval selector \u203a selecting Manual again persists across reload": 3.2,
+		"Chat approval selector \u203a the approval choice applies across persisted chats": 8.4
+	},
+	"e2e/specs/chat/chat-attachments.spec.ts": {
+		"Chat attachments \u203a uploads an image, sends it, and renders the mock model's reply @smoke @packaged": 35.1
+	},
+	"e2e/specs/chat/chat-composer.spec.ts": {
+		"Chat composer \u203a enables send once the composer has text @smoke": 2.7,
+		"Chat composer \u203a starts an unscoped session's chat in its own folder @packaged": 3.2,
+		"Chat composer \u203a starts the session's chat in its workspace on the first send @smoke @packaged": 10.1
+	},
+	"e2e/specs/chat/chat-mode-selector.spec.ts": {
+		"Chat mode selector \u203a Escape closes the menu without changing the selection": 1.8,
+		"Chat mode selector \u203a clicking outside closes the menu without changing the selection": 1.1,
+		"Chat mode selector \u203a defaults to Code and lists the built-in modes in order @smoke": 9.8,
+		"Chat mode selector \u203a every rendered mode updates the trigger label when selected": 2,
+		"Chat mode selector \u203a lists exactly the modes the Kilo CLI reports @smoke": 1.2,
+		"Chat mode selector \u203a records each mode as the created session agent": 10.2,
+		"Chat mode selector \u203a records the Plan mode as the created session agent @smoke": 3.9,
+		"Chat mode selector \u203a records the last selected mode when the mode changes before sending": 4.3,
+		"Chat mode selector \u203a selecting a mode updates the trigger label and its checked state": 1.2,
+		"Chat mode selector \u203a the mode is scoped to the chat": 3.8
+	},
+	"e2e/specs/chat/chat-model-selector-favorites.spec.ts": {
+		"Chat model selector \u203a favorites keep every favorited Kilo Gateway model listed together @smoke": 18.4,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Anthropic) turns its star active and lists it under Favorites @smoke": 13.2,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (DeepSeek) turns its star active and lists it under Favorites @smoke": 13,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Google Gemini) turns its star active and lists it under Favorites @smoke": 12.5,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Meta Llama) turns its star active and lists it under Favorites @smoke": 12,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Mistral) turns its star active and lists it under Favorites @smoke": 13.2,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Moonshot Kimi) turns its star active and lists it under Favorites @smoke": 13.1,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (OpenAI) turns its star active and lists it under Favorites @smoke": 13.2,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Qwen) turns its star active and lists it under Favorites @smoke": 13.3,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (Zhipu GLM) turns its star active and lists it under Favorites @smoke": 12.7,
+		"Chat model selector \u203a favoriting a Kilo Gateway model (xAI Grok) turns its star active and lists it under Favorites @smoke": 12.7
+	},
+	"e2e/specs/chat/chat-model-selector-tooltips.spec.ts": {
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Anthropic) @reg": 12.3,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (DeepSeek) @reg": 12.6,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Google Gemini) @reg": 18,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Meta Llama) @reg": 18,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Mistral) @reg": 17.8,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Moonshot Kimi) @reg": 18.1,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (OpenAI) @reg": 17.7,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Qwen) @reg": 18,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Zhipu GLM) @reg": 13.1,
+		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (xAI Grok) @reg": 12.4
+	},
+	"e2e/specs/chat/chat-model-selector.spec.ts": {
+		"Chat model selector \u203a Escape closes the menu and switching rails keeps the search box visible": 7.1,
+		"Chat model selector \u203a opens a well-formed info tooltip for a Kilo Gateway model @smoke": 8.1,
+		"Chat model selector \u203a shows only the favorites empty message in the list": 15.1,
+		"Chat model selector \u203a shows the local model server empty state": 10,
+		"Chat model selector \u203a shows the model search box with its placeholder @smoke": 15.2,
+		"Chat model selector \u203a shows the model trigger and opens the menu @smoke": 15.2,
+		"Chat model selector \u203a shows the provider rail with the Favorites button @smoke": 15.7
+	},
+	"e2e/specs/chat/desktop-tools.spec.ts": {
+		"Desktop agent tools @packaged \u203a serves kilo.chat's tools to Kilo through kilo.core's gateway @smoke": 5.1
+	},
+	"e2e/specs/chat/find.spec.ts": {
+		"Chat transcript find @smoke @packaged \u203a opens a scoped find bar on the platform find chord": 4.2
+	},
+	"e2e/specs/chat/kilo-chat.spec.ts": {
+		"kilo.chat @smoke \u203a starts a work session from the New Session page with a prompt, shows the reply and titles the session": 45
+	},
+	"e2e/specs/chat/new-chat.spec.ts": {
+		"New chat \u203a an Agent pane added to a session opens with the composer docked at the bottom @smoke": 2.1,
+		"New chat \u203a the New Session page welcomes without a workspace and shows tools below the session starter @smoke": 7.5
+	},
+	"e2e/specs/chat/welcome-shortcuts.spec.ts": {
+		"Welcome shortcuts @packaged \u203a opens Files with an explanation when no workspace is selected": 1.3,
+		"Welcome shortcuts @packaged \u203a opens Files with the selected workspace's file list @smoke": 1.5,
+		"Welcome shortcuts @packaged \u203a opens a Browser and loads a page from the welcome page @smoke": 1.1,
+		"Welcome shortcuts @packaged \u203a opens a Notebook from the welcome page": 8.1,
+		"Welcome shortcuts @packaged \u203a opens a working Terminal from the welcome page @smoke": 7.8
+	},
+	"e2e/specs/core/kilo-core.spec.ts": {
+		"kilo.core @smoke @packaged \u203a starts the packaged Kilo server once the terms are accepted and signs in the e2e identity": 26
+	},
+	"e2e/specs/developer/diagnostics.spec.ts": {
+		"Diagnostics @smoke \u203a lists the kernel, the running plugins and the developer flag under Developer": 6.7
+	},
+	"e2e/specs/environments/environments.spec.ts": {
+		"Conda environments @smoke \u203a activates and registers the conda bridge service": 2.5
+	},
+	"e2e/specs/files/files.spec.ts": {
+		"Files @packaged \u203a auto-refreshes the tree when files change on disk @smoke": 4.1,
+		"Files @packaged \u203a opens the bundled files pane and exposes a workspace file": 6.9,
+		"Files @packaged \u203a reloads an open file when it changes on disk": 3.8,
+		"Files @packaged \u203a shows git status decorations for a worktree-root workspace": 4.1
+	},
+	"e2e/specs/files/table-viewer.spec.ts": {
+		"Files table viewer @packaged \u203a saves the CSV draft shown in the table view": 5.4,
+		"Files table viewer @packaged \u203a shows a Parquet file as a read-only Sift table @smoke": 5.9
+	},
+	"e2e/specs/git/branch-selector.spec.ts": {
+		"Git branch selector \u203a opens the grouped branch popover in the launcher": 4.3
+	},
+	"e2e/specs/git/changes.spec.ts": {
+		"Git changes live reload @packaged \u203a reflects working tree edits and terminal commits": 10.8,
+		"Git changes pane @smoke @packaged \u203a opens the Changes pane in a work session and streams the modified file": 6.2,
+		"Git changes pane file actions @packaged \u203a opens a changed file in a Files pane from its diff header": 2.9,
+		"Git changes pane init \u203a initializes a plain folder from the Changes pane's error state": 4.5
+	},
+	"e2e/specs/git/init.spec.ts": {
+		"Git init \u203a initializes a plain folder from the chat's composer footer @smoke @packaged": 14.6,
+		"Git init \u203a swaps the footer button for the branch label when git init runs outside the app": 8.9
+	},
+	"e2e/specs/git/worktrees.spec.ts": {
+		"Git worktrees @packaged \u203a a new session can reuse an existing worktree": 21.7,
+		"Git worktrees @packaged \u203a local sessions keep the checkout's branch picker": 3.7,
+		"Git worktrees @packaged \u203a starts a session in a new worktree and removes the worktree when the session is deleted @smoke": 35.7
+	},
+	"e2e/specs/kernel/boot.spec.ts": {
+		"Kernel boot @smoke @packaged \u203a starts the bundled plugins over an isolated kernel bridge, without its own screen": 0.2,
+		"Kernel boot @smoke @packaged \u203a starts with no plugins in safe mode and offers a normal restart": 5.6
+	},
+	"e2e/specs/local-inference/local-model-server.spec.ts": {
+		"Local Model Server @smoke \u203a opens Local Model Server settings and offers the model sources": 3.8
+	},
+	"e2e/specs/marketplace/marketplace.spec.ts": {
+		"Agent Behavior settings @smoke \u203a installs and removes a global MCP": 9
+	},
+	"e2e/specs/notebook/notebook-signed-out.spec.ts": {
+		"Notebook signed out @smoke @packaged \u203a offers a Notebook pane that asks a signed-out user to sign in": 2
+	},
+	"e2e/specs/notebook/notebook.spec.ts": {
+		"Notebook @smoke @packaged \u203a offers a Notebook pane to a signed-in user": 4.3
+	},
+	"e2e/specs/shell/about-kilo-config.spec.ts": {
+		"About settings: Kilo config \u203a shows the existing global kilo.jsonc path, enables show in file manager, and reveals that exact file": 6.1,
+		"About settings: Kilo config \u203a verifies kilo config row when the global kilo.jsonc does not exist": 3
+	},
+	"e2e/specs/shell/about.spec.ts": {
+		"About settings \u203a offers the terms of service and shows the third-party notices the app ships @smoke @packaged": 8.5,
+		"About settings \u203a reads the version and update state and offers the application logs @smoke @packaged": 1.8,
+		"About settings \u203a show in file manager reveals the log file path shown in the Application logs row": 0.7,
+		"About settings \u203a verifies about page layout": 0.7,
+		"About settings \u203a verifies application logs row": 0.9,
+		"About settings \u203a verifies support section": 0.7,
+		"About settings \u203a verifies update status without an update feed": 0.7,
+		"About settings \u203a verifies update track": 0.8,
+		"About settings \u203a verifies version details": 0.6
+	},
+	"e2e/specs/shell/account-signed-out.spec.ts": {
+		"Account settings signed out @smoke \u203a verifies account state after reopening settings": 1,
+		"Account settings signed out @smoke \u203a verifies kilo row when not signed in": 2.8
+	},
+	"e2e/specs/shell/account.spec.ts": {
+		"Account settings @smoke \u203a shows the signed-in account at the foot of the sidebar": 1.2,
+		"Account settings @smoke \u203a verifies account page layout": 9.4,
+		"Account settings @smoke \u203a verifies kilo row when signed in": 1.1
+	},
+	"e2e/specs/shell/ai-providers.spec.ts": {
+		"AI Providers settings \u203a opens AI Providers with the Kilo Gateway panel above the AI providers kilo.core lists @smoke": 8.3
+	},
+	"e2e/specs/shell/app-menu.spec.ts": {
+		"Native app menu @smoke @packaged \u203a offers shell's commands and runs the one chosen": 1.8
+	},
+	"e2e/specs/shell/appearance.spec.ts": {
+		"Appearance color theme and accent @regression @packaged \u203a applies an accent color and keeps it after a reload": 2.6,
+		"Appearance color theme and accent @regression @packaged \u203a applies every color theme from the picker": 6.8,
+		"Appearance color theme and accent @regression @packaged \u203a restores the theme's accent color": 3.1,
+		"Appearance sidebar vibrancy @regression @packaged \u203a turns sidebar vibrancy back on": 1.6,
+		"Appearance sidebar vibrancy @regression @packaged \u203a turns sidebar vibrancy off and keeps it off after a reload": 1.7,
+		"Appearance text size @smoke @packaged \u203a adjusts and persists the chat text size": 1.9,
+		"Appearance text size @smoke @packaged \u203a adjusts and persists the interface text size": 1.7,
+		"Appearance text size @smoke @packaged \u203a limits the chat text size to its supported range": 1.1,
+		"Appearance text size @smoke @packaged \u203a limits the interface text size to its supported range": 1.3,
+		"Appearance text size @smoke @packaged \u203a resets the chat text size to its default": 2.7,
+		"Appearance text size @smoke @packaged \u203a resets the interface text size to its default": 2.3
+	},
+	"e2e/specs/shell/boot.spec.ts": {
+		"Shell boot @smoke @packaged \u203a loads the renderer over the custom protocol with an isolated preload": 1.1
+	},
+	"e2e/specs/shell/context-menu.spec.ts": {
+		"Native context menu @smoke @packaged \u203a offers native edit actions when right-clicking a text field": 4.7
+	},
+	"e2e/specs/shell/external-ai-apps.spec.ts": {
+		"External AI apps @packaged \u203a pairs an external app, serves it Desktop tools, and revokes it @smoke": 1.9
+	},
+	"e2e/specs/shell/frame.spec.ts": {
+		"Shell frame @smoke @packaged \u203a shrinks an empty top bar while the sidebar is docked": 1.9
+	},
+	"e2e/specs/shell/keyboard-shortcuts.spec.ts": {
+		"Keyboard shortcuts @smoke \u203a dispatches app shortcuts captured in the main process": 1.5,
+		"Keyboard shortcuts @smoke \u203a runs a command chosen in the command palette": 1
+	},
+	"e2e/specs/shell/onboarding.spec.ts": {
+		"Onboarding \u203a walks a fresh profile through the terms, sign-in, work style, workspace and features steps": 14.6
+	},
+	"e2e/specs/shell/privacy.spec.ts": {
+		"Privacy @smoke \u203a defaults on and keeps the opt-out saved by the host": 1.7
+	},
+	"e2e/specs/shell/settings-overview.spec.ts": {
+		"Settings overview \u203a verifies the settings UI and sections for a signed-in user": 6.5,
+		"Settings overview \u203a verifies the settings UI and sign-in prompts on gated sections for a signed-out user": 19.5
+	},
+	"e2e/specs/shell/settings-search.spec.ts": {
+		"Settings search \u203a verifies clearing search with the clear icon": 1.8,
+		"Settings search \u203a verifies search with invalid data": 0.8,
+		"Settings search \u203a verifies search with two-letter data": 1,
+		"Settings search \u203a verifies search with valid data": 1.1
+	},
+	"e2e/specs/shell/settings.spec.ts": {
+		"Settings @smoke \u203a opens Appearance settings from the app bar": 1
+	},
+	"e2e/specs/shell/theme.spec.ts": {
+		"Theme @smoke @packaged \u203a restores the palette and native chrome after an app restart": 33.5,
+		"Theme @smoke @packaged \u203a syncs native appearance live when switching between Light, System, and Dark": 1.7
+	},
+	"e2e/specs/terminal/terminal.spec.ts": {
+		"Terminal @smoke @packaged \u203a runs isolated shells in a terminal-only session": 38.9
+	},
+	"e2e/specs/work-sessions/kilo-work-sessions.spec.ts": {
+		"kilo.work-sessions @smoke \u203a adds a workspace, starts an empty session in it from the New Session page, then renames and pins it": 3
+	},
+	"e2e/specs/work-sessions/layout-presets.spec.ts": {
+		"Session layout presets @smoke \u203a saves the current panes as the default layout and applies it to new sessions after a reload": 10
+	},
+	"e2e/specs/work-sessions/session-list.spec.ts": {
+		"Session list @packaged \u203a starts, renames, pins, archives and deletes a session @smoke": 3.8
+	},
+	"e2e/specs/work-sessions/sidemenu-bulk-actions.spec.ts": {
+		"Side menu bulk actions @packaged \u203a restores an archived selection, and offers no Archive for it": 7.8
+	},
+	"e2e/specs/work-sessions/sidemenu-sessions.spec.ts": {
+		"Side menu with sessions @packaged \u203a abandons an inline rename on Escape, keeping the old title": 6.5,
+		"Side menu with sessions @packaged \u203a archiving a session moves it onto the Archived shelf": 1.5,
+		"Side menu with sessions @packaged \u203a keeps a session pinned across a window reload": 6.8,
+		"Side menu with sessions @packaged \u203a keeps the Archived shelf expanded across a window reload": 2.6,
+		"Side menu with sessions @packaged \u203a keeps the old title when the new one is blank": 6.4,
+		"Side menu with sessions @packaged \u203a offers the row actions for a listed session @smoke": 11.1,
+		"Side menu with sessions @packaged \u203a pinning a session adds the Pinned shelf and unpinning removes it": 9.2,
+		"Side menu with sessions @packaged \u203a says why the session search is empty, per query and scope": 6.5,
+		"Side menu with sessions @packaged \u203a selects a session with the row's Shift+Click shortcut": 7.3
+	},
+	"e2e/specs/work-sessions/sidemenu-unavailable-folders.spec.ts": {
+		"Side menu workspace filter @packaged \u203a warns about folders it cannot reach, and opens the workspace's settings": 3.8
+	},
+	"e2e/specs/work-sessions/sidemenu-virtualization.spec.ts": {
+		"Side menu with a long history @packaged \u203a keeps the row list as tall as the whole history": 14.5,
+		"Side menu with a long history @packaged \u203a mounts only the rows near the viewport, and reaches the rest by scrolling @smoke": 15.2,
+		"Side menu with a long history @packaged \u203a walks the arrow keys past the mounted window, scrolling rows in as it goes": 13.7
+	},
+	"e2e/specs/work-sessions/sidemenu.spec.ts": {
+		"Side menu on a new account @packaged \u203a offers Sign in while no account is signed in": 3.4,
+		"Side menu on a new account @packaged \u203a opens the session list options menu from the grouping header": 0.3,
+		"Side menu on a new account @packaged \u203a opens the session search dialog and dismisses it with Escape": 0.6,
+		"Side menu on a new account @packaged \u203a shows the chat actions, session list, and footer controls @smoke": 1.4,
+		"Side menu on a new account @packaged \u203a starts with no sessions, and so no Pinned or Archived shelf": 0.4
+	},
+	"e2e/specs/work-sessions/work-sessions.spec.ts": {
+		"Work sessions @packaged \u203a creates two sessions, switches between them and keeps both across a reload @smoke": 10.2
+	},
+	"e2e/specs/work-sessions/workspace-watcher.spec.ts": {
+		"Workspace watcher @smoke @packaged \u203a publishes a file-change batch for a registered workspace folder": 0.7
+	},
+	"e2e/specs/work-sessions/workspaces.spec.ts": {
+		"Workspaces @packaged \u203a adds a workspace from the folder picker and lists it @smoke": 2.9
+	},
+	"e2e/specs/workspace-board/workspace-board.spec.ts": {
+		"Workspace board @packaged \u203a places a session on the board, drags it between columns, and keeps it after reload @smoke": 5.9,
+		"Workspace board @packaged \u203a pops the board out, opens a session from its window, and docks it back": 2.6,
+		"Workspace board @packaged \u203a takes a session list row dropped on a column": 1
+	}
+}

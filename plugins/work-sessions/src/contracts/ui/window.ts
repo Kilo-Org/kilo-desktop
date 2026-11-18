@@ -61,7 +61,16 @@ export const WorkSessionsWindow = defineDomainObject({
 		 * pop-out window forward) or opens one. With no work session open,
 		 * starts one from the New Session page with a pane of the kind.
 		 * Plugins' "Open Files" / "Open Terminal" commands use it.
+		 *
+		 * A new pane goes in as a `tab` of the active group (the default, as
+		 * from ⌘T) or in a new `group` beside it (as from the header "+").
 		 */
-		openPane: method(z.object({ kind: z.string().min(1) }), z.undefined()),
+		openPane: method(
+			z.object({
+				kind: z.string().min(1),
+				placement: z.enum(["tab", "group"]).optional(),
+			}),
+			z.undefined(),
+		),
 	},
 });

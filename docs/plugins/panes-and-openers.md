@@ -96,7 +96,9 @@ await panes?.methods.close({ workSessionId, paneId });
   person does from "+" (showing its existing pane, bringing a popped-out
   window forward; with no work session open, starting one from the New
   Session page), call `WorkSessionsWindow.openPane({ kind })` — an "Open …"
-  command should, rather than `Panes.open`.
+  command should, rather than `Panes.open`. A new pane joins the active
+  group as a tab; pass `placement: "group"` to give it its own tab group
+  beside it, as the header "+" and Open Changes do.
 
 ## Close guards
 

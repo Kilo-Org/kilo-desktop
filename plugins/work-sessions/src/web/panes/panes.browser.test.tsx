@@ -597,6 +597,22 @@ describe("WorkSessionsWindow.openPane (for other plugins' commands)", () => {
 		expect(calls.openPane).toHaveBeenCalledTimes(1);
 	});
 
+	it("opens the kind in a new tab group beside the active one when asked, as the header '+' does", async () => {
+		const { window, state } = await renderPanes({
+			panes: withPanes([pane("a")]),
+			extraPlugins: [pinnedPlugin],
+		});
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await window().methods.openPane({ kind: "test.pinned/helper", placement: "group" });
+
+		await vi.waitFor(() => {
+			const layout = parseLayoutJson(state()?.layout);
+			expect(layout?.groups.map((group) => group.tabs.length)).toEqual([1, 1]);
+			expect(layout?.groups[0]?.tabs[0]?.id).toBe("a");
+		});
+	});
+
 	it("does nothing with no session open", async () => {
 		const { window, calls } = await renderPanes({ panes: withPanes([pane("a")]) });
 		await window().methods.closeWorkSession(undefined);

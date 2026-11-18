@@ -24,7 +24,7 @@ import { popOut, usePoppedOutPanes } from "./pop-outs";
 import { useWorkSessionPanes } from "./use-work-session-panes";
 
 /** How long a layout rests before it is saved: a splitter drag saves once, when it stops. */
-const LAYOUT_SAVE_DELAY_MS = 150;
+export const LAYOUT_SAVE_DELAY_MS = 150;
 
 /** What a pending layout was made from: the saved layout and which panes exist. */
 const basisOf = (state: WorkSessionPanes) =>

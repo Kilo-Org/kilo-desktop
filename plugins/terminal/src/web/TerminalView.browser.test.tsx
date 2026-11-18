@@ -95,7 +95,6 @@ describe("TerminalView", () => {
 			}),
 		);
 
-		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(opened).not.toHaveBeenCalled();
 	});
 

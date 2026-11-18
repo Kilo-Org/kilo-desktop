@@ -1,6 +1,6 @@
 import { OPEN_CODE_HISTORY_PAGE_SIZE } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HistoryPrefetch, PREFETCH_TTL_MS, withPrefetchedHistory } from "./history-prefetch";
 
@@ -22,12 +22,15 @@ function fakeClient() {
 }
 
 function setup() {
-	let now = 1_000;
-	const prefetch = new HistoryPrefetch(() => now);
+	const prefetch = new HistoryPrefetch();
 	const network = fakeClient();
 	const opened = withPrefetchedHistory(network.client, "ses_1", prefetch);
-	return { prefetch, network, opened, advance: (ms: number) => (now += ms) };
+	return { prefetch, network, opened };
 }
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 describe("withPrefetchedHistory", () => {
 	it("answers the opening thread's history reads from what was prefetched", async () => {
@@ -66,10 +69,11 @@ describe("withPrefetchedHistory", () => {
 	});
 
 	it("reads the server once what was prefetched is too old", async () => {
-		const { prefetch, network, opened, advance } = setup();
+		vi.useFakeTimers({ toFake: ["Date"] });
+		const { prefetch, network, opened } = setup();
 		prefetch.prefetch("ses_1", network.client);
 
-		advance(PREFETCH_TTL_MS);
+		vi.setSystemTime(Date.now() + PREFETCH_TTL_MS);
 		await opened.session.get({ sessionID: "ses_1" });
 
 		expect(network.get).toHaveBeenCalledTimes(2);

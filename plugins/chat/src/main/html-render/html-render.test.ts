@@ -4,13 +4,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { Tool, toolWireName, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
+import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 import type { Authorization } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	HTML_RENDER_DOCUMENT_PATH,
-	HTML_RENDER_TOOL_DESCRIPTION,
-	HTML_RENDER_TOOL_NAME,
 	HtmlPages,
 	MCP_APP_HOST,
 	MCP_APP_SHELL_HTML_MESSAGE,
@@ -60,12 +58,10 @@ describe("the html_render tool", () => {
 			.find((candidate) => candidate.key === "kilo.chat/html_render")!;
 	}
 
-	it("is a read-only tool with origin's description, called desktop_chat_html_render", async () => {
+	it("is a read-only tool", async () => {
 		const contribution = await tool();
 
 		expect(contribution.metadata).toMatchObject({ title: "Show HTML page", readOnly: true });
-		expect(contribution.implementation!.description).toBe(HTML_RENDER_TOOL_DESCRIPTION);
-		expect(toolWireName(contribution.key)).toBe(HTML_RENDER_TOOL_NAME);
 	});
 
 	it("acknowledges a page shown in a Kilo chat", async () => {

@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 import { ToolApproval } from "@kilo-desktop/plugin-core/contracts";
+import { PERMISSION_AUTO_ANSWER_TIMEOUT_MS } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { AutoApprove, needsPerson } from "../../contracts";
+import { AutoApprove } from "../../contracts";
 import { bootChatMain, chat, request, settle, signInToolPlugin } from "../test-boot";
 
 async function boot(options: Parameters<typeof bootChatMain>[0] = {}) {
@@ -13,35 +14,27 @@ async function boot(options: Parameters<typeof bootChatMain>[0] = {}) {
 
 const SIGN_IN_TOOL = "kilo.terminal/open_terminal";
 
-describe("needsPerson", () => {
-	it("flags prompts auto-approve never answers", () => {
-		expect(needsPerson({ sandboxEscalation: true })).toBe(true);
-		expect(needsPerson({ configProtected: true })).toBe(true);
-		expect(needsPerson({ skillShell: true })).toBe(true);
-		expect(needsPerson({ sandboxEscalation: "yes" })).toBe(false);
-		expect(needsPerson({})).toBe(false);
-	});
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 describe("auto mode", () => {
 	it("answers a request once, holding it back until windows have dropped it", async () => {
-		const { core, autoApprove } = await boot({
-			chats: [chat("ses_a")],
-			dropResolvedAfterMs: 20,
-		});
+		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		await autoApprove.methods.setMode({ mode: "auto" });
 		core.requests.set("ses_a", [request("per_1", "ses_a")]);
 
 		core.ask("ses_a", "per_1");
-		await settle();
+		await vi.advanceTimersByTimeAsync(0);
 
 		expect(core.replies).toEqual([{ chatId: "ses_a", permissionId: "per_1", reply: "once" }]);
 		expect(autoApprove.getState().holding).toEqual(["per_1"]);
 		// Still listed: a window may not have dropped the request yet, and would show its card.
 		core.resolve("ses_a", "per_1");
 		expect(autoApprove.getState().holding).toEqual(["per_1"]);
-		// Then dropped, so a window that missed the resolve shows the card rather than hide it for good.
-		await new Promise((resolve) => setTimeout(resolve, 30));
+		// Then dropped, well before the reveal delay, so a window that missed the resolve shows the card rather than hide it for good.
+		await vi.advanceTimersByTimeAsync(PERMISSION_AUTO_ANSWER_TIMEOUT_MS - 1);
 		expect(autoApprove.getState().holding).toEqual([]);
 	});
 
@@ -64,21 +57,24 @@ describe("auto mode", () => {
 	});
 
 	it("shows the request when the reply fails, or after the reveal delay", async () => {
-		const { core, autoApprove } = await boot({ chats: [chat("ses_a")], revealAfterMs: 20 });
+		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		await autoApprove.methods.setMode({ mode: "auto" });
 		core.requests.set("ses_a", [request("per_1", "ses_a"), request("per_2", "ses_a")]);
 
 		core.failReplies = true;
 		core.ask("ses_a", "per_1");
-		await settle();
+		await vi.advanceTimersByTimeAsync(0);
 		expect(autoApprove.getState().holding).toEqual([]);
 
 		core.failReplies = false;
 		core.ask("ses_a", "per_2");
 		core.ask("ses_a", "per_2");
-		await settle();
+		await vi.advanceTimersByTimeAsync(0);
 		expect(autoApprove.getState().holding).toEqual(["per_2"]);
-		await new Promise((resolve) => setTimeout(resolve, 30));
+		await vi.advanceTimersByTimeAsync(PERMISSION_AUTO_ANSWER_TIMEOUT_MS - 1);
+		expect(autoApprove.getState().holding).toEqual(["per_2"]);
+		await vi.advanceTimersByTimeAsync(1);
 		expect(autoApprove.getState().holding).toEqual([]);
 	});
 

@@ -14,6 +14,12 @@ import {
 	type ChatSummary,
 	type CreateChatInput,
 } from "@kilo-desktop/plugin-core/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import {
+	Notifications,
+	SHELL_DEFINITIONS,
+	type NotificationContent,
+} from "@kilo-desktop/plugin-shell/contracts";
 
 import manifest from "../../plugin.json";
 import {
@@ -248,6 +254,32 @@ export class FakeVcs {
 	});
 }
 
+/** kilo.shell under its real manifest, providing only notifications; posted notices are recorded by id. */
+export function fakeShell(notices: Map<string, NotificationContent>): PluginRegistration {
+	return {
+		manifest: shellManifest,
+		definitions: SHELL_DEFINITIONS,
+		entry: {
+			activate: (sdk) => {
+				sdk.domainObjects.provide(Notifications, {
+					initialState: { notices: {} },
+					methods: {
+						toast: unused,
+						post: ({ id, ...content }) => {
+							const key = id ?? crypto.randomUUID();
+							notices.set(key, content);
+							return key;
+						},
+						dismiss: ({ id }) => {
+							notices.delete(id);
+						},
+					},
+				});
+			},
+		},
+	};
+}
+
 export const APP_WORKSPACE: Workspace = {
 	id: "w1",
 	name: "App",
@@ -290,7 +322,6 @@ export async function bootWorkSessions(options: BootOptions = {}) {
 	let paneId = 0;
 	let clock = 1_000;
 	const entry = createWorkSessionsMainEntry({
-		storage: () => ({ readLegacy: async () => null }),
 		fileWatcher: () => ({ subscribeFn: unused, realpath: (path) => path }),
 		workspaces: () => ({ folderCheckIntervalMs: 60_000 }),
 		workSessions: () => ({

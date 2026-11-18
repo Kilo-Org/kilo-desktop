@@ -10,7 +10,7 @@ import { getToolFilePath, getToolUnifiedDiffFromParts, sumFileDiffStats } from "
 import { basename, DiffCounts } from "./tool-ui-shared";
 import type { ToolCallComponent, ToolCallView } from "./tool-call";
 
-export { getToolFilePath, getToolUnifiedDiffFromParts, sumFileDiffStats } from "./tool-diff-stats";
+export { getToolFilePath } from "./tool-diff-stats";
 export type { FileDiffStats } from "./tool-diff-stats";
 
 export const PierreDiffBody = ({

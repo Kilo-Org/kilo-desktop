@@ -14,11 +14,10 @@ function change(path: string, type: "created" | "updated" | "deleted") {
 
 describe("WorkspaceWatcher", () => {
 	describe("event delivery", () => {
-		it("delivers file change events to a subscriber of a watched directory", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const received: Array<Array<{ path: string; type: string }>> = [];
+		it("emits each normalized batch, with its root, on the event bus", async () => {
+			const emit = vi.fn();
+			const { watcher, parcel, tick } = createTestWatcher({ emit });
 			watcher.watchDirectory(PROJECT);
-			const unsubscribe = watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
 			await tick();
 
 			parcel.subscriptions[0]!.emit([
@@ -26,112 +25,13 @@ describe("WorkspaceWatcher", () => {
 				change(`${PROJECT}/src/main.py`, "updated"),
 			]);
 
-			expect(received).toEqual([
-				[
+			expect(emit).toHaveBeenCalledExactlyOnceWith({
+				root: PROJECT,
+				changes: [
 					{ path: `${PROJECT}/src/main.py`, type: "create" },
 					{ path: `${PROJECT}/src/main.py`, type: "update" },
 				],
-			]);
-			unsubscribe();
-		});
-
-		it("emits the unfiltered batch on the event bus", async () => {
-			const emit = vi.fn();
-			const { watcher, parcel, tick } = createTestWatcher({ emit });
-			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, {}, () => {});
-			await tick();
-
-			parcel.subscriptions[0]!.emit([change(`${PROJECT}/a.txt`, "deleted")]);
-
-			expect(emit).toHaveBeenCalledWith({
-				root: PROJECT,
-				changes: [{ path: `${PROJECT}/a.txt`, type: "delete" }],
 			});
-		});
-
-		it("delivers events to several subscribers of the same directory", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const first: unknown[] = [];
-			const second: unknown[] = [];
-			watcher.watchDirectory(PROJECT);
-			const unsubFirst = watcher.subscribe(PROJECT, {}, (changes) => first.push(changes));
-			watcher.subscribe(PROJECT, {}, (changes) => second.push(changes));
-			await tick();
-
-			parcel.subscriptions[0]!.emit([change(`${PROJECT}/a.txt`, "created")]);
-
-			expect(first).toHaveLength(1);
-			expect(second).toHaveLength(1);
-			unsubFirst();
-		});
-
-		it("stops delivering after the subscriber unsubscribes", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const received: unknown[] = [];
-			watcher.watchDirectory(PROJECT);
-			const unsubscribe = watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
-			await tick();
-
-			parcel.subscriptions[0]!.emit([change(`${PROJECT}/a.txt`, "created")]);
-			unsubscribe();
-			parcel.subscriptions[0]!.emit([change(`${PROJECT}/b.txt`, "created")]);
-
-			expect(received).toHaveLength(1);
-		});
-
-		it("rejects subscriptions for directories that are not registered workspaces", () => {
-			const { watcher } = createTestWatcher();
-
-			expect(() => watcher.subscribe("/nowhere", {}, () => {})).toThrow(/not a registered/);
-		});
-	});
-
-	describe("subscriber filtering", () => {
-		it("only delivers events matching include globs", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const received: unknown[] = [];
-			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, { includes: ["**/*.py"] }, (changes) => received.push(changes));
-			await tick();
-
-			parcel.subscriptions[0]!.emit([
-				change(`${PROJECT}/src/main.py`, "created"),
-				change(`${PROJECT}/src/main.ts`, "created"),
-			]);
-
-			expect(received).toEqual([[{ path: `${PROJECT}/src/main.py`, type: "create" }]]);
-		});
-
-		it("suppresses events matching exclude globs", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const received: unknown[] = [];
-			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, { excludes: ["**/test/**"] }, (changes) => received.push(changes));
-			await tick();
-
-			parcel.subscriptions[0]!.emit([
-				change(`${PROJECT}/test/a.py`, "created"),
-				change(`${PROJECT}/src/a.py`, "created"),
-			]);
-
-			expect(received).toEqual([[{ path: `${PROJECT}/src/a.py`, type: "create" }]]);
-		});
-
-		it("only delivers the requested event types", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const received: unknown[] = [];
-			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, { types: ["create"] }, (changes) => received.push(changes));
-			await tick();
-
-			parcel.subscriptions[0]!.emit([
-				change(`${PROJECT}/a.py`, "created"),
-				change(`${PROJECT}/a.py`, "updated"),
-				change(`${PROJECT}/a.py`, "deleted"),
-			]);
-
-			expect(received).toEqual([[{ path: `${PROJECT}/a.py`, type: "create" }]]);
 		});
 	});
 
@@ -145,57 +45,49 @@ describe("WorkspaceWatcher", () => {
 
 			it("leaves a windows drive root unchanged when not on win32", async () => {
 				Object.defineProperty(process, "platform", { value: "darwin" });
-				const { watcher, parcel, tick } = createTestWatcher();
-				const received: Array<Array<{ path: string }>> = [];
+				const { watcher, parcel, tick, batches } = createTestWatcher();
 				watcher.watchDirectory("c:\\work");
-				watcher.subscribe("c:\\work", {}, (changes) => received.push(changes));
 				await tick();
 
 				parcel.subscriptions[0]!.emit([{ path: "c:\\\\", type: "created" }]);
 
-				expect(received).toEqual([[{ path: "c:\\\\", type: "create" }]]);
+				expect(batches).toEqual([[{ path: "c:\\\\", type: "create" }]]);
 			});
 
 			it("normalizes a windows drive root duplicate backslash on win32", async () => {
 				Object.defineProperty(process, "platform", { value: "win32" });
-				const { watcher, parcel, tick } = createTestWatcher();
-				const received: Array<Array<{ path: string }>> = [];
+				const { watcher, parcel, tick, batches } = createTestWatcher();
 				watcher.watchDirectory("c:\\work");
-				watcher.subscribe("c:\\work", {}, (changes) => received.push(changes));
 				await tick();
 
 				parcel.subscriptions[0]!.emit([{ path: "c:\\\\", type: "created" }]);
 
-				expect(received).toEqual([[{ path: "c:\\", type: "create" }]]);
+				expect(batches).toEqual([[{ path: "c:\\", type: "create" }]]);
 			});
 		});
 
 		it("remaps event paths onto the registered prefix when the directory is a symlink", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({
+			const { watcher, parcel, tick, batches } = createTestWatcher({
 				realpath: (path) => (path === "/link/project" ? "/real/project" : path),
 			});
-			const received: Array<Array<{ path: string }>> = [];
 			watcher.watchDirectory("/link/project");
-			watcher.subscribe("/link/project", {}, (changes) => received.push(changes));
 			await tick();
 
 			parcel.subscriptions[0]!.emit([change("/real/project/src/a.py", "created")]);
 
-			expect(received).toEqual([[{ path: "/link/project/src/a.py", type: "create" }]]);
+			expect(batches).toEqual([[{ path: "/link/project/src/a.py", type: "create" }]]);
 		});
 
 		it("treats realpath as identity and proceeds to active when realpath rejects", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({
+			const { watcher, parcel, tick, batches } = createTestWatcher({
 				realpath: () => Promise.reject(new Error("EACCES: permission denied")),
 			});
-			const received: Array<Array<{ path: string }>> = [];
 			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
 			await tick();
 
 			expect(watcher.status().directories[0]?.state).toBe("active");
 			parcel.subscriptions[0]!.emit([change(`${PROJECT}/src/a.py`, "created")]);
-			expect(received).toEqual([[{ path: `${PROJECT}/src/a.py`, type: "create" }]]);
+			expect(batches).toEqual([[{ path: `${PROJECT}/src/a.py`, type: "create" }]]);
 		});
 	});
 
@@ -212,9 +104,7 @@ describe("WorkspaceWatcher", () => {
 			watcher.watchDirectory(PROJECT);
 			await tick();
 
-			expect(watcher.status().directories).toEqual([
-				{ path: PROJECT, state: "starting", subscriberCount: 0 },
-			]);
+			expect(watcher.status().directories).toEqual([{ path: PROJECT, state: "starting" }]);
 
 			releaseSubscribe();
 			await vi.waitFor(() => {
@@ -222,14 +112,10 @@ describe("WorkspaceWatcher", () => {
 			});
 		});
 
-		it("unwatchDirectory tears the native watcher down once no subscribers remain", async () => {
+		it("unwatchDirectory tears the native watcher down", async () => {
 			const { watcher, parcel, tick } = createTestWatcher();
 			watcher.watchDirectory(PROJECT);
-			const unsubscribe = watcher.subscribe(PROJECT, {}, () => {});
 			await tick();
-
-			unsubscribe();
-			// The registered workspace still holds the native watcher.
 			expect(parcel.subscriptions[0]!.unsubscribed).toBe(false);
 
 			watcher.unwatchDirectory(PROJECT);
@@ -237,57 +123,35 @@ describe("WorkspaceWatcher", () => {
 			expect(watcher.status().directories).toHaveLength(0);
 		});
 
-		it("keeps the native watcher alive while subscribers remain after unwatch", async () => {
-			const { watcher, parcel, tick } = createTestWatcher();
-			const received: unknown[] = [];
-			watcher.watchDirectory(PROJECT);
-			const unsubscribe = watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
-			await tick();
-
-			watcher.unwatchDirectory(PROJECT);
-			parcel.subscriptions[0]!.emit([change(`${PROJECT}/a.txt`, "created")]);
-
-			expect(parcel.subscriptions[0]!.unsubscribed).toBe(false);
-			expect(received).toHaveLength(1);
-			unsubscribe();
-			expect(parcel.subscriptions[0]!.unsubscribed).toBe(true);
-		});
-
-		it("reports directory state and subscriber counts", async () => {
+		it("reports each directory's state", async () => {
 			const { watcher, tick } = createTestWatcher();
 			watcher.watchDirectory(PROJECT);
 			watcher.watchDirectory("/work/other");
-			const unsubscribe = watcher.subscribe(PROJECT, {}, () => {});
 			await tick();
 
 			const directories = watcher
 				.status()
 				.directories.filter((directory) => directory.path === PROJECT);
-			expect(directories).toEqual([{ path: PROJECT, state: "active", subscriberCount: 1 }]);
-			unsubscribe();
+			expect(directories).toEqual([{ path: PROJECT, state: "active" }]);
 		});
 	});
 
 	describe("retry on failure", () => {
 		it("moves to retrying and stops events when the subscription errors", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5 });
-			const received: unknown[] = [];
+			const { watcher, parcel, tick, batches } = createTestWatcher({ retryDelayMs: 5 });
 			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
 			await tick();
 
 			parcel.subscriptions[0]!.fail(new Error("watched path was deleted"));
 			parcel.subscriptions[0]!.emit([change(`${PROJECT}/a.txt`, "created")]);
 
 			expect(watcher.status().directories[0]?.state).toBe("retrying");
-			expect(received).toHaveLength(0);
+			expect(batches).toHaveLength(0);
 		});
 
 		it("keeps watching when the OS drops events under a burst of changes", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5 });
-			const received: unknown[] = [];
+			const { watcher, parcel, tick, batches } = createTestWatcher({ retryDelayMs: 5 });
 			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
 			await tick();
 
 			parcel.subscriptions[0]!.fail(
@@ -297,15 +161,13 @@ describe("WorkspaceWatcher", () => {
 			await tick();
 
 			expect(watcher.status().directories[0]?.state).toBe("active");
-			expect(received).toHaveLength(1);
+			expect(batches).toHaveLength(1);
 			expect(parcel.subscribeAttempts).toEqual([PROJECT]);
 		});
 
 		it("recovers to active when a retry succeeds", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5 });
-			const received: unknown[] = [];
+			const { watcher, parcel, tick, batches } = createTestWatcher({ retryDelayMs: 5 });
 			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
 			await tick();
 
 			parcel.subscriptions[0]!.fail(new Error("transient"));
@@ -317,7 +179,7 @@ describe("WorkspaceWatcher", () => {
 			});
 			expect(parcel.subscribeAttempts).toEqual([PROJECT, PROJECT]);
 			parcel.subscriptions.at(-1)!.emit([change(`${PROJECT}/a.txt`, "created")]);
-			expect(received).toHaveLength(1);
+			expect(batches).toHaveLength(1);
 		});
 
 		it("gives up to failed after exhausting retries", async () => {
@@ -432,8 +294,10 @@ describe("WorkspaceWatcher", () => {
 		});
 
 		it("resets a failed directory when watchDirectory is requested again", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5, maxRetries: 1 });
-			const received: unknown[] = [];
+			const { watcher, parcel, tick, batches } = createTestWatcher({
+				retryDelayMs: 5,
+				maxRetries: 1,
+			});
 			watcher.watchDirectory(PROJECT);
 			await tick();
 
@@ -448,16 +312,12 @@ describe("WorkspaceWatcher", () => {
 
 			expect(watcher.status().directories[0]?.state).toBe("active");
 			parcel.subscriptions.at(-1)!.emit([change(`${PROJECT}/a.txt`, "created")]);
-			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
-			parcel.subscriptions.at(-1)!.emit([change(`${PROJECT}/b.txt`, "created")]);
-			expect(received).toHaveLength(1);
+			expect(batches).toHaveLength(1);
 		});
 
 		it("stops timers and callbacks after dispose", async () => {
-			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5 });
-			const received: unknown[] = [];
+			const { watcher, parcel, tick, batches } = createTestWatcher({ retryDelayMs: 5 });
 			watcher.watchDirectory(PROJECT);
-			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
 			await tick();
 
 			parcel.subscriptions[0]!.fail(new Error("transient"));
@@ -466,7 +326,7 @@ describe("WorkspaceWatcher", () => {
 
 			expect(parcel.subscribeAttempts).toHaveLength(1);
 			parcel.subscriptions.at(-1)!.emit([change(`${PROJECT}/a.txt`, "created")]);
-			expect(received).toHaveLength(0);
+			expect(batches).toHaveLength(0);
 			expect(watcher.status().directories).toHaveLength(0);
 		});
 	});

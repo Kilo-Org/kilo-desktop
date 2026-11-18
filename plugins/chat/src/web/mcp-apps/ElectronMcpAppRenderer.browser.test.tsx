@@ -76,6 +76,9 @@ function fakeShellHtml({ announceReady }: { announceReady: boolean }): string {
 			if (data && data.type === ${JSON.stringify(MCP_APP_SHELL_HTML_MESSAGE)} && typeof data.html === "string") {
 				window.parent.postMessage({ type: "test/echo", html: data.html }, "*");
 			}
+			if (data && data.type === "test/ping") {
+				window.parent.postMessage({ type: "test/pong" }, "*");
+			}
 		});
 		window.parent.postMessage({ type: "test/loaded" }, "*");
 		${announceReady ? `window.parent.postMessage({ type: ${JSON.stringify(MCP_APP_SHELL_READY_MESSAGE)} }, "*");` : ""}
@@ -221,11 +224,21 @@ describe("ElectronMcpAppRenderer", () => {
 		// Wait until the frame's listener is up so a mis-accepted READY would in
 		// fact produce an echo (otherwise the negative could pass on timing alone).
 		await onceMessage((data) => data.type === "test/loaded");
+		const frame = document.querySelector<HTMLIFrameElement>('iframe[title="MCP App"]')!;
 
 		// A READY whose source is the host window — not the frame's own window —
 		// must be rejected, so the renderer never hands over the HTML (no echo).
 		window.postMessage({ type: MCP_APP_SHELL_READY_MESSAGE }, "*");
-		await new Promise((resolve) => setTimeout(resolve, 250));
+		// Messages posted to this window arrive in order, so the marker means the
+		// renderer has handled the READY (and, were it accepted, posted the HTML).
+		const handled = onceMessage((data) => data.type === "test/ready-handled");
+		window.postMessage({ type: "test/ready-handled" }, "*");
+		await handled;
+		// The frame answers after any HTML it was handed, so an echo from a
+		// wrongly accepted READY would have reached this window before the pong.
+		const pong = onceMessage((data) => data.type === "test/pong");
+		frame.contentWindow!.postMessage({ type: "test/ping" }, "*");
+		await pong;
 
 		expect(echoed).toBe(false);
 		window.removeEventListener("message", onEcho);

@@ -3468,7 +3468,9 @@ without the history of earlier sessions.
     (not JSON, fails its schema, a SQLite file that isn't a database or lacks
     origin's tables) counts as imported, and one bad entry is skipped rather
     than failing the whole import; a read that fails (EACCES, EBUSY…) leaves
-    the `importedFromOrigin` marker unset so the next launch tries again. A
+    the `importedFromOrigin` marker unset so the next launch tries again, and
+    so does better-sqlite3 failing to load (kilo.work-sessions posts a notice;
+    installs an earlier release marked imported anyway are re-checked once). A
     retried import never overwrites what the person did here meanwhile: it
     merges origin's data underneath (this app's values win), or is skipped
     once they have changed the data. Imports that depend on another (pins and

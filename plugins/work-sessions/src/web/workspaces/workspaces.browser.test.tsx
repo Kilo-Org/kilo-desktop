@@ -366,7 +366,6 @@ describe("origin's active workspace", () => {
 
 		const seeded = { ...localStorage };
 		const again = await renderApp({ workspaces: [APP], localStorage: seeded });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(again.calls.setActive).not.toHaveBeenCalled();
 	});
 

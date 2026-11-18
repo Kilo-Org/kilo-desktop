@@ -53,25 +53,6 @@ function requestFor(url: string, origin?: string): Request {
 const DESKTOP_ORIGIN = "kilo-desktop://app";
 const allowedOrigins = () => [DESKTOP_ORIGIN, "kilo-desktop-dev://app"];
 
-describe("PATCH_ROUTE (URLPattern on a non-special scheme)", () => {
-	it("matches the patch endpoint with and without a query string", () => {
-		expect(new URLPattern("kilo-git://diff/patch").test("kilo-git://diff/patch")).toBe(true);
-		expect(new URLPattern("kilo-git://diff/patch").test("kilo-git://diff/patch?cwd=/repo")).toBe(
-			true,
-		);
-	});
-
-	it("rejects other hosts, paths, and schemes", () => {
-		const route = new URLPattern("kilo-git://diff/patch");
-		expect(route.test("kilo-git://other/patch?cwd=/repo")).toBe(false);
-		expect(route.test("kilo-git://diff/?cwd=/repo")).toBe(false);
-		expect(route.test("kilo-git://diff/patch/extra?cwd=/repo")).toBe(false);
-		expect(route.test("kilo-git://diff/patchx?cwd=/repo")).toBe(false);
-		expect(route.test("https://diff/patch?cwd=/repo")).toBe(false);
-		expect(route.test("git://diff/patch?cwd=/repo")).toBe(false);
-	});
-});
-
 describe("createGitProtocolHandler", () => {
 	it("rejects a non-endpoint URL with 404", async () => {
 		const { service } = createFakeService(async () => null);

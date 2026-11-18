@@ -6,7 +6,7 @@ import { test } from "../../fixtures/work-sessions/sidemenu.js";
  * and therefore no Pinned or Archived shelf.
  *
  * Row behaviour lives in sidemenu-sessions.spec.ts, and the session lifecycle
- * itself in session-list.spec.ts. Session list *logic* (grouping, ordering,
+ * itself in work-sessions.spec.ts. Session list *logic* (grouping, ordering,
  * filters) is covered far more cheaply by session-list.browser.test.tsx.
  */
 test.describe("Side menu on a new account @packaged", () => {

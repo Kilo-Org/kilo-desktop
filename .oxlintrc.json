@@ -1,6 +1,17 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
 	"plugins": ["typescript", "unicorn", "react"],
+	"jsPlugins": [
+		{
+			"name": "landmines-testing",
+			"specifier": "@interfere/landmines/testing"
+		},
+		{
+			"name": "landmines-structure",
+			"specifier": "@interfere/landmines/structure"
+		},
+		"./packages/oxlint-plugin/src/index.ts"
+	],
 	"categories": {
 		"correctness": "off"
 	},
@@ -370,7 +381,10 @@
 					}
 				]
 			}
-		]
+		],
+		"landmines-testing/no-fixed-sleep": "error",
+		"landmines-testing/no-flake-masking": "error",
+		"landmines-structure/package-exports": "error"
 	},
 	"overrides": [
 		{
@@ -488,6 +502,5 @@
 				"kilo/no-manual-memo": "off"
 			}
 		}
-	],
-	"jsPlugins": ["./packages/oxlint-plugin/src/index.ts"]
+	]
 }

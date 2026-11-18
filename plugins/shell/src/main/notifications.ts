@@ -3,11 +3,6 @@ import { type DomainObjectProvider, type PluginSdk } from "@kilo-desktop/kernel"
 import { Navigation, Notifications, type Notice } from "../contracts";
 import { createWindowTarget } from "./window-target";
 
-export interface NotificationsOptions {
-	readonly now?: () => number;
-	readonly newId?: () => string;
-}
-
 /**
  * Toasts and notices, in main so main-process plugins can raise them too. A
  * toast is only an event for one window (resolved like navigation requests;
@@ -16,9 +11,7 @@ export interface NotificationsOptions {
  * notice and never another plugin's. `dismiss` takes that key, or the
  * caller's own id.
  */
-export function provideNotifications(sdk: PluginSdk, options: NotificationsOptions = {}): void {
-	const now = options.now ?? Date.now;
-	const newId = options.newId ?? (() => crypto.randomUUID());
+export function provideNotifications(sdk: PluginSdk): void {
 	const target = createWindowTarget(sdk, {
 		frameWindows: () => Object.keys(sdk.domainObjects.get(Navigation)?.getState().windows ?? {}),
 	});
@@ -36,12 +29,12 @@ export function provideNotifications(sdk: PluginSdk, options: NotificationsOptio
 					});
 				},
 				post: ({ id, ...content }, caller) => {
-					const key = `${caller.pluginId}/${id ?? newId()}`;
+					const key = `${caller.pluginId}/${id ?? crypto.randomUUID()}`;
 					const notice: Notice = {
 						...content,
 						id: key,
 						pluginId: caller.pluginId,
-						createdAt: now(),
+						createdAt: Date.now(),
 					};
 					notifications.setState({ notices: { ...notifications.state.notices, [key]: notice } });
 					return key;

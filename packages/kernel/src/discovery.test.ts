@@ -389,8 +389,13 @@ describe("discoverPlugins", () => {
 					extensionPoints: [{ id: "thing", kind: "additive" }],
 					domainObjects: [{ id: "thing", home: "main" }],
 					contextKeys: [{ id: "thing" }],
+					objectTypes: [{ id: "thing" }],
 				}),
-				definitions: { extensionPoints: [Thing], domainObjects: [ThingStore] },
+				definitions: {
+					extensionPoints: [Thing],
+					domainObjects: [ThingStore],
+					objectTypes: [defineObjectType({ id: "acme.host/thing" })],
+				},
 			},
 		]);
 

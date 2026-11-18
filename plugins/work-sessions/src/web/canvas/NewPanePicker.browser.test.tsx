@@ -51,7 +51,10 @@ afterEach(cleanup);
 describe("NewPanePicker", () => {
 	it("launches the first addable kind on Enter and closes", async () => {
 		const { onLaunch, onOpenChange } = renderPicker();
-		await expect.element(page.getByTestId("new-pane-picker")).toBeVisible();
+		await expect
+			.element(page.getByTestId("new-pane-picker-kilo.terminal/terminal"))
+			.toHaveAttribute("aria-selected", "true");
+		await expect.element(page.getByTestId("new-pane-picker").getByRole("combobox")).toHaveFocus();
 
 		await userEvent.keyboard("{Enter}");
 

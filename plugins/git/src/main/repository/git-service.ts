@@ -1544,7 +1544,11 @@ export class GitService {
 		await this.#assertWithinWorkspaceFolders(workingDirectory);
 		try {
 			if (create) {
-				await this.#client.createBranch(branch, startPoint, { cwd: workingDirectory });
+				try {
+					await this.#client.createBranch(branch, startPoint, { cwd: workingDirectory });
+				} catch (error) {
+					throw gitActionErrorToKernelError(error);
+				}
 			}
 			await this.#client.checkoutBranch(branch, {
 				cwd: workingDirectory,

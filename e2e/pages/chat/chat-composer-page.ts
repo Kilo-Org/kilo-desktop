@@ -41,7 +41,8 @@ export class ChatComposerPage {
 		getLocatorByTestId("kilo-session-starter").or(this.agentPane());
 	private readonly thread = () => this.agentPane().getByTestId("kilo-chat-thread");
 	private readonly messageInput = () => getLocatorByRole("textbox", { name: "Message input" });
-	private readonly mentionChip = () =>
+	// The rich input's chips, e.g. a file mention or a server slash command.
+	private readonly directiveChip = () =>
 		this.composerRoot().locator('[data-slot="directive-text-chip"]');
 	private readonly sendButton = () => getLocatorByTestId("kilo-composer-send");
 	private readonly userMessage = (text: string) =>
@@ -119,7 +120,7 @@ export class ChatComposerPage {
 
 	/** The composer holds a mention chip for `fileName`. */
 	async verifyComposerMention(fileName: string): Promise<void> {
-		await expectElementToContainText(this.mentionChip(), fileName, {
+		await expectElementToContainText(this.directiveChip(), fileName, {
 			message: `The composer should show a mention chip for "${fileName}"`,
 		});
 	}
@@ -132,6 +133,35 @@ export class ChatComposerPage {
 	async send(text: string): Promise<void> {
 		await this.typeMessage(text);
 		await click(this.sendButton());
+	}
+
+	/**
+	 * Types `/query` one key at a time, so the rich input sees the leading slash
+	 * and opens Kilo's command menu filtered to `query`.
+	 */
+	async typeSlashQuery(query: string): Promise<void> {
+		await this.typeMessageSequentially(`/${query}`);
+	}
+
+	/** The open `/` menu offers the command `name` with `description`, e.g. the CLI's `init`. */
+	async verifySlashCommandListed(name: string, description: string): Promise<void> {
+		await expectElementToContainText(
+			getLocatorByRole("option", { name, exact: false }),
+			description,
+			{ message: `The slash menu should list "/${name}" with "${description}"` },
+		);
+	}
+
+	/** Picks the command `name` from the open `/` menu, leaving its chip in the composer. */
+	async chooseSlashCommand(name: string): Promise<void> {
+		await click(getLocatorByRole("option", { name, exact: false }));
+	}
+
+	/** The composer holds a chip for the chosen `/name`, ready to send. */
+	async verifyComposerCommand(name: string): Promise<void> {
+		await expectElementToContainText(this.directiveChip(), name, {
+			message: `The composer should show a "/${name}" chip`,
+		});
 	}
 
 	/**

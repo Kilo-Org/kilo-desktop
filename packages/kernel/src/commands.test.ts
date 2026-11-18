@@ -318,7 +318,12 @@ describe("mixedSeriesOverrides", () => {
 					...commands,
 					{ key: "a/mac", metadata: { ...commands[0]!.metadata, keybinding: { mac: "Mod+5" } } },
 				],
-				overrides: { "a/one": "Alt+Digit1", "a/two": "Alt+Digit2", "a/last": "Alt+Digit9" },
+				overrides: {
+					"a/one": "Alt+Digit1",
+					"a/two": "Alt+Digit2",
+					"a/last": "Alt+Digit9",
+					"a/mac": null,
+				},
 				platform: "linux",
 			}),
 		).toEqual([]);

@@ -78,6 +78,32 @@ describe("keyboard shortcuts list", () => {
 		await expect.element(page.getByTestId("keyboard-shortcuts-settings")).toBeVisible();
 	});
 
+	it("lists a series as one row that a member's title also finds", async () => {
+		const jump = (digit: string) => ({
+			id: `jump-${digit}`,
+			title: `Jump to ${digit}`,
+			category: "Release",
+			series: "Jump to 1–9",
+			keybinding: `Mod+Alt+${digit}`,
+		});
+		const series = contributor("acme.jump", { "kernel/command": [jump("1"), jump("2")] }, (sdk) => {
+			for (const digit of ["1", "2"]) {
+				sdk.extensions.implement(KernelCommand, `jump-${digit}`, () => {});
+			}
+		});
+		const { renderer } = await renderShell([series]);
+
+		await renderer.commands.execute("kilo.shell/show-shortcuts");
+		await page.getByTestId("keyboard-shortcuts-search").fill("jump to 2");
+
+		await expect
+			.element(page.getByTestId("keyboard-shortcut-acme.jump/jump-1").getByText("Jump to 1–9"))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("keyboard-shortcut-acme.jump/jump-2"))
+			.not.toBeInTheDocument();
+	});
+
 	it("toggles with the show-shortcuts command", async () => {
 		const { renderer } = await renderShell();
 

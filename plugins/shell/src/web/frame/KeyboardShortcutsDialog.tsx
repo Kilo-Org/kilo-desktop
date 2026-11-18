@@ -75,7 +75,11 @@ function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInp
 	const shown = groups
 		.map((group) => ({
 			...group,
-			rows: group.rows.filter((row) => row.title.toLowerCase().includes(needle)),
+			rows: group.rows.filter((row) =>
+				[row.title, ...row.commands.map((command) => command.metadata.title)].some((title) =>
+					title.toLowerCase().includes(needle),
+				),
+			),
 		}))
 		.filter((group) => group.rows.length > 0);
 	const total = groups.reduce((sum, group) => sum + group.rows.length, 0);

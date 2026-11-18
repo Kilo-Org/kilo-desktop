@@ -178,13 +178,15 @@ function ShortcutRowItem({
 }) {
 	const keys = row.commands.map((command) => command.key);
 	const overridden = keys.some((key) => key in overrides);
-	const enabled = keys.some((key) => overrides[key] !== null);
-	const labels = enabled ? rowChordLabels(row, resolution.byCommand, platform) : [];
 	const [first] = row.commands;
+	// Series members without a default on this platform have no key to keep, so they are left out.
 	const members = row.commands.flatMap((command) => {
 		const code = seriesMemberCode(command, platform);
 		return code ? [{ key: command.key, code }] : [];
 	});
+	const memberKeys = members.map(({ key }) => key);
+	const enabled = (row.series ? memberKeys : keys).some((key) => overrides[key] !== null);
+	const labels = enabled ? rowChordLabels(row, resolution.byCommand, platform) : [];
 	const setAll = (chords: readonly (KeyChord | null)[], targets: readonly string[]) =>
 		void Promise.all(
 			targets.map((command, index) => {
@@ -226,13 +228,8 @@ function ShortcutRowItem({
 							platform={platform}
 							prompt="Hold the new modifiers and press any key…"
 							expand={(chord) => members.map(({ code }) => ({ ...chord, code }))}
-							onRecord={(chords) =>
-								setAll(
-									chords,
-									members.map(({ key }) => key),
-								)
-							}
-							onTurnOff={() => setAll([], keys)}
+							onRecord={(chords) => setAll(chords, memberKeys)}
+							onTurnOff={() => setAll([], memberKeys)}
 						/>
 					) : (
 						<ShortcutField

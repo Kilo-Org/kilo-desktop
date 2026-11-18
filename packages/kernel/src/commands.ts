@@ -264,21 +264,17 @@ function isUniformSeries(
 	const pairs = members.flatMap((member) => {
 		const [fallback] = defaultChords({ ...member, scoped: false }, platform);
 		const own = fallback ? parseChord(fallback) : null;
-		const overridden = member.key in overrides;
-		// Without a default on this platform and untouched, it takes no part in the series.
-		if (!own && !overridden) return [];
+		// Without a default on this platform it has no key to keep, so it takes no part.
+		if (!own) return [];
 		const override = overrides[member.key];
-		const chord = overridden ? (override ? parseChord(override) : null) : own;
+		const chord = member.key in overrides ? (override ? parseChord(override) : null) : own;
 		return [{ own, chord }];
 	});
 	if (pairs.every(({ chord }) => chord === null)) return true;
 	const [first] = pairs;
 	return pairs.every(
 		({ own, chord }) =>
-			own !== null &&
-			chord !== null &&
-			chord.code === own.code &&
-			sameModifiers(chord, first!.chord!),
+			chord !== null && chord.code === own.code && sameModifiers(chord, first!.chord!),
 	);
 }
 

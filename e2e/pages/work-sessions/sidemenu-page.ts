@@ -78,6 +78,18 @@ export class SidemenuPage {
 	private readonly workspaceFilter = () =>
 		getLocatorByRole("combobox", { name: "Filter by workspace" });
 
+	/** Takes the filter back to every workspace's sessions. */
+	async focusAllWorkspacesInFilter(): Promise<void> {
+		await click(this.workspaceFilter());
+		await click(getLocatorByTestId("workspace-all-command"));
+	}
+
+	/** Narrows the filter to the sessions that belong to no workspace. */
+	async focusUnscopedInFilter(): Promise<void> {
+		await click(this.workspaceFilter());
+		await click(getLocatorByTestId("workspace-unscoped-command"));
+	}
+
 	/**
 	 * Points the list's workspace filter at one workspace. The filter's warning
 	 * is about the workspace it is focused on, which is the window's filter

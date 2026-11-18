@@ -47,7 +47,10 @@ export class BoardPage {
 	async addSessionToColumn(columnId: string): Promise<void> {
 		const row = this.sessionRow();
 		await hover(row);
-		await click(row.getByTestId("session-list-item-more"));
+		// The row's timestamp slot only fades on hover rather than leaving the
+		// layer, so it can sit over the "…" trigger and swallow the click. The
+		// trigger is visible and stable; only the hit-target check is in the way.
+		await click(row.getByTestId("session-list-item-more"), { force: true });
 		await pressLocatorKeyboard(
 			getLocatorByTestId("session-menu-kilo.workspace-board/add-to-board"),
 			"ArrowRight",

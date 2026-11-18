@@ -193,6 +193,20 @@ describe("session list", () => {
 		await expect.element(row("Fix sign-in")).toBeVisible();
 	});
 
+	it("does not rename when the inline title is unchanged", async () => {
+		const { workSessions } = await renderWorkSessions({
+			workSessions: [workSession("a", { title: "Renamed to itself" })],
+		});
+
+		await openRowMenu("Renamed to itself");
+		await page.getByTestId("session-menu-rename").click();
+		await page.getByTestId("session-list-item-rename").fill("Renamed to itself");
+		await userEvent.keyboard("{Enter}");
+
+		await expect.element(page.getByTestId("session-list-item-rename")).not.toBeInTheDocument();
+		expect(workSessions.calls.rename).not.toHaveBeenCalled();
+	});
+
 	it("deletes only after confirmation, and closes the session if it was open", async () => {
 		const { workSessions, window } = await renderWorkSessions({
 			workSessions: [workSession("a", { title: "Fix login" })],

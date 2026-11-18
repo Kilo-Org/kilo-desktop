@@ -64,9 +64,9 @@ export class SessionListPage {
 		}
 	}
 
-	/** Registers a workspace and makes it the focused one (test setup). */
-	async createWorkspaceAt(folderPath: string, name: string): Promise<void> {
-		await createAndActivateWorkspace(folderPath, name);
+	/** Registers a workspace and makes it the active one (test setup). */
+	async createWorkspaceAt(folderPath: string, name: string): Promise<string> {
+		return createAndActivateWorkspace(folderPath, name);
 	}
 
 	/** Asks main to re-check which workspace folders it can still reach. */
@@ -74,6 +74,16 @@ export class SessionListPage {
 		await callDomainObject({
 			domainId: "kilo.work-sessions/workspaces",
 			method: "checkFolders",
+			caller: WORK_SESSIONS_CALLER,
+		});
+	}
+
+	/** Seeds one session inside a workspace, so the filter has both kinds to sort. */
+	async seedSessionInWorkspace(title: string, workspaceId: string): Promise<void> {
+		await callDomainObject({
+			domainId: "kilo.work-sessions/work-sessions",
+			method: "create",
+			input: { title, workspaceId },
 			caller: WORK_SESSIONS_CALLER,
 		});
 	}

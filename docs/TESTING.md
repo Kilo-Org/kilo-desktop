@@ -142,14 +142,13 @@ pnpm --filter @kilo-desktop/plugin-<dir> test
 plugins/<dir>/src/**/*.browser.test.tsx    # component (booted test kernel / renderShell)
 apps/web/src/kernel/*.app.test.tsx         # app-level (kernel boot + bundled plugins)
 e2e/                                       # Playwright/Electron harness
-  fixtures/shell.ts                        # Electron + appShellPage only
-  fixtures/features/<id>.ts                # per-area page fixtures
   fixtures/electron.ts                     # worker-scoped packaged Electron
-  pages/shell/                             # shell page objects
-  pages/features/<id>/                     # area page objects
-  specs/kernel/, specs/shell/              # boot / protocol / preload
-  specs/features/<id>/                     # plugin flows (owners in utils/registered-specs.ts)
-plugins/<dir>/e2e/                         # a plugin's own e2e
+  fixtures/shell.ts                        # Electron + appShellPage only
+  fixtures/<dir>.ts, fixtures/<dir>/*.ts   # a plugin's page fixtures
+  pages/<dir>/                             # a plugin's page objects
+  specs/kernel/                            # boot / protocol / preload
+  specs/<dir>/                             # a plugin's flows (owners in utils/registered-specs.ts)
+plugins/<dir>/e2e/specs/                   # optional plugin-local e2e (none today)
 ```
 
 ## Debugging a failing e2e
@@ -171,6 +170,6 @@ Every new plugin must ship:
 
 Agent skills: Vitest tiers → `.agents/skills/write-vitest/SKILL.md`; Playwright e2e → `.agents/skills/write-e2e-test/SKILL.md`.
 
-A plugin's e2e pages and specs may live in `plugins/<dir>/e2e/` with a plugin-local `fixtures.ts`; the Playwright config globs `plugins/*/e2e/specs/**`.
+A plugin's e2e lives in `e2e/pages/<dir>/`, `e2e/fixtures/<dir>.ts` and `e2e/specs/<dir>/`. It may instead live in `plugins/<dir>/e2e/` with a plugin-local `fixtures.ts`; the Playwright config also globs `plugins/*/e2e/specs/**`.
 
 Plugin e2e code must load the **same** `@anaconda/playwright-utils` and `@playwright/test` as `e2e/`: playwright-utils keeps the current page in a module singleton that only the harness fixture sets. If a plugin declares these packages, pin them to the versions in `e2e/package.json`. Global setup checks this and fails fast; a second copy otherwise makes every locator in that plugin throw `Cannot read properties of undefined (reading 'getByTestId')`.

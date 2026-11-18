@@ -106,7 +106,7 @@ export function usePermissionRenderers(): readonly PermissionRendererContributio
 
 /**
  * The `kilo.core/tool` contribution key a permission names by its wire
- * name (`desktop_terminal_open_terminal` → `kilo.terminal/open_terminal`),
+ * name (`desktop_terminal_open` → `kilo.terminal/open`),
  * as kilo.core sets `PermissionRequest.toolKey`.
  */
 export function toolKeyOf(

@@ -204,7 +204,7 @@ export class FakeCore {
 	}
 }
 
-/** A plugin contributing a `kilo.core/tool` that requires signing in (`kilo.terminal/open_terminal`). */
+/** A plugin contributing a `kilo.core/tool` that requires signing in (`kilo.terminal/open`). */
 export function signInToolPlugin(): PluginRegistration {
 	return testPlugin("kilo.terminal", {
 		manifest: {

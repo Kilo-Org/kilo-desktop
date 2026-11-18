@@ -13,12 +13,15 @@
  */
 
 /**
- * @param {string | undefined} value "current/total", 1-based, e.g. "2/3"
+ * @param {string | undefined} value "current/total", 1-based, e.g. "2/3"; empty means no sharding
  * @returns {{ current: number, total: number } | undefined}
  */
 export function parseShard(value) {
-	const match = value ? /^(\d+)\/(\d+)$/.exec(value.trim()) : null;
-	if (!match) return undefined;
+	if (!value?.trim()) return undefined;
+	// A malformed value must not quietly mean "no sharding": that shard
+	// would run everything.
+	const match = /^(\d+)\/(\d+)$/.exec(value.trim());
+	if (!match) throw new Error(`Invalid shard "${value}": expected current/total, e.g. 2/3`);
 	const current = Number(match[1]);
 	const total = Number(match[2]);
 	if (total < 1 || current < 1 || current > total) {
@@ -35,7 +38,8 @@ export function parseShard(value) {
 export function weigh(ids, durations) {
 	const known = ids
 		.map((id) => durations[id])
-		.filter((value) => typeof value === "number" && value >= 0)
+		// Zero is a spec whose tests the run's grep filtered out, not a time.
+		.filter((value) => typeof value === "number" && value > 0)
 		.sort((a, b) => a - b);
 	const fallback = known.length ? known[Math.floor(known.length / 2)] : 1;
 	return new Map(ids.map((id) => [id, durations[id] ?? fallback]));

@@ -10,6 +10,11 @@ describe("parseShard", () => {
 		assert.equal(parseShard(undefined), undefined);
 	});
 
+	it("rejects a value that is not current/total, rather than running everything", () => {
+		assert.throws(() => parseShard("2"));
+		assert.throws(() => parseShard("1-3"));
+	});
+
 	it("rejects a shard outside its total", () => {
 		assert.throws(() => parseShard("4/3"));
 		assert.throws(() => parseShard("0/3"));
@@ -55,6 +60,11 @@ describe("weigh", () => {
 	it("gives unrecorded items the median recorded duration", () => {
 		const weights = weigh(["a", "b", "c", "new"], { a: 10, b: 20, c: 90 });
 		assert.equal(weights.get("new"), 20);
+	});
+
+	it("ignores zero weights (specs a grep filtered out) when taking the median", () => {
+		const weights = weigh(["a", "b", "c", "d", "new"], { a: 0, b: 0, c: 0, d: 40 });
+		assert.equal(weights.get("new"), 40);
 	});
 
 	it("falls back to equal weights with no recorded durations", () => {

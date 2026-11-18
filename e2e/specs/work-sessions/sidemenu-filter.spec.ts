@@ -8,7 +8,7 @@ import type { SessionListPage } from "../../pages/work-sessions/session-list-pag
 
 /**
  * Seeds one session inside a fresh workspace and one outside any, named for the
- * the reload-persistence test.
+ * reload-persistence test.
  *
  * Every test here shares the block's app, so seeded sessions accumulate, and
  * row locators match titles by case-insensitive substring: each test needs its

@@ -120,6 +120,7 @@ function fakeWorkSessionsMain(initial: Record<string, WorkSessionPanes>, primary
 				methods: {
 					create: () => WORK_SESSION,
 					createChat: unused,
+					forkChat: unused,
 					rename: () => WORK_SESSION,
 					setPinned: () => WORK_SESSION,
 					setArchived: () => WORK_SESSION,

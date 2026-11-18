@@ -7,8 +7,7 @@ import {
 	useDomainObjectState,
 	useExtensions,
 } from "@kilo-desktop/kernel/web";
-import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
-import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { ProgressOverlay } from "@kilo-desktop/ui/components/progress-overlay";
 import { useWorkspacePickerSource } from "@kilo-desktop/ui/components/workspace-picker";
 import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
@@ -363,19 +362,7 @@ function WorktreeProgress({
 			: baseBranch
 				? `Creating a worktree from ${baseBranch}…`
 				: "Creating a worktree…";
-	return (
-		<div className="bg-background/60 animate-in fade-in-0 absolute inset-0 z-20 flex items-center justify-center p-6 backdrop-blur-[2px] duration-200 motion-reduce:animate-none">
-			<Alert
-				role="status"
-				aria-live="polite"
-				data-qa-id="launcher-isolation-progress"
-				className="zoom-in-95 animate-in fade-in-0 flex w-full max-w-xs items-center gap-2.5 px-4 py-3 shadow-lg duration-200 motion-reduce:animate-none"
-			>
-				<Spinner aria-hidden className="text-muted-foreground translate-y-0!" />
-				<AlertTitle className="truncate">{message}</AlertTitle>
-			</Alert>
-		</div>
-	);
+	return <ProgressOverlay message={message} data-qa-id="launcher-isolation-progress" />;
 }
 
 /**

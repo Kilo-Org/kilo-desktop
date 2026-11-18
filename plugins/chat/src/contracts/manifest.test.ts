@@ -14,6 +14,7 @@ import {
 	CHAT_COMMANDS,
 	CHAT_DEFINITIONS,
 	CHAT_PLUGIN_ID,
+	CHAT_TELEMETRY_EVENTS,
 	COMPOSER_FOCUSED_KEY,
 	HTML_RENDER_TOOL_ID,
 	HTML_RENDER_TOOL_NAME,
@@ -45,7 +46,7 @@ describe("kilo.chat manifest", () => {
 	const keys = (point: `${string}/${string}`) =>
 		contributions(point).map((entry) => `${CHAT_PLUGIN_ID}/${String(entry.id)}`);
 
-	it("contributes the pane kinds and commands its contracts name", () => {
+	it("contributes the pane kinds, commands and telemetry events its contracts name", () => {
 		expect(keys("kilo.work-sessions/pane-kind")).toEqual([
 			AGENT_PANE_KIND,
 			PLAN_PANE_KIND,
@@ -53,6 +54,9 @@ describe("kilo.chat manifest", () => {
 			MEDIA_PANE_KIND,
 		]);
 		expect(keys("kernel/command")).toEqual(Object.values(CHAT_COMMANDS));
+		expect(contributions("kernel/telemetry-event").map((entry) => entry.id)).toEqual(
+			Object.values(CHAT_TELEMETRY_EVENTS),
+		);
 		expect(COMPOSER_FOCUSED_KEY).toBe(`${CHAT_PLUGIN_ID}/${manifest.contextKeys[0]!.id}`);
 	});
 

@@ -23,6 +23,7 @@ import {
 	type WorkspacesState,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { FindScope } from "@kilo-desktop/ui/components/find-bar";
+import { ProgressOverlay } from "@kilo-desktop/ui/components/progress-overlay";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
@@ -30,6 +31,7 @@ import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 import {
 	paneChatId,
 	chatPaneObject,
+	CHAT_TELEMETRY_EVENTS,
 	type ComposerContext,
 	type PromptPart as MentionPart,
 } from "../contracts";
@@ -37,6 +39,8 @@ import { ComposerContextContext, useComposerContext } from "./composer/composer-
 import { resolveMentionParts, type MentionSource } from "./composer/mention-codec";
 import { useMentionSources } from "./composer/mention-triggers";
 import { focusComposerIn, SESSION_ATTRIBUTE, type ComposerFocus } from "./composer-focus";
+import { forkChat, type ForkPhase } from "./fork/fork-chat";
+import { ForkProvider, type ForkRequest, type ForkValue } from "./fork/fork-context";
 import type { CreatedChat } from "./runtime/chat-backend";
 import { ChatConnectionProvider } from "./runtime/chat-connection";
 import type { ChatServices } from "./runtime/chat-services";
@@ -52,6 +56,7 @@ import {
 } from "./slash-commands/client-slash-commands";
 import { ChatPaneOpeners } from "./panes/chat-pane-openers";
 import { FollowPlanApproval } from "./plan/follow-plan-approval";
+import { useTracker } from "./shared/telemetry";
 import { Thread } from "./thread/thread";
 import { TranscriptProviders, useTranscriptAui } from "./thread/transcript-scope";
 
@@ -189,6 +194,27 @@ function AgentPane({
 		return chatSystemPrompt(folders, config?.instructions ?? []);
 	};
 
+	const track = useTracker();
+	const [forkPhase, setForkPhase] = useState<ForkPhase | null>(null);
+	// Guards a double click, which lands before the phase re-renders.
+	const forking = useRef(false);
+	const fork = ({ chatId: source, messageId, midTurn }: ForkRequest) => {
+		if (forking.current) return;
+		forking.current = true;
+		void forkChat({
+			workSessions,
+			panes,
+			workSessionId: latest.current.workSessionId,
+			chatId: source,
+			messageId,
+			onPhase: setForkPhase,
+			track: (success) => track(CHAT_TELEMETRY_EVENTS.chatForked, { success, midTurn }),
+		}).finally(() => {
+			forking.current = false;
+		});
+	};
+	const forkValue: ForkValue = { fork, pending: forkPhase !== null };
+
 	const composer: ComposerContext = {
 		workSessionId,
 		chatId: mounted.chatId,
@@ -200,11 +226,14 @@ function AgentPane({
 	return (
 		<div
 			ref={rootRef}
-			className="flex h-full min-h-0 flex-col"
+			className="relative flex h-full min-h-0 flex-col"
 			data-qa-id="kilo-agent-pane"
 			{...{ [SESSION_ATTRIBUTE]: workSessionId }}
 		>
 			<FindScope
+				data-qa-id="kilo-agent-pane-content"
+				inert={forkPhase !== null}
+				aria-busy={forkPhase !== null}
 				className="flex min-h-0 flex-1 flex-col"
 				searchRootSelector='[data-slot="aui_message-group"]'
 				qaPrefix="chat-find"
@@ -227,11 +256,19 @@ function AgentPane({
 							}}
 							focusRoot={() => focusComposerIn(rootRef.current)}
 						>
-							<Thread />
+							<ForkProvider value={forkValue}>
+								<Thread />
+							</ForkProvider>
 						</ChatThread>
 					</ChatConnectionProvider>
 				</QueryClientProvider>
 			</FindScope>
+			{forkPhase ? (
+				<ProgressOverlay
+					message={forkPhase === "forking" ? "Forking the chat…" : "Opening the chat…"}
+					data-qa-id="kilo-fork-progress"
+				/>
+			) : null}
 		</div>
 	);
 }

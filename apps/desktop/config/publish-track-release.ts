@@ -245,6 +245,7 @@ export async function publishTrackObjects(
 	);
 
 	const downloads: TrackDownloadManifestEntry[] = [];
+	const additionalDownloads: TrackDownloadManifestEntry[] = [];
 	for (const file of input.artifactFiles) {
 		const download = classifyReleaseDownload(file);
 		if (!download) continue;
@@ -257,7 +258,7 @@ export async function publishTrackObjects(
 			contentType(download.type),
 		);
 		const fileStat = await stat(file);
-		downloads.push({
+		const entry: TrackDownloadManifestEntry = {
 			platform: download.platform,
 			arch: download.arch,
 			type: download.type,
@@ -275,9 +276,13 @@ export async function publishTrackObjects(
 			sha256: createHash("sha256")
 				.update(await readFile(file))
 				.digest("hex"),
-		});
+		};
+		// Clients released before RPM support reject the whole manifest when
+		// `downloads` has a type they don't know; they ignore `additionalDownloads`.
+		(entry.type === "rpm" ? additionalDownloads : downloads).push(entry);
 	}
-	if (downloads.length === 0) throw new Error("No user-downloadable release artifacts were found.");
+	if (downloads.length + additionalDownloads.length === 0)
+		throw new Error("No user-downloadable release artifacts were found.");
 
 	await copyObject(
 		input.notesFile,
@@ -293,6 +298,7 @@ export async function publishTrackObjects(
 		publishedAt: input.publishedAt,
 		releaseNotesUrl: publicUrl(input.publishUrl, `${notesPrefix}/${input.version}.json`),
 		downloads,
+		additionalDownloads,
 	};
 	const manifestFile = path.join(input.workingDirectory, "latest.json");
 	await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -413,6 +419,7 @@ function contentType(type: string): string {
 		{
 			deb: "application/vnd.debian.binary-package",
 			dmg: "application/x-apple-diskimage",
+			rpm: "application/x-rpm",
 			setup: "application/vnd.microsoft.portable-executable",
 			zip: "application/zip",
 		}[type] ?? "application/octet-stream"

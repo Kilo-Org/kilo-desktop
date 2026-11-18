@@ -114,6 +114,7 @@ export class FakeCore {
 			methods: {
 				create: unused,
 				setWorktreeBranch: unused,
+				fork: unused,
 				chatConfig: unused,
 				rename: unused,
 				delete: unused,

@@ -268,7 +268,7 @@ overrides:
   '@sentry/node>@sentry/bundler-plugins': '-'
 
 patchedDependencies:
-  '@assistant-ui/react-opencode@0.2.17': a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf
+  '@assistant-ui/react-opencode@0.2.17': 9ac27f195addbd2e52dc090343abb0d240051eb4299d99f8b64ac45097c28781
 
 importers:
 
@@ -276,7 +276,7 @@ importers:
     dependencies:
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
+        version: 0.2.17(patch_hash=9ac27f195addbd2e52dc090343abb0d240051eb4299d99f8b64ac45097c28781)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
     devDependencies:
       '@kilo-desktop/ui':
         specifier: workspace:*
@@ -442,6 +442,9 @@ importers:
         specifier: 8.0.1
         version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/maker-dmg':
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
+      '@electron-forge/maker-rpm':
         specifier: 8.0.1
         version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/maker-squirrel':
@@ -1313,7 +1316,7 @@ importers:
         version: 0.14.25(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@10.2.2)
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
+        version: 0.2.17(patch_hash=9ac27f195addbd2e52dc090343abb0d240051eb4299d99f8b64ac45097c28781)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/tap':
         specifier: 0.9.25
         version: 0.9.25(@types/react@19.2.17)(react@19.3.1)
@@ -2993,6 +2996,10 @@ packages:
 
   '@electron-forge/maker-dmg@8.0.1':
     resolution: {integrity: sha512-/FtNihspOpY+SKzyUClCsSgc+W4BJdHttA+eZh7mMs6DFNjJzO8xgJwOjLuHi1oVahrpRsw8UVRejs1wrk7YBw==}
+    engines: {node: '>= 22.13.0'}
+
+  '@electron-forge/maker-rpm@8.0.1':
+    resolution: {integrity: sha512-FAOUQeE3nzHfE0tE7vs2sWBDN1mspkpzoFQSJWk1qB3Qv9HF3iREYjzpV+AuGWe/zy0y5IK6mIx4GADdIlBaEg==}
     engines: {node: '>= 22.13.0'}
 
   '@electron-forge/maker-squirrel@8.0.1':
@@ -6879,6 +6886,12 @@ packages:
     engines: {node: '>= 16'}
     hasBin: true
 
+  electron-installer-redhat@4.0.0:
+    resolution: {integrity: sha512-ZTwRR2akAxD/K1S5GMdRnG/o/YfMww5CeWt+dDLZ9qCrybVw0YW3vHEoyvz+udztXZDpUCy12fwMmy8mUlpjCQ==}
+    engines: {node: '>= 22.12.0'}
+    os: [darwin, linux]
+    hasBin: true
+
   electron-is-dev@3.0.1:
     resolution: {integrity: sha512-8TjjAh8Ec51hUi3o4TaU0mD3GMTOESi866oRNavj9A3IQJ7pmv+MJVmdZBFGw4GFT36X7bkqnuDNYvkQgvyI8Q==}
     engines: {node: '>=18'}
@@ -9835,6 +9848,11 @@ packages:
     engines: {node: ^16.13.0 || >=18.0.0}
     hasBin: true
 
+  which@5.0.0:
+    resolution: {integrity: sha512-JEdGzHwwkrbWoGOlIHqQ5gtprKGOenpDHpxE9zVR1bWbOtYRyPPHMe9FaP6x61CmNaTThSkb0DAJte5jD+DmzQ==}
+    engines: {node: ^18.17.0 || >=20.5.0}
+    hasBin: true
+
   which@6.0.1:
     resolution: {integrity: sha512-oGLe46MIrCRqX7ytPUf66EAYvdeMIZYn3WaocqqKZAxrBpkqHfL/qvTyJ/bTk5+AqHCjXmrv3CEWgy368zhRUg==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -10090,7 +10108,7 @@ snapshots:
       - react-dom
       - supports-color
 
-  '@assistant-ui/react-opencode@0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)':
+  '@assistant-ui/react-opencode@0.2.17(patch_hash=9ac27f195addbd2e52dc090343abb0d240051eb4299d99f8b64ac45097c28781)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)':
     dependencies:
       '@assistant-ui/core': 0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.3.1)
       '@assistant-ui/react': 0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(use-sync-external-store@1.7.0(react@19.3.1))
@@ -10645,6 +10663,15 @@ snapshots:
       '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     optionalDependencies:
       electron-installer-dmg: 5.0.1(supports-color@10.2.2)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@electron-forge/maker-rpm@8.0.1(supports-color@10.2.2)':
+    dependencies:
+      '@electron-forge/maker-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
+    optionalDependencies:
+      electron-installer-redhat: 4.0.0(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -14273,6 +14300,18 @@ snapshots:
       - supports-color
     optional: true
 
+  electron-installer-redhat@4.0.0(supports-color@10.2.2):
+    dependencies:
+      '@malept/cross-spawn-promise': 2.0.0
+      debug: 4.4.3(supports-color@10.2.2)
+      electron-installer-common: 0.10.4(supports-color@10.2.2)
+      which: 5.0.0
+      word-wrap: 1.2.5
+      yargs: 18.0.0
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
+
   electron-is-dev@3.0.1: {}
 
   electron-log@5.4.4: {}
@@ -17872,6 +17911,11 @@ snapshots:
   which@4.0.0:
     dependencies:
       isexe: 3.1.5
+
+  which@5.0.0:
+    dependencies:
+      isexe: 3.1.5
+    optional: true
 
   which@6.0.1:
     dependencies:

@@ -11,6 +11,7 @@ import {
 	getLocator,
 	getLocatorByRole,
 	getLocatorByTestId,
+	pressSequentially,
 	uploadFiles,
 } from "@anaconda/playwright-utils";
 
@@ -40,6 +41,9 @@ export class ChatComposerPage {
 		getLocatorByTestId("kilo-session-starter").or(this.agentPane());
 	private readonly thread = () => this.agentPane().getByTestId("kilo-chat-thread");
 	private readonly messageInput = () => getLocatorByRole("textbox", { name: "Message input" });
+	// The rich input's chips, e.g. a file mention or a server slash command.
+	private readonly directiveChip = () =>
+		this.composerRoot().locator('[data-slot="directive-text-chip"]');
 	private readonly sendButton = () => getLocatorByTestId("kilo-composer-send");
 	private readonly userMessage = (text: string) =>
 		this.thread().locator('[data-role="user"]').getByText(text, { exact: true });
@@ -99,9 +103,69 @@ export class ChatComposerPage {
 		await fill(this.messageInput(), text);
 	}
 
+	/** Types one key at a time, so the rich input's `@` trigger sees the typing and opens its menu. */
+	async typeMessageSequentially(text: string): Promise<void> {
+		await pressSequentially(this.messageInput(), text);
+	}
+
+	/**
+	 * Types `@query` into the composer and picks `fileName` from kilo.files'
+	 * mention menu, leaving a chip in the composer for the send to resolve to
+	 * the file's `@/path`.
+	 */
+	async mentionFile(query: string, fileName: string): Promise<void> {
+		await this.typeMessageSequentially(`@${query}`);
+		await click(getLocatorByRole("option", { name: fileName, exact: false }));
+	}
+
+	/** The composer holds a mention chip for `fileName`. */
+	async verifyComposerMention(fileName: string): Promise<void> {
+		await expectElementToContainText(this.directiveChip(), fileName, {
+			message: `The composer should show a mention chip for "${fileName}"`,
+		});
+	}
+
+	/** Sends what the composer holds, e.g. a mention chip added after its text. */
+	async sendComposer(): Promise<void> {
+		await click(this.sendButton());
+	}
+
 	async send(text: string): Promise<void> {
 		await this.typeMessage(text);
 		await click(this.sendButton());
+	}
+
+	/**
+	 * Types `/query` one key at a time, so the rich input sees the leading slash
+	 * and opens Kilo's command menu filtered to `query`.
+	 */
+	async typeSlashQuery(query: string): Promise<void> {
+		await this.typeMessageSequentially(`/${query}`);
+	}
+
+	/** The open `/` menu offers the command `name` with `description`, e.g. the CLI's `init`. */
+	async verifySlashCommandListed(name: string, description: string): Promise<void> {
+		await expectElementToContainText(
+			getLocatorByRole("option", { name, exact: false }),
+			description,
+			{ message: `The slash menu should list "/${name}" with "${description}"` },
+		);
+	}
+
+	/**
+	 * Picks the command `name` from the open `/` menu, leaving its chip in the
+	 * composer. The locator names the row rather than taking the menu's first
+	 * match, which a catalog change could rerank.
+	 */
+	async chooseSlashCommand(name: string): Promise<void> {
+		await click(getLocatorByRole("option", { name, exact: false }));
+	}
+
+	/** The composer holds a chip for the chosen `/name`, ready to send. */
+	async verifyComposerCommand(name: string): Promise<void> {
+		await expectElementToContainText(this.directiveChip(), name, {
+			message: `The composer should show a "/${name}" chip`,
+		});
 	}
 
 	/**

@@ -52,6 +52,7 @@ import {
 	workSession,
 } from "./fake-work-sessions";
 import { EMPTY_ENTRY } from "./kernel-harness";
+import { grantDataCollection, telemetrySink } from "./telemetry";
 
 export { chatSummary, SIGNED_IN, SIGNED_OUT, TEST_MODELS } from "./fake-core";
 export { WORKSPACE, agentPane, workSession } from "./fake-work-sessions";
@@ -188,6 +189,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	});
 	const window = fakeWorkSessionsWindow(options.starter ? null : initialWorkSession.id);
 	const copied: string[] = [];
+	const telemetry = telemetrySink();
 	const host = await renderShell(
 		[
 			{
@@ -203,6 +205,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 				web: options.chatWeb ?? EMPTY_ENTRY,
 			},
 			...(options.plugins ?? []),
+			telemetry.plugin,
 		],
 		{
 			core: core.activate,
@@ -210,6 +213,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 			...(options.desktop ? { desktop: true } : {}),
 			...(options.windows ? { windows: options.windows } : {}),
 			beforeRender: (main) => {
+				grantDataCollection(main);
 				main.kernelSdk.domainObjects.provide(KernelClipboard, {
 					initialState: {},
 					methods: {
@@ -340,6 +344,8 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		window: window.calls,
 		view,
 		copied,
+		/** kilo.chat's telemetry events as delivered. */
+		telemetry,
 		/** Work sessions the window was asked to open. */
 		navigatorOpened: window.calls.openWorkSession,
 		/** `kilo.work-sessions/edit-workspace` runs, with their input. */

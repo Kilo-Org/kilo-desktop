@@ -53,6 +53,7 @@ import { retryFailedPrompt } from "../checkpoints/retry-failed-prompt";
 import { retryFailedTurn } from "../checkpoints/retry-failed-turn";
 import { useRevertPending } from "../checkpoints/revert-pending";
 import { RevertToHereButton } from "../checkpoints/revert-to-here-button";
+import { ForkFromHereButton } from "../fork/fork-from-here-button";
 import {
 	AssistantImagePart,
 	FoldHoistedParts,
@@ -639,6 +640,7 @@ const UserActionBar: FC = () => {
 			)}
 		>
 			<RevertToHereButton />
+			<ForkFromHereButton />
 			<MessageCopyButton />
 		</ActionBarPrimitive.Root>
 	);

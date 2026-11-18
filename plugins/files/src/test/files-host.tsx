@@ -197,6 +197,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 				methods: {
 					create: unused("create"),
 					createChat: unused("createChat"),
+					forkChat: unused("forkChat"),
 					rename: unused("rename"),
 					setPinned: unused("setPinned"),
 					setArchived: unused("setArchived"),

@@ -205,6 +205,9 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 					createChat: () => {
 						throw new KernelError("UNAVAILABLE", "No chats in this test.");
 					},
+					forkChat: () => {
+						throw new KernelError("UNAVAILABLE", "No chats in this test.");
+					},
 					rename: ({ id, title }) => change(id, { title }, () => calls.rename(id, title)),
 					setPinned: ({ id, pinned }) => change(id, { pinned }, () => calls.setPinned(id, pinned)),
 					setArchived: ({ id, archived }) =>
@@ -488,6 +491,7 @@ export function fakeChats(initial: readonly ChatSummary[]) {
 				methods: {
 					create: unused,
 					setWorktreeBranch: unused,
+					fork: unused,
 					chatConfig: unused,
 					rename: unused,
 					delete: ({ id }) => deleted(id),

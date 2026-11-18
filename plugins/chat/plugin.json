@@ -236,6 +236,12 @@
 					"palette": false
 				}
 			],
+			"kernel/telemetry-event": [
+				{
+					"id": "chat-forked",
+					"name": "Chat Forked"
+				}
+			],
 			"kilo.chat/composer-action": [
 				{
 					"id": "attach",

@@ -240,4 +240,27 @@ describe("synthetic user text projection", () => {
 			{ type: "text", text: "Here is the comparison." },
 		]);
 	});
+
+	it("leaves out a user message that is only hidden context, like a fork's handoff note", () => {
+		const typed = { ...userMessage([{ id: "p1", type: "text", text: "Fix the login" }]) };
+		const handoff = {
+			...userMessage([
+				{
+					id: "p2",
+					type: "text",
+					text: "<system-reminder>This session was forked…</system-reminder>",
+					synthetic: true,
+				},
+			]),
+			id: "msg-handoff",
+		} as OpenCodeServerMessage;
+
+		const projected = projectMessages([typed, handoff]);
+
+		expect(projected.map((message) => message.id)).toEqual(["msg-user"]);
+	});
+
+	it("keeps a user message that is still waiting for its parts", () => {
+		expect(projectMessages([userMessage([])]).map((message) => message.id)).toEqual(["msg-user"]);
+	});
 });

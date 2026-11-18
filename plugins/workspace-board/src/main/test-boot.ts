@@ -68,6 +68,7 @@ function workSessionsStandIn(initial: readonly WorkSession[]) {
 					methods: {
 						create: unused,
 						createChat: unused,
+						forkChat: unused,
 						rename: unused,
 						setPinned: unused,
 						setArchived: unused,

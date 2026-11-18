@@ -66,6 +66,11 @@ export const KernelCommand = defineExtensionPoint({
 		 * is listed, never captured or dispatched, and contests no other binding.
 		 */
 		handledLocally: z.boolean().default(false),
+		/**
+		 * Title of the row that lists related commands as one in shortcut lists
+		 * ("Go to tab 1–9"); commands of a category sharing it are one series.
+		 */
+		series: z.string().optional(),
 	}),
 	implementation: implementation<CommandHandler>("any"),
 });

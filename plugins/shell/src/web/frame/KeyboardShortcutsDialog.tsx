@@ -19,7 +19,7 @@ import {
 
 import { useShortcutsOpen } from "./ui-state";
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
-import { chordLabels, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
+import { rowChordLabels, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 
 /** The keyboard cheat sheet (⌘/): every bound shortcut, searchable. */
@@ -65,23 +65,21 @@ function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInp
 	const { commands, resolution, platform } = useShortcuts();
 	const groups = groupShortcutCommands(commands)
 		.map((group) => ({
-			...group,
-			commands: group.commands.filter(
-				(command) => (resolution.byCommand[command.key]?.length ?? 0) > 0,
-			),
+			name: group.name,
+			rows: group.rows
+				.map((row) => ({ ...row, labels: rowChordLabels(row, resolution.byCommand, platform) }))
+				.filter((row) => row.labels.length > 0),
 		}))
-		.filter((group) => group.commands.length > 0);
+		.filter((group) => group.rows.length > 0);
 	const needle = query.trim().toLowerCase();
 	const shown = groups
 		.map((group) => ({
 			...group,
-			commands: group.commands.filter((command) =>
-				command.metadata.title.toLowerCase().includes(needle),
-			),
+			rows: group.rows.filter((row) => row.title.toLowerCase().includes(needle)),
 		}))
-		.filter((group) => group.commands.length > 0);
-	const total = groups.reduce((sum, group) => sum + group.commands.length, 0);
-	const matches = shown.reduce((sum, group) => sum + group.commands.length, 0);
+		.filter((group) => group.rows.length > 0);
+	const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
+	const matches = shown.reduce((sum, group) => sum + group.rows.length, 0);
 
 	return (
 		<>
@@ -119,16 +117,14 @@ function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInp
 					<section key={group.name} aria-label={group.name} className="flex flex-col">
 						<h3 className="text-muted-foreground pb-1.5 text-xs font-medium">{group.name}</h3>
 						<ul className="flex flex-col">
-							{group.commands.map((command) => (
+							{group.rows.map((row) => (
 								<li
-									key={command.key}
+									key={row.key}
 									className="flex h-8 items-center justify-between gap-4 text-sm"
-									data-qa-id={`keyboard-shortcut-${command.key}`}
+									data-qa-id={`keyboard-shortcut-${row.key}`}
 								>
-									<span className="min-w-0 truncate">{command.metadata.title}</span>
-									<ShortcutChip
-										labels={chordLabels(resolution.byCommand[command.key] ?? [], platform)}
-									/>
+									<span className="min-w-0 truncate">{row.title}</span>
+									<ShortcutChip labels={row.labels} />
 								</li>
 							))}
 						</ul>

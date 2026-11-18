@@ -86,6 +86,73 @@ describe("shortcuts settings", () => {
 		await expect.poll(() => overridesOf(main)).toEqual({});
 	});
 
+	function seriesPlugin() {
+		const jump = (id: string, title: string, key: string, order: number) => ({
+			id,
+			title,
+			category: "Release",
+			order,
+			series: "Jump to 1–9",
+			keybinding: `Mod+Alt+${key}`,
+		});
+		const ids = ["jump-1", "jump-2", "jump-last"];
+		return contributor(
+			"acme.jump",
+			{
+				"kernel/command": [
+					jump("jump-last", "Jump to last", "9", 9),
+					jump("jump-1", "Jump to 1", "1", 1),
+					jump("jump-2", "Jump to 2", "2", 2),
+				],
+			},
+			(sdk) => {
+				for (const id of ids) sdk.extensions.implement(KernelCommand, id, () => {});
+			},
+		);
+	}
+
+	it("lists a series of commands as one row with a key range", async () => {
+		const { renderer } = await openShortcuts([seriesPlugin()]);
+		const range = renderer.keyboard.platform === "mac" ? "⌥⌘1–9" : "Ctrl+Alt+1–9";
+
+		const row = page.getByTestId("shortcut-row-acme.jump/jump-1");
+		await expect.element(row.getByText("Jump to 1–9")).toBeVisible();
+		await expect
+			.element(page.getByTestId("shortcut-recorder-acme.jump/jump-1"))
+			.toHaveTextContent(range);
+		await expect.element(page.getByTestId("shortcut-row-acme.jump/jump-2")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("shortcut-row-acme.jump/jump-last"))
+			.not.toBeInTheDocument();
+	});
+
+	it("gives every command of a series the recorded modifiers, keeping each one's key", async () => {
+		const { main } = await openShortcuts([seriesPlugin()]);
+
+		await page.getByTestId("shortcut-recorder-acme.jump/jump-1").click();
+		await userEvent.keyboard("{Control>}{Alt>}j{/Alt}{/Control}");
+		await expect
+			.poll(() => overridesOf(main))
+			.toEqual({
+				"acme.jump/jump-1": "Ctrl+Alt+Digit1",
+				"acme.jump/jump-2": "Ctrl+Alt+Digit2",
+				"acme.jump/jump-last": "Ctrl+Alt+Digit9",
+			});
+
+		await page.getByTestId("shortcut-recorder-acme.jump/jump-1").hover();
+		await page.getByTestId("shortcut-turn-off-acme.jump/jump-1").click();
+		await expect
+			.poll(() => overridesOf(main))
+			.toEqual({
+				"acme.jump/jump-1": null,
+				"acme.jump/jump-2": null,
+				"acme.jump/jump-last": null,
+			});
+
+		await page.getByTestId("shortcut-reset-acme.jump/jump-1").click();
+		await expect.poll(() => overridesOf(main)).toEqual({});
+	});
+
 	it("explains which command kept a shortcut two commands want", async () => {
 		const first = contributor(
 			"acme.one",

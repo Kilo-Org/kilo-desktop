@@ -399,6 +399,7 @@
 					"category": "Sessions",
 					"order": 1,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+1",
 						"default": "Alt+1"
@@ -413,6 +414,7 @@
 					"category": "Sessions",
 					"order": 2,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+2",
 						"default": "Alt+2"
@@ -427,6 +429,7 @@
 					"category": "Sessions",
 					"order": 3,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+3",
 						"default": "Alt+3"
@@ -441,6 +444,7 @@
 					"category": "Sessions",
 					"order": 4,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+4",
 						"default": "Alt+4"
@@ -455,6 +459,7 @@
 					"category": "Sessions",
 					"order": 5,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+5",
 						"default": "Alt+5"
@@ -469,6 +474,7 @@
 					"category": "Sessions",
 					"order": 6,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+6",
 						"default": "Alt+6"
@@ -483,6 +489,7 @@
 					"category": "Sessions",
 					"order": 7,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+7",
 						"default": "Alt+7"
@@ -497,6 +504,7 @@
 					"category": "Sessions",
 					"order": 8,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+8",
 						"default": "Alt+8"
@@ -511,6 +519,7 @@
 					"category": "Sessions",
 					"order": 9,
 					"palette": false,
+					"series": "Go to session 1–9",
 					"keybinding": {
 						"mac": "Ctrl+9",
 						"default": "Alt+9"
@@ -625,6 +634,7 @@
 					"category": "Tabs",
 					"order": 1,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+1",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -637,6 +647,7 @@
 					"category": "Tabs",
 					"order": 2,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+2",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -649,6 +660,7 @@
 					"category": "Tabs",
 					"order": 3,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+3",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -661,6 +673,7 @@
 					"category": "Tabs",
 					"order": 4,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+4",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -673,6 +686,7 @@
 					"category": "Tabs",
 					"order": 5,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+5",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -685,6 +699,7 @@
 					"category": "Tabs",
 					"order": 6,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+6",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -697,6 +712,7 @@
 					"category": "Tabs",
 					"order": 7,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+7",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -709,6 +725,7 @@
 					"category": "Tabs",
 					"order": 8,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+8",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
@@ -721,6 +738,7 @@
 					"category": "Tabs",
 					"order": 9,
 					"palette": false,
+					"series": "Go to tab 1–9",
 					"keybinding": "Mod+9",
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],

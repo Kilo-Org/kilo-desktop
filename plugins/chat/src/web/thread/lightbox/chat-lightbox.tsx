@@ -66,8 +66,8 @@ export function renderChatLightboxActions(item: LightboxItem): ReactNode {
  *
  * Surfaces register an item with the element it renders in; opening one
  * orders them by document position, so ←/→ walks the transcript top to
- * bottom. The transcript only hides off-screen messages (`content-visibility`)
- * rather than unmounting them, so the registry stays complete. In a session's
+ * bottom. Items in messages the transcript has windowed out unregister as they
+ * unmount, so ←/→ only reaches mounted messages. In a session's
  * transcript the items open in its media viewer pane; elsewhere (the New
  * Session page, the web build without plugin main entries) in a lightbox
  * dialog. Registration lives in state here and the context value is stable,

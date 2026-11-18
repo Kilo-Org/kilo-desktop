@@ -168,7 +168,7 @@ export const Thread: FC = () => {
 			</ThreadPrimitive.Viewport>
 			<div
 				ref={setDock}
-				className="pointer-events-none absolute inset-x-0 bottom-0 isolate z-20 flex justify-center"
+				className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center"
 			/>
 		</ThreadPrimitive.Root>
 	);

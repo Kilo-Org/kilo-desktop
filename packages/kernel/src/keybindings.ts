@@ -168,6 +168,15 @@ export function chordFromKeyboardEvent(event: KeyboardEventLike): KeyChord | nul
 	};
 }
 
+export function sameModifiers(left: KeyChord, right: KeyChord): boolean {
+	return (
+		left.ctrl === right.ctrl &&
+		left.alt === right.alt &&
+		left.shift === right.shift &&
+		left.meta === right.meta
+	);
+}
+
 /** True when the chord uses a modifier other than Shift (safe to capture in text fields). */
 export function hasCommandModifier(chord: KeyChord): boolean {
 	return chord.ctrl || chord.alt || chord.meta;

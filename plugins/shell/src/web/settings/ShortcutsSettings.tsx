@@ -274,7 +274,10 @@ export function ShortcutsSettings() {
 	const kernel = useKernel();
 	const { commands, overrides, resolution, keybindings, platform } = useShortcuts();
 	const titles = useMemo(
-		() => new Map<string, string>(commands.map((command) => [command.key, command.metadata.title])),
+		() =>
+			new Map<string, string>(
+				commands.map((command) => [command.key, command.metadata.series ?? command.metadata.title]),
+			),
 		[commands],
 	);
 	const takenBy = useMemo(() => {

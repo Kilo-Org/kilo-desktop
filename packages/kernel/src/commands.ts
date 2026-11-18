@@ -9,10 +9,10 @@ import type { QualifiedId } from "./ids";
 import {
 	parseChord,
 	resolveKeybinding,
+	sameModifiers,
 	serializeChord,
 	type KeybindingSpec,
 	type KeyboardPlatform,
-	type KeyChord,
 } from "./keybindings";
 import type { KernelLogger } from "./sdk";
 import type { KernelTransport } from "./transport";
@@ -250,9 +250,6 @@ export interface SeriesCommand {
 	};
 }
 
-const sameModifiers = (left: KeyChord, right: KeyChord) =>
-	serializeChord({ ...left, code: right.code }) === serializeChord(right);
-
 /**
  * A series is changed as one (Settings → Shortcuts): untouched, every member
  * on the same new modifiers keeping its own key, or every member off. True
@@ -264,12 +261,15 @@ function isUniformSeries(
 	platform: KeyboardPlatform,
 ): boolean {
 	if (!members.some((member) => member.key in overrides)) return true;
-	const pairs = members.map((member) => {
+	const pairs = members.flatMap((member) => {
 		const [fallback] = defaultChords({ ...member, scoped: false }, platform);
 		const own = fallback ? parseChord(fallback) : null;
+		const overridden = member.key in overrides;
+		// Without a default on this platform and untouched, it takes no part in the series.
+		if (!own && !overridden) return [];
 		const override = overrides[member.key];
-		const chord = member.key in overrides ? (override ? parseChord(override) : null) : own;
-		return { own, chord };
+		const chord = overridden ? (override ? parseChord(override) : null) : own;
+		return [{ own, chord }];
 	});
 	if (pairs.every(({ chord }) => chord === null)) return true;
 	const [first] = pairs;

@@ -30,17 +30,17 @@ sdk.extensions.implement(KernelCommand, "say-hello", async () => {
 
 The command's id is `example.hello/say-hello`. Metadata fields:
 
-| Field              | Meaning                                                                                                                            |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `title`            | Shown in the palette and Settings → Shortcuts                                                                                      |
-| `category`         | Heading it is grouped under; `order` sorts within it (lower first)                                                                 |
-| `icon`             | Optional icon name                                                                                                                 |
-| `keybinding`       | Default shortcut(s) — see below                                                                                                    |
-| `palette`          | `false` keeps it out of the palette (default `true`)                                                                               |
-| `repeatable`       | Runs again while the key is held (default `false`)                                                                                 |
-| `handledLocally`   | The owner handles the key itself (Enter in the composer): listed, never bound                                                      |
-| `series`           | Row title shared by related commands of a category, listed as one ("Go to tab 1–9", ⌘1–9); changing its modifiers changes them all |
-| `when`, `priority` | As for every contribution                                                                                                          |
+| Field              | Meaning                                                                       |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `title`            | Shown in the palette and Settings → Shortcuts                                 |
+| `category`         | Heading it is grouped under; `order` sorts within it (lower first)            |
+| `icon`             | Optional icon name                                                            |
+| `keybinding`       | Default shortcut(s) — see below                                               |
+| `palette`          | `false` keeps it out of the palette (default `true`)                          |
+| `repeatable`       | Runs again while the key is held (default `false`)                            |
+| `handledLocally`   | The owner handles the key itself (Enter in the composer): listed, never bound |
+| `series`           | Title of one row listing related commands ("Go to tab 1–9"); see below        |
+| `when`, `priority` | As for every contribution                                                     |
 
 Run a command from code with `useKernel().commands.execute(id, args)` in
 React (the handler gets `args`), e.g.

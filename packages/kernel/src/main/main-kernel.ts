@@ -229,7 +229,7 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 		commands,
 		async start(startOptions) {
 			await core.activate();
-			// After activation, so overrides plugins move to renamed commands are checked too.
+			// After activation: plugins may move overrides to renamed commands while activating.
 			keybindings.resetMixedSeries();
 			if (!startOptions?.environmentReady) {
 				services.markActivated();

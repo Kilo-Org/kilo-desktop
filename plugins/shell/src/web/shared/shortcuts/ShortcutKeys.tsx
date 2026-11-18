@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import {
 	formatChord,
 	parseChord,
-	serializeChord,
+	sameModifiers,
 	type KeyboardPlatform,
 } from "@kilo-desktop/kernel";
 
@@ -42,9 +42,8 @@ export function seriesChordLabels(
 	const from = formatChord(first, platform);
 	if (bound.length === 1) return [keysLabel(from, platform)];
 	const to = formatChord(last, platform);
-	const sameModifiers = serializeChord({ ...first, code: last.code }) === serializeChord(last);
 	return [
-		sameModifiers
+		sameModifiers(first, last)
 			? `${keysLabel(from, platform)}–${to.at(-1)}`
 			: `${keysLabel(from, platform)}–${keysLabel(to, platform)}`,
 	];

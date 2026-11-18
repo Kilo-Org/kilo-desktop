@@ -311,6 +311,17 @@ describe("mixedSeriesOverrides", () => {
 		expect(mixed({ "a/one": null, "a/two": null, "a/last": null })).toEqual([]);
 		// Overriding a member with its own default is not a change.
 		expect(mixed({ "a/two": "Meta+Digit2" })).toEqual([]);
+		// A member without a default on the platform is left out of the series.
+		expect(
+			mixedSeriesOverrides({
+				commands: [
+					...commands,
+					{ key: "a/mac", metadata: { ...commands[0]!.metadata, keybinding: { mac: "Mod+5" } } },
+				],
+				overrides: { "a/one": "Alt+Digit1", "a/two": "Alt+Digit2", "a/last": "Alt+Digit9" },
+				platform: "linux",
+			}),
+		).toEqual([]);
 	});
 
 	it("lists the overridden members of a series changed one command at a time", () => {

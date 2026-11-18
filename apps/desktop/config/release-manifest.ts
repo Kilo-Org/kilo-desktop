@@ -3,15 +3,45 @@ import { z } from "zod";
 
 import { RELEASE_TRACKS } from "./release.js";
 
-const trackDownloadManifestEntrySchema = z.object({
-	platform: z.enum(["linux", "macos", "windows"]),
+const DOWNLOAD_PLATFORMS = ["linux", "macos", "windows"] as const;
+const DOWNLOAD_TYPES = ["deb", "dmg", "rpm", "setup", "zip"] as const;
+
+const downloadEntrySchema = z.object({
+	platform: z.enum(DOWNLOAD_PLATFORMS),
 	arch: z.string().min(1),
-	type: z.enum(["deb", "dmg", "setup", "zip"]),
+	type: z.enum(DOWNLOAD_TYPES),
 	fileName: z.string().min(1),
 	url: z.string().min(1),
 	size: z.number().int().nonnegative(),
 	sha256: z.string().min(1),
 });
+
+export type TrackDownloadManifestEntry = z.infer<typeof downloadEntrySchema>;
+
+function isKnownDownload(entry: { platform: string; type: string }): boolean {
+	return (
+		(DOWNLOAD_PLATFORMS as readonly string[]).includes(entry.platform) &&
+		(DOWNLOAD_TYPES as readonly string[]).includes(entry.type)
+	);
+}
+
+/**
+ * Skips entries for a platform or type this client doesn't know, so a later
+ * release can list new formats in either array without failing this client's
+ * update check. Entries this client does know must still be complete.
+ */
+const downloadListSchema = z
+	.array(
+		z.union([
+			downloadEntrySchema,
+			z
+				.object({ platform: z.string(), type: z.string() })
+				.refine((entry) => !isKnownDownload(entry), "Malformed download entry."),
+		]),
+	)
+	.transform((entries) =>
+		entries.filter((entry): entry is TrackDownloadManifestEntry => isKnownDownload(entry)),
+	);
 
 /** The `<channel>/latest.json` pointer published after every track release. */
 export const trackReleaseManifestSchema = z.object({
@@ -20,8 +50,9 @@ export const trackReleaseManifestSchema = z.object({
 	version: z.string().refine((version) => valid(version) !== null, "Expected a semver version."),
 	publishedAt: z.string().min(1),
 	releaseNotesUrl: z.string().min(1),
-	downloads: z.array(trackDownloadManifestEntrySchema),
+	downloads: downloadListSchema,
+	/** RPMs, kept out of `downloads` for clients that predate them (see publish-track-release.ts). */
+	additionalDownloads: downloadListSchema.default([]),
 });
 
-export type TrackDownloadManifestEntry = z.infer<typeof trackDownloadManifestEntrySchema>;
 export type TrackReleaseManifest = z.infer<typeof trackReleaseManifestSchema>;

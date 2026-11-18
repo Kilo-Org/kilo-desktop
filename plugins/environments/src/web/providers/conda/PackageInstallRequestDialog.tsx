@@ -320,19 +320,22 @@ function ChannelStep({
 					type="button"
 					variant="outline"
 					disabled={adding}
-					onClick={onInstallOnce}
-					data-qa-id="environments-install-link-install-once"
-				>
-					Install once
-				</Button>
-				<Button
-					type="button"
-					disabled={adding}
 					onClick={onAddAndInstall}
 					data-qa-id="environments-install-link-add-channel"
 				>
 					{adding ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 					Add &amp; install
+				</Button>
+				{/* The default: a channel from a web page is used for this install only,
+				    unless the person chooses to keep it. */}
+				<Button
+					type="button"
+					autoFocus
+					disabled={adding}
+					onClick={onInstallOnce}
+					data-qa-id="environments-install-link-install-once"
+				>
+					Install once
 				</Button>
 			</DialogFooter>
 		</>

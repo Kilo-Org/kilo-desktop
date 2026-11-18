@@ -440,6 +440,29 @@ describe("an anaconda.org install link", () => {
 		await expect.element(dialog).toMatchTextContent("Install pandas");
 	});
 
+	it("makes Install once the default for a channel that is not configured", async () => {
+		const addChannel = vi.fn(async () => ["defaults"]);
+		await renderLink({
+			search: link({ package: "numpy", channel: "bioconda" }),
+			resolveChannel: async ({ channel }) => resolved(channel, false),
+			addChannel,
+		});
+
+		const dialog = screen.getByTestId("environments-install-link-dialog");
+		await expect.element(dialog).toHaveAttribute("data-step", "channel");
+		const installOnce = screen.getByTestId("environments-install-link-install-once");
+		await expect.element(installOnce).toHaveFocus();
+		// Install once is the primary action; adding the channel is the secondary one.
+		const footer = [
+			...installOnce.element().parentElement!.querySelectorAll("button[data-qa-id]"),
+		].map((button) => button.getAttribute("data-qa-id"));
+		expect(footer.at(-1)).toBe("environments-install-link-install-once");
+
+		await userEvent.keyboard("{Enter}");
+		await expect.element(dialog).toHaveAttribute("data-step", "target");
+		expect(addChannel).not.toHaveBeenCalled();
+	});
+
 	it("says when an older bridge could only compare channel names", async () => {
 		await renderLink({
 			search: link({ package: "numpy", channel: "pkgs/main" }),

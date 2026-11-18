@@ -592,7 +592,8 @@ function FilesViewContent({
 				revealEditorLocation(attachedEditor, revealLine, revealColumn);
 				return;
 			}
-			if (attempts++ < REVEAL_FILE_FRAMES) {
+			if (attempts < REVEAL_FILE_FRAMES) {
+				attempts += 1;
 				frame = requestAnimationFrame(reveal);
 			}
 		};

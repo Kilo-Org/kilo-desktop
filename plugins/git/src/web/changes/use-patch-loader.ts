@@ -457,8 +457,8 @@ export function usePatchLoader({
 							livePatchKeysRef.current.set(itemIdRename.newId, rawKey);
 						}
 					}
-					pendingPublishFileCount++;
-					pendingTreePublishFileCount++;
+					pendingPublishFileCount += 1;
+					pendingTreePublishFileCount += 1;
 					if (performance.now() - lastWorkYieldTime >= STREAM_WORK_BUDGET_MS) {
 						await publishPendingData();
 					} else {

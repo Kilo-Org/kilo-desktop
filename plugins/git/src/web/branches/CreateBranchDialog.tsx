@@ -20,6 +20,31 @@ import {
 
 type BaseSelection = "default" | "current";
 
+function sanitizeBranchName(value: string): string {
+	let result = "";
+	for (const input of value) {
+		const char = input === " " ? "-" : input;
+		const code = char.charCodeAt(0);
+		if (code < 32 || code === 127 || "~^:?*[\\".includes(char)) continue;
+		if (char === "-" && result === "") continue;
+		if (char === "/" && (result === "" || result.endsWith("/"))) continue;
+		if (char === "." && (result === "" || result.endsWith("/") || result.endsWith("."))) continue;
+		if (char === "{" && result.endsWith("@")) continue;
+		result += char;
+	}
+	return result.slice(0, 255);
+}
+
+function isValidBranchName(name: string): boolean {
+	return (
+		name !== "" &&
+		name !== "@" &&
+		!name.endsWith("/") &&
+		!name.endsWith(".") &&
+		name.split("/").every((part) => !part.endsWith(".lock"))
+	);
+}
+
 /**
  * Create-branch dialog opened by the pinned popover item (the workspace
  * picker's `openCreate` pattern): the popover closes and hands its
@@ -61,15 +86,16 @@ export function CreateBranchDialog({
 	readonly onCancel: () => void;
 	readonly onCreate: (name: string, startPoint?: string) => void;
 }) {
-	const [name, setName] = useState(initialName.replaceAll(" ", "-"));
-	const trimmedName = name.trim();
+	const [name, setName] = useState(() => sanitizeBranchName(initialName));
+	const trimmedName = name.replace(/^-+|-+$/g, "");
+	const validName = isValidBranchName(trimmedName);
 	const offerBaseChoice =
 		defaultBranch !== undefined && currentBranch !== undefined && defaultBranch !== currentBranch;
 	const [base, setBase] = useState<BaseSelection>("default");
 
 	const submit = (event: FormEvent) => {
 		event.preventDefault();
-		if (trimmedName === "" || isPending) return;
+		if (!validName || isPending) return;
 		// Desktop's `startPoint: null` = current HEAD → omitted from the call.
 		onCreate(trimmedName, offerBaseChoice && base === "default" ? defaultBranch : undefined);
 	};
@@ -96,7 +122,7 @@ export function CreateBranchDialog({
 								aria-invalid={Boolean(errorMessage) || undefined}
 								value={name}
 								onChange={(event) => {
-									setName(event.target.value.replaceAll(" ", "-"));
+									setName(sanitizeBranchName(event.target.value));
 									onClearError();
 								}}
 							/>
@@ -144,7 +170,7 @@ export function CreateBranchDialog({
 						<Button
 							type="submit"
 							data-qa-id="git-branch-create-submit"
-							disabled={trimmedName === "" || isPending}
+							disabled={!validName || isPending}
 						>
 							Create branch
 						</Button>

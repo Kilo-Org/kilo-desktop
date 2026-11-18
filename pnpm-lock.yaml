@@ -241,8 +241,8 @@ catalogs:
       specifier: ^7.8.6
       version: 7.8.6
     type-fest:
-      specifier: ^5.8.0
-      version: 5.8.0
+      specifier: ^6.0.1
+      version: 6.0.1
     typescript:
       specifier: ^7.0.2
       version: 7.0.2
@@ -509,7 +509,7 @@ importers:
         version: 4.23.15
       type-fest:
         specifier: 'catalog:'
-        version: 5.8.0
+        version: 6.0.1
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -9653,6 +9653,10 @@ packages:
     resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
     engines: {node: '>=20'}
 
+  type-fest@6.0.1:
+    resolution: {integrity: sha512-nnRRKEpyNxX4XkeR6dpMy27ZNT5/nE3D73fs5FcKW/+OtqwSmdshWUw5azvpsMzjst5rAUe61ZxilQ70YFS9yA==}
+    engines: {node: '>=22'}
+
   typed-array-buffer@1.0.3:
     resolution: {integrity: sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==}
     engines: {node: '>= 0.4'}
@@ -17865,6 +17869,10 @@ snapshots:
       tagged-tag: 1.0.0
 
   type-fest@5.8.0:
+    dependencies:
+      tagged-tag: 1.0.0
+
+  type-fest@6.0.1:
     dependencies:
       tagged-tag: 1.0.0
 

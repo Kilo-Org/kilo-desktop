@@ -266,7 +266,6 @@ export class TerminalFrameController {
 		const document = this.#window.document;
 		const focused = document.hasFocus() && container.contains(document.activeElement);
 		if (terminal.options.cursorBlink !== focused) terminal.options.cursorBlink = focused;
-		container.dataset.focused = String(focused);
 	}
 
 	#applyTheme(theme: TerminalTheme): void {

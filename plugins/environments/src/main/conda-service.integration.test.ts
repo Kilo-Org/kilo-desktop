@@ -93,6 +93,7 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 		listChannels: overrides.listChannels ?? notImpl,
 		addChannel: overrides.addChannel ?? notImpl,
 		removeChannel: overrides.removeChannel ?? notImpl,
+		resolveChannel: overrides.resolveChannel ?? notImpl,
 		findRepodata: overrides.findRepodata ?? notImpl,
 	};
 }
@@ -716,6 +717,61 @@ describe("conda service through the domain object", () => {
 		// Second call within TTL should hit cache
 		await client.listChannels(undefined);
 		expect(listChannels).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		service.dispose();
+	});
+
+	it("conda.channels.resolve caches per channel until a channel write", async () => {
+		const service = await createServiceHost();
+		const queue = new JobQueue({ emit: () => {} });
+		const resolveChannel = vi.fn(async (channel: string) => ({
+			channel,
+			name: channel,
+			isMultichannel: false,
+			baseUrls: [`https://conda.anaconda.org/${channel}`],
+			configured: false,
+			configuredBy: [],
+			exact: true,
+		}));
+		const addChannel = vi.fn().mockResolvedValue(["defaults", "bioconda"]);
+		await service.register(makeBackend({ resolveChannel, addChannel }), queue);
+
+		const client = service.client();
+		expect(await client.resolveChannel({ channel: "bioconda" })).toMatchObject({
+			channel: "bioconda",
+			configured: false,
+			exact: true,
+		});
+		await client.resolveChannel({ channel: "bioconda" });
+		expect(resolveChannel).toHaveBeenCalledOnce();
+
+		await client.resolveChannel({ channel: "conda-forge" });
+		expect(resolveChannel).toHaveBeenCalledTimes(2);
+
+		await client.addChannel({ channel: "bioconda" });
+		await client.resolveChannel({ channel: "bioconda" });
+		expect(resolveChannel).toHaveBeenCalledTimes(3);
+		expect(resolveChannel.mock.calls.map(([channel]) => channel)).toEqual([
+			"bioconda",
+			"conda-forge",
+			"bioconda",
+		]);
+
+		queue.dispose();
+		service.dispose();
+	});
+
+	it("conda.channels.resolve rejects a flag-like channel before reaching the backend", async () => {
+		const service = await createServiceHost();
+		const queue = new JobQueue({ emit: () => {} });
+		const resolveChannel = vi.fn();
+		await service.register(makeBackend({ resolveChannel }), queue);
+
+		await expect(
+			service.client().resolveChannel({ channel: "--override-channels" }),
+		).rejects.toBeInstanceOf(KernelError);
+		expect(resolveChannel).not.toHaveBeenCalled();
 
 		queue.dispose();
 		service.dispose();

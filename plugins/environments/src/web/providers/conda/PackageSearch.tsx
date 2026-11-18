@@ -94,13 +94,24 @@ export interface PackageSelection {
 }
 
 /**
+ * Packages a dialog opens with already selected (an install link's package),
+ * and channels it searches and installs from ahead of the configured ones.
+ */
+export interface PackageInstallPreset {
+	readonly packages: readonly SelectedPackage[];
+	readonly channels?: readonly string[];
+}
+
+/**
  * Selected packages plus each result row's chosen version. A row keeps its
  * version choice while unselected, so ticking it later installs what the
- * row shows.
+ * row shows. `initial` is read once, on mount.
  */
-export function usePackageSelection(): PackageSelection {
-	const [selected, setSelected] = useState<SelectedPackage[]>([]);
-	const [rowVersions, setRowVersions] = useState<Record<string, string>>({});
+export function usePackageSelection(initial?: readonly SelectedPackage[]): PackageSelection {
+	const [selected, setSelected] = useState<SelectedPackage[]>(() => [...(initial ?? [])]);
+	const [rowVersions, setRowVersions] = useState<Record<string, string>>(() =>
+		Object.fromEntries((initial ?? []).map((pkg) => [pkg.name, pkg.version ?? LATEST])),
+	);
 	const selectedByName = useMemo(() => new Map(selected.map((s) => [s.name, s])), [selected]);
 
 	const remove = useCallback((name: string) => {

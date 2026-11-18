@@ -13,7 +13,8 @@
 		"kilo.local-inference/llama-runtime": "optional",
 		"kilo.chat/permission-renderer": "optional",
 		"kilo.shell/navigation": "optional",
-		"kilo.shell/settings-section": "optional"
+		"kilo.shell/settings-section": "optional",
+		"kilo.shell/deep-link": "optional"
 	},
 	"permissions": {
 		"host": ["dialogs"]
@@ -52,6 +53,15 @@
 					"when": {
 						"all": ["kernel/flag:environments-feature"]
 					}
+				}
+			],
+			"kilo.shell/deep-link": [
+				{
+					"id": "package-install",
+					"host": "packages",
+					"path": "/settings/environments",
+					"pathParam": "packageAction",
+					"query": ["package", "version", "channel", "source"]
 				}
 			],
 			"kilo.core/tool": [
@@ -261,6 +271,14 @@
 				{
 					"id": "environment-removed",
 					"name": "Environment Removed"
+				},
+				{
+					"id": "package-install-link-received",
+					"name": "Package Install Link Received"
+				},
+				{
+					"id": "package-install-link-rejected",
+					"name": "Package Install Link Rejected"
 				}
 			]
 		}

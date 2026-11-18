@@ -1640,20 +1640,20 @@ importers:
         version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.0))
     optionalDependencies:
       '@anaconda/desktop-bridge-payload-darwin-arm64':
-        specifier: npmjs:0.1.21
-        version: npmjs:0.1.21
+        specifier: npmjs:0.1.22
+        version: npmjs:0.1.22
       '@anaconda/desktop-bridge-payload-linux-arm64':
-        specifier: npmjs:0.1.21
-        version: npmjs:0.1.21
+        specifier: npmjs:0.1.22
+        version: npmjs:0.1.22
       '@anaconda/desktop-bridge-payload-linux-x64':
-        specifier: npmjs:0.1.21
-        version: npmjs:0.1.21
+        specifier: npmjs:0.1.22
+        version: npmjs:0.1.22
       '@anaconda/desktop-bridge-payload-win32-arm64':
-        specifier: npmjs:0.1.21
-        version: npmjs:0.1.21
+        specifier: npmjs:0.1.22
+        version: npmjs:0.1.22
       '@anaconda/desktop-bridge-payload-win32-x64':
-        specifier: npmjs:0.1.21
-        version: npmjs:0.1.21
+        specifier: npmjs:0.1.22
+        version: npmjs:0.1.22
 
   plugins/files:
     dependencies:
@@ -2504,28 +2504,28 @@ packages:
     resolution: {integrity: sha512-cUD0PT0YX+rImRhfn7BfMRduP/tX/Zqt/N0dHlAyn2RlcJssCb5KsCJkhln61eh9vuJDkH8wKn3L8zJzzWXPFg==}
     engines: {node: '>=18'}
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@npmjs:0.1.21':
-    resolution: {integrity: sha512-szY1oV9cMLtiRIuj87Bti/IiwTg1H/q7HseqLxHRVvmJJDd3tMgE7zf4YM0lgDT7O0oU0GoZDfCjRdLAT3SXnw==}
+  '@anaconda/desktop-bridge-payload-darwin-arm64@npmjs:0.1.22':
+    resolution: {integrity: sha512-kq3nJQbfLiKkHesYmsFpRHceTfM5uVA9juvXcKESL6DfSB25jo26bzg9/j0MwgAKdEzoRFYe01tU1MmOCKMSCg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@anaconda/desktop-bridge-payload-linux-arm64@npmjs:0.1.21':
-    resolution: {integrity: sha512-iIwvjiUnh6U6lEeCyLdaOMmPb4DnXPqtRTglnUe3o4aP5ksfla/1+2MtKmw/GGE63Es3KmCLjJSD66nNTIX4tA==}
+  '@anaconda/desktop-bridge-payload-linux-arm64@npmjs:0.1.22':
+    resolution: {integrity: sha512-2LJ6K9SHxvRvfq5ATm45cP6WUdhw8B5MBEw3/Bxwxyyc3m3UZSu7WH70lfj/XpX8rlODIrbIe379UiGljK3SVA==}
     cpu: [arm64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-linux-x64@npmjs:0.1.21':
-    resolution: {integrity: sha512-NDDoeLseFmbcaPga6Hc4WOk/datjRp+NTemCxC+CE2h9Sd5wppDHKn93QGlRklPEp0vNT95kMzEe1H6wdzhjmA==}
+  '@anaconda/desktop-bridge-payload-linux-x64@npmjs:0.1.22':
+    resolution: {integrity: sha512-8ZVLSDqreid5krRBuw24nXjTxchlu6lEVCwNsfm79d1qzCkA8k2OlM5FhW/93d5SP8UvASeJxlKL8Pb+uupPGg==}
     cpu: [x64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-win32-arm64@npmjs:0.1.21':
-    resolution: {integrity: sha512-SJFZRbLA+ch/5SjkdioaiyPIWBIuu/4igOSkyvyGvlcNgy4sKmTR9DiEvrpx4SAzrNXB2Wif+CDo4F52ymPypw==}
+  '@anaconda/desktop-bridge-payload-win32-arm64@npmjs:0.1.22':
+    resolution: {integrity: sha512-X/6x3LN4v2r4uT7BHz1Ou5Hw/b0VUgSSNKMO2IcYvJ8Yp96/sEZstBqUAcrJh9Ci5HhNlDWl+yM1f4oVAWVT4w==}
     cpu: [arm64]
     os: [win32]
 
-  '@anaconda/desktop-bridge-payload-win32-x64@npmjs:0.1.21':
-    resolution: {integrity: sha512-vNeThKHinOCcscx1WnMzwp0vrv1pVboLGa4f8skQ6+td1ORgQzEnQTAjIP54hcIVnffLzjtg5OSuLlSlbRQxcg==}
+  '@anaconda/desktop-bridge-payload-win32-x64@npmjs:0.1.22':
+    resolution: {integrity: sha512-4Vnfkej8pLwkaqX1xgS0HGcRauZGe7vmRta+Q8GxBb/gUJ8LsZYjEViXRjJh+I5DNA794Hla72KO9DCrl0E3Yg==}
     cpu: [x64]
     os: [win32]
 
@@ -9973,19 +9973,19 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@npmjs:0.1.21':
+  '@anaconda/desktop-bridge-payload-darwin-arm64@npmjs:0.1.22':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-arm64@npmjs:0.1.21':
+  '@anaconda/desktop-bridge-payload-linux-arm64@npmjs:0.1.22':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-x64@npmjs:0.1.21':
+  '@anaconda/desktop-bridge-payload-linux-x64@npmjs:0.1.22':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-arm64@npmjs:0.1.21':
+  '@anaconda/desktop-bridge-payload-win32-arm64@npmjs:0.1.22':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-x64@npmjs:0.1.21':
+  '@anaconda/desktop-bridge-payload-win32-x64@npmjs:0.1.22':
     optional: true
 
   '@anaconda/playwright-utils@2.1.0(@playwright/test@1.65.1)(jiti@2.7.0)(supports-color@10.2.2)':

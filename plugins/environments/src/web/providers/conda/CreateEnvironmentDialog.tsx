@@ -29,7 +29,7 @@ import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
 import { ENVIRONMENTS_TELEMETRY_EVENTS } from "../../../contracts/index";
 import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda";
 import { useTrack } from "../../app";
-import type { CondaRepodataFindResult } from "../../../contracts/providers/conda";
+import type { CondaEnv, CondaRepodataFindResult } from "../../../contracts/providers/conda";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
 import { useChannelSelection } from "./use-channel-selection";
 import { validateEnvironmentName } from "./environment-display";
@@ -45,6 +45,7 @@ import {
 	SelectedPackagesPane,
 	selectedPackageToSpec,
 	usePackageSelection,
+	type PackageInstallPreset,
 } from "./PackageSearch";
 import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker";
 import { useCreatePrefixCheck, type CreatePrefixCheckState } from "./use-create-prefix-check";
@@ -53,6 +54,12 @@ import { usePackageSearch } from "./use-package-search";
 interface CreateEnvironmentDialogProps {
 	open: boolean;
 	onClose: () => void;
+	/** Opens with these packages selected and channels added; read on mount. */
+	preset?: PackageInstallPreset;
+	/** The name the form opens with; read on mount. */
+	initialName?: string;
+	/** Called when an environment is created while the dialog is open. */
+	onCreated?: (environment: CondaEnv) => void;
 }
 
 /**
@@ -98,18 +105,24 @@ function prefixCheckError(
 	}
 }
 
-export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDialogProps) {
+export function CreateEnvironmentDialog({
+	open,
+	onClose,
+	preset,
+	initialName,
+	onCreated,
+}: CreateEnvironmentDialogProps) {
 	const conda = useConda();
 	const track = useTrack();
-	const [name, setName] = useState("");
+	const [name, setName] = useState(initialName ?? "");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
 	const [pythonVersions, setPythonVersions] = useState<string[]>(PYTHON_VERSIONS_FALLBACK);
-	const [query, setQuery] = useState("");
+	const [query, setQuery] = useState(() => preset?.packages[0]?.name ?? "");
 	// The last environment created from this dialog. Its confirmation shows
 	// only while the form still targets the same prefix.
 	const [created, setCreated] = useState<{ prefix: string; envName: string } | null>(null);
-	const selection = usePackageSelection();
+	const selection = usePackageSelection(preset?.packages);
 	const queryClient = useQueryClient();
 	// The in-flight create job, so "Run in background" can adopt it instead
 	// of enqueueing a duplicate. `backgrounded` mutes the foreground handlers.
@@ -146,7 +159,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 				})
 			: null;
 	const canCreate = prefixCheck.status === "available" && !mutation.isPending;
-	const channels = useChannelSelection(prefixQuery.data?.channels);
+	const channels = useChannelSelection(prefixQuery.data?.channels, preset?.channels);
 	const search = usePackageSearch({
 		conda,
 		open,
@@ -239,12 +252,13 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		const pending = { promise, envName, backgrounded: false };
 		pendingCreateRef.current = pending;
 		promise.then(
-			() => {
+			({ environment }) => {
 				// Tracked before the backgrounded check so jobs moved to a toast still count.
 				track(ENVIRONMENTS_TELEMETRY_EVENTS.environmentCreated, telemetryData);
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
 				setCreated({ prefix: payload.prefix, envName });
+				onCreated?.(environment);
 			},
 			(reason) => {
 				refreshAfterPrefixConflict(reason);
@@ -376,6 +390,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 									customized={channels.customized}
 									qaId="environments-create-channels-button"
 									availableChannels={channels.available}
+									linkChannels={channels.linkChannels}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
 								/>

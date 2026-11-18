@@ -174,6 +174,15 @@ export function createCondaService(options: CondaServiceOptions): CondaService {
 				run: (ctx) => backend.listChannels({ signal: ctx.signal }),
 			}),
 
+		// Channel add/remove are queued writes, so they clear this cache too.
+		resolveChannel: ({ channel }) =>
+			queue.read({
+				providerId: "conda",
+				opName: "channels.resolve",
+				args: { channel },
+				run: (ctx) => backend.resolveChannel(channel, { signal: ctx.signal }),
+			}),
+
 		prefixOptions: () =>
 			queue.read({
 				providerId: "conda",

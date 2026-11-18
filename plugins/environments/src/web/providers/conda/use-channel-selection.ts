@@ -13,6 +13,8 @@ import { defaultChannelSelection, selectableChannels } from "./channel-presentat
  * prefers the channels it is given first. The selection is seeded once, from
  * what is offered when the first channels arrive.
  */
+const NO_CHANNELS: readonly string[] = [];
+
 export function useChannelSelection(configured: string[] | undefined, extra?: readonly string[]) {
 	const available = useMemo(
 		() => [...new Set([...(extra ?? []), ...selectableChannels(configured ?? [])])],
@@ -51,6 +53,8 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 
 	return {
 		available,
+		/** The `extra` channels, which the chooser labels as the install link's. */
+		linkChannels: extra ?? NO_CHANNELS,
 		selected,
 		channelsArg,
 		summary,

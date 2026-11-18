@@ -390,6 +390,7 @@ export function CreateEnvironmentDialog({
 									customized={channels.customized}
 									qaId="environments-create-channels-button"
 									availableChannels={channels.available}
+									linkChannels={channels.linkChannels}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
 								/>

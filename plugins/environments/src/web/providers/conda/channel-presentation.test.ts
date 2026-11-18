@@ -71,3 +71,32 @@ describe("defaultChannelSelection", () => {
 		]);
 	});
 });
+
+describe("getChannelPresentation for an install link's channel", () => {
+	it("shows the link's channel as given, apart from the product channels", () => {
+		expect(getChannelPresentation("msys2", { fromLink: true })).toEqual({
+			kind: "other",
+			title: "msys2",
+			description: "From the install link.",
+		});
+		expect(
+			getChannelPresentation("https://repo.anaconda.com/pkgs/main", { fromLink: true }),
+		).toMatchObject({
+			title: "https://repo.anaconda.com/pkgs/main",
+			description: "From the install link.",
+		});
+		expect(getChannelPresentation("bioconda", { fromLink: true })).toMatchObject({
+			title: "bioconda",
+			description: "From the install link.",
+		});
+	});
+
+	it("keeps the product presentation when the link names a product channel", () => {
+		expect(getChannelPresentation("defaults", { fromLink: true })).toEqual(
+			getChannelPresentation("defaults"),
+		);
+		expect(getChannelPresentation("conda-forge", { fromLink: true })).toEqual(
+			getChannelPresentation("conda-forge"),
+		);
+	});
+});

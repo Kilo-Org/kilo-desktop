@@ -493,6 +493,24 @@ describe("an anaconda.org install link", () => {
 		expect(screen.getByText("This install link is invalid.").elements()).toHaveLength(0);
 	});
 
+	it("labels the link's channel in the channel chooser instead of merging it into Anaconda", async () => {
+		await renderLink({
+			search: link({ package: "numpy", channel: "msys2" }),
+			resolveChannel: async ({ channel }) => resolved(channel, false),
+		});
+
+		await userEvent.click(screen.getByTestId("environments-install-link-install-once"));
+		await userEvent.click(screen.getByRole("button", { name: "Install into dev" }));
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
+
+		const linkOption = screen.getByTestId("environments-channel-option-msys2");
+		await expect.element(linkOption).toMatchTextContent("msys2");
+		await expect.element(linkOption).toMatchTextContent("From the install link.");
+		await expect
+			.element(screen.getByTestId("environments-channel-option-defaults"))
+			.toMatchTextContent("Anaconda");
+	});
+
 	it("says when an older bridge could only compare channel names", async () => {
 		await renderLink({
 			search: link({ package: "numpy", channel: "pkgs/main" }),

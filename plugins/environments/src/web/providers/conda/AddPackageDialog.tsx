@@ -325,6 +325,7 @@ export function AddPackageDialog({
 									customized={channels.customized}
 									qaId="environments-conda-add-pkg-channels-btn"
 									availableChannels={channels.available}
+									linkChannels={channels.linkChannels}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
 								/>

@@ -48,6 +48,23 @@ describe("readPackageInstallLink", () => {
 		expect(install({ package: "numpy", channel: "" })).not.toHaveProperty("channel");
 	});
 
+	it("takes a channel named like an Object property as that channel", () => {
+		for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+			expect(install({ package: "numpy", channel: name })).toMatchObject({
+				kind: "install",
+				channel: name,
+			});
+		}
+	});
+
+	it("accepts the underscores conda allows in versions", () => {
+		expect(install({ package: "openjdk", version: "1.8.0_151" })).toMatchObject({
+			kind: "install",
+			version: "1.8.0_151",
+			spec: "openjdk=1.8.0_151",
+		});
+	});
+
 	it("rejects a link without a package", () => {
 		expect(install({})).toEqual({ kind: "invalid", reason: "missing-package" });
 		expect(install({ package: "   ", source: "dot-org" })).toEqual({

@@ -95,7 +95,10 @@ export function readPackageInstallLink(
 	if (!matchSpecSchema.safeParse(spec).success) return invalid("invalid-version");
 
 	const requested = optional(search["channel"]);
-	const channel = requested ? (ANACONDA_ORG_CHANNELS[requested] ?? requested) : undefined;
+	const channel =
+		requested && Object.hasOwn(ANACONDA_ORG_CHANNELS, requested)
+			? ANACONDA_ORG_CHANNELS[requested]
+			: requested;
 	if (channel && !isWebLinkChannel(channel)) return invalid("invalid-channel");
 
 	return {

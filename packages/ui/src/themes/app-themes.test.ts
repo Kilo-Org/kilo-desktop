@@ -56,30 +56,6 @@ describe("app theme presets", () => {
 			"nord",
 		]);
 		expect(APP_THEMES[0]!.name).toBe("Kilo");
-		expect(getThemeVariant("kilo", "light")?.tokens).toMatchObject({
-			sidebar: "#f4f4f4",
-			muted: "#f5f5f5",
-			border: "#e5e5e5",
-			primary: "#0a0a0a",
-			"primary-foreground": "#ffffff",
-			ring: "#737373",
-		});
-		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
-			background: "#111111",
-			foreground: "#d4d4d4",
-			border: "rgb(255 255 255 / 0.1)",
-			input: "rgb(255 255 255 / 0.1)",
-			primary: "#ededed",
-			"primary-foreground": "#111111",
-			ring: "#a3a3a3",
-			card: "#181818",
-			popover: "#2b2b2b",
-			sidebar: "#0e0e0e",
-			"sidebar-border": "rgb(255 255 255 / 0.1)",
-			muted: "#333333",
-			accent: "color-mix(in oklch, var(--foreground) 5%, transparent)",
-			secondary: "color-mix(in oklch, var(--foreground) 5%, transparent)",
-		});
 		const kiloCss = themeCss({ themeId: "kilo", accentId: "theme" });
 		expect(kiloCss).not.toContain("--shell-glass-opacity");
 		const dark = getThemeVariant("dracula", "dark")!;

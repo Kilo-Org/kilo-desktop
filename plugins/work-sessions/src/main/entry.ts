@@ -4,13 +4,12 @@ import { activateFileWatcher, type FileWatcherOptions } from "./file-watcher";
 import { activateKeybindings } from "./keybindings";
 import { activateLayoutPresets, type LayoutPresetsOptions } from "./layout-presets";
 import { activatePanes, type PanesOptions } from "./panes";
-import { activateStorage, type StorageOptions } from "./storage";
+import { activateStorage } from "./storage";
 import { activateWorkSessions, type WorkSessionsOptions } from "./work-sessions";
 import { activateWorkspaces, type WorkspacesOptions } from "./workspaces";
 
 /** Each area's dependencies, built per activation (real ones in production, fakes in tests). */
 export interface WorkSessionsMainOptions {
-	readonly storage?: (sdk: PluginSdk) => StorageOptions;
 	readonly workspaces?: (sdk: PluginSdk) => WorkspacesOptions;
 	readonly fileWatcher: (sdk: PluginSdk) => FileWatcherOptions;
 	readonly workSessions?: (sdk: PluginSdk) => WorkSessionsOptions;
@@ -28,7 +27,7 @@ export interface WorkSessionsMainOptions {
 export function createWorkSessionsMainEntry(options: WorkSessionsMainOptions): PluginEntry {
 	return definePlugin({
 		async activate(sdk) {
-			await activateStorage(sdk, options.storage?.(sdk));
+			await activateStorage(sdk);
 			await activateKeybindings(sdk);
 			activateWorkspaces(sdk, options.workspaces?.(sdk));
 			activateFileWatcher(sdk, options.fileWatcher(sdk));

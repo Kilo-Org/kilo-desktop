@@ -137,9 +137,7 @@ describe("the composer's resize edge", () => {
 			.elementLocator(inputBox())
 			.click({ position: { x: 24, y: inputBox().clientHeight - 8 } });
 		await expect.element(input()).toHaveFocus();
-		// Types up to 60 lines one keystroke batch at a time, which a loaded machine
-		// (the pre-push hook runs every package's tests at once) can stretch past 30s.
-	}, 90_000);
+	});
 
 	it("returns to the natural cap when the text shrinks or the message is sent", async () => {
 		const host = await showChat();

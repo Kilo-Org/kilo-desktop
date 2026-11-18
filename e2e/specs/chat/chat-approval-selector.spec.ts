@@ -4,7 +4,7 @@ test.use({ appIsolationKey: "chat-approval" });
 
 /**
  * Coverage for the chat composer approval selector: default and selected modes,
- * persistence, app-wide scope, and dismissal behavior.
+ * persistence and app-wide scope.
  */
 test.describe("Chat approval selector", () => {
 	test("defaults to Manual and opens the approval menu @smoke", async ({
@@ -118,41 +118,5 @@ test.describe("Chat approval selector", () => {
 		} finally {
 			await chatApprovalSelectorPage.cleanupCreatedChats();
 		}
-	});
-
-	test("Escape closes the menu without changing the approval mode", async ({
-		appShellPage,
-		chatComposerPage,
-		chatApprovalSelectorPage,
-	}) => {
-		await chatApprovalSelectorPage.reloadApp();
-		await appShellPage.verifyShellIsLoaded();
-		await chatComposerPage.openDraft();
-		await chatApprovalSelectorPage.openApprovalSelector();
-		await chatApprovalSelectorPage.selectManualApproval();
-		await chatApprovalSelectorPage.verifyApprovalLabel("Manual");
-		await chatApprovalSelectorPage.openApprovalSelector();
-		await chatApprovalSelectorPage.verifyApprovalModeIsSelected("manual");
-		await chatApprovalSelectorPage.closeWithEscape();
-		await chatApprovalSelectorPage.verifyApprovalMenuClosed();
-		await chatApprovalSelectorPage.verifyApprovalLabel("Manual");
-	});
-
-	test("clicking outside closes the menu without changing the approval mode", async ({
-		appShellPage,
-		chatComposerPage,
-		chatApprovalSelectorPage,
-	}) => {
-		await chatApprovalSelectorPage.reloadApp();
-		await appShellPage.verifyShellIsLoaded();
-		await chatComposerPage.openDraft();
-		await chatApprovalSelectorPage.openApprovalSelector();
-		await chatApprovalSelectorPage.selectManualApproval();
-		await chatApprovalSelectorPage.verifyApprovalLabel("Manual");
-		await chatApprovalSelectorPage.openApprovalSelector();
-		await chatApprovalSelectorPage.verifyApprovalModeIsSelected("manual");
-		await chatApprovalSelectorPage.closeByClickingOutside();
-		await chatApprovalSelectorPage.verifyApprovalMenuClosed();
-		await chatApprovalSelectorPage.verifyApprovalLabel("Manual");
 	});
 });

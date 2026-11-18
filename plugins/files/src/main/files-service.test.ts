@@ -417,7 +417,7 @@ describe("FilesService", () => {
 		await expect(service.gitStatus(workspace)).resolves.toBeNull();
 	});
 
-	it("saves atomically, preserves mode, detects conflicts, and permits explicit overwrite", async () => {
+	it("saves, preserves mode, detects conflicts, and permits explicit overwrite", async () => {
 		const workspace = await temporaryWorkspace();
 		const file = path.join(workspace, "script.sh");
 		await writeFile(file, "one\n", { mode: 0o755 });
@@ -596,55 +596,6 @@ describe("FilesService", () => {
 			expect(csv.kind === "text" && csv.revision).toMatch(/^[a-f0-9]{64}$/);
 			await expect(service.read(workspace, "data.tsv")).resolves.toMatchObject({ kind: "text" });
 		});
-	});
-
-	it("degrades to null when the injected git status lookup rejects", async () => {
-		const workspace = await temporaryWorkspace();
-		const service = new FilesService({
-			authorize: async () => undefined,
-			gitStatus: async () => {
-				throw new Error("git exploded");
-			},
-		});
-
-		await expect(service.gitStatus(workspace)).resolves.toBeNull();
-	});
-
-	it("saves atomically, preserves mode, detects conflicts, and permits explicit overwrite", async () => {
-		const workspace = await temporaryWorkspace();
-		const file = path.join(workspace, "script.sh");
-		await writeFile(file, "one\n", { mode: 0o755 });
-		const service = new FilesService({
-			authorize: async () => undefined,
-			gitStatus: async () => null,
-		});
-		const opened = await service.read(workspace, "script.sh");
-		if (opened.kind !== "text" || !opened.revision) throw new Error("Expected editable text");
-
-		const originalMode = (await stat(file)).mode & 0o777;
-		const saved = await service.write(workspace, "script.sh", "two\n", opened.revision);
-		expect(saved.status).toBe("saved");
-		expect((await stat(file)).mode & 0o777).toBe(originalMode);
-		await writeFile(file, "external\n", { mode: 0o755 });
-
-		const conflict = await service.write(
-			workspace,
-			"script.sh",
-			"three\n",
-			saved.status === "saved" ? saved.revision : "",
-		);
-		expect(conflict).toMatchObject({ status: "conflict" });
-		expect(await readFile(file, "utf8")).toBe("external\n");
-
-		const overwritten = await service.write(
-			workspace,
-			"script.sh",
-			"three\n",
-			saved.status === "saved" ? saved.revision : "",
-			true,
-		);
-		expect(overwritten.status).toBe("saved");
-		expect(await readFile(file, "utf8")).toBe("three\n");
 	});
 
 	describe("resolveFileLink", () => {

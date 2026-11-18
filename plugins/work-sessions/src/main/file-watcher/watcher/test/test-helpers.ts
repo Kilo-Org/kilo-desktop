@@ -1,9 +1,6 @@
 import type { KernelLogger as MainSdkLogger } from "@kilo-desktop/kernel";
 
-import type {
-	FileChangeEvent as WorkspaceFileChangeEvent,
-	WatchFilter as WorkspaceWatchFilter,
-} from "../../../../contracts/model";
+import type { FileChangeEvent as WorkspaceFileChangeEvent } from "../../../../contracts/model";
 import {
 	WorkspaceWatcher,
 	type RawWatcherEvent,
@@ -121,6 +118,8 @@ export interface TestWatcherOptions {
 export interface TestWatcher {
 	watcher: WorkspaceWatcher;
 	parcel: FakeParcelWatcher;
+	/** Every batch the watcher emitted on the event bus, as reported. */
+	batches: Array<WorkspaceFileChangeEvent["changes"]>;
 	/** Wait long enough for fake subscriptions, retries, and timers to settle. */
 	tick: (ms?: number) => Promise<void>;
 }
@@ -128,11 +127,15 @@ export interface TestWatcher {
 /** Construct a WorkspaceWatcher against the fake parcel boundary. */
 export function createTestWatcher(options: TestWatcherOptions = {}): TestWatcher {
 	const parcel = createFakeParcelWatcher();
+	const batches: TestWatcher["batches"] = [];
 	const watcher = new WorkspaceWatcher({
 		subscribeFn: options.subscribeFn ?? parcel.subscribe,
 		realpath: options.realpath ?? ((path: string) => path),
 		logger: options.logger ?? noopLogger,
-		emit: options.emit,
+		emit: (payload) => {
+			batches.push(payload.changes);
+			options.emit?.(payload);
+		},
 		retryDelayMs: options.retryDelayMs,
 		maxRetries: options.maxRetries,
 	});
@@ -140,10 +143,5 @@ export function createTestWatcher(options: TestWatcherOptions = {}): TestWatcher
 		new Promise<void>((resolve) => {
 			setTimeout(resolve, ms);
 		});
-	return { watcher, parcel, tick };
-}
-
-/** Convenience filter helper for tests. */
-export function noFilter(): WorkspaceWatchFilter {
-	return {};
+	return { watcher, parcel, batches, tick };
 }

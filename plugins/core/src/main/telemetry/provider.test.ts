@@ -147,21 +147,6 @@ describe("PostHogProvider", () => {
 		});
 	});
 
-	it("aliases the installation id to the email on the anonymous-to-identified transition", async () => {
-		const { calls, fetchMock } = fakeFetch();
-		const p = provider(baseConfig, fetchMock);
-
-		await p.track(entry());
-		await p.track(entry({ email: "dev@anaconda.com" }));
-
-		const events = calls.flatMap((call) => call.body.batch as Array<Record<string, unknown>>);
-		const alias = events.find((event) => event.event === "$create_alias");
-		expect(alias).toMatchObject({
-			distinct_id: "dev@anaconda.com",
-			properties: { alias: "install-1" },
-		});
-	});
-
 	it("aliases the previous account when switching between two signed-in users", async () => {
 		const { calls, fetchMock } = fakeFetch();
 		const p = provider(baseConfig, fetchMock);

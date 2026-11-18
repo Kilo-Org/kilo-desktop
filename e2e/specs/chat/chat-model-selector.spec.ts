@@ -5,9 +5,8 @@ import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
  * Model selector coverage against the packaged app: the trigger, the menu,
  * the provider rail (Favorites + Local Model Server), the search box, the
  * two empty states, menu dismissal/rail switching and the Kilo Gateway info
- * tooltip. Favoriting and the per-provider tooltip checks live in
- * chat-model-selector-favorites.spec.ts and chat-model-selector-tooltips.spec.ts,
- * split out so CI can run them on different shards.
+ * tooltip. Favoriting lives in chat-model-selector-favorites.spec.ts, split out
+ * so CI can run it on a different shard.
  *
  * No model selection or sending. The default model is out of scope.
  * Favorites persistence across reload/sessions is out of scope: the
@@ -115,6 +114,9 @@ test.describe("Chat model selector", () => {
 		await chatModelSelectorPage.openModelInfo(modelId);
 		await chatModelSelectorPage.verifyModelInfoOpen(modelId);
 		await chatModelSelectorPage.verifyModelInfoTitleAndDescription(modelId, modelName, groundTruth);
+		await chatModelSelectorPage.verifyModelInfoFacts(modelId, groundTruth);
+		await chatModelSelectorPage.verifyModelInfoOptionalCopySpelledCorrectly(modelId);
+		await chatModelSelectorPage.verifyModelInfoSectionsDoNotOverlap(modelId);
 
 		await chatModelSelectorPage.closeModelInfo(modelId);
 		await chatModelSelectorPage.verifyModelInfoClosed(modelId);

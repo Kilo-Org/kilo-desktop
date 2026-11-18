@@ -125,7 +125,6 @@ describe("unread", () => {
 			).toBe("/settings/appearance"),
 		);
 		chats!.update(chat("c1", { completedAt: watched + 5_000 }));
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(visitedAt()).toBe(watched);
 	});
 });

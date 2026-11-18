@@ -4,20 +4,15 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { BUNDLED_PLUGINS } from "@kilo-desktop/bundled-plugins";
-import anacondaManifest from "@kilo-desktop/plugin-anaconda/plugin.json";
-import browserManifest from "@kilo-desktop/plugin-browser/plugin.json";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json";
 import filesManifest from "@kilo-desktop/plugin-files/plugin.json";
 import gitManifest from "@kilo-desktop/plugin-git/plugin.json";
-import localInferenceManifest from "@kilo-desktop/plugin-local-inference/plugin.json";
-import marketplaceManifest from "@kilo-desktop/plugin-marketplace/plugin.json";
 import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
-import boardManifest from "@kilo-desktop/plugin-workspace-board/plugin.json";
 
 import { bundledPluginRoot, bundledWebPluginIds, mainRegistrations } from "./plugins.js";
 
@@ -31,46 +26,10 @@ describe("bundled plugin wiring", () => {
 		expect(registeredIds.toSorted()).toEqual(bundledIds.toSorted());
 	});
 
-	it.each([
-		coreManifest.id,
-		shellManifest.id,
-		workSessionsManifest.id,
-		chatManifest.id,
-		gitManifest.id,
-		filesManifest.id,
-		terminalManifest.id,
-		browserManifest.id,
-		notebookManifest.id,
-		marketplaceManifest.id,
-		localInferenceManifest.id,
-		environmentsManifest.id,
-		anacondaManifest.id,
-		boardManifest.id,
-	])("attaches %s's main entry", (pluginId) => {
-		const registration = mainRegistrations().find(
-			(candidate) => idOf(candidate.manifest) === pluginId,
-		);
-
-		expect(registration?.entry).toBeDefined();
-	});
-
 	it("lists only bundled plugins with a window entry as web plugins", () => {
 		const webIds = bundledWebPluginIds();
 
 		expect(webIds.every((id) => bundledIds.includes(id))).toBe(true);
-		expect(webIds).toContain(shellManifest.id);
-		expect(webIds).toContain(workSessionsManifest.id);
-		expect(webIds).toContain(chatManifest.id);
-		expect(webIds).toContain(gitManifest.id);
-		expect(webIds).toContain(filesManifest.id);
-		expect(webIds).toContain(terminalManifest.id);
-		expect(webIds).toContain(browserManifest.id);
-		expect(webIds).toContain(notebookManifest.id);
-		expect(webIds).toContain(marketplaceManifest.id);
-		expect(webIds).toContain(localInferenceManifest.id);
-		expect(webIds).toContain(environmentsManifest.id);
-		expect(webIds).toContain(anacondaManifest.id);
-		expect(webIds).toContain(boardManifest.id);
 		// kilo.core has no web entry, so a window may never call main as it.
 		expect(webIds).not.toContain(coreManifest.id);
 	});

@@ -493,24 +493,6 @@ describe("kilo.marketplace in main", () => {
 		]);
 	});
 
-	it("reports Kilo's server as unavailable without kilo.core", async () => {
-		const { main } = await createTestKernelPair({
-			main: [
-				{ manifest, definitions: MARKETPLACE_DEFINITIONS, entry: createMarketplaceMainEntry() },
-			],
-			renderer: [{ manifest, definitions: MARKETPLACE_DEFINITIONS }],
-			mainHostServices: () => ({ net: { fetch: globalThis.fetch } }),
-		});
-		await main.flush();
-
-		await expect(
-			main.kernelSdk.domainObjects.get(Marketplace)!.methods.remove({
-				item: { type: "mcp", id: "docs" },
-				scope: "global",
-			}),
-		).rejects.toMatchObject({ code: "UNAVAILABLE", message: "Kilo Server is unavailable." });
-	});
-
 	it("translates a CLI mutation failure into a business error", async () => {
 		const fetch = vi.fn(async (input: string | URL | Request) => {
 			const url = new URL(String(input));

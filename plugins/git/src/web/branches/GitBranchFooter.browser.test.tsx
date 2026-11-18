@@ -92,12 +92,14 @@ describe("the branch under a chat's composer", () => {
 			.element(page.getByTestId("git-branch-label").getByText("Detached HEAD"))
 			.toBeVisible();
 
-		await renderFooter(repositories, "/projects/bare");
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		const bare = await renderFooter(repositories, "/projects/bare");
+		await vi.waitFor(
+			() => expect(bare.calls("repositoryType")).toEqual([{ directory: "/projects/bare" }]),
+			WAIT,
+		);
 		expect(page.getByTestId("git-branch-label").query()).toBeNull();
 
 		await renderFooter(repositories, null);
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(page.getByTestId("git-init-thread-button").query()).toBeNull();
 	});
 

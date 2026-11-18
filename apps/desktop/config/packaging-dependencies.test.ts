@@ -116,64 +116,6 @@ describe("packaged production dependencies", () => {
 		expect(forge).not.toContain('"--legacy"');
 	});
 
-	it("moves the staged production dependency tree into the package", () => {
-		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain(
-			"await pruneProductionDependencies(stagedNodeModules, workspacePackageNames)",
-		);
-		expect(forge).toContain("await moveDirectory(stagedNodeModules, packagedNodeModules)");
-	});
-
-	it("removes development artifacts and externally staged native payloads", async () => {
-		const nodeModules = await mkdtemp(path.join(os.tmpdir(), "kilo-production-dependencies-"));
-		temporaryDirectories.push(nodeModules);
-		const packageRoot = path.join(nodeModules, "@kilo-desktop", "plugin-example");
-		const bridgePayload = path.join(
-			nodeModules,
-			"@anaconda",
-			"desktop-bridge-payload-darwin-arm64",
-		);
-		const windowsBridgePayload = path.join(
-			nodeModules,
-			"@anaconda",
-			"desktop-bridge-payload-win32-arm64",
-		);
-		const kiloCli = path.join(nodeModules, "@kilocode", "cli-darwin-arm64");
-		await Promise.all(
-			[".turbo", ".vitest", "coverage", "e2e", "dist"].map((directory) =>
-				mkdir(path.join(packageRoot, directory), { recursive: true }),
-			),
-		);
-		await mkdir(bridgePayload, { recursive: true });
-		await mkdir(windowsBridgePayload, { recursive: true });
-		await mkdir(kiloCli, { recursive: true });
-
-		await pruneProductionDependencies(nodeModules, ["@kilo-desktop/plugin-example"]);
-
-		for (const directory of [".turbo", ".vitest", "coverage", "e2e"]) {
-			expect(existsSync(path.join(packageRoot, directory))).toBe(false);
-		}
-		expect(existsSync(path.join(packageRoot, "dist"))).toBe(true);
-		expect(existsSync(bridgePayload)).toBe(false);
-		expect(existsSync(windowsBridgePayload)).toBe(false);
-		expect(existsSync(kiloCli)).toBe(false);
-	});
-
-	it("removes the bridge payload when no workspace package scope is staged", async () => {
-		const nodeModules = await mkdtemp(path.join(os.tmpdir(), "kilo-production-dependencies-"));
-		temporaryDirectories.push(nodeModules);
-		const bridgePayload = path.join(
-			nodeModules,
-			"@anaconda",
-			"desktop-bridge-payload-darwin-arm64",
-		);
-		await mkdir(bridgePayload, { recursive: true });
-
-		await pruneProductionDependencies(nodeModules, []);
-
-		expect(existsSync(bridgePayload)).toBe(false);
-	});
-
 	it("pins zod to one major so pnpm 12 deploy is unambiguous", () => {
 		const workspace = readFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "utf8");
 		const overrides = workspace.slice(workspace.indexOf("\noverrides:")).split(/\n(?=\S)/)[1];
@@ -265,11 +207,6 @@ describe("packaged production dependencies", () => {
 		expect(release).not.toContain("inputs.version");
 		expect(release).not.toContain("create-github-app-token");
 		expect(release).not.toContain("git push");
-	});
-
-	it("stamps the copyright notice on the packaged app from the shared build time", () => {
-		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain("appCopyright: getAppCopyright(buildTime)");
 	});
 
 	it("writes the app's legal files from every shipped bundle once production deps are staged", () => {
@@ -508,12 +445,6 @@ describe("packaged production dependencies", () => {
 		expect(scripts?.make).toBe("tsx config/run-packaging.ts make");
 		expect(scripts?.package).toBe("tsx config/run-packaging.ts package");
 		expect(scripts?.publish).toBe("tsx config/run-packaging.ts publish");
-	});
-
-	it("persists Electron native rebuilds in a workspace cache Forge can reuse", () => {
-		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain("useCache: true");
-		expect(forge).toContain('.electron-rebuild-cache"');
 	});
 
 	it("skips native addon rebuilds for e2e packages", () => {

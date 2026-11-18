@@ -381,7 +381,6 @@ describe("importing origin's workspaces", () => {
 
 		await workspaces.methods.remove({ id: "w1" });
 		const relaunched = await boot({ storage, originDatabase: database });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(relaunched.workspaces.getState().workspaces).toEqual([]);
 	});
 
@@ -404,10 +403,14 @@ describe("importing origin's workspaces", () => {
 		});
 		const database = await originDatabase([{ id: created.id, name: "Old", folders: [app] }]);
 
-		const { workspaces } = await boot({ storage, originDatabase: database });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		const relaunched = await boot({ storage, originDatabase: database });
+		await vi.waitFor(() =>
+			expect(relaunched.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
 
-		expect(workspaces.getState().workspaces).toEqual([created]);
+		expect(relaunched.workspaces.getState().workspaces).toEqual([created]);
 	});
 
 	it("starts empty when origin's database is missing or unreadable", async () => {
@@ -416,7 +419,16 @@ describe("importing origin's workspaces", () => {
 
 		const missing = await boot({ originDatabase: path.join(root, "absent.db") });
 		const unreadable = await boot({ originDatabase: garbage });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		await vi.waitFor(() =>
+			expect(missing.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
+		await vi.waitFor(() =>
+			expect(unreadable.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
 
 		expect(missing.workspaces.getState().workspaces).toEqual([]);
 		expect(unreadable.workspaces.getState().workspaces).toEqual([]);
@@ -434,9 +446,18 @@ describe("importing origin's workspaces", () => {
 		await rm(file);
 		await originDatabase([{ id: "w1", name: "App", folders: [app] }]);
 
-		const relaunched = await boot({ storage, originDatabase: file });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		let originReads = 0;
+		const relaunched = await boot({
+			storage,
+			originDatabase: file,
+			loadSqlite: async () => {
+				originReads += 1;
+				throw new Error("origin must not be read again");
+			},
+		});
 
+		// A relaunch that re-imported would have loaded the driver before boot returned.
+		expect(originReads).toBe(0);
 		expect(relaunched.workspaces.getState().workspaces).toEqual([]);
 	});
 
@@ -501,9 +522,19 @@ describe("importing origin's workspaces", () => {
 				expect(workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w1", "mine"]),
 			);
 			await workspaces.methods.remove({ id: "w1" });
-			const relaunched = await boot({ storage, originDatabase: database });
-			await new Promise((resolve) => setTimeout(resolve, 50));
-			expect(relaunched.workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["mine"]);
+			let originReads = 0;
+			const relaunched = await boot({
+				storage,
+				originDatabase: database,
+				loadSqlite: async () => {
+					originReads += 1;
+					throw new Error("origin must not be read again");
+				},
+			});
+			await vi.waitFor(() =>
+				expect(relaunched.workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["mine"]),
+			);
+			expect(originReads).toBe(0);
 		});
 
 		it("leaves them alone when some of origin's workspaces are already here", async () => {

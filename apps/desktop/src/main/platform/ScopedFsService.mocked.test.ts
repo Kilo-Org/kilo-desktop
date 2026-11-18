@@ -57,21 +57,6 @@ describe("ScopedFsService defensive fs failure handling", () => {
 		expect(error).not.toBeInstanceOf(BusinessError);
 	});
 
-	it("passes through EPERM from readFile without translating to BusinessError", async () => {
-		// A different unmapped code exercises the same default arm as EACCES,
-		// pinning the contract that ANY code not in the modeled set (ENOENT,
-		// EISDIR, ENOTDIR, EEXIST) is passed through verbatim.
-		const eperm = makeAccessError("EPERM");
-		mocks.readFile.mockRejectedValueOnce(eperm);
-
-		const service = makeService();
-		const error = await service
-			.readFile("kilo.todos", "restricted.txt")
-			.catch((cause: unknown) => cause);
-
-		expect(error).toBe(eperm);
-	});
-
 	it("passes non-Error throwables through translateFsError untouched", async () => {
 		// isFsError guard: things that are not Error instances (e.g. a bare
 		// object thrown from a broken adapter) bypass the switch entirely and

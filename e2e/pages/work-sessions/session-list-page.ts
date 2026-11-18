@@ -206,13 +206,6 @@ export class SessionListPage {
 		);
 	}
 
-	/** Waits for the header to name a title matching `pattern` and returns it in full. */
-	async openTitle(pattern: RegExp): Promise<string> {
-		const title = getLocatorByTestId("session-breadcrumb").getByText(pattern, { exact: true });
-		await expectElementToBeVisible(title, `The header should name ${pattern}`);
-		return (await title.innerText()).trim();
-	}
-
 	/** Opens another session from its row in the list. */
 	async switchTo(title: string): Promise<void> {
 		await click(this.row(title).getByTestId("session-list-item-trigger"));

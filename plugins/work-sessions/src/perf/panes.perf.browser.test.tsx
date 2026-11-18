@@ -97,7 +97,7 @@ async function mouse(type: "mousePressed" | "mouseMoved" | "mouseReleased", x: n
 }
 
 describe("pane canvas performance", () => {
-	it("drags a column splitter", { timeout: 120_000 }, async () => {
+	it("drags a column splitter", async () => {
 		const { calls } = await renderCanvas();
 		const handle = page.getByRole("separator", { name: "Resize column" }).first().element();
 		const box = handle.getBoundingClientRect();
@@ -136,7 +136,7 @@ describe("pane canvas performance", () => {
 		});
 	});
 
-	it("moves the mouse without dragging (harness overhead)", { timeout: 120_000 }, async () => {
+	it("moves the mouse without dragging (harness overhead)", async () => {
 		await renderCanvas();
 		const frames: number[] = [];
 		let last = await frame();
@@ -153,7 +153,7 @@ describe("pane canvas performance", () => {
 		});
 	});
 
-	it("switches the active pane", { timeout: 120_000 }, async () => {
+	it("switches the active pane", async () => {
 		const { calls } = await renderCanvas();
 		const savesBefore = calls.setLayout.mock.calls.length + calls.activatePane.mock.calls.length;
 		const rendersBefore = totalRenders();

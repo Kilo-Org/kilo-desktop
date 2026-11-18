@@ -19,8 +19,6 @@ import { GitService, type GitClientSlice, type WorkspaceAccess } from "./git-ser
 import { isManagedBranch } from "./worktree-manager";
 
 export interface RepositoryOptions {
-	/** Where patch files are written; git-client defaults to the OS temp folder. */
-	readonly tempDir?: string;
 	/** Replaces the git client (tests). */
 	readonly createClient?: () => GitClientSlice;
 }
@@ -174,7 +172,6 @@ export function activateRepository(sdk: PluginSdk, options: RepositoryOptions): 
 		logger: sdk.logger,
 		environmentReady: () => environmentReady(sdk),
 		workspaces: workspaceAccess(sdk),
-		...(options.tempDir === undefined ? {} : { tempDir: options.tempDir }),
 		...(options.createClient === undefined ? {} : { createClient: options.createClient }),
 	});
 	const repository = provideRepository(sdk, service);

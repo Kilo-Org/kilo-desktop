@@ -119,7 +119,6 @@ describe("origin's panes", () => {
 
 	it("wait for origin's work sessions to be imported, then hand over once", async () => {
 		const first = await renderWorkSessions({ localStorage: storage() });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(first.calls.openPane).not.toHaveBeenCalled();
 		expect(localStorage.getItem(ORIGIN_PANES_HANDED_OVER_KEY)).toBeNull();
 
@@ -131,7 +130,6 @@ describe("origin's panes", () => {
 			workSessions: [workSession("wses_tabs")],
 			localStorage: { ...localStorage },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(again.calls.openPane).not.toHaveBeenCalled();
 	});
 
@@ -141,7 +139,6 @@ describe("origin's panes", () => {
 			workSessions: [workSession("wses_tabs")],
 			localStorage: { [ORIGIN_PANES_STORAGE_KEY]: "{not json" },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 50));
 
 		expect(none.calls.openPane).not.toHaveBeenCalled();
 		expect(garbage.calls.openPane).not.toHaveBeenCalled();

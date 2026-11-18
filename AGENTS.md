@@ -43,7 +43,7 @@ Project skills live under [`.agents/skills/`](./.agents/skills/).
 4. **Every bundled plugin registers in `packages/bundled-plugins`** and the entry maps (`apps/desktop/src/main/kernel/plugins.ts`, `apps/web/src/kernel/plugins.ts`).
 5. **Tests boot real kernels** — `@kilo-desktop/kernel/testing` (`createTestKernelPair`, `createTestHost`) and a host plugin's `./testing` fixture (e.g. `renderShell` from `@kilo-desktop/plugin-shell/testing`); never hand-roll fake kernels or sdks. See `.agents/skills/write-vitest/SKILL.md`.
 6. **Every plugin ships at least one `@smoke` e2e spec** — see `docs/TESTING.md` and `.agents/skills/write-e2e-test/SKILL.md`.
-7. **Use oxlint + oxfmt** — not ESLint/Prettier. Run `pnpm lint` and `pnpm format`.
+7. **Use oxlint + oxfmt** — not ESLint/Prettier. Run `pnpm lint` and `pnpm format`. The `landmines` rules reject fixed sleeps and raised test timeouts; wait on the signal the test depends on instead (see [docs/TESTING.md](./docs/TESTING.md)).
 8. **Prefer Vitest over e2e** when Electron IPC / the packaged binary is not required — see `.agents/skills/write-vitest/SKILL.md`.
 9. **Strive for self-documenting code** — clear names and small functions over comments. Add comments only for what code cannot express: non-obvious rationale, surprising edge cases, or otherwise ambiguous intent. Do not narrate what the code plainly does.
 10. **Stateful services carry a module-level design comment** — a class that owns a lifecycle or state machine (reconcilers, managers, stores) gets one block comment at the top explaining ownership, invariants, and the "why" of its design (see `LocalInferenceService.ts` in kilo.local-inference for the shape). Keep it current when behavior changes; it substitutes for the narration rule 9 forbids inline.

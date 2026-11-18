@@ -26,6 +26,7 @@ import {
 	type PaneProps,
 	type WorkSessionPanes,
 } from "../../contracts";
+import { LAYOUT_SAVE_DELAY_MS } from "./SessionCanvas";
 
 const SESSION = workSession("wses_1", { title: "Fix login", workspaceId: "w-app" });
 const APP = workspace("w-app", "App", {
@@ -197,16 +198,21 @@ describe("session panes", () => {
 		const open = page.getByTestId("open-another-pane");
 		await expect.element(open).toBeVisible();
 
-		await open.click();
-		await vi.waitFor(() => expect(state()?.panes).toHaveLength(3));
-		const opened = state()?.panes.at(-1)?.id;
-		expect(state()?.activePaneId).toBe(opened);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			await open.click();
+			await vi.waitFor(() => expect(state()?.panes).toHaveLength(3));
+			const opened = state()?.panes.at(-1)?.id;
+			expect(state()?.activePaneId).toBe(opened);
 
-		// The pointerdown that focused the clicked pane queued a layout save; it
-		// must not write back the active pane the open has since moved on from.
-		await new Promise((resolve) => setTimeout(resolve, 300));
-		expect(state()?.activePaneId).toBe(opened);
-		expect(state()?.panes).toHaveLength(3);
+			// The pointerdown that focused the clicked pane queued a layout save; it
+			// must not write back the active pane the open has since moved on from.
+			await vi.advanceTimersByTimeAsync(LAYOUT_SAVE_DELAY_MS + 1);
+			expect(state()?.activePaneId).toBe(opened);
+			expect(state()?.panes).toHaveLength(3);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("lists a gated kind as unavailable, with why", async () => {

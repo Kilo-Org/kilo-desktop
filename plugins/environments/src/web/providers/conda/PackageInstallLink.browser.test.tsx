@@ -1,3 +1,4 @@
+import { focusManager } from "@tanstack/react-query";
 import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
@@ -461,6 +462,35 @@ describe("an anaconda.org install link", () => {
 		await userEvent.keyboard("{Enter}");
 		await expect.element(dialog).toHaveAttribute("data-step", "target");
 		expect(addChannel).not.toHaveBeenCalled();
+	});
+
+	it("keeps the person's step when a later check of the channel fails", async () => {
+		let checks = 0;
+		await renderLink({
+			search: link({ package: "numpy", channel: "conda-forge" }),
+			resolveChannel: async ({ channel }) => {
+				checks += 1;
+				if (checks === 1) return resolved(channel, true);
+				throw new KernelError("VALIDATION", "INVALID_CHANNEL: Invalid channel.");
+			},
+		});
+
+		const dialog = screen.getByTestId("environments-install-link-dialog");
+		await expect.element(dialog).toHaveAttribute("data-step", "target");
+		await userEvent.fill(screen.getByTestId("environments-install-link-search"), "dat");
+
+		// Coming back to the window must not undo an answered check.
+		try {
+			focusManager.setFocused(false);
+			focusManager.setFocused(true);
+			await new Promise((resolve) => setTimeout(resolve, 300));
+		} finally {
+			focusManager.setFocused(undefined);
+		}
+
+		await expect.element(dialog).toHaveAttribute("data-step", "target");
+		await expect.element(screen.getByTestId("environments-install-link-search")).toHaveValue("dat");
+		expect(screen.getByText("This install link is invalid.").elements()).toHaveLength(0);
 	});
 
 	it("says when an older bridge could only compare channel names", async () => {

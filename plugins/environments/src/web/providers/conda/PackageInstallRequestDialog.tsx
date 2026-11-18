@@ -82,14 +82,21 @@ export function PackageInstallRequestDialog({
 		...condaQueryOptions(conda, "resolveChannel", { channel: channel ?? "" }),
 		enabled: channel !== undefined,
 		retry: false,
-		// Each link asks afresh; main caches the answer briefly.
+		// Each link asks once: a re-check would wait behind conda jobs and could
+		// undo the answer the person is acting on. Retry asks again explicitly.
+		staleTime: Number.POSITIVE_INFINITY,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 		gcTime: 0,
 	});
+	const answer = resolution.data;
+	// Only a check with no answer yet can fail the flow.
+	const checkFailed = resolution.isError && answer === undefined;
 	const addChannel = useCondaMutation(conda, "addChannel", {
 		invalidates: ["listChannels", "prefixOptions", "findRepodata"],
 	});
 
-	const invalidChannel = resolution.isError && errorCode(resolution.error) === "INVALID_CHANNEL";
+	const invalidChannel = checkFailed && errorCode(resolution.error) === "INVALID_CHANNEL";
 	useEffect(() => {
 		if (!invalidChannel) return;
 		toast.error("This install link is invalid.", {
@@ -138,13 +145,13 @@ export function PackageInstallRequestDialog({
 
 	const step = !channel
 		? "target"
-		: resolution.isPending
-			? "checking"
-			: resolution.isError
+		: answer
+			? !answer.configured && channelChoice === null
+				? "channel"
+				: "target"
+			: checkFailed
 				? "check-failed"
-				: !resolution.data.configured && channelChoice === null
-					? "channel"
-					: "target";
+				: "checking";
 
 	return (
 		<Dialog
@@ -170,7 +177,7 @@ export function PackageInstallRequestDialog({
 				) : step === "channel" ? (
 					<ChannelStep
 						request={request}
-						exact={resolution.data?.exact ?? true}
+						exact={answer?.exact ?? true}
 						adding={addChannel.isPending}
 						addError={addChannel.error}
 						onInstallOnce={() => setChannelChoice("once")}

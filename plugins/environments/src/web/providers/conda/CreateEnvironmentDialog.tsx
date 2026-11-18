@@ -56,6 +56,8 @@ interface CreateEnvironmentDialogProps {
 	onClose: () => void;
 	/** Opens with these packages selected and channels added; read on mount. */
 	preset?: PackageInstallPreset;
+	/** The name the form opens with; read on mount. */
+	initialName?: string;
 	/** Called when an environment is created while the dialog is open. */
 	onCreated?: (environment: CondaEnv) => void;
 }
@@ -107,11 +109,12 @@ export function CreateEnvironmentDialog({
 	open,
 	onClose,
 	preset,
+	initialName,
 	onCreated,
 }: CreateEnvironmentDialogProps) {
 	const conda = useConda();
 	const track = useTrack();
-	const [name, setName] = useState("");
+	const [name, setName] = useState(initialName ?? "");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
 	const [pythonVersions, setPythonVersions] = useState<string[]>(PYTHON_VERSIONS_FALLBACK);

@@ -68,6 +68,7 @@ interface FlowOptions {
 	readonly installPackages?: (input: CondaPackagesInstallInput) => Promise<unknown>;
 	readonly previewInstall?: (input: CondaPackagesPreviewInput) => Promise<unknown>;
 	readonly createEnvironment?: (input: CondaEnvsCreateInput) => Promise<unknown>;
+	readonly listEnvironments?: () => Promise<unknown>;
 	readonly identity?: EnvironmentsHostOptions["identity"];
 	readonly logger?: KernelLogger;
 	readonly page?: "panel" | "page";
@@ -79,7 +80,7 @@ function renderLink(options: FlowOptions) {
 		...(options.identity ? { identity: options.identity } : {}),
 		...(options.logger ? { logger: options.logger } : {}),
 		handlers: {
-			listEnvironments: async () => ENVIRONMENTS,
+			listEnvironments: options.listEnvironments ?? (async () => ENVIRONMENTS),
 			prefixOptions: async () => ({
 				envsDirs: ["/opt/anaconda3/envs"],
 				channels: ["defaults", "conda-forge"],
@@ -303,6 +304,55 @@ describe("an anaconda.org install link", () => {
 			});
 		});
 		await expect.element(addDialog).not.toBeInTheDocument();
+	});
+
+	it("offers a fresh environment, named after the package, apart from the list", async () => {
+		const createEnvironment = vi.fn(async (input: CondaEnvsCreateInput) => ({
+			jobId: "j",
+			environment: { name: input.name, prefix: input.prefix ?? "" },
+		}));
+		await renderLink({
+			search: link({ package: "numpy", version: "1.26.4", channel: "conda-forge" }),
+			createEnvironment,
+		});
+
+		const create = screen.getByTestId("environments-install-link-new-env");
+		await expect.element(create).toHaveAccessibleName("Create new environment");
+		// A choice of its own, not one more row among the environments.
+		const list = screen.getByRole("list", { name: "Existing environments" });
+		await expect.element(list.getByTestId("environments-install-link-env")).toHaveLength(3);
+		expect(list.getByTestId("environments-install-link-new-env").elements()).toHaveLength(0);
+
+		await userEvent.click(create);
+		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("numpy");
+		await expect
+			.element(screen.getByTestId("environments-create-selected-item"))
+			.toHaveTextContent("numpy1.26.4");
+
+		const submit = screen.getByTestId("environments-create-submit");
+		await expect.element(submit).toBeEnabled();
+		await userEvent.click(submit);
+		await vi.waitFor(() => expect(createEnvironment).toHaveBeenCalledOnce());
+		expect(createEnvironment.mock.calls[0]![0]).toMatchObject({
+			name: "numpy",
+			prefix: "/opt/anaconda3/envs/numpy",
+			packages: ["numpy=1.26.4"],
+			channels: ["conda-forge", "defaults"],
+		});
+	});
+
+	it("still offers a fresh environment when the environments fail to load", async () => {
+		await renderLink({
+			search: link({ package: "numpy" }),
+			listEnvironments: async () => {
+				throw new KernelError("BUSINESS", "PROVIDER_NOT_READY: bridge failed to start");
+			},
+		});
+
+		await expect.element(screen.getByTestId("environments-install-link-envs-error")).toBeVisible();
+		await userEvent.click(screen.getByTestId("environments-install-link-new-env"));
+		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("numpy");
 	});
 
 	it("adds the channel, then creates a new environment with the package", async () => {

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Alert, AlertDescription } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -27,7 +27,7 @@ import type { CondaEnv } from "../../../contracts/providers/conda";
 import { condaQueryOptions, useConda, useCondaMutation, useCondaQuery } from "../../conda";
 import { AddPackageDialog } from "./AddPackageDialog";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog";
-import { environmentDisplayName } from "./environment-display";
+import { environmentDisplayName, suggestEnvironmentName } from "./environment-display";
 import { friendlyEnvironmentsError } from "./environments-error-message";
 import type { PackageInstallLink } from "./package-install-link";
 import type { PackageInstallPreset } from "./PackageSearch";
@@ -48,7 +48,11 @@ type ChannelChoice = "once" | "added";
 type Stage =
 	| { readonly kind: "choose" }
 	| { readonly kind: "add-packages"; readonly env: CondaEnv; readonly preset: PackageInstallPreset }
-	| { readonly kind: "create"; readonly preset: PackageInstallPreset };
+	| {
+			readonly kind: "create";
+			readonly preset: PackageInstallPreset;
+			readonly name: string;
+	  };
 
 /**
  * An install link's flow, on top of the environments list:
@@ -57,7 +61,8 @@ type Stage =
  *    already provide it. The check can wait behind a running conda job.
  * 2. **Channel not configured**: install from it once, add it and install,
  *    or cancel. Adding a channel is the person's decision.
- * 3. **Target**: an existing environment or a new one.
+ * 3. **Target**: a new environment (named after the package) or an
+ *    existing one.
  *
  * It then hands over to Add packages or Create environment, opened with the
  * package selected and the link's channel ahead of the others.
@@ -117,6 +122,7 @@ export function PackageInstallRequestDialog({
 			<CreateEnvironmentDialog
 				open
 				preset={stage.preset}
+				initialName={stage.name}
 				onCreated={(environment) => {
 					created.current = environment;
 				}}
@@ -180,7 +186,7 @@ export function PackageInstallRequestDialog({
 					<TargetStep
 						request={request}
 						onChooseEnvironment={(env) => setStage({ kind: "add-packages", env, preset: preset() })}
-						onChooseNew={() => setStage({ kind: "create", preset: preset() })}
+						onChooseNew={(name) => setStage({ kind: "create", preset: preset(), name })}
 						onCancel={onDone}
 					/>
 				)}
@@ -341,12 +347,16 @@ function TargetStep({
 }: {
 	request: PackageInstallRequest;
 	onChooseEnvironment: (env: CondaEnv) => void;
-	onChooseNew: () => void;
+	/** Opens Create environment with the suggested name. */
+	onChooseNew: (name: string) => void;
 	onCancel: () => void;
 }) {
 	const conda = useConda();
 	const envs = useCondaQuery(conda, "listEnvironments");
 	const [query, setQuery] = useState("");
+	const newEnvironmentDescriptionId = useId();
+	const existingHeadingId = useId();
+	const suggestedName = suggestEnvironmentName(request.package, envs.data ?? []);
 	const visible = useMemo(() => {
 		const term = query.trim().toLowerCase();
 		const rows = envs.data ?? [];
@@ -372,9 +382,32 @@ function TargetStep({
 							From <Spec>{request.channel}</Spec>.{" "}
 						</>
 					) : null}
-					Choose the environment to install it into.
+					Install it into a new environment or one you already have.
 				</DialogDescription>
 			</DialogHeader>
+			<div className="border-border hover:bg-muted rounded-lg border transition-colors">
+				<SummaryCard.Row>
+					<SummaryCard.Button
+						onClick={() => onChooseNew(suggestedName)}
+						aria-label="Create new environment"
+						aria-describedby={newEnvironmentDescriptionId}
+						data-qa-id="environments-install-link-new-env"
+					>
+						<SummaryCard.Icon>
+							<PlusIcon aria-hidden="true" />
+						</SummaryCard.Icon>
+						<SummaryCard.Content>
+							<SummaryCard.Title>Create new environment</SummaryCard.Title>
+							<SummaryCard.Description id={newEnvironmentDescriptionId}>
+								Named <Spec>{suggestedName}</Spec>; you can rename it before it is created.
+							</SummaryCard.Description>
+						</SummaryCard.Content>
+					</SummaryCard.Button>
+				</SummaryCard.Row>
+			</div>
+			<p id={existingHeadingId} className="text-muted-foreground -mb-1 text-xs font-medium">
+				Existing environments
+			</p>
 			<InputGroup>
 				<InputGroupInput
 					type="search"
@@ -390,26 +423,8 @@ function TargetStep({
 			</InputGroup>
 			<ul
 				className="border-border divide-border max-h-72 min-w-0 divide-y overflow-y-auto rounded-lg border"
-				aria-label="Install into"
+				aria-labelledby={existingHeadingId}
 			>
-				<li className="hover:bg-muted transition-colors">
-					<SummaryCard.Row>
-						<SummaryCard.Button
-							onClick={onChooseNew}
-							data-qa-id="environments-install-link-new-env"
-						>
-							<SummaryCard.Icon>
-								<PlusIcon aria-hidden="true" />
-							</SummaryCard.Icon>
-							<SummaryCard.Content>
-								<SummaryCard.Title>New environment</SummaryCard.Title>
-								<SummaryCard.Description>
-									Create an environment with this package.
-								</SummaryCard.Description>
-							</SummaryCard.Content>
-						</SummaryCard.Button>
-					</SummaryCard.Row>
-				</li>
 				{envs.isPending ? (
 					<li
 						className="text-muted-foreground flex items-center gap-2 px-3 py-2.5"

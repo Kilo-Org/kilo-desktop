@@ -41,3 +41,35 @@ export function validateEnvironmentName(name: string): string | null {
 	}
 	return null;
 }
+
+/** Names conda keeps for its own root environment. */
+const RESERVED_ENVIRONMENT_NAMES = ["base", "root"];
+
+/** Leaves room for a `-<n>` suffix within the 128-character limit. */
+const SUGGESTED_NAME_MAX = 120;
+
+/**
+ * A name for a new environment made for one package: the package name, or
+ * `<name>-2`, `-3`… when an environment already uses it. Names are compared
+ * without case, since macOS and Windows folders are case-insensitive.
+ */
+export function suggestEnvironmentName(
+	packageName: string,
+	existing: readonly { name: string; prefix: string }[],
+): string {
+	const base =
+		packageName
+			.replace(/^[^A-Za-z0-9]+/, "")
+			.replace(/[^A-Za-z0-9._-]/g, "-")
+			.slice(0, SUGGESTED_NAME_MAX) || "env";
+	const taken = new Set(RESERVED_ENVIRONMENT_NAMES);
+	for (const env of existing) {
+		if (env.name) taken.add(env.name.toLowerCase());
+		taken.add(basename(env.prefix).toLowerCase());
+	}
+	if (!taken.has(base.toLowerCase())) return base;
+	for (let suffix = 2; ; suffix += 1) {
+		const candidate = `${base}-${suffix}`;
+		if (!taken.has(candidate.toLowerCase())) return candidate;
+	}
+}

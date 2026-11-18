@@ -29,7 +29,7 @@
 		"@assistant-ui/react-markdown": "^0.14.25",
 		"@base-ui/react": "^1.9.0",
 		"@lobehub/icons": "^6.15.2",
-		"@lottiefiles/dotlottie-react": "0.21.1",
+		"@lottiefiles/dotlottie-react": "0.22.2",
 		"@lottiefiles/dotlottie-web": "0.83.2",
 		"@shadcn/react": "^0.3.1",
 		"class-variance-authority": "^0.7.1",

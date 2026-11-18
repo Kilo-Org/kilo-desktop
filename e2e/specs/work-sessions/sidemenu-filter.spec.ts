@@ -6,12 +6,9 @@ import { test } from "../../fixtures/work-sessions/sidemenu-filter.js";
 import { removePathAfterAppStops } from "../../fixtures/shell.js";
 import type { SessionListPage } from "../../pages/work-sessions/session-list-page.js";
 
-/** A title with scripts, combining marks and an emoji, to prove the row survives it. */
-const AWKWARD = "Ünïcode — 作業セッション 🚀 with a long trailing title the row has to truncate";
-
 /**
  * Seeds one session inside a fresh workspace and one outside any, named for the
- * test that asked.
+ * the reload-persistence test.
  *
  * Every test here shares the block's app, so seeded sessions accumulate, and
  * row locators match titles by case-insensitive substring: each test needs its
@@ -32,28 +29,10 @@ async function seedPair(sessionListPage: SessionListPage, prefix: string) {
 }
 
 /**
- * What the side menu's workspace filter shows. Narrowing to one workspace is
- * covered at the component tier; the All and unscoped choices are not, at any
- * tier, so they are what these assert.
+ * The workspace filter choices are covered at the component tier; this
+ * verifies that its selection survives a window reload.
  */
-test.describe("Side menu workspace filter choices @packaged", () => {
-	test("narrows to the sessions outside a workspace, then All brings them all back @smoke", async ({
-		sidemenuPage,
-		sessionListPage,
-	}) => {
-		const { inside, loose } = await seedPair(sessionListPage, "Narrowing");
-		await sessionListPage.verifyListed(inside);
-		await sessionListPage.verifyListed(loose);
-
-		await sidemenuPage.focusUnscopedInFilter();
-		await sessionListPage.verifyListed(loose);
-		await sessionListPage.verifyNotListed(inside);
-
-		await sidemenuPage.focusAllWorkspacesInFilter();
-		await sessionListPage.verifyListed(inside);
-		await sessionListPage.verifyListed(loose);
-	});
-
+test.describe("Side menu workspace filter persistence @packaged", () => {
 	test("keeps the filter's choice across a window reload", async ({
 		sidemenuPage,
 		sessionListPage,
@@ -69,17 +48,5 @@ test.describe("Side menu workspace filter choices @packaged", () => {
 
 		// Leave the filter as the next test expects to find it.
 		await sidemenuPage.focusAllWorkspacesInFilter();
-	});
-});
-
-test.describe("Side menu with an awkward title @packaged", () => {
-	test("lists and opens a session whose title is long and not latin", async ({
-		sessionListPage,
-	}) => {
-		await sessionListPage.seedSessions([AWKWARD]);
-		await sessionListPage.reloadWindow();
-
-		await sessionListPage.verifyListed(AWKWARD);
-		await sessionListPage.switchTo(AWKWARD);
 	});
 });

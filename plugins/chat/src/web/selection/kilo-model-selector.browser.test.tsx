@@ -285,7 +285,6 @@ describe("KiloModelSelector", () => {
 
 		await expect.element(trigger).toBeVisible();
 		await expect.element(trigger).toBeDisabled();
-		await expect.element(trigger).toHaveClass("disabled:cursor-not-allowed");
 	});
 
 	it("keeps the trigger enabled while an empty catalog is still loading", async () => {

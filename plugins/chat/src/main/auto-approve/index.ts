@@ -35,11 +35,6 @@ interface PersistedMode extends Record<string, unknown> {
 
 type ChatsHandle = DomainObjectHandle<typeof Chats>;
 
-export interface AutoApproveOptions {
-	readonly revealAfterMs?: number;
-	readonly dropResolvedAfterMs?: number;
-}
-
 /**
  * How long a resolved request stays in `holding`: long enough for each
  * window's own stream to drop it first, short enough that a window which
@@ -61,8 +56,8 @@ const DROP_RESOLVED_AFTER_MS = 1_000;
  *   while signed out. The gateway will refuse it, so asking first only puts
  *   Kilo's prompt before (or, if denied, instead of) chat's sign-in prompt.
  * - A request it has decided to answer is in `holding` (cards hide it) until
- *   the reply fails or `revealAfterMs` passes. One that resolves stays listed
- *   for `dropResolvedAfterMs` (see `dropResolved`). A request is not held
+ *   the reply fails or `PERMISSION_AUTO_ANSWER_TIMEOUT_MS` passes. One that
+ *   resolves stays listed for `DROP_RESOLVED_AFTER_MS` (see `dropResolved`). A request is not held
  *   while it is read: the windows already hide, for a while, those they
  *   predict it will answer, and holding the rest would hide prompts a person
  *   must answer.
@@ -76,9 +71,7 @@ const DROP_RESOLVED_AFTER_MS = 1_000;
  *   (`approval: "ask"`) still reach this auto-approver, which answers them
  *   in Auto.
  */
-export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions = {}): void {
-	const revealAfterMs = options.revealAfterMs ?? PERMISSION_AUTO_ANSWER_TIMEOUT_MS;
-	const dropResolvedAfterMs = options.dropResolvedAfterMs ?? DROP_RESOLVED_AFTER_MS;
+export function activateAutoApprove(sdk: PluginSdk): void {
 	const store = mainHost(sdk).storage.kv<PersistedMode>({
 		namespace: "auto-approve",
 		defaults: { mode: "manual" },
@@ -124,7 +117,7 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 		if (held.has(permissionId)) return;
 		held.set(
 			permissionId,
-			setTimeout(() => release(permissionId), revealAfterMs),
+			setTimeout(() => release(permissionId), PERMISSION_AUTO_ANSWER_TIMEOUT_MS),
 		);
 		publishHolding();
 	}
@@ -138,7 +131,7 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 	}
 
 	/**
-	 * Lets go of a resolved request after `dropResolvedAfterMs`. Each window
+	 * Lets go of a resolved request after `DROP_RESOLVED_AFTER_MS`. Each window
 	 * drops it on its own stream; a `holding` update arriving first would show
 	 * its card in place of the composer for a moment.
 	 */
@@ -148,7 +141,7 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 		clearTimeout(timer);
 		held.set(
 			permissionId,
-			setTimeout(() => release(permissionId), dropResolvedAfterMs),
+			setTimeout(() => release(permissionId), DROP_RESOLVED_AFTER_MS),
 		);
 	}
 

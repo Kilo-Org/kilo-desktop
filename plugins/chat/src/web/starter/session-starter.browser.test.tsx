@@ -143,7 +143,7 @@ describe("the New Session page's composer", () => {
 
 		await send("Hello?");
 
-		await expect.element(page.getByText("Could not start the chat").first()).toBeVisible();
+		await expect.element(page.getByText("Could not start the chat")).toBeVisible();
 		await expect.element(composerInput()).toHaveTextContent("Hello?");
 		expect(host.workSessions.calls.create).not.toHaveBeenCalled();
 	});

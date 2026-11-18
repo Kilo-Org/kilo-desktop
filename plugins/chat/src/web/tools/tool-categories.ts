@@ -244,7 +244,7 @@ export type ActivitySegment = {
  * derives from the same `getActivityKind`), so segment boundaries match the
  * rendered subgroup rows one-to-one.
  */
-export const buildActivitySegments = (
+const buildActivitySegments = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
 ): ActivitySegment[] => {
@@ -557,7 +557,7 @@ const questionSummaryFromArgs = (args: unknown): string | undefined => {
 };
 
 /** Prefer the first concrete question prompt in the segment. */
-export const getPartQuestionSummary = (part: ActivityPart): string | undefined => {
+const getPartQuestionSummary = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isAskQuestionTool(part.toolName)) {
 		return undefined;
 	}
@@ -565,7 +565,7 @@ export const getPartQuestionSummary = (part: ActivityPart): string | undefined =
 };
 
 /** OpenCode/Kilo `skill` tool takes `{ name }`. */
-export const getPartSkillName = (part: ActivityPart): string | undefined => {
+const getPartSkillName = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
 		return undefined;
 	}
@@ -575,7 +575,7 @@ export const getPartSkillName = (part: ActivityPart): string | undefined => {
 };
 
 /** OpenCode/Kilo `task` tool takes `{ description, prompt, subagent_type }`. */
-export const getPartTaskDescription = (part: ActivityPart): string | undefined => {
+const getPartTaskDescription = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isTaskTool(part.toolName)) {
 		return undefined;
 	}

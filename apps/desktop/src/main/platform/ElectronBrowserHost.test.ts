@@ -61,7 +61,7 @@ vi.mock("./ElectronContextMenu.js", () => ({
 	attachContextMenu: vi.fn(() => detachContextMenu),
 }));
 
-import { browserLocalFileUrl } from "./browser-local-file-url.js";
+import { localFileUrl as browserLocalFileUrl } from "@kilo-desktop/plugin-browser/contracts";
 import { ElectronBrowserHost, shouldCancelLoopbackRequest } from "./ElectronBrowserHost.js";
 import { attachContextMenu } from "./ElectronContextMenu.js";
 

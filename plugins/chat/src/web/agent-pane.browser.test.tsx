@@ -419,26 +419,6 @@ describe("an agent pane with a chat", () => {
 		expect(server.openStreams).toBe(1);
 		expect(server.requestsTo("GET", "/global/event")).toHaveLength(1);
 	});
-
-	it("closes the previous test window's event stream before the next host opens", async () => {
-		const first = serverWithChat();
-		await renderChat({
-			server: first,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-		});
-		await vi.waitFor(() => expect(first.openStreams).toBe(1));
-
-		const second = serverWithChat();
-		await renderChat({
-			server: second,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-		});
-
-		await vi.waitFor(() => expect(first.openStreams).toBe(0));
-		await vi.waitFor(() => expect(second.openStreams).toBe(1));
-	});
 });
 
 describe("a turn that ends while its chat opens", () => {

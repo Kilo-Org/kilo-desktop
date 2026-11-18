@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { HAS_VCS_KEY, isOrphanedCopySession } from "../../contracts";
+import { isOrphanedCopySession } from "../../contracts";
 import { bootWorkSessions, chat, FakeCore, FakeVcs, storageWithWorkspaces } from "../test-boot";
 import { copyChatLinks } from "./isolation";
 
@@ -180,16 +180,6 @@ describe("creating a work session with isolation", () => {
 				{ path: COPY, isPrimary: true },
 			],
 		});
-	});
-});
-
-describe("hasVcs", () => {
-	it("is true while a vcs contribution is bound", async () => {
-		const withVcs = await boot();
-		const withoutVcs = await boot({ vcs: false });
-
-		expect(withVcs.kernel.kernelSdk.context.get(HAS_VCS_KEY)).toBe(true);
-		expect(withoutVcs.kernel.kernelSdk.context.get(HAS_VCS_KEY)).toBe(false);
 	});
 });
 

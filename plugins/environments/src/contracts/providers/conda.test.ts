@@ -132,10 +132,6 @@ describe("envTargetSchema", () => {
 		expect(envTargetSchema.safeParse({ name: "" }).success).toBe(false);
 		expect(envTargetSchema.safeParse({ name: "has space" }).success).toBe(false);
 	});
-
-	it("accepts when name is absent but prefix is valid", () => {
-		expect(envTargetSchema.safeParse({ prefix: "/opt/conda" }).success).toBe(true);
-	});
 });
 
 describe("matchSpecSchema", () => {

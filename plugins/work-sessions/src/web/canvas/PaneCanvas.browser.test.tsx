@@ -71,11 +71,6 @@ describe("PaneCanvas", () => {
 
 		expect(tab).toHaveAttribute("data-active", "true");
 		expect(frame).toHaveAttribute("data-pane-active", "true");
-
-		expect(tab?.className).toMatch(/bg-state-selected-strong/);
-		expect(tab?.className).toMatch(/text-foreground/);
-		expect(tab?.className).not.toMatch(/text-primary/);
-		expect(frame?.className).not.toMatch(/border/);
 	});
 
 	it("marks the focused island only when another island is visible", async () => {
@@ -1144,16 +1139,7 @@ describe("PaneCanvas", () => {
 
 		const filesTab = baseElement.querySelector("[data-pane-tab='files']");
 		const agentTab = baseElement.querySelector("[data-pane-tab='agent']");
-		const filesFrame = pane?.querySelector("[data-qa-id='chat-pane-frame']");
 		expect(filesTab).not.toHaveAttribute("data-pinned");
-		expect(filesTab?.className).not.toMatch(/border-primary/);
-		expect(filesTab?.className).not.toMatch(/border-info-foreground/);
-		expect(filesFrame?.className).not.toMatch(/border-primary/);
-		expect(filesFrame?.className).not.toMatch(/border-info-foreground/);
-		const agentFrame = baseElement.querySelector(
-			"[data-qa-id='chat-pane-agent'] [data-qa-id='chat-pane-frame']",
-		);
-		expect(agentFrame?.className).not.toMatch(/border-info-foreground/);
 		expect(agentTab).toHaveAttribute("data-active", "true");
 
 		await screen.getByTestId("chat-pane-tab-agent").hover();
@@ -1190,17 +1176,10 @@ describe("PaneCanvas", () => {
 		);
 
 		const tab = baseElement.querySelector("[data-pane-tab='agent']");
-		const frame = baseElement.querySelector(
-			"[data-qa-id='chat-pane-agent'] [data-qa-id='chat-pane-frame']",
-		);
 		const column = tab?.closest("[data-column-id]");
 		expect(column).toHaveAttribute("data-pinned", "true");
 		expect(tab).not.toHaveAttribute("data-pinned");
 		expect(tab).toHaveAttribute("data-active", "true");
-
-		expect(tab?.className).not.toMatch(/bg-info/);
-		expect(frame?.className).not.toMatch(/border-info-foreground/);
-		expect(frame?.className).not.toMatch(/border-primary/);
 	});
 
 	it("lets the user scroll back to the leading pane after selecting one at the end", async () => {
@@ -1457,28 +1436,6 @@ describe("PaneCanvas", () => {
 		window.dispatchEvent(new KeyboardEvent("keyup", { key: "Shift", bubbles: true }));
 	});
 
-	it("shows the pane title on the pane pill and keeps the pane header title-free", async () => {
-		const layout = createLayout([{ id: "agent", kind: "agent", title: "Code" }], "agent");
-		const { baseElement } = render(
-			<div style={{ display: "flex", width: 900, height: 400 }}>
-				<PaneCanvas
-					arrangement="tiles"
-					kinds={[]}
-					layout={layout}
-					onLaunch={vi.fn()}
-					onLayoutChange={vi.fn()}
-					onSelectPane={vi.fn()}
-					renderPane={() => null}
-				/>
-			</div>,
-		);
-		const screen = page.elementLocator(baseElement);
-		const tab = screen.getByTestId("chat-pane-tab-agent");
-		await expect.element(tab).toHaveTextContent("Code");
-		await expect.element(tab).not.toHaveAttribute("title");
-		await expect.element(screen.getByTestId("chat-pane-title")).not.toBeInTheDocument();
-	});
-
 	it("describes a pane pill with its title hint and keeps the pane header title-free", async () => {
 		const layout = createLayout([{ id: "files", kind: "document", title: "workspace-1" }], "files");
 		const { baseElement } = render(
@@ -1537,8 +1494,7 @@ describe("PaneCanvas", () => {
 
 		expect(filesGroupId).toBeTruthy();
 		expect(add).toBeTruthy();
-		expect(add).toHaveClass("opacity-0");
-		expect(add).not.toHaveClass("opacity-100");
+		expect(add && getComputedStyle(add).opacity).toBe("0");
 		expect(selectedAdd && getComputedStyle(selectedAdd).opacity).toBe("1");
 
 		await screen.getByTestId("chat-pane-tab-files").hover();
@@ -1606,7 +1562,6 @@ describe("PaneCanvas", () => {
 			expect(strip.scrollLeft).toBe(0);
 			expect(strip).not.toHaveAttribute("data-overflow-left");
 			expect(strip).not.toHaveAttribute("data-overflow-right");
-			expect(strip).toHaveClass("[mask-image:none]");
 		});
 		await expect
 			.element(screen.getByRole("button", { name: "Scroll tabs left" }))

@@ -1,12 +1,7 @@
 import path from "node:path";
 
 import type { KiloLogger } from "./KiloServerManager.js";
-import {
-	KILO_CONFIG_FILENAME,
-	OWNERSHIP_SIDECAR_FILENAME,
-	KiloConfigManager,
-	type KiloConfigMutationOutcome,
-} from "./KiloConfigManager.js";
+import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 
 /**
  * Reconciles the Desktop-owned `mcp.desktop` entry in Desktop's Kilo config.
@@ -16,7 +11,6 @@ import {
  * stdio relay entries that earlier builds wrote, so they are migrated.
  */
 
-export { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME };
 export const MCP_ENTRY_NAME = "desktop";
 /** kilo.agent wrote the entry first; config ownership is persisted, so the id stays. */
 export const MCP_ENTRY_SOURCE_ID = "kilo.agent";

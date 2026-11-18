@@ -14,7 +14,6 @@ import {
 	findCatalogAgent,
 	isCssColor,
 	OPTIMISTIC_AGENT_CATALOG,
-	prettifyAgentId,
 } from "./agent-catalog";
 
 function agent(partial: Partial<Agent> & Pick<Agent, "name" | "mode">): Agent {
@@ -197,18 +196,6 @@ describe("agent-catalog", () => {
 			[undefined, false],
 		])("isCssColor(%j) → %s", (input, expected) => {
 			expect(isCssColor(input)).toBe(expected);
-		});
-	});
-
-	describe("prettifyAgentId", () => {
-		it.each([
-			["docs-writer", "Docs Writer"],
-			["my_agent", "My Agent"],
-			["simple", "Simple"],
-			["multi-word-agent-name", "Multi Word Agent Name"],
-			["snake_case_name", "Snake Case Name"],
-		])("prettifyAgentId(%j) → %j", (input, expected) => {
-			expect(prettifyAgentId(input)).toBe(expected);
 		});
 	});
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDiffFromFile, sumFileDiffStats } from "./tool-ui-file-mutation";
+import { sumFileDiffStats } from "./tool-diff-stats";
+import { parseDiffFromFile } from "./tool-ui-file-mutation";
 
 describe("sumFileDiffStats", () => {
 	it("sums additions and deletions across hunks", () => {

@@ -89,7 +89,7 @@ async function launch(storage: MemoryStorage, database: string, chatsArriveLate:
 		core,
 		createId: () => `wses_adopted_${++id}`,
 		options: {
-			workspaces: () => ({ originDatabase: database, folderCheckIntervalMs: 60_000 }),
+			workspaces: () => ({ originDatabase: database }),
 			workSessions: () => ({ originDatabase: database, createId: () => `wses_adopted_${++id}` }),
 		},
 	});

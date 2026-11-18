@@ -54,7 +54,7 @@ describe("listModelCatalog", () => {
 				{
 					fetch,
 					getApiKey: async () => "anaconda-api-key",
-					getSiteDomain: async () => "anaconda.com",
+					getSiteDomain: async () => "stage.example.com",
 				},
 				"model/id",
 				"file id",
@@ -62,7 +62,7 @@ describe("listModelCatalog", () => {
 			),
 		).resolves.toBe("https://download.example.test/signed-model.gguf");
 		expect(fetch).toHaveBeenCalledWith(
-			"https://anaconda.com/api/ai/model/models/model%2Fid/files/file%20id/download",
+			"https://stage.example.com/api/ai/model/models/model%2Fid/files/file%20id/download",
 			{
 				headers: {
 					Accept: "application/json",
@@ -81,7 +81,7 @@ describe("listModelCatalog", () => {
 			listModelCatalog({
 				fetch,
 				getApiKey: async () => "anaconda-api-key",
-				getSiteDomain: async () => "anaconda.com",
+				getSiteDomain: async () => "stage.example.com",
 			}),
 		).resolves.toEqual({
 			models: [
@@ -117,7 +117,7 @@ describe("listModelCatalog", () => {
 			],
 			total: 1,
 		});
-		expect(fetch).toHaveBeenCalledWith("https://anaconda.com/api/ai/model/models", {
+		expect(fetch).toHaveBeenCalledWith("https://stage.example.com/api/ai/model/models", {
 			headers: {
 				Accept: "application/json",
 				Authorization: "Bearer anaconda-api-key",
@@ -463,53 +463,5 @@ describe("listModelCatalog", () => {
 		});
 		expect(fetch).not.toHaveBeenCalled();
 		expect(getSiteDomain).not.toHaveBeenCalled();
-	});
-
-	it("requests the catalog from the configured Anaconda site", async () => {
-		const fetch = vi.fn(async () => Response.json({ result: { data: [apiModel], total: 1 } }));
-
-		await listModelCatalog({
-			fetch,
-			getApiKey: async () => "anaconda-api-key",
-			getSiteDomain: async () => "stage.example.com",
-		});
-
-		expect(fetch).toHaveBeenCalledWith("https://stage.example.com/api/ai/model/models", {
-			headers: {
-				Accept: "application/json",
-				Authorization: "Bearer anaconda-api-key",
-				"X-Anaconda-Api-Version": "3",
-			},
-		});
-	});
-
-	it("resolves download URLs from the configured Anaconda site", async () => {
-		const fetch = vi.fn(async () =>
-			Response.json({ download_url: "https://download.example.test/signed-model.gguf" }),
-		);
-		const signal = new AbortController().signal;
-
-		await getModelDownloadUrl(
-			{
-				fetch,
-				getApiKey: async () => "anaconda-api-key",
-				getSiteDomain: async () => "stage.example.com",
-			},
-			"model/id",
-			"file id",
-			signal,
-		);
-
-		expect(fetch).toHaveBeenCalledWith(
-			"https://stage.example.com/api/ai/model/models/model%2Fid/files/file%20id/download",
-			{
-				headers: {
-					Accept: "application/json",
-					Authorization: "Bearer anaconda-api-key",
-					"X-Anaconda-Api-Version": "3",
-				},
-				signal,
-			},
-		);
 	});
 });

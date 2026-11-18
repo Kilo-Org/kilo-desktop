@@ -1,5 +1,5 @@
 import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -955,9 +955,13 @@ describe("LocalInferenceService", () => {
 				apiKey: "secret",
 			},
 		});
-		expect(status.status === "ready" ? status.connection?.baseUrl : undefined).toMatch(
-			/^http:\/\/.+:8080\/v1$/,
-		);
+		const hostNics = Object.values(networkInterfaces())
+			.flat()
+			.filter((nic) => nic?.family === "IPv4" && !nic.internal)
+			.map((nic) => nic!.address);
+		const baseUrl = status.status === "ready" ? status.connection?.baseUrl : undefined;
+		// The host's own LAN address when it has one, and loopback only when it has none.
+		expect(baseUrl).toBe(`http://${hostNics[0] ?? "127.0.0.1"}:8080/v1`);
 	});
 
 	it("keeps a failed router status instead of a generic configuration error", async () => {

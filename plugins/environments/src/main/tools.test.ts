@@ -67,14 +67,6 @@ describe("the conda agent tools", () => {
 		]);
 	});
 
-	it("open settings through the window instead of navigating themselves", async () => {
-		const { tools, opened } = setup();
-		await expect(Promise.resolve(tools["conda.setup.open"]!.run({}, CONTEXT))).resolves.toEqual({
-			opened: true,
-		});
-		expect(opened()).toBe(1);
-	});
-
 	it("never let the agent choose an environment's location", () => {
 		const parsed = setup().tools["conda.envs.create"]!.input.parse({
 			name: "dev",

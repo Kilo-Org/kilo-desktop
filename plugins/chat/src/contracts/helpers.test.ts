@@ -28,6 +28,9 @@ describe("auto-approve policies", () => {
 		expect(neverAutoReplied({ configProtected: true })).toBe(true);
 		expect(neverAutoReplied({ skillShell: true })).toBe(false);
 		expect(needsPerson({ skillShell: true })).toBe(true);
+		expect(needsPerson({ sandboxEscalation: true })).toBe(true);
+		expect(needsPerson({ configProtected: true })).toBe(true);
+		expect(needsPerson({ sandboxEscalation: "yes" })).toBe(false);
 		expect(needsPerson({})).toBe(false);
 	});
 });

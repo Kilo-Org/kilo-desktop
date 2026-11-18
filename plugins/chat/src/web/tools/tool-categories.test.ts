@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import {
 	activityKindFromGroupKey,
-	buildActivitySegments,
 	formatMcpServerLabel,
 	formatToolDisplayName,
 	getActivityKind,
@@ -93,6 +92,20 @@ describe("asking activity grouping", () => {
 			requiresAction: false,
 		});
 		expect(stats.question).toBe("What would you like to work on next?");
+	});
+
+	it("falls back to the question's header, its count, or a bare prompt", () => {
+		const question = (args: unknown) =>
+			getSegmentStats([{ type: "tool-call", toolName: "question", args }], {
+				kind: "asking",
+				indices: [0],
+				running: false,
+				requiresAction: false,
+			}).question;
+		expect(question({ questions: [{ header: "Env" }] })).toBe("Env");
+		expect(question({ questions: [{}, {}] })).toBe("2 questions");
+		expect(question({ prompt: "Go on?" })).toBe("Go on?");
+		expect(question("nope")).toBeUndefined();
 	});
 
 	it("matches only the pending ask tool call, not prior asks", () => {
@@ -261,6 +274,14 @@ describe("subagent activity grouping", () => {
 			requiresAction: false,
 		});
 		expect(stats.task).toBe("Explore auth flow");
+	});
+
+	it("collapses whitespace in the task description", () => {
+		const stats = getSegmentStats(
+			[{ type: "tool-call", toolName: "task", args: { description: "  Audit\n login " } }],
+			{ kind: "subagent", indices: [0], running: false, requiresAction: false },
+		);
+		expect(stats.task).toBe("Audit login");
 	});
 
 	it("falls back to the agent type when the description is missing", () => {
@@ -436,19 +457,6 @@ describe("MCP activity grouping", () => {
 			"Atlassian",
 			"Thinking",
 			"Atlassian",
-		]);
-	});
-
-	it("buildActivitySegments matches summarizeActivity boundaries", () => {
-		const parts: ActivityPart[] = [
-			{ type: "reasoning" },
-			{ type: "tool-call", toolName: "atlassian_a" },
-			{ type: "tool-call", toolName: "atlassian_b" },
-		];
-		const segments = buildActivitySegments(parts, [0, 1, 2]);
-		expect(segments.map((s) => ({ kind: s.kind, indices: s.indices }))).toEqual([
-			{ kind: "thinking", indices: [0] },
-			{ kind: "mcp:atlassian", indices: [1, 2] },
 		]);
 	});
 });

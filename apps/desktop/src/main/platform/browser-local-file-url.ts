@@ -6,6 +6,7 @@
  * {@link createBrowserLocalFileContentSecurityPolicy}.
  *
  * URL shape: `kilo-file://local/<absolute path, each segment URI-encoded>`.
+ * kilo.browser builds these URLs (`localFileUrl`); the host only decodes them.
  * The path lives in the URL (not a session token) so a restored Browser tab
  * reopens the same file after a restart.
  */
@@ -13,12 +14,6 @@ export const BROWSER_LOCAL_FILE_SCHEME = "kilo-file";
 const BROWSER_LOCAL_FILE_HOST = "local";
 const BROWSER_LOCAL_FILE_ORIGIN = `${BROWSER_LOCAL_FILE_SCHEME}://${BROWSER_LOCAL_FILE_HOST}`;
 const WINDOWS_DRIVE_PATH = /^\/[A-Za-z]:\//;
-
-export function browserLocalFileUrl(absolutePath: string): string {
-	const slashed = absolutePath.replaceAll("\\", "/");
-	const rooted = slashed.startsWith("/") ? slashed : `/${slashed}`;
-	return `${BROWSER_LOCAL_FILE_ORIGIN}${rooted.split("/").map(encodeURIComponent).join("/")}`;
-}
 
 /**
  * The absolute path a `kilo-file:` URL names, or `undefined` for any other

@@ -149,8 +149,6 @@ export const McpServer = defineExtensionPoint({
 	implementation: implementation<McpServerSource>("main", { required: false }),
 });
 
-export const AGENT_EXTENSION_TYPES = ["kilo-plugin", "skill", "agent", "command"] as const;
-
 /** `${resources}` is the contributing plugin's own `resources/` folder; the kernel resolves it. */
 const resourcePathSchema = z.string().min(1);
 

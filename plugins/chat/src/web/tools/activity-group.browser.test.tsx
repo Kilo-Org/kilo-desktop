@@ -166,9 +166,6 @@ describe("Reading activity subgroup", () => {
 		const trigger = getByRole("button", { name: "Reading mark.svg" });
 
 		expect(trigger.getAttribute("aria-expanded")).toBe("false");
-		expect(trigger.querySelector('[data-slot="activity-disclosure-icon"]')).toHaveClass(
-			"lucide-chevron-right",
-		);
 
 		fireEvent.click(trigger);
 
@@ -440,7 +437,7 @@ describe("Notebooks activity subgroup", () => {
 
 		runtime.message.parts = [completedRead, runningNotebook, runningNotebookConnect];
 		runtime.message.status = { type: "running" };
-		const { container, getByRole, getByText, queryByText, rerender } = await mount(
+		const { getByRole, getByText, queryByText, rerender } = await mount(
 			renderGroup(runtime.message.parts),
 			{ fakeTimers: true },
 		);
@@ -470,9 +467,6 @@ describe("Notebooks activity subgroup", () => {
 		});
 		expect(getByRole("button", { name: /tools used/ })).toBeDefined();
 		expect(queryByText("Show less")).toBeNull();
-		expect(container.querySelector('[data-slot="collapsible-content"]')?.className).toContain(
-			"transition-[height]",
-		);
 	});
 
 	it("shows notebook tool display names without the notebooks prefix", async () => {

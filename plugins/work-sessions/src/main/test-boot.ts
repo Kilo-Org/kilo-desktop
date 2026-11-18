@@ -322,7 +322,6 @@ export async function bootWorkSessions(options: BootOptions = {}) {
 	let paneId = 0;
 	let clock = 1_000;
 	const entry = createWorkSessionsMainEntry({
-		storage: () => ({ readLegacy: async () => null }),
 		fileWatcher: () => ({ subscribeFn: unused, realpath: (path) => path }),
 		workspaces: () => ({ folderCheckIntervalMs: 60_000 }),
 		workSessions: () => ({

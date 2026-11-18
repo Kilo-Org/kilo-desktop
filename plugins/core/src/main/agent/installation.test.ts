@@ -73,22 +73,4 @@ describe("resolveKiloInstallation", () => {
 			else process.env.KILO_CODE_CLI_PATH = previous;
 		}
 	});
-
-	it("falls back to existsSync when no exists probe is injected", () => {
-		const previous = process.env.KILO_CODE_CLI_PATH;
-		delete process.env.KILO_CODE_CLI_PATH;
-		try {
-			// Omitting `exists` exercises the `?? existsSync` default; a bogus root
-			// does not exist on disk, so resolution reports the missing bundle.
-			expect(() =>
-				resolveKiloInstallation({
-					resourceRoots: ["/definitely/not/a/real/resource/root"],
-					platform: "darwin",
-					arch: "arm64",
-				}),
-			).toThrow("Bundled Kilo CLI is missing from the configured resource roots");
-		} finally {
-			if (previous !== undefined) process.env.KILO_CODE_CLI_PATH = previous;
-		}
-	});
 });

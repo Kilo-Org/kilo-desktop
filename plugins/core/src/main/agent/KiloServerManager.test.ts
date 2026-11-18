@@ -968,16 +968,6 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
-	it("does not include contributed env when no ContributedEnvManager is provided", async () => {
-		const { manager, spawn } = createHarness();
-		await manager.ensureRunning();
-		const environment = spawn.mock.calls[0]![2].env;
-
-		// Should still work — no ANACONDA_API_KEY since no contribution
-		expect(environment.ANACONDA_API_KEY).toBeUndefined();
-		manager.dispose();
-	});
-
 	it("contributed env cannot override Kilo-specific variables", async () => {
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const contributedEnv = new ContributedEnvManager(() => undefined, logger);

@@ -4,7 +4,6 @@ import {
 	PLAN_FOLLOWUP_ANSWER_CONTINUE,
 	PLAN_FOLLOWUP_ANSWER_KEEP_REFINING,
 	PLAN_FOLLOWUP_QUESTION,
-	buildPlanImplementAnswers,
 	findPlanFollowupRequest,
 	isPlanFollowupRequest,
 } from "./plan-followup";
@@ -70,11 +69,5 @@ describe("findPlanFollowupRequest", () => {
 	it("returns the plan follow-up among pending requests", () => {
 		expect(findPlanFollowupRequest([regularQuestion, planFollowup])).toEqual(planFollowup);
 		expect(findPlanFollowupRequest([regularQuestion])).toBeNull();
-	});
-});
-
-describe("buildPlanImplementAnswers", () => {
-	it("answers Continue here for implement", () => {
-		expect(buildPlanImplementAnswers()).toEqual([[PLAN_FOLLOWUP_ANSWER_CONTINUE]]);
 	});
 });

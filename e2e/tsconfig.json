@@ -2,6 +2,9 @@
 	"extends": "../tsconfig.base.json",
 	"compilerOptions": {
 		"noEmit": true,
+		// Lets scripts that run straight under Node (e2e/scripts/plan-pr-e2e.ts)
+		// import their TypeScript helpers by file name.
+		"allowImportingTsExtensions": true,
 		"types": ["node"]
 	},
 	"include": ["./**/*.ts"]

@@ -21,6 +21,25 @@ runs:
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .nvmrc
-        cache: ${{ inputs.pnpm-cache == 'true' && 'pnpm' || '' }}
         registry-url: https://npm.pkg.github.com
         scope: "@anaconda"
+
+    - name: Locate the pnpm store
+      if: inputs.pnpm-cache == 'true'
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    # Our own cache rather than setup-node's: setup-node only restores an exact
+    # lockfile match, so after any dependency change every PR downloaded all
+    # ~1,250 packages again. The prefix fallback restores the closest store and
+    # pnpm fetches only what changed. Caches saved on a PR branch are invisible
+    # to other PRs; .github/workflows/warm-caches.yml saves them on main.
+    - name: Cache the pnpm store
+      if: inputs.pnpm-cache == 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          pnpm-store-${{ runner.os }}-${{ runner.arch }}-

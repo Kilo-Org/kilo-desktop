@@ -230,6 +230,17 @@ export class ChatModelSelectorPage {
 	}
 
 	/**
+	 * Favorites `modelId` unless it already is. Favorites outlive a test in the
+	 * worker's app profile, so a toggle could unfavorite a model an earlier
+	 * test on the same worker favorited.
+	 */
+	async favorite(modelId: string): Promise<void> {
+		const label = await this.favoriteButton(modelId).getAttribute("aria-label");
+		if (label !== chatModelSelectorData.favoriteCopy.removeLabel)
+			await this.toggleFavorite(modelId);
+	}
+
+	/**
 	 * Independently fetches the same Kilo Gateway enrichment endpoint the app
 	 * reads (kilo.core's `gateway-catalog.ts`) and returns the fields the info
 	 * tooltip should show for `modelId` (a `kilo/<rawGatewayId>` id, as read

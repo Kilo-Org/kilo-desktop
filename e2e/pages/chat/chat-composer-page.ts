@@ -11,6 +11,7 @@ import {
 	getLocator,
 	getLocatorByRole,
 	getLocatorByTestId,
+	pressSequentially,
 	uploadFiles,
 } from "@anaconda/playwright-utils";
 
@@ -40,6 +41,8 @@ export class ChatComposerPage {
 		getLocatorByTestId("kilo-session-starter").or(this.agentPane());
 	private readonly thread = () => this.agentPane().getByTestId("kilo-chat-thread");
 	private readonly messageInput = () => getLocatorByRole("textbox", { name: "Message input" });
+	private readonly mentionChip = () =>
+		this.composerRoot().locator('[data-slot="directive-text-chip"]');
 	private readonly sendButton = () => getLocatorByTestId("kilo-composer-send");
 	private readonly userMessage = (text: string) =>
 		this.thread().locator('[data-role="user"]').getByText(text, { exact: true });
@@ -97,6 +100,33 @@ export class ChatComposerPage {
 
 	async typeMessage(text: string): Promise<void> {
 		await fill(this.messageInput(), text);
+	}
+
+	/** Types one key at a time, so the rich input's `@` trigger sees the typing and opens its menu. */
+	async typeMessageSequentially(text: string): Promise<void> {
+		await pressSequentially(this.messageInput(), text);
+	}
+
+	/**
+	 * Types `@query` into the composer and picks `fileName` from kilo.files'
+	 * mention menu, leaving a chip in the composer for the send to resolve to
+	 * the file's `@/path`.
+	 */
+	async mentionFile(query: string, fileName: string): Promise<void> {
+		await this.typeMessageSequentially(`@${query}`);
+		await click(getLocatorByRole("option", { name: fileName, exact: false }));
+	}
+
+	/** The composer holds a mention chip for `fileName`. */
+	async verifyComposerMention(fileName: string): Promise<void> {
+		await expectElementToContainText(this.mentionChip(), fileName, {
+			message: `The composer should show a mention chip for "${fileName}"`,
+		});
+	}
+
+	/** Sends what the composer holds, e.g. a mention chip added after its text. */
+	async sendComposer(): Promise<void> {
+		await click(this.sendButton());
 	}
 
 	async send(text: string): Promise<void> {

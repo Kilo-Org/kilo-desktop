@@ -14,6 +14,12 @@ import {
 	type ChatSummary,
 	type CreateChatInput,
 } from "@kilo-desktop/plugin-core/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import {
+	Notifications,
+	SHELL_DEFINITIONS,
+	type NotificationContent,
+} from "@kilo-desktop/plugin-shell/contracts";
 
 import manifest from "../../plugin.json";
 import {
@@ -246,6 +252,32 @@ export class FakeVcs {
 			},
 		},
 	});
+}
+
+/** kilo.shell under its real manifest, providing only notifications; posted notices are recorded by id. */
+export function fakeShell(notices: Map<string, NotificationContent>): PluginRegistration {
+	return {
+		manifest: shellManifest,
+		definitions: SHELL_DEFINITIONS,
+		entry: {
+			activate: (sdk) => {
+				sdk.domainObjects.provide(Notifications, {
+					initialState: { notices: {} },
+					methods: {
+						toast: unused,
+						post: ({ id, ...content }) => {
+							const key = id ?? `notice-${notices.size}`;
+							notices.set(key, content);
+							return key;
+						},
+						dismiss: ({ id }) => {
+							notices.delete(id);
+						},
+					},
+				});
+			},
+		},
+	};
 }
 
 export const APP_WORKSPACE: Workspace = {

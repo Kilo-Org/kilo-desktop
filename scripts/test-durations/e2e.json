@@ -10,9 +10,7 @@
 		"Browser tab @smoke @packaged \u203a navigates an embedded guest and adopts its page title": 4.4
 	},
 	"e2e/specs/chat/chat-approval-selector.spec.ts": {
-		"Chat approval selector \u203a Escape closes the menu without changing the approval mode": 2.1,
 		"Chat approval selector \u203a Manual and Auto labels always match the selected radio item": 1.8,
-		"Chat approval selector \u203a clicking outside closes the menu without changing the approval mode": 2,
 		"Chat approval selector \u203a defaults to Manual and opens the approval menu @smoke": 3.2,
 		"Chat approval selector \u203a selecting Auto updates the label and checked state and persists across reload @smoke": 3.6,
 		"Chat approval selector \u203a selecting Manual again persists across reload": 3.2,
@@ -39,29 +37,7 @@
 		"Chat mode selector \u203a the mode is scoped to the chat": 3.8
 	},
 	"e2e/specs/chat/chat-model-selector-favorites.spec.ts": {
-		"Chat model selector \u203a favorites keep every favorited Kilo Gateway model listed together @smoke": 18.4,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Anthropic) turns its star active and lists it under Favorites @smoke": 13.2,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (DeepSeek) turns its star active and lists it under Favorites @smoke": 13,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Google Gemini) turns its star active and lists it under Favorites @smoke": 12.5,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Meta Llama) turns its star active and lists it under Favorites @smoke": 12,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Mistral) turns its star active and lists it under Favorites @smoke": 13.2,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Moonshot Kimi) turns its star active and lists it under Favorites @smoke": 13.1,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (OpenAI) turns its star active and lists it under Favorites @smoke": 13.2,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Qwen) turns its star active and lists it under Favorites @smoke": 13.3,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (Zhipu GLM) turns its star active and lists it under Favorites @smoke": 12.7,
-		"Chat model selector \u203a favoriting a Kilo Gateway model (xAI Grok) turns its star active and lists it under Favorites @smoke": 12.7
-	},
-	"e2e/specs/chat/chat-model-selector-tooltips.spec.ts": {
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Anthropic) @reg": 12.3,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (DeepSeek) @reg": 12.6,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Google Gemini) @reg": 18,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Meta Llama) @reg": 18,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Mistral) @reg": 17.8,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Moonshot Kimi) @reg": 18.1,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (OpenAI) @reg": 17.7,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Qwen) @reg": 18,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (Zhipu GLM) @reg": 13.1,
-		"Chat model selector \u203a shows a well-formed, non-overlapping info tooltip for a Kilo Gateway model (xAI Grok) @reg": 12.4
+		"Chat model selector \u203a favorites keep every favorited Kilo Gateway model listed together @smoke": 18.4
 	},
 	"e2e/specs/chat/chat-model-selector.spec.ts": {
 		"Chat model selector \u203a Escape closes the menu and switching rails keeps the search box visible": 7.1,
@@ -235,9 +211,6 @@
 	},
 	"e2e/specs/work-sessions/layout-presets.spec.ts": {
 		"Session layout presets @smoke \u203a saves the current panes as the default layout and applies it to new sessions after a reload": 10
-	},
-	"e2e/specs/work-sessions/session-list.spec.ts": {
-		"Session list @packaged \u203a starts, renames, pins, archives and deletes a session @smoke": 3.8
 	},
 	"e2e/specs/work-sessions/sidemenu-bulk-actions.spec.ts": {
 		"Side menu bulk actions @packaged \u203a restores an archived selection, and offers no Archive for it": 7.8

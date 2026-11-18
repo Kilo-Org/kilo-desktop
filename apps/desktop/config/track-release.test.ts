@@ -273,4 +273,21 @@ describe("track release publishing", () => {
 			"kilo-desktop/latest/latest/linux/arm64/kilo-desktop.deb",
 		);
 	});
+
+	it("publishes x64 and arm64 Linux rpms next to the debs", () => {
+		const x64 = classifyReleaseDownload(
+			"/tmp/release-artifacts/release-linux/rpm/x64/kilo-desktop-1.2.3-1.x86_64.rpm",
+		);
+		const arm64 = classifyReleaseDownload(
+			"/tmp/release-artifacts/release-linux-arm64/rpm/arm64/kilo-desktop-1.2.3-1.arm64.rpm",
+		);
+		expect(x64).toMatchObject({ platform: "linux", arch: "x64", type: "rpm" });
+		expect(arm64).toMatchObject({ platform: "linux", arch: "arm64", type: "rpm" });
+		expect(getLatestAliasKey("stable", x64!)).toBe(
+			"kilo-desktop/latest/latest/linux/x64/kilo-desktop.rpm",
+		);
+		expect(getLatestAliasKey("preview", arm64!)).toBe(
+			"kilo-desktop/preview/latest/linux/arm64/kilo-desktop.rpm",
+		);
+	});
 });

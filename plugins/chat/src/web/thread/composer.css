@@ -23,13 +23,24 @@
 	   surface; outside panes it falls back to card. */
 	--composer-glass-surface: var(--pane-raised, var(--card));
 	--composer-glass-stroke: var(--border-subtle);
+	position: relative;
+	isolation: isolate;
+	outline: 1px solid var(--composer-glass-stroke);
+	outline-offset: -1px;
+}
+
+/* The blur lives on its own layer under the content, as in t3code's composer:
+   on the element itself it flickered while the transcript scrolled behind it. */
+.chat-composer-glass::before {
+	content: "";
+	pointer-events: none;
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
 	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
-	/* Chromium clips `border` at rounded corners when backdrop-filter is on
-	   the same element. Outline is painted after the filter and stays intact. */
-	outline: 1px solid var(--composer-glass-stroke);
-	outline-offset: -1px;
 }
 
 .chat-composer-glass.chat-composer-surface {
@@ -53,10 +64,18 @@
    focused; the outline comes back only while dragging. No glass: nothing
    scrolls under it, and the backdrop filter tinted it unevenly. */
 .chat-starter-flat .chat-composer-glass {
+	box-shadow: none;
+}
+
+.chat-starter-flat .chat-composer-glass::before {
 	background: color-mix(in oklab, var(--color-muted) 60%, transparent);
 	-webkit-backdrop-filter: none;
 	backdrop-filter: none;
-	box-shadow: none;
+}
+
+/* After the starter's fill so a drag tints every composer. */
+.chat-composer-glass[data-dragging="true"]::before {
+	background: color-mix(in oklab, var(--color-accent) 50%, var(--color-background));
 }
 
 .chat-starter-flat .chat-composer-glass:not([data-dragging="true"]) {
@@ -156,7 +175,7 @@
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-	.chat-composer-glass {
+	.chat-composer-glass::before {
 		background: var(--composer-glass-surface);
 	}
 }

@@ -93,7 +93,7 @@ export function createGitSessionActions(window: {
 				requests={window.requests}
 				onOpenChanges={() =>
 					void workSessionsWindow?.methods
-						.openPane({ kind: CHANGES_PANE_KIND })
+						.openPane({ kind: CHANGES_PANE_KIND, placement: "group" })
 						.catch(() => undefined)
 				}
 				{...(composer

@@ -61,7 +61,7 @@ export function CreateBranchDialog({
 	readonly onCancel: () => void;
 	readonly onCreate: (name: string, startPoint?: string) => void;
 }) {
-	const [name, setName] = useState(initialName);
+	const [name, setName] = useState(initialName.replaceAll(" ", "-"));
 	const trimmedName = name.trim();
 	const offerBaseChoice =
 		defaultBranch !== undefined && currentBranch !== undefined && defaultBranch !== currentBranch;
@@ -96,7 +96,7 @@ export function CreateBranchDialog({
 								aria-invalid={Boolean(errorMessage) || undefined}
 								value={name}
 								onChange={(event) => {
-									setName(event.target.value);
+									setName(event.target.value.replaceAll(" ", "-"));
 									onClearError();
 								}}
 							/>

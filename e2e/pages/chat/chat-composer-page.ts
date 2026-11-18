@@ -152,7 +152,11 @@ export class ChatComposerPage {
 		);
 	}
 
-	/** Picks the command `name` from the open `/` menu, leaving its chip in the composer. */
+	/**
+	 * Picks the command `name` from the open `/` menu, leaving its chip in the
+	 * composer. The locator names the row rather than taking the menu's first
+	 * match, which a catalog change could rerank.
+	 */
 	async chooseSlashCommand(name: string): Promise<void> {
 		await click(getLocatorByRole("option", { name, exact: false }));
 	}

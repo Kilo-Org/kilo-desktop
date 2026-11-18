@@ -9,6 +9,7 @@ import type { KvStore } from "@kilo-desktop/kernel";
 import type { LocalModel } from "../../contracts";
 import { LocalInferenceService } from "./LocalInferenceService";
 import type { LlamaRouterStatus } from "../runtime/LlamaRouterManager";
+import { advertisedListenHost } from "../runtime/connection-info";
 import { LocalModelRegistry, type PersistedLocalModels } from "../models/LocalModelRegistry";
 
 const roots: string[] = [];
@@ -955,13 +956,9 @@ describe("LocalInferenceService", () => {
 				apiKey: "secret",
 			},
 		});
-		const hostNics = Object.values(networkInterfaces())
-			.flat()
-			.filter((nic) => nic?.family === "IPv4" && !nic.internal)
-			.map((nic) => nic!.address);
 		const baseUrl = status.status === "ready" ? status.connection?.baseUrl : undefined;
-		// The host's own LAN address when it has one, and loopback only when it has none.
-		expect(baseUrl).toBe(`http://${hostNics[0] ?? "127.0.0.1"}:8080/v1`);
+		// The host's advertised LAN address when it has one, and loopback only when it has none.
+		expect(baseUrl).toBe(`http://${advertisedListenHost(true, networkInterfaces())}:8080/v1`);
 	});
 
 	it("keeps a failed router status instead of a generic configuration error", async () => {

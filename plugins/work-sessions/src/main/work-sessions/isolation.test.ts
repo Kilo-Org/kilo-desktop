@@ -307,12 +307,15 @@ describe("VS Code Agent Manager links", () => {
 			chat("ses_plain", { directory: "/projects/app" }),
 		];
 		const vcs = new FakeVcs();
-		await bootWorkSessions({ core, vcs });
+		const booted = await bootWorkSessions({ core, vcs });
 
 		await eventually(() => expect(vcs.links).toEqual([{ directory: "/wt/a", chatId: "ses_new" }]));
 		core.setReady(false);
 		core.setReady(true);
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		core.upsert(chat("ses_other", { directory: "/wt/c", worktreeBranch: "kilo/c", updatedAt: 3 }));
+		await eventually(() =>
+			expect(booted.list().some((session) => session.directory === "/wt/c")).toBe(true),
+		);
 		expect(vcs.links).toHaveLength(1);
 	});
 

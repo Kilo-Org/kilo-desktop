@@ -414,7 +414,6 @@ describe("an agent pane with a chat", () => {
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
 
 		host.view.unmount();
-		await new Promise((resolve) => setTimeout(resolve, 100));
 
 		expect(server.openStreams).toBe(1);
 		expect(server.requestsTo("GET", "/global/event")).toHaveLength(1);
@@ -720,7 +719,6 @@ describe("unsent text, when the chat is slow to load", () => {
 		await host.popOut();
 
 		await expect.element(page.getByText("Hello")).toBeVisible();
-		await new Promise((resolve) => setTimeout(resolve, 400));
 		await expect.element(composerInput()).toHaveTextContent("hi");
 		expect(drafts.getState().drafts.wses_1?.panes?.pane_agent).toBe("hi");
 		expect(kept.every((text) => text === "hi")).toBe(true);

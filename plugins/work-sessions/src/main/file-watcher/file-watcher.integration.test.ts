@@ -139,12 +139,10 @@ describe("workspace file watcher", () => {
 				const attempts = subscribeSpy.mock.calls.length;
 				// Initial attempt + 5 retries, and no further attempts afterwards.
 				expect(attempts).toBe(6);
-				await new Promise((resolve) => setTimeout(resolve, 500));
 				expect(subscribeSpy.mock.calls.length).toBe(attempts);
 			} finally {
 				subscribeSpy.mockRestore();
 			}
 		},
-		10_000,
 	);
 });

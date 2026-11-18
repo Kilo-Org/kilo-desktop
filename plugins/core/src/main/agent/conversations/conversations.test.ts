@@ -943,7 +943,8 @@ describe("one structured answer", () => {
 			metadata: null,
 		});
 		chats.push({ type: "session.created", properties: { info: rawChat(throwaway) } });
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		// The stream consumes the announcement on the next tick; it must not publish.
+		await new Promise((resolve) => setImmediate(resolve));
 		expect(Object.keys(state().chats)).toEqual(["ses_a"]);
 		expect(events).toEqual([]);
 	});

@@ -410,7 +410,8 @@ describe("KiloServerManager", () => {
 		await manager.setTelemetryEnabled(false);
 		// The restarted CLI's ready sync fails too; it was spawned with telemetry off.
 		await vi.waitFor(() => expect(telemetryRequests(fetch)).toHaveLength(3));
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		// Let the failed sync's handlers run: the CLI was spawned off, so no next restart.
+		await new Promise((resolve) => setImmediate(resolve));
 
 		expect(spawn).toHaveBeenCalledTimes(2);
 		expect(manager.isRunning).toBe(true);

@@ -182,7 +182,9 @@ describe("the New Session page's composer", () => {
 		await vi.waitFor(() => expect(host.starter.open).toHaveBeenCalledWith("wses_new_1"));
 		// Opening the work session closes the New Session page.
 		host.view.unmount();
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await vi.waitFor(() =>
+			expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
+		);
 
 		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1);
 	});

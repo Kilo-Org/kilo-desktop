@@ -1232,12 +1232,17 @@ describe("PaneCanvas", () => {
 		track.dispatchEvent(
 			new WheelEvent("wheel", { deltaX: -240, deltaY: 0, bubbles: true, cancelable: true }),
 		);
+		const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 		track.scrollLeft = 0;
-		await new Promise((resolve) => setTimeout(resolve, 450));
+		await nextFrame();
+		await nextFrame();
+		await nextFrame();
 		expect(track.scrollLeft).toBeLessThan(50);
 
 		track.scrollLeft = 0;
-		await new Promise((resolve) => setTimeout(resolve, 450));
+		await nextFrame();
+		await nextFrame();
+		await nextFrame();
 		expect(track.scrollLeft).toBeLessThan(50);
 	});
 
@@ -1758,8 +1763,8 @@ describe("PaneCanvas", () => {
 		fireEvent.scroll(strip);
 		await expectTooltipHidden();
 		await screen.getByRole("tabpanel", { name: "Chat" }).hover();
-		await new Promise((resolve) => setTimeout(resolve, 200));
 		await expectTooltipHidden();
+		await expect.element(popOut).not.toHaveAttribute("data-trigger-disabled");
 		await popOut.hover();
 		await expect.element(page.getByText("Pop out", { exact: true })).toBeVisible();
 		strip.scrollLeft = strip.scrollWidth;

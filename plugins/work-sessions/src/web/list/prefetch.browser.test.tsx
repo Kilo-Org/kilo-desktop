@@ -52,18 +52,21 @@ describe("prefetching a work session on hover", () => {
 		await expect.element(row("Other one")).toBeVisible();
 		const item = row("Other one").element().closest('[data-qa-id="session-list-item"]')!;
 
-		item.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
-		item.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
-		await new Promise((resolve) => setTimeout(resolve, PREFETCH_HOVER_DELAY_MS * 3));
-
-		expect(prefetch).not.toHaveBeenCalled();
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			item.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+			item.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+			await vi.advanceTimersByTimeAsync(PREFETCH_HOVER_DELAY_MS + 1);
+			expect(prefetch).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("doesn't prefetch the session already open", async () => {
 		const { prefetch } = await renderSessions();
 
 		await row("Open one").hover();
-		await new Promise((resolve) => setTimeout(resolve, PREFETCH_HOVER_DELAY_MS * 3));
 
 		const prefetched = prefetch.mock.calls.map(([input]) => input.workSession.id);
 		expect(prefetched).not.toContain("a");

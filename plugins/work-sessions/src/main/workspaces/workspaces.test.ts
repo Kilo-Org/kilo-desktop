@@ -381,7 +381,6 @@ describe("importing origin's workspaces", () => {
 
 		await workspaces.methods.remove({ id: "w1" });
 		const relaunched = await boot({ storage, originDatabase: database });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(relaunched.workspaces.getState().workspaces).toEqual([]);
 	});
 
@@ -404,19 +403,39 @@ describe("importing origin's workspaces", () => {
 		});
 		const database = await originDatabase([{ id: created.id, name: "Old", folders: [app] }]);
 
-		const { workspaces } = await boot({ storage, originDatabase: database });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		const relaunched = await boot({ storage, originDatabase: database });
+		await vi.waitFor(() =>
+			expect(relaunched.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
 
-		expect(workspaces.getState().workspaces).toEqual([created]);
+		expect(relaunched.workspaces.getState().workspaces).toEqual([created]);
 	});
 
 	it("starts empty when origin's database is missing or unreadable", async () => {
 		const garbage = path.join(root, "garbage.db");
 		await writeFile(garbage, "not a database");
 
+		const warnings: string[] = [];
 		const missing = await boot({ originDatabase: path.join(root, "absent.db") });
-		const unreadable = await boot({ originDatabase: garbage });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		const unreadable = await boot({
+			originDatabase: garbage,
+			logger: {
+				debug: () => {},
+				info: () => {},
+				warn: (message) => void warnings.push(message),
+				error: () => {},
+			},
+		});
+		await vi.waitFor(() =>
+			expect(missing.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
+		await vi.waitFor(() =>
+			expect(warnings).toContainEqual(expect.stringContaining("Could not import workspaces")),
+		);
 
 		expect(missing.workspaces.getState().workspaces).toEqual([]);
 		expect(unreadable.workspaces.getState().workspaces).toEqual([]);

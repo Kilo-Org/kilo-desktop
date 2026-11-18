@@ -40,7 +40,7 @@ describe("kilo.chat in main", () => {
 			expect(keys(Tool)).toContain("kilo.chat/html_render");
 			expect(keys(ToolApproval)).toContain("kilo.chat/auto-approve");
 		}
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await kernel.flush();
 		expect(errors).toEqual([]);
 		await kernel.stop();
 	});

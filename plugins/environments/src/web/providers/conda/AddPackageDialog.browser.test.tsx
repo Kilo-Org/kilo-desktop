@@ -13,9 +13,12 @@ import {
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda";
 import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
-import { AddPackageDialog } from "./AddPackageDialog";
+import { AddPackageDialog, PREVIEW_DEBOUNCE_MS } from "./AddPackageDialog";
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
+
+/** Just past the dialog's preview debounce, on a clock the test moves itself. */
+const PREVIEW_DEBOUNCE_PASSED_MS = PREVIEW_DEBOUNCE_MS + 1;
 
 function pkg(name: string, versions: string[] = ["1.0.0"]): CondaRepodataPackage {
 	return {
@@ -592,29 +595,38 @@ describe("AddPackageDialog", () => {
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
-		// Selection A dispatches the first (still pending) solve.
-		await userEvent.click(screen.getByText("numpy", { exact: true }));
-		await vi.waitFor(() => expect(resolvers).toHaveLength(1), { timeout: 3000 });
+		// Selection A dispatches the first (still pending) solve. The debounce
+		// runs on a fake clock that only this test moves, so a stale result can
+		// be flushed without a second solve racing it.
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			await userEvent.click(screen.getByText("numpy", { exact: true }));
+			await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_PASSED_MS);
+			expect(resolvers).toHaveLength(1);
 
-		// Change to selection B. The re-solve for B is still inside its 1500ms
-		// debounce, so no second solve has dispatched yet.
-		await userEvent.click(screen.getByText("pandas", { exact: true }));
-		expect(resolvers).toHaveLength(1);
+			// Change to selection B. The re-solve for B is still inside its
+			// debounce, so no second solve has dispatched yet.
+			await userEvent.click(screen.getByText("pandas", { exact: true }));
+			expect(resolvers).toHaveLength(1);
 
-		// The stale solve for selection A lands during that debounce window. It
-		// must NOT unlock Install for the new, unvalidated selection B. Give the
-		// stale result time to flush through React, then assert the button stayed
-		// locked — polling assertions could pass on a transient re-lock, so read
-		// the settled state directly.
-		resolvers[0]!(solvedPreview());
-		await new Promise((resolve) => setTimeout(resolve, 300));
-		const installBtn = baseElement.querySelector(
-			'[data-qa-id="environments-conda-add-pkg-install-btn"]',
-		);
-		expect(installBtn?.hasAttribute("disabled")).toBe(true);
+			// The stale solve for selection A lands during that debounce window. It
+			// must NOT unlock Install for the new, unvalidated selection B: flush
+			// its handlers on the held clock, then read the settled state directly.
+			resolvers[0]!(solvedPreview());
+			await vi.advanceTimersByTimeAsync(0);
+			const installBtn = baseElement.querySelector(
+				'[data-qa-id="environments-conda-add-pkg-install-btn"]',
+			);
+			expect(installBtn?.hasAttribute("disabled")).toBe(true);
 
-		// Once the debounced solve for B dispatches and resolves, Install unlocks.
-		await vi.waitFor(() => expect(resolvers).toHaveLength(2), { timeout: 3000 });
+			// The debounced solve for B dispatches on the next advance.
+			await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_PASSED_MS);
+			expect(resolvers).toHaveLength(2);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		// Once the solve for B resolves, Install unlocks.
 		resolvers[1]!(solvedPreview());
 		await waitForInstallEnabled(baseElement);
 	});

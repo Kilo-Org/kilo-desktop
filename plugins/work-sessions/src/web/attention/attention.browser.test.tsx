@@ -3,7 +3,8 @@ import { page, userEvent } from "vitest/browser";
 
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
-import { chat, NOW, renderWorkSessions, workSession } from "../../testing";
+import { PermissionAutoAnswer } from "../../contracts";
+import { chat, NOW, paneKindPlugin, renderWorkSessions, workSession } from "../../testing";
 import { LAST_VISITED_STORAGE_KEY, ORIGIN_LAST_VISITED_STORAGE_KEY } from "./last-visited";
 
 const list = () => page.getByTestId("kilo-thread-list");
@@ -40,6 +41,50 @@ describe("live session status", () => {
 		await expect.element(glyph("Done one", "Unread")).toBeVisible();
 		await expect.element(row("Seen one").getByRole("status")).not.toBeInTheDocument();
 		await expect.element(list().getByTestId("session-list-attention-toggle")).toBeVisible();
+	});
+
+	it("keeps a permission request another plugin answers for the person out of the status", async () => {
+		const autoApprover = paneKindPlugin("test.auto-approver", [], {
+			extensions: { "kilo.work-sessions/permission-auto-answer": [{ id: "auto" }] },
+			activate: (sdk) =>
+				sdk.extensions.implement(
+					PermissionAutoAnswer,
+					"auto",
+					(request) => request.permission === "external_directory",
+				),
+		});
+		const { chats } = await renderWorkSessions({
+			workSessions: [workSession("s1", { title: "Fix login", chatIds: ["c1"] })],
+			chats: [chat("c1", { status: "busy", workingSince: NOW })],
+			guests: [autoApprover],
+		});
+		await expect.element(glyph("Fix login", "Working")).toBeVisible();
+		const request = (id: string, permission: string) => ({
+			id,
+			chatId: "c1",
+			permission,
+			patterns: ["*"],
+			metadata: {},
+		});
+		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "bash")]);
+		const seen: string[] = [];
+		const observer = new MutationObserver(() => {
+			if (list().getByTestId("session-list-attention-toggle").query()) seen.push("attention");
+			if (glyph("Fix login", "Requires approval").query()) seen.push("approval");
+		});
+		observer.observe(list().element(), { childList: true, subtree: true, attributes: true });
+
+		chats!.update(
+			chat("c1", { status: "busy", workingSince: NOW, pendingPermissionIds: ["read"] }),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		chats!.update(chat("c1", { status: "busy", workingSince: NOW }));
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		observer.disconnect();
+		expect(seen).toEqual([]);
+
+		chats!.update(chat("c1", { status: "busy", workingSince: NOW, pendingPermissionIds: ["rm"] }));
+		await expect.element(glyph("Fix login", "Requires approval")).toBeVisible();
 	});
 
 	it("filters by live status", async () => {

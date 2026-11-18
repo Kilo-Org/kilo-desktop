@@ -3,14 +3,18 @@ import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import { WorkSessions, type WorkSession } from "../../contracts";
 import { needsAttention, type SessionActivity } from "../list/session-activity";
+import { heldPermissions, useChatsWithoutHeld, withoutHeldPermissions } from "./held-permissions";
 import { sessionActivities, type ChatsById } from "./session-chats";
 
 const NO_CHATS: ChatsById = {};
 const selectChats = (state: { chats: ChatsById }) => state.chats;
 
-/** The chats kilo.core knows, or none while it is missing. */
+/**
+ * The chats kilo.core knows, or none while it is missing, without the
+ * permission requests a plugin answers for the person (see `held-permissions`).
+ */
 export function useChats(): ChatsById {
-	return useDomainObjectState(Chats, selectChats) ?? NO_CHATS;
+	return useChatsWithoutHeld(useDomainObjectState(Chats, selectChats) ?? NO_CHATS);
 }
 
 /** Each session's live activity, combined from its chats. */
@@ -24,7 +28,10 @@ export function useSessionActivities(
 /** The sessions needing attention, in the given order. */
 export function sessionsNeedingAttention(sdk: PluginSdk, order: readonly string[]): string[] {
 	const sessions = sdk.domainObjects.get(WorkSessions)?.getState().workSessions ?? [];
-	const chats = sdk.domainObjects.get(Chats)?.getState().chats ?? NO_CHATS;
+	const chats = withoutHeldPermissions(
+		sdk.domainObjects.get(Chats)?.getState().chats ?? NO_CHATS,
+		heldPermissions.shown(),
+	);
 	const activities = sessionActivities(sessions, chats);
 	return order.filter((id) => needsAttention(activities[id]));
 }

@@ -3103,7 +3103,8 @@ Everything lands in a single PR once all plugins are built.
 - **The canvas owns the layout's shape; kilo.sessions owns which panes
   exist.** kilo.workbench derives the layout from the saved one (panes opened
   since join as their own column, closed ones drop out, titles follow; a pane
-  opened with `placement: "tab"` is put in the active pane's group by main), shows
+  opened with `placement: "tab"` is put in the active pane's group, or the
+  `groupId` it names, by main in the same write), shows
   a change at once and saves it; another window's save replaces it.
 - **Origin's state is handed over once** by the main window (after origin's
   sessions import): its tab definitions map to the kinds of the plugins that

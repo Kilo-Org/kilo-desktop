@@ -456,6 +456,27 @@ describe("tab commands", () => {
 		});
 	});
 
+	it("opens a tab from a group's '+' straight into that group", async () => {
+		const { calls } = await renderPanes({ panes: withPanes([pane("a"), pane("b")]) });
+		const tabB = page.getByTestId("chat-pane-tab-b");
+		await expect.element(tabB).toBeVisible();
+		const groupB = tabB.element().closest<HTMLElement>("[data-pane-group-id]")!;
+
+		await tabB.hover();
+		groupB.querySelector<HTMLElement>("[data-qa-id='chat-pane-add-tab']")!.click();
+		await page.getByTestId("chat-pane-add-menu-test.panes/terminal").click();
+
+		// Main places it in the write that opens it (panes.test.ts), so it never shows in a column of its own.
+		await vi.waitFor(() =>
+			expect(calls.openPane).toHaveBeenCalledWith({
+				workSessionId: SESSION.id,
+				kind: "test.panes/terminal",
+				placement: "tab",
+				groupId: groupB.dataset.paneGroupId,
+			}),
+		);
+	});
+
 	it("saves layout changes made on the canvas", async () => {
 		const { calls } = await renderPanes({ panes: withPanes([pane("a"), pane("b")]) });
 		await expect.element(page.getByTestId("terminal-a")).toBeVisible();

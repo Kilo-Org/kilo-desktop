@@ -693,7 +693,9 @@ describe("importing origin's work sessions", () => {
 				core: withChats(chat("ses_a")),
 				originDatabase: database,
 			});
-			await settle();
+			await vi.waitFor(() =>
+				expect(storage.saved.get("work-sessions")).toMatchObject({ originImportVerified: true }),
+			);
 
 			expect(list().map((workSession) => workSession.id)).toEqual(["wses_kept"]);
 		});

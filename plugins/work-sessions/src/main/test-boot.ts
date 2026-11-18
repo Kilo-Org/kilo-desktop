@@ -266,7 +266,7 @@ export function fakeShell(notices: Map<string, NotificationContent>): PluginRegi
 					methods: {
 						toast: unused,
 						post: ({ id, ...content }) => {
-							const key = id ?? `notice-${notices.size}`;
+							const key = id ?? crypto.randomUUID();
 							notices.set(key, content);
 							return key;
 						},

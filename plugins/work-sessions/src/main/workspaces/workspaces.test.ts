@@ -517,7 +517,9 @@ describe("importing origin's workspaces", () => {
 			const storage = markedImported([kept]);
 
 			const { workspaces } = await boot({ storage, originDatabase: database });
-			await new Promise((resolve) => setTimeout(resolve, 50));
+			await vi.waitFor(() =>
+				expect(storage.saved.get("workspaces")).toMatchObject({ originImportVerified: true }),
+			);
 
 			expect(workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w1"]);
 		});

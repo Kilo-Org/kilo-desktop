@@ -28,7 +28,6 @@ export interface QueueHost {
  *
  * - `working` is kilo.core's status for the chat; null while unknown (not
  *   ready, or the chat isn't listed), which holds the queue like a turn does.
- *   kilo.core's turn events report a turn the status may not have shown yet.
  * - A prompt sent from idle starts a turn the status hasn't shown yet, so
  *   `awaitingStart` ignores idle reports until the chat is seen working
  *   (or `RUN_START_TIMEOUT_MS` passes): a stale idle must not send the next.
@@ -49,10 +48,7 @@ export class ChatPromptQueue {
 	#awaitingStart = false;
 	#startTimer: ReturnType<typeof setTimeout> | undefined;
 
-	constructor(
-		private readonly host: QueueHost,
-		private readonly nextId: () => string,
-	) {}
+	constructor(private readonly host: QueueHost) {}
 
 	/** Nothing to keep: a queue made again later reads the chat's status afresh. */
 	get empty(): boolean {
@@ -76,8 +72,8 @@ export class ChatPromptQueue {
 		return { items, paused, editing: this.#editing, sending };
 	}
 
-	enqueue(prompt: QueuedPrompt, options: { steer?: boolean; failed?: boolean }): string {
-		const id = this.nextId();
+	enqueue(id: string, prompt: QueuedPrompt, options: { steer?: boolean; failed?: boolean }): void {
+		if (this.#entries.some((entry) => entry.id === id)) return;
 		const sendsFromIdle =
 			!options.steer && !options.failed && this.#idle() && this.#operation === "idle";
 		this.#entries = [...this.#entries, { id, prompt, visible: true }];
@@ -86,7 +82,6 @@ export class ChatPromptQueue {
 		if (options.steer) this.steer(id);
 		else if (sendsFromIdle) this.#dispatch(id);
 		else this.#advance();
-		return id;
 	}
 
 	steer(id: string): void {

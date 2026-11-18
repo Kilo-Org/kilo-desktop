@@ -1,6 +1,6 @@
 {
 	"name": "@kilo-desktop/web",
-	"version": "0.1.16",
+	"version": "1.0.0",
 	"private": true,
 	"type": "module",
 	"description": "Standalone React renderer for Kilo Desktop",
@@ -42,7 +42,7 @@
 		"motion": "^14.14.0",
 		"react": "^19.3.1",
 		"react-dom": "^19.3.1",
-		"tw-shimmer": "^0.4.12",
+		"tw-shimmer": "^0.4.14",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

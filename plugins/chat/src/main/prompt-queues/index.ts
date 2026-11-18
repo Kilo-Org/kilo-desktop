@@ -17,7 +17,7 @@ const isWorking = (status: ChatStatus) => status === "busy" || status === "retry
  * The `prompt-queues` domain object: every chat's queued prompts, in main so
  * they outlive the pane that queued them and are sent once, from here,
  * through kilo.core's `Chats.prompt` (see `ChatPromptQueue`). Each queue
- * follows its chat's status in `Chats` state and kilo.core's turn events.
+ * follows its chat's status in `Chats` state.
  * Windows prepare a prompt when it is queued (what the composer chose,
  * mentions resolved, slash command found), so nothing here needs a window.
  * Queues live until the app quits, or their chat is deleted.
@@ -25,7 +25,6 @@ const isWorking = (status: ChatStatus) => status === "busy" || status === "retry
 export function activatePromptQueues(sdk: PluginSdk): void {
 	const queues = new Map<string, ChatPromptQueue>();
 	let chats: ChatsHandle | null = null;
-	let counter = 0;
 
 	const chatOnly = (caller: DomainObjectCaller) => {
 		if (caller.pluginId !== CHAT_PLUGIN_ID) {
@@ -55,17 +54,14 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 	function queueOf(chatId: string): ChatPromptQueue {
 		let queue = queues.get(chatId);
 		if (!queue) {
-			queue = new ChatPromptQueue(
-				{
-					send: (prompt) => send(chatId, prompt),
-					abort: async () => {
-						if (!chats) throw new Error("Kilo chats aren't available.");
-						await chats.methods.abort({ id: chatId });
-					},
-					changed: () => publish(),
+			queue = new ChatPromptQueue({
+				send: (prompt) => send(chatId, prompt),
+				abort: async () => {
+					if (!chats) throw new Error("Kilo chats aren't available.");
+					await chats.methods.abort({ id: chatId });
 				},
-				() => `queued-${++counter}`,
-			);
+				changed: () => publish(),
+			});
 			queues.set(chatId, queue);
 			queue.setWorking(workingOf(chatId));
 		}
@@ -102,13 +98,12 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 		initialState: { queues: {} },
 		methods: {
 			enqueue: on(
-				(queue, { prompt, steer, failed }) => ({
-					id: queue.enqueue(prompt, {
+				(queue, { id, prompt, steer, failed }) =>
+					queue.enqueue(id, prompt, {
 						...(steer ? { steer } : {}),
 						...(failed ? { failed } : {}),
 					}),
-				}),
-				{ id: "" },
+				undefined,
 				true,
 			),
 			steer: on((queue, { id }) => queue.steer(id), undefined),
@@ -129,27 +124,15 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 		for (const [chatId, queue] of queues) queue.setWorking(workingOf(chatId));
 	}
 
-	/**
-	 * A turn kilo.core reports may not have shown in the status yet (one that
-	 * starts and ends between two publications): seeing it working first
-	 * releases a queue waiting for its prompt's turn to start.
-	 */
-	function turnSeen(chatId: string, ended: boolean): void {
-		const queue = queues.get(chatId);
-		if (!queue) return;
-		queue.setWorking(true);
-		if (ended) queue.setWorking(workingOf(chatId));
-	}
-
+	// Only the status is followed. kilo.core's turn events come from the same
+	// publication's status change, and `work-completed` comes later still: each
+	// can land after the next prompt went out, and would pass for its turn.
 	let stopTracking = () => {};
 	sdk.domainObjects.track(Chats, {
 		added: (handle) => {
 			chats = handle;
 			const stops = [
 				handle.subscribe(followStatus),
-				handle.on("turn-started", ({ chatId }) => turnSeen(chatId, false)),
-				handle.on("turn-ended", ({ chatId }) => turnSeen(chatId, true)),
-				handle.on("work-completed", ({ chatId }) => turnSeen(chatId, true)),
 				handle.on("deleted", ({ chat }) => {
 					queues.get(chat.id)?.dispose();
 					if (queues.delete(chat.id)) publish();

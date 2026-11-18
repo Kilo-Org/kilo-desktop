@@ -503,6 +503,7 @@ Isolation is generic: a session records `local`, `new-copy` or
 | `kilo.work-sessions/work-session-menu`        | additive  | An item in a session's menu                                                                                    |
 | `kilo.work-sessions/work-session-decoration`  | additive  | A badge or hover detail shown with a session                                                                   |
 | `kilo.work-sessions/work-session-facet`       | additive  | A generic filter: facts about sessions with their own label and values                                         |
+| `kilo.work-sessions/work-session-grouping`    | additive  | A way to group the session list into the plugin's categories (the board's columns)                             |
 | `kilo.work-sessions/work-sessions-view`       | additive  | Another view of the sessions, shown in place of the open session                                               |
 | `kilo.work-sessions/work-session-action`      | additive  | A button in the open session's header                                                                          |
 | `kilo.work-sessions/work-session-list-action` | additive  | A button in the session list's header                                                                          |
@@ -1233,6 +1234,7 @@ and the work sessions placed in them, with a revision).
 | --------------------------------------------- | ----------------------------------------------------------------------------- |
 | `kilo.work-sessions/work-sessions-view`       | `board`                                                                       |
 | `kilo.work-sessions/work-session-list-action` | `board`                                                                       |
+| `kilo.work-sessions/work-session-grouping`    | `board`                                                                       |
 | `kilo.work-sessions/work-session-menu`        | `add-to-board`, `move-on-board`, `remove-from-board`                          |
 | `kilo.shell/dialog`                           | `clear-board`                                                                 |
 | `kernel/command`                              | `open`, `add-column`, `clear` (origin's ids)                                  |
@@ -1270,6 +1272,16 @@ and the work sessions placed in them, with a revision).
   kilo.workbench did.
 - **Tests.** `src/main/test-boot.ts` boots main with a work sessions stand-in;
   `src/test/board-host.tsx` boots the real board over `renderWorkSessions`.
+- **The board's columns group the session list.** kilo.work-sessions gained
+  `work-session-grouping` (a source of ordered categories of work session
+  ids, offered under the view menu's Grouping beside status, workspace and
+  updated; the stored choice is the contribution's key). Chosen, the list
+  shows only sessions on the board: one shelf per column in the board's
+  order (empty columns stay, with a note, as on the board), cards in their column's order (the Ordering option hides),
+  pins kept in their column, archived ones on the Archived shelf; the status
+  and workspace filters still apply. Without the contribution (flag off) the
+  list shows status grouping and keeps the stored choice. Rows don't take
+  drops yet.
 
 ---
 
@@ -1525,6 +1537,7 @@ done.
 | Slash commands from the palette and keys                           | When a need appears     | Commands placed in the `/` menu are `palette: false` because the palette, keybindings and app menu pass no `ClientSlashCommandContext`; Settings → Shortcuts still lists them, and a key bound there only warns. Resolve the focused composer's context when none is passed (`MountedComposer.getContext` in `ComposerFocus`) to offer them everywhere.                                                                                                                                                                                                                                                    |
 | Recent branches from Kilo's own history                            | When convenient         | The branch pickers' Recent group comes from the HEAD reflog of the workspace's main folder (`getRecentBranches`), and git keeps a reflog per worktree, so branches used only in Kilo worktrees never count as recent. Merge in the branches of recent work sessions and recently picked base branches. A "behind origin" marker on the default and recent branches is the other base-branch follow-up (needs an ahead/behind count per branch in kilo.git).                                                                                                                                                |
 | Install links while `environments-feature` is off                  | When convenient         | `kilo.shell/deep-link` has no `when`, so the `packages` link opens the shell's "Section not found" instead of saying the feature is unavailable.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| A draft Agent pane's first message if the pane closes mid-create   | When it bites           | assistant-ui drops a draft's first send when its thread runtime is disposed before the chat exists. The New Session page hands that message to main's prompt queue (`createFirstPromptHandover`, else the work session's draft); an Agent pane can't opt in, as a hidden Activity keeps its runtime sending and the message would go twice. Telling a final dispose from a hidden one would cover both.                                                                                                                                                                                                    |
 | Typed arguments for command placements                             | With a second surface   | `kernel/command` handlers take `args?: unknown`; each surface that passes context (composer actions, slash placements) defines and checks its own shape (`slashCommandHandler`). A shared way for a placement point to declare its argument schema would replace these.                                                                                                                                                                                                                                                                                                                                    |
 
 ## Decisions on the earlier open questions

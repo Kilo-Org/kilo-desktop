@@ -47,6 +47,29 @@ async function promptsTo(server: FakeKiloServer, chatId: string): Promise<Record
 	return prompts;
 }
 
+/**
+ * Whether a transcript user message showing `text` (and passing `also`) was
+ * rendered at any moment until the returned stop, however briefly.
+ */
+function watchTranscriptFor(
+	text: string,
+	also: (message: Element) => boolean = () => true,
+): () => boolean {
+	let shown = false;
+	const check = () => {
+		shown ||= [...document.querySelectorAll('[data-role="user"]')].some(
+			(message) => !!message.textContent?.includes(text) && also(message),
+		);
+	};
+	const observer = new MutationObserver(check);
+	observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+	return () => {
+		check();
+		observer.disconnect();
+		return shown;
+	};
+}
+
 const promptText = (request: RecordedRequest) =>
 	(request.body as { parts: { type: string; text?: string }[] }).parts
 		.filter((part) => part.type === "text")
@@ -366,12 +389,18 @@ describe("an agent pane with a chat", () => {
 			).not.toBeNull(),
 		);
 
+		const shownWithAttachment = watchTranscriptFor(
+			"Read these",
+			(message) => !!message.querySelector('[data-qa-id="chat-attachment-tile"]'),
+		);
+
 		await send("Read these");
 
 		const [prompt] = await promptsTo(server, "ses_a");
 		const parts = (prompt!.body as { parts: Record<string, unknown>[] }).parts;
 		expect(parts).toContainEqual(expect.objectContaining({ type: "file", filename: "notes.md" }));
 		expect(promptText(prompt!)).toBe("Read these");
+		expect(shownWithAttachment()).toBe(true);
 	});
 
 	it("keeps the window's one event stream open after its last pane goes", async () => {
@@ -561,8 +590,7 @@ describe("a prompt queued while the agent works", () => {
 		});
 	});
 
-	it("carries its attachment, sent as a file part", async () => {
-		const { server } = await queueWhileBusy("First");
+	async function queueWithAttachment(text: string) {
 		const transfer = new DataTransfer();
 		transfer.items.add(new File(["# Notes"], "notes.md", { type: "text/markdown" }));
 		const dropzone = document.querySelector('[data-slot="aui_composer-shell"]')!;
@@ -572,8 +600,39 @@ describe("a prompt queued while the agent works", () => {
 			);
 		}
 		await expect.element(page.getByRole("button", { name: "Remove file" })).toBeInTheDocument();
-		await userEvent.fill(composerInput(), "Read this");
+		await userEvent.fill(composerInput(), text);
 		await page.getByTestId("kilo-composer-queue-submit").click();
+	}
+
+	async function expectQueuedOnly(text: string) {
+		const stop = watchTranscriptFor(text);
+		await queueWithAttachment(text);
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-item").getByText(text))
+			.toBeVisible();
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		expect(stop()).toBe(false);
+	}
+
+	it("shows a prompt queued with an attachment in the queue only, never the transcript", async () => {
+		await queueWhileBusy("First");
+
+		await expectQueuedOnly("Read this");
+	});
+
+	it("keeps it out of the transcript of a chat this pane started from a draft", async () => {
+		const host = await renderChat();
+		await send("Fix the login form");
+		await promptsTo(host.server, "ses_new_1");
+		host.server.emit("session.status", { sessionID: "ses_new_1", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+
+		await expectQueuedOnly("Read this");
+	});
+
+	it("carries its attachment, sent as a file part", async () => {
+		const { server } = await queueWhileBusy("First");
+		await queueWithAttachment("Read this");
 		await expect
 			.element(page.getByTestId("kilo-composer-queue-toggle"))
 			.toHaveTextContent("2 queued");

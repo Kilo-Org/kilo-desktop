@@ -67,6 +67,10 @@ startup window.
 # All Vitest tiers (unit + integration + browser)
 pnpm test
 
+# Only tests that import a file changed since origin/main (full suites of
+# affected packages when a manifest, lockfile, tsconfig or test config changed)
+pnpm test:changed
+
 # Coverage (enforces the 80% gate)
 pnpm coverage
 

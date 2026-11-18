@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { parseAllDocuments } from "yaml";
+import { parse, parseAllDocuments } from "yaml";
 
 import { pruneProductionDependencies } from "./prune-production-dependencies.js";
 
@@ -452,20 +452,19 @@ describe("packaged production dependencies", () => {
 			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
 			"utf8",
 		);
-		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
-		const publish = readFileSync(
-			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+		const prMacosBuild = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/pr_macos_build.yml"),
 			"utf8",
 		);
+		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
 		expect(setupNative).toContain("runner.arch");
 		expect(setupNative).toContain("plugins/notebook/resources/notebook");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
-		expect(build).toContain("./plugins/notebook/actions/setup-native");
+		expect(prMacosBuild).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("windows-11-vs2026-arm");
 		expect(build).toContain("windows-arm64");
-		expect(publish).toContain("./plugins/notebook/actions/setup-native");
 	});
 
 	it("stages the notebook UI through packaging hooks without a workflow fan-out job", () => {
@@ -614,17 +613,14 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@kilo-desktop\/plugin-\*"/);
 	});
 
-	it("caches the Kilo CLI on every packaging host", () => {
+	it("caches the Kilo CLI on test packaging hosts", () => {
 		const setupCli = readFileSync(
 			path.join(workspaceRoot, "plugins/core/actions/setup-cli/action.yml"),
 			"utf8",
 		);
 		const workflows = [
 			".github/actions/run-e2e/action.yml",
-			".github/workflows/build.yml",
 			".github/workflows/pr_macos_build.yml",
-			".github/workflows/publish_helper.yml",
-			".github/workflows/sbom.yml",
 		].map((file) => readFileSync(path.join(workspaceRoot, file), "utf8"));
 
 		expect(setupCli).toContain("plugins/core/resources/kilo");
@@ -636,7 +632,38 @@ describe("packaged production dependencies", () => {
 			expect(workflow).toContain("./plugins/core/actions/setup-cli");
 		}
 	});
+
+	// Release builds stage the Kilo CLI and notebook resources fresh; only the
+	// Electron rebuild cache is restored.
+	it.each([
+		".github/workflows/build.yml",
+		".github/workflows/publish_helper.yml",
+		".github/workflows/sbom.yml",
+	])("%s stages the Kilo CLI and notebook resources fresh", (file) => {
+		const workflow = readFileSync(path.join(workspaceRoot, file), "utf8");
+
+		expect(workflow).not.toContain("./plugins/core/actions/setup-cli");
+		expect(workflow).not.toContain("./plugins/notebook/actions/setup-native");
+	});
+
+	it.each([
+		".github/workflows/build.yml",
+		".github/workflows/publish_helper.yml",
+		".github/workflows/sbom.yml",
+	])("%s installs packages into a fresh pnpm store", (file) => {
+		const workflow = parse(readFileSync(path.join(workspaceRoot, file), "utf8")) as Workflow;
+		const setups = Object.values(workflow.jobs)
+			.flatMap((job) => job.steps ?? [])
+			.filter((step) => step.uses === "./.github/actions/setup-node-pnpm");
+
+		expect(setups.length).toBeGreaterThan(0);
+		for (const step of setups) expect(step.with?.["pnpm-cache"]).toBe("false");
+	});
 });
+
+interface Workflow {
+	jobs: Record<string, { steps?: { uses?: string; with?: Record<string, unknown> }[] }>;
+}
 
 type LockfileDependencies = Record<string, string | { version: string }>;
 type LockfileEntry = Partial<Record<DependencyField, LockfileDependencies>>;

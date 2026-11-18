@@ -30,7 +30,8 @@ import {
 	SESSION_LIST_STATUS_LABELS,
 	isDefaultSessionListView,
 	resolveSessionListGrouping,
-	type SessionListGrouping,
+	type SessionListContributedGrouping,
+	type SessionListGroupingId,
 	type SessionListOrdering,
 	type SessionListPullRequestFilter,
 	type SessionListShowField,
@@ -40,6 +41,8 @@ import {
 
 export const SessionListViewMenu: FC<{
 	view: SessionListView;
+	/** Plugins' groupings, offered after the list's own. */
+	groupings: readonly SessionListContributedGrouping[];
 	/** False when pull request status is unavailable (no git plugin). */
 	pullRequestFilterAvailable: boolean;
 	onViewChange: (patch: Partial<SessionListView>) => void;
@@ -50,6 +53,7 @@ export const SessionListViewMenu: FC<{
 	onExpandAll: () => void;
 }> = ({
 	view,
+	groupings: contributedGroupings,
 	pullRequestFilterAvailable,
 	onViewChange,
 	onReset,
@@ -59,10 +63,18 @@ export const SessionListViewMenu: FC<{
 	onExpandAll,
 }) => {
 	const customized = !isDefaultSessionListView(view);
-	const grouping = resolveSessionListGrouping(view);
-	const groupings = view.focus
-		? SESSION_LIST_GROUPINGS.filter((entry) => entry !== "workspace")
-		: SESSION_LIST_GROUPINGS;
+	const grouping = resolveSessionListGrouping(view, contributedGroupings);
+	const contributed = contributedGroupings.find((entry) => entry.id === grouping);
+	const groupings: { id: SessionListGroupingId; label: string }[] = [
+		...(view.focus
+			? SESSION_LIST_GROUPINGS.filter((entry) => entry !== "workspace")
+			: SESSION_LIST_GROUPINGS
+		).map((id) => ({ id, label: SESSION_LIST_GROUPING_LABELS[id] })),
+		...contributedGroupings.map(({ id, title }) => ({ id, label: title })),
+	];
+	const groupingLabel =
+		groupings.find((entry) => entry.id === grouping)?.label ??
+		SESSION_LIST_GROUPING_LABELS.lifecycle;
 
 	return (
 		<DropdownMenu>
@@ -88,45 +100,45 @@ export const SessionListViewMenu: FC<{
 			>
 				<DropdownMenuGroup>
 					<DropdownMenuSub>
-						<SessionListSubTrigger
-							label="Grouping"
-							value={SESSION_LIST_GROUPING_LABELS[grouping]}
-						/>
+						<SessionListSubTrigger label="Grouping" value={groupingLabel} />
 						<DropdownMenuSubContent>
 							<DropdownMenuRadioGroup
 								value={grouping}
 								onValueChange={(value) => {
-									if (value) onViewChange({ grouping: value as SessionListGrouping });
+									if (value) onViewChange({ grouping: value as SessionListGroupingId });
 								}}
 							>
 								{groupings.map((entry) => (
-									<DropdownMenuRadioItem key={entry} value={entry} closeOnClick={false}>
-										{SESSION_LIST_GROUPING_LABELS[entry]}
+									<DropdownMenuRadioItem key={entry.id} value={entry.id} closeOnClick={false}>
+										{entry.label}
 									</DropdownMenuRadioItem>
 								))}
 							</DropdownMenuRadioGroup>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
-					<DropdownMenuSub>
-						<SessionListSubTrigger
-							label="Ordering"
-							value={SESSION_LIST_ORDERING_LABELS[view.ordering]}
-						/>
-						<DropdownMenuSubContent>
-							<DropdownMenuRadioGroup
-								value={view.ordering}
-								onValueChange={(value) => {
-									if (value) onViewChange({ ordering: value as SessionListOrdering });
-								}}
-							>
-								{SESSION_LIST_ORDERINGS.map((ordering) => (
-									<DropdownMenuRadioItem key={ordering} value={ordering} closeOnClick={false}>
-										{SESSION_LIST_ORDERING_LABELS[ordering]}
-									</DropdownMenuRadioItem>
-								))}
-							</DropdownMenuRadioGroup>
-						</DropdownMenuSubContent>
-					</DropdownMenuSub>
+					{/* A plugin's grouping keeps its categories' own order. */}
+					{contributed ? null : (
+						<DropdownMenuSub>
+							<SessionListSubTrigger
+								label="Ordering"
+								value={SESSION_LIST_ORDERING_LABELS[view.ordering]}
+							/>
+							<DropdownMenuSubContent>
+								<DropdownMenuRadioGroup
+									value={view.ordering}
+									onValueChange={(value) => {
+										if (value) onViewChange({ ordering: value as SessionListOrdering });
+									}}
+								>
+									{SESSION_LIST_ORDERINGS.map((ordering) => (
+										<DropdownMenuRadioItem key={ordering} value={ordering} closeOnClick={false}>
+											{SESSION_LIST_ORDERING_LABELS[ordering]}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+							</DropdownMenuSubContent>
+						</DropdownMenuSub>
+					)}
 					<DropdownMenuSub>
 						<DropdownMenuSubTrigger className="w-full">Show</DropdownMenuSubTrigger>
 						<DropdownMenuSubContent>

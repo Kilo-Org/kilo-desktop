@@ -5,7 +5,13 @@ import {
 	toMediaWireUrl,
 } from "@assistant-ui/core/internal";
 
-import type { PreparedText, PromptPart as QueuedPromptPart, QueuedPrompt } from "../../contracts";
+import {
+	queuePreview,
+	type PreparedText,
+	type PromptQueueItem,
+	type PromptPart as QueuedPromptPart,
+	type QueuedPrompt,
+} from "../../contracts";
 import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command";
 import type { PromptOptions, PromptPart } from "./prompt-options";
 
@@ -18,13 +24,16 @@ export type QueuePromptOptions = Pick<
 	"getAgent" | "getModel" | "getVariant" | "getSystem" | "getKnownCommandNames" | "resolveParts"
 >;
 
+/** What a queued prompt is made from: the message's content and attachments. */
+export type QueuedMessage = Pick<AppendMessage, "content" | "attachments">;
+
 type ContentPart = AppendMessage["content"][number] & {
 	readonly filename?: string;
 	readonly contentType?: string;
 };
 
 /** The message's content and attachments, each part carrying its attachment's name. */
-function contentParts(message: AppendMessage): ContentPart[] {
+function contentParts(message: QueuedMessage): ContentPart[] {
 	const attached = (message.attachments ?? []).flatMap((attachment) =>
 		(attachment.content ?? []).map(
 			(part) =>
@@ -39,7 +48,7 @@ function contentParts(message: AppendMessage): ContentPart[] {
 }
 
 /** The message's files as Kilo prompt parts, as react-opencode sends them. */
-function fileParts(message: AppendMessage): PromptPart[] {
+function fileParts(message: QueuedMessage): PromptPart[] {
 	return contentParts(message).flatMap((part): PromptPart[] => {
 		if (part.type === "image") {
 			const mime = resolveImageMediaType(part.image, part.contentType);
@@ -88,11 +97,11 @@ export function toQueuedParts(parts: readonly PromptPart[]): QueuedPromptPart[] 
 	});
 }
 
-export function messageText(message: AppendMessage): string {
+export function messageText(message: QueuedMessage): string {
 	return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
-function attachmentPreview(message: AppendMessage): QueuedPrompt["attachmentPreview"] {
+function attachmentPreview(message: QueuedMessage): QueuedPrompt["attachmentPreview"] {
 	const attachment = message.attachments?.[0];
 	if (!attachment) return undefined;
 	const image = attachment.content?.find((part) => part.type === "image");
@@ -100,6 +109,17 @@ function attachmentPreview(message: AppendMessage): QueuedPrompt["attachmentPrev
 	return {
 		name: attachment.name,
 		...(src && src.length <= MAX_PREVIEW_IMAGE_LENGTH ? { src } : {}),
+	};
+}
+
+/** The message as its queue line, before it is prepared. */
+export function queueItemOf(message: QueuedMessage): Omit<PromptQueueItem, "id"> {
+	const text = messageText(message);
+	const preview = attachmentPreview(message);
+	return {
+		prompt: queuePreview({ text, attachmentParts: toQueuedParts(fileParts(message)) }),
+		text,
+		...(preview ? { attachmentPreview: preview } : {}),
 	};
 }
 
@@ -132,7 +152,7 @@ export async function prepareText(
  * prompt reaches the Local Model Server, so it isn't prepared here.
  */
 export async function prepareQueuedPrompt(
-	message: AppendMessage,
+	message: QueuedMessage,
 	chatId: string,
 	options: QueuePromptOptions,
 ): Promise<QueuedPrompt> {

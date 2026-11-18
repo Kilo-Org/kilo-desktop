@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { KernelCommand, KernelKeybindings } from "./builtins";
-import { resolveKeybindings } from "./commands";
+import { mixedSeriesOverrides, resolveKeybindings } from "./commands";
 import { createMainKernel } from "./main/main-kernel";
 import type { PluginSdk } from "./sdk";
 import { testPlugin } from "./test-fixtures";
@@ -287,6 +287,56 @@ describe("resolveKeybindings", () => {
 		expect(result.byCommand).toEqual({ "a/clear": ["Ctrl+KeyK"], "b/search": ["Ctrl+KeyK"] });
 		expect(result.bindings).toEqual({ "Ctrl+KeyK": ["b/search", "a/clear"] });
 		expect(result.conflicts).toEqual([]);
+	});
+});
+
+describe("mixedSeriesOverrides", () => {
+	const member = (key: string, digit: string, series = "Go to 1–9") => ({
+		key,
+		metadata: { category: "Nav", series, keybinding: `Mod+${digit}` },
+	});
+	const commands = [member("a/one", "1"), member("a/two", "2"), member("a/last", "9")];
+	const mixed = (overrides: Record<string, string | null>) =>
+		mixedSeriesOverrides({ commands, overrides, platform: "mac" });
+
+	it("keeps a series that is untouched, moved to new modifiers as a whole, or all off", () => {
+		expect(mixed({})).toEqual([]);
+		expect(
+			mixed({
+				"a/one": "Ctrl+Alt+Digit1",
+				"a/two": "Ctrl+Alt+Digit2",
+				"a/last": "Ctrl+Alt+Digit9",
+			}),
+		).toEqual([]);
+		expect(mixed({ "a/one": null, "a/two": null, "a/last": null })).toEqual([]);
+		// Overriding a member with its own default is not a change.
+		expect(mixed({ "a/two": "Meta+Digit2" })).toEqual([]);
+	});
+
+	it("lists the overridden members of a series changed one command at a time", () => {
+		expect(mixed({ "a/two": "Ctrl+Alt+KeyK" })).toEqual(["a/two"]);
+		expect(mixed({ "a/one": null })).toEqual(["a/one"]);
+		expect(mixed({ "a/one": "Ctrl+Digit1", "a/two": "Alt+Digit2", "a/last": null })).toEqual([
+			"a/one",
+			"a/two",
+			"a/last",
+		]);
+		// Same modifiers, but a member moved to another member's key.
+		expect(mixed({ "a/one": "Meta+Digit2", "a/two": "Meta+Digit1" })).toEqual(["a/one", "a/two"]);
+	});
+
+	it("leaves commands outside a series and other series alone", () => {
+		const result = mixedSeriesOverrides({
+			commands: [
+				...commands,
+				member("b/one", "1", "Other 1–9"),
+				{ key: "c/solo", metadata: { keybinding: "Mod+K" } },
+			],
+			overrides: { "a/two": "Ctrl+KeyK", "b/one": null, "c/solo": "Alt+KeyJ" },
+			platform: "linux",
+		});
+
+		expect(result).toEqual(["a/two"]);
 	});
 });
 

@@ -58,6 +58,11 @@ work session, its focus — kilo.work-sessions' `next-work-session`,
 - Per platform: `{ "mac": "Mod+B", "default": "Ctrl+B" }` (`mac`,
   `windows`, `linux`, `default`). Several alternatives: an array.
 - People can rebind or turn off any shortcut in Settings → Shortcuts.
+- A `series` is changed as one: every member takes the same new modifiers,
+  keeping its own key, or every member is off. At launch the kernel resets
+  a series whose overrides don't fit that (set one command at a time before
+  the series existed), so adding `series` to commands people already rebound
+  is safe.
 - Two commands without `when` that want the same default chord: the first
   keeps it and the clash is reported there. A command **with** a `when`
   shares the chord and wins while its condition holds — that is how a

@@ -415,6 +415,69 @@ describe("main kernel — keybinding overrides", () => {
 			[{}],
 		]);
 	});
+
+	const jumpPlugin = (activate: PluginEntry["activate"] = () => {}) =>
+		testPlugin("acme.jump", {
+			manifest: {
+				contributes: {
+					extensions: {
+						[KernelCommand.id]: ["1", "2", "9"].map((digit) => ({
+							id: `jump-${digit}`,
+							title: `Jump to ${digit}`,
+							category: "Nav",
+							series: "Jump to 1–9",
+							keybinding: `Mod+${digit}`,
+						})),
+					},
+				},
+			},
+			entry: { activate },
+		});
+
+	it("resets a series changed one command at a time, once plugins have activated", async () => {
+		const save = vi.fn();
+		const kernel = boot(
+			[jumpPlugin()],
+			fakeHost({
+				keybindings: {
+					load: () => ({ "acme.jump/jump-2": "Ctrl+KeyK", "acme.other/x": "Alt+KeyX" }),
+					save,
+				},
+			}),
+		);
+		await kernel.start();
+
+		expect(kernel.kernelSdk.domainObjects.get(KernelKeybindings)!.getState().overrides).toEqual({
+			"acme.other/x": "Alt+KeyX",
+		});
+		expect(save.mock.calls).toEqual([[{ "acme.other/x": "Alt+KeyX" }]]);
+	});
+
+	it("keeps a series moved as a whole, including one moved while a plugin activated", async () => {
+		const save = vi.fn();
+		const kernel = boot(
+			[
+				jumpPlugin(async (sdk) => {
+					const keybindings = sdk.domainObjects.get(KernelKeybindings)!;
+					for (const digit of ["1", "2", "9"]) {
+						await keybindings.methods.setOverride({
+							command: `acme.jump/jump-${digit}`,
+							chord: `Ctrl+Alt+Digit${digit}`,
+						});
+					}
+				}),
+			],
+			fakeHost({ keybindings: { load: () => ({}), save } }),
+		);
+		await kernel.start();
+
+		expect(kernel.kernelSdk.domainObjects.get(KernelKeybindings)!.getState().overrides).toEqual({
+			"acme.jump/jump-1": "Ctrl+Alt+Digit1",
+			"acme.jump/jump-2": "Ctrl+Alt+Digit2",
+			"acme.jump/jump-9": "Ctrl+Alt+Digit9",
+		});
+		expect(save).toHaveBeenCalledTimes(3);
+	});
 });
 
 describe("main kernel — disabled plugins", () => {

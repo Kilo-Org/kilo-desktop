@@ -12,6 +12,7 @@ import {
 	serializeChord,
 	type KeybindingSpec,
 	type KeyboardPlatform,
+	type KeyChord,
 } from "./keybindings";
 import type { KernelLogger } from "./sdk";
 import type { KernelTransport } from "./transport";
@@ -239,6 +240,70 @@ export function resolveKeybindings(input: {
 		.filter(([, keys]) => keys.length > 1)
 		.map(([chord, commands]) => ({ chord, commands }));
 	return { byCommand, bindings, conflicts };
+}
+
+export interface SeriesCommand {
+	readonly key: string;
+	readonly metadata: KeybindingCommand["metadata"] & {
+		readonly category?: string | undefined;
+		readonly series?: string | undefined;
+	};
+}
+
+const sameModifiers = (left: KeyChord, right: KeyChord) =>
+	serializeChord({ ...left, code: right.code }) === serializeChord(right);
+
+/**
+ * A series is changed as one (Settings → Shortcuts): untouched, every member
+ * on the same new modifiers keeping its own key, or every member off. True
+ * when its overrides fit one of those.
+ */
+function isUniformSeries(
+	members: readonly SeriesCommand[],
+	overrides: Readonly<Record<string, string | null>>,
+	platform: KeyboardPlatform,
+): boolean {
+	if (!members.some((member) => member.key in overrides)) return true;
+	const pairs = members.map((member) => {
+		const [fallback] = defaultChords({ ...member, scoped: false }, platform);
+		const own = fallback ? parseChord(fallback) : null;
+		const override = overrides[member.key];
+		const chord = member.key in overrides ? (override ? parseChord(override) : null) : own;
+		return { own, chord };
+	});
+	if (pairs.every(({ chord }) => chord === null)) return true;
+	const [first] = pairs;
+	return pairs.every(
+		({ own, chord }) =>
+			own !== null &&
+			chord !== null &&
+			chord.code === own.code &&
+			sameModifiers(chord, first!.chord!),
+	);
+}
+
+/**
+ * Overridden commands of series that were changed one command at a time
+ * (saved before series existed, or hand-edited): resetting them restores a
+ * series that can be shown and changed as one row.
+ */
+export function mixedSeriesOverrides(input: {
+	readonly commands: readonly SeriesCommand[];
+	readonly overrides: Readonly<Record<string, string | null>>;
+	readonly platform: KeyboardPlatform;
+}): string[] {
+	const series = new Map<string, SeriesCommand[]>();
+	for (const command of input.commands) {
+		const name = command.metadata.series;
+		if (name === undefined) continue;
+		const id = JSON.stringify([command.metadata.category ?? null, name]);
+		series.set(id, [...(series.get(id) ?? []), command]);
+	}
+	return [...series.values()]
+		.filter((members) => !isUniformSeries(members, input.overrides, input.platform))
+		.flatMap((members) =>
+			members.filter((member) => member.key in input.overrides).map((member) => member.key),
+		);
 }
 
 export interface KeyboardServiceOptions {

@@ -154,11 +154,15 @@ export const Thread: FC = () => {
 								<div className="relative flex w-full flex-col">
 									<ComposerDockMask />
 									<ComposerHeader />
-									<div className="flex flex-col gap-1.5" data-qa-id="kilo-composer-dock">
-										<div className="flex flex-col gap-3">
+									<div className="flex flex-col" data-qa-id="kilo-composer-dock">
+										<div className="relative flex flex-col gap-3">
 											<OpenCodeComposerInteraction fallback={<Composer isDraft={isDraft} />} />
+											<ComposerCornerFills />
 										</div>
-										<ComposerFooter />
+										{/* Padding, not a gap: the transcript scrolls under the dock and showed through. */}
+										<div className="bg-pane -mx-4 px-4 pt-1.5">
+											<ComposerFooter />
+										</div>
 									</div>
 								</div>
 							</div>,
@@ -188,8 +192,18 @@ const TranscriptMessages: FC = () => (
 // The fill under the dock is exactly the footer's pb-1.5, so it reaches the
 // pane's bottom edge without overflowing it.
 const ComposerDockMask: FC = () => (
+	<div aria-hidden className="bg-pane pointer-events-none absolute -inset-x-4 top-full h-1.5" />
+);
+
+// Pane fills the transcript scrolls under: outside the composer's rounded bottom corners, and a
+// thin strip behind its bottom edge, where the glass blur repeats its last row of pixels and
+// text there streaks through instead of blurring away.
+const ComposerCornerFills: FC = () => (
 	<>
-		<div aria-hidden className="bg-pane pointer-events-none absolute -inset-x-4 top-full h-1.5" />
+		<div
+			aria-hidden
+			className="bg-pane pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-1"
+		/>
 		<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
 		<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
 	</>

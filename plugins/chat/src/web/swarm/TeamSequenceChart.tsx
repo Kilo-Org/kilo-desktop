@@ -8,7 +8,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { tint } from "./swarm-colors";
 import { sequenceArrows, threadIds, type SequenceArrow } from "./team-sequence";
 import type { Timeline, TimelineLane } from "./team-timeline";
-import { strokeOf, TimelineKeyStrip } from "./timeline-key";
+import { strokeOf } from "./timeline-key";
 
 const LANE_HEIGHT = 48;
 /** The chart widens with density; equal timestamps still share a position on the time axis. */
@@ -57,7 +57,7 @@ function useWidth() {
  * when nothing says when it stopped), and each board post as an arrow from
  * its sender's lane to its recipient's, in the sender's color — dashed for
  * INFO, heavier for HOLD and VETO, a fan of ticks for posts to everyone
- * (`timeline-key` names each mark under the chart).
+ * (the Timeline tab's Key names each mark).
  * Hovering or focusing a post highlights its thread and links its replies;
  * Selecting reveals its full post with an explicit source jump. The axis
  * comes from `timeline`, so it holds still when the supplied posts change.
@@ -69,7 +69,6 @@ export function TeamSequenceChart({
 	colorOf,
 	nameOf,
 	onJump,
-	more,
 }: {
 	readonly timeline: Timeline;
 	readonly messages: readonly BoardMessage[];
@@ -77,8 +76,6 @@ export function TeamSequenceChart({
 	readonly colorOf: (chatId: string) => string;
 	readonly nameOf: (id: string, label?: string) => string;
 	readonly onJump: (messageId: string) => void;
-	/** Older posts exist beyond those loaded. */
-	readonly more: boolean;
 }) {
 	const { ref, width: available } = useWidth();
 	const [focused, setFocused] = useState<string | null>(null);
@@ -306,7 +303,6 @@ export function TeamSequenceChart({
 				<span>{time(timeline.from)}</span>
 				<span>{time(timeline.to)}</span>
 			</div>
-			<TimelineKeyStrip plotted={arrows.length} more={more} />
 			<div id={detailId} aria-live="polite">
 				{selected ? (
 					<section

@@ -1,7 +1,13 @@
-import { InfoIcon } from "lucide-react";
+import { KeyRoundIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import {
+	Popover,
+	PopoverContent,
+	PopoverDescription,
+	PopoverTitle,
+	PopoverTrigger,
+} from "@kilo-desktop/ui/components/popover";
 
 import type { SequenceArrow } from "./team-sequence";
 import { RUN_GAP_MS } from "./team-timeline";
@@ -21,7 +27,7 @@ export function strokeOf(type: SequenceArrow["type"]): { dash?: string; width: n
 
 type Mark = "span" | "unknown" | "post" | "info" | "hold" | "everyone" | "reply";
 
-/** Each mark the chart draws: a short name for the strip, a fuller one on hover. */
+/** Each mark the chart draws, with a short name for screen readers and its meaning. */
 const MARKS: readonly { readonly mark: Mark; readonly short: string; readonly long: string }[] = [
 	{ mark: "span", short: "Active", long: "When an agent was active" },
 	{ mark: "unknown", short: "End unknown", long: "Active, but when it stopped isn't known" },
@@ -93,60 +99,55 @@ function Glyph({ mark }: { readonly mark: Mark }) {
 	);
 }
 
-/** What the chart can't show, said behind each chart's ⓘ. */
-const PERIOD_CAVEAT = `Activity periods are split at quiet gaps of at least ${RUN_GAP_MS / 60_000} minutes, not recorded agent turns.`;
+/** What the chart can't show, said in the key. */
 const SPAN_CAVEAT =
 	"Activity uses recorded starts, ends and last known activity, not continuous execution.";
-const LANE_CAVEAT = "Only senders with a team lane are plotted.";
 
 /**
- * One quiet row of marks under a chart, so the encoding reads at a glance,
- * with the plotted-post count and its caveats behind an ⓘ.
+ * The timeline's key, on demand from the tab header: every mark spelled out,
+ * how periods are found, and what loaded history leaves out. The charts carry
+ * no legend of their own, so they keep the pane's space.
  */
-export function TimelineKeyStrip({
-	plotted,
+export function TimelineKeyButton({
 	more,
 }: {
-	readonly plotted: number;
 	/** Older posts exist that aren't loaded, so aren't plotted. */
 	readonly more: boolean;
 }) {
-	const about = [
-		`${plotted === 1 ? "1 post" : `${plotted} posts`} plotted from loaded history${more ? "; older posts aren't loaded" : ""}.`,
-		LANE_CAVEAT,
-		SPAN_CAVEAT,
-		PERIOD_CAVEAT,
-	].join(" ");
 	return (
-		<div
-			className="text-muted-foreground flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs"
-			data-qa-id="swarm-timeline-key"
-		>
-			<ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1" aria-label="Timeline key">
-				{MARKS.map(({ mark, short, long }) => (
-					<li key={mark} className="flex items-center gap-1.5 whitespace-nowrap" title={long}>
-						<Glyph mark={mark} />
-						{short}
-					</li>
-				))}
-			</ul>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<Button
-							variant="ghost"
-							size="xs"
-							className="text-muted-foreground gap-1 tabular-nums"
-							aria-label={about}
-							data-qa-id="swarm-timeline-about"
-						/>
-					}
-				>
-					{plotted === 1 ? "1 post" : `${plotted} posts`}
-					<InfoIcon aria-hidden />
-				</TooltipTrigger>
-				<TooltipContent className="max-w-64">{about}</TooltipContent>
-			</Tooltip>
-		</div>
+		<Popover>
+			<PopoverTrigger
+				render={
+					<Button
+						variant="ghost"
+						size="xs"
+						className="text-muted-foreground"
+						data-qa-id="swarm-timeline-key-button"
+					/>
+				}
+			>
+				<KeyRoundIcon aria-hidden /> Key
+			</PopoverTrigger>
+			<PopoverContent align="end" className="w-80" data-qa-id="swarm-timeline-key-popover">
+				<PopoverTitle>Reading the timeline</PopoverTitle>
+				<dl className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 text-xs">
+					{MARKS.map(({ mark, short, long }) => (
+						<div key={mark} className="contents">
+							<dt className="text-muted-foreground flex">
+								<Glyph mark={mark} />
+								<span className="sr-only">{short}</span>
+							</dt>
+							<dd>{long}</dd>
+						</div>
+					))}
+				</dl>
+				<PopoverDescription className="border-t pt-2 text-xs">
+					Activity periods are split at quiet gaps of at least {RUN_GAP_MS / 60_000} minutes, not
+					recorded agent turns. {SPAN_CAVEAT} Only loaded posts from senders with a team lane are
+					plotted
+					{more ? "; older posts aren't loaded yet" : ""}.
+				</PopoverDescription>
+			</PopoverContent>
+		</Popover>
 	);
 }

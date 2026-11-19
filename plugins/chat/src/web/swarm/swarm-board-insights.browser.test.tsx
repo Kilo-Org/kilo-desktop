@@ -385,14 +385,15 @@ describe("Swarm Board reading aids", () => {
 		await expect.element(bars.nth(2)).toHaveAttribute("data-ending", "unknown");
 		await expect.poll(() => pane().getByTestId("swarm-timeline-post").all().length).toBe(5);
 
-		const key = pane().getByTestId("swarm-timeline-key");
-		await expect.element(key.getByText("Hold / veto")).toBeVisible();
+		await expect.element(pane().getByTestId("swarm-timeline-key")).not.toBeInTheDocument();
+		await pane().getByTestId("swarm-timeline-key-button").click();
 		await expect
-			.element(key.getByTestId("swarm-timeline-about"))
-			.toHaveAccessibleName(/5 posts plotted from loaded history/);
-		await expect
-			.element(key.getByText("Hold / veto"))
-			.toHaveAttribute("title", "A HOLD or VETO: it blocks someone");
+			.element(
+				page
+					.getByTestId("swarm-timeline-key-popover")
+					.getByText("A HOLD or VETO: it blocks someone"),
+			)
+			.toBeVisible();
 	});
 
 	it("shows an agent's details through an explicit keyboard-accessible control", async () => {

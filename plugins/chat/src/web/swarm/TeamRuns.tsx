@@ -19,7 +19,7 @@ const time = (timestamp: number) =>
 /**
  * Inferred activity periods, with the latest open and earlier periods folded.
  * These are quiet-gap groupings of loaded history, not recorded agent turns
- * (each chart's ⓘ says so).
+ * (the Timeline tab's Key says so).
  */
 export function TeamRuns({
 	runs,
@@ -28,7 +28,6 @@ export function TeamRuns({
 	colorOf,
 	nameOf,
 	onJump,
-	more,
 }: {
 	readonly runs: readonly Timeline[];
 	/** Loaded posts to plot; filtering is owned by the caller. */
@@ -37,7 +36,6 @@ export function TeamRuns({
 	readonly colorOf: (chatId: string) => string;
 	readonly nameOf: (id: string, label?: string) => string;
 	readonly onJump: (messageId: string) => void;
-	readonly more: boolean;
 }) {
 	/** Periods the person opened or folded, by start time; the latest starts open. */
 	const [toggled, setToggled] = useState<ReadonlyMap<number, boolean>>(new Map());
@@ -56,7 +54,6 @@ export function TeamRuns({
 			colorOf={colorOf}
 			nameOf={nameOf}
 			onJump={onJump}
-			more={more}
 		/>
 	);
 	return (

@@ -44,7 +44,7 @@ interface Span {
  * time axis with only the agents that worked in it, so a long pause doesn't
  * squeeze both into slivers. A worker's run (start to finish, or to now, or
  * to its last known moment) and every post count as activity; the main agent
- * spans the whole chat, so only its posts do. The main agent has a lane in
+ * spans the whole chat, so only its posts and the end of its last turn do. The main agent has a lane in
  * every run (it is who workers answer to); members nothing dates are left out.
  */
 export function teamRuns(
@@ -74,6 +74,7 @@ export function teamRuns(
 		...workers.map((member) => ({ from: member.startedAt!, to: workEnd(member) })),
 		...messages.map((message) => ({ from: message.timestamp, to: message.timestamp })),
 		...(main ? [{ from: main.startedAt!, to: main.startedAt! }] : []),
+		...(main?.completedAt !== undefined ? [{ from: main.completedAt, to: main.completedAt }] : []),
 		...(main && isActive(main.state) ? [{ from: now, to: now }] : []),
 	].toSorted((a, b) => a.from - b.from);
 	const runs: Span[] = [];
@@ -96,7 +97,11 @@ export function teamRuns(
 			const mainPosts = (postsBy.get(main.chatId) ?? []).filter((post) => inRun(post.timestamp));
 			const running = isActive(main.state) && index === runs.length - 1;
 			const start = Math.max(main.startedAt!, run.from);
-			const end = running ? run.to : Math.max(start, ...mainPosts.map((post) => post.timestamp));
+			const finished =
+				main.completedAt !== undefined && inRun(main.completedAt) ? [main.completedAt] : [];
+			const end = running
+				? run.to
+				: Math.max(start, ...finished, ...mainPosts.map((post) => post.timestamp));
 			lanes.push({
 				chatId: main.chatId,
 				title: "Main agent",

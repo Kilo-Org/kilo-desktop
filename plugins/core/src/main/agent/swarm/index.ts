@@ -181,8 +181,13 @@ export function provideSwarm(sdk: PluginSdk, conversations: ConversationsService
 		},
 	});
 
-	/** Settled workers' last turns, which don't change: read once per chat. */
-	const settledTurns = new Map<string, KiloLastTurn>();
+	/**
+	 * Workers' newest turns, kept while their chat is unchanged. A completed
+	 * turn alone doesn't mean the worker settled: each step of a working
+	 * agent completes its own message, so a turn read mid-run would date
+	 * the finish minutes early if it were kept past the chat's next update.
+	 */
+	const turnCache = new Map<string, { readonly updatedAt: number; readonly turn: KiloLastTurn }>();
 
 	/**
 	 * The roster from what every Kilo server has, for those without Kilo's
@@ -214,11 +219,10 @@ export function provideSwarm(sdk: PluginSdk, conversations: ConversationsService
 		const listed = workers.slice(0, DERIVED_LIMIT);
 		const turns = await Promise.all(
 			listed.map(async (chat) => {
-				const cached = settledTurns.get(chat.id);
-				if (cached) return cached;
+				const cached = turnCache.get(chat.id);
+				if (cached?.updatedAt === chat.updatedAt) return cached.turn;
 				const turn = await client.lastTurn(directory, chat.id).catch(() => null);
-				if (turn && (turn.completedAt !== undefined || turn.errorName))
-					settledTurns.set(chat.id, turn);
+				if (turn) turnCache.set(chat.id, { updatedAt: chat.updatedAt, turn });
 				return turn;
 			}),
 		);

@@ -73,6 +73,21 @@ describe("teamRuns", () => {
 		expect(lanes.undated).toBeUndefined();
 	});
 
+	it("draws the main agent to the end of its last turn when it finished in the run", () => {
+		const runs = teamRuns(
+			[
+				member("root", { main: true, state: "idle", startedAt: 0, completedAt: 8 * MINUTE }),
+				member("worker", { startedAt: MINUTE, completedAt: 7 * MINUTE }),
+			],
+			[],
+			30 * MINUTE,
+			"root",
+		);
+
+		expect(runs.map((run) => [run.from, run.to])).toEqual([[0, 8 * MINUTE]]);
+		expect(runs[0]!.lanes[0]).toMatchObject({ chatId: "root", start: 0, end: 1, ending: "known" });
+	});
+
 	it("is empty when nothing is dated", () => {
 		expect(teamRuns([member("a")], [], 0, "root")).toEqual([]);
 	});

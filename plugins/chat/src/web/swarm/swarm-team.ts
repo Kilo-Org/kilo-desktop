@@ -102,15 +102,19 @@ function workerState(chat: ChatSummary, job: BackgroundJob | undefined): MemberS
 
 function mainMember(root: ChatSummary): TeamMember {
 	const attention = attentionReasons(root);
+	const state = liveState(root) ?? (root.activity.lastError ? "failed" : "idle");
 	return {
 		chatId: root.id,
 		title: root.title,
 		main: true,
-		state: liveState(root) ?? (root.activity.lastError ? "failed" : "idle"),
+		state,
 		needsYou: attention.length > 0,
 		attention,
 		background: false,
 		startedAt: root.createdAt,
+		...(root.activity.completedAt !== undefined && !isActive(state)
+			? { completedAt: root.activity.completedAt }
+			: {}),
 		...(root.activity.lastError ? { error: root.activity.lastError.message } : {}),
 	};
 }

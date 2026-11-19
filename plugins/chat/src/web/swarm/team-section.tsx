@@ -203,10 +203,11 @@ export function TeamRow({
 					) : null}
 					{member.completedAt ? (
 						<>
-							<dt>Finished</dt>
+							{/* The main agent's chat can hold many turns, so only its last one's end is known. */}
+							<dt>{member.main ? "Last turn ended" : "Finished"}</dt>
 							<dd className="text-foreground tabular-nums">
 								{time(member.completedAt)}
-								{member.startedAt
+								{member.startedAt && !member.main
 									? ` · took ${duration(member.completedAt - member.startedAt)}`
 									: ""}
 							</dd>

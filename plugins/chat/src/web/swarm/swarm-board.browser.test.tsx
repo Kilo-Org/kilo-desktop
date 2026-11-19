@@ -165,6 +165,31 @@ describe("the Swarm Board pane", () => {
 		expect(host.core.calls.resetBoard).toHaveBeenCalledWith({ chatId: "ses_a", revision: 1 });
 	});
 
+	it("says the subagents finished without posting, instead of waiting for posts", async () => {
+		await showBoard({
+			chats: [
+				chatSummary("ses_a", { title: "Map conda" }),
+				chatSummary("ses_c1", {
+					parentId: "ses_a",
+					title: "Map bridge RPC",
+					createdAt: 2,
+					activity: {
+						status: "idle",
+						completedAt: 3,
+						pendingPermissionIds: [],
+						pendingQuestionIds: [],
+					},
+				}),
+			],
+			boards: { ses_a: board([]) },
+		});
+
+		const empty = pane().getByTestId("swarm-board-empty");
+		await expect.element(empty.getByText("No posts on this board"), WAIT).toBeVisible();
+		await expect.element(empty.getByText(/The subagent finished without posting\./)).toBeVisible();
+		await expect.element(empty.getByTestId("swarm-board-empty-open-chat")).toBeVisible();
+	});
+
 	it("does not clear messages arriving behind the confirmation dialog", async () => {
 		const host = await showBoard({ boardEvents: true });
 		await expect.element(postText("Finding m2"), WAIT).toBeVisible();

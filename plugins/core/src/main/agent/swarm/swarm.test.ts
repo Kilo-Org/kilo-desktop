@@ -338,9 +338,36 @@ describe("kilo.core/swarm team", () => {
 			parentChatId: "ses_done",
 		});
 
-		// A settled worker's last turn is read once.
+		// An unchanged worker's last turn is read once.
 		const before = chats.reads.filter((read) => read === "last ses_done").length;
 		await swarm.methods.team({ chatId: "ses_root" });
 		expect(chats.reads.filter((read) => read === "last ses_done").length).toBe(before);
+	});
+
+	it("dates a derived worker's finish by its final turn, not a step that finished while it worked", async () => {
+		const chats = rooted();
+		const worker = desktopChat("ses_worker", {
+			directory: "/repo",
+			parentId: "ses_root",
+			updatedAt: 1_000,
+		});
+		chats.chats.push(worker);
+		// Mid-run: the newest message is a finished step, while the server still says busy.
+		chats.byDirectory = { "/repo": { statuses: { ses_worker: { type: "busy" } } } };
+		chats.lastTurns = { ses_worker: { role: "assistant", completedAt: 1_000 } };
+		const { swarm } = await boot(chats);
+		expect((await swarm.methods.team({ chatId: "ses_root" }))!.members[0]).toMatchObject({
+			state: "busy",
+		});
+
+		// It finishes minutes later: idle, a newer final turn, and the chat updated.
+		chats.byDirectory = { "/repo": { statuses: {} } };
+		chats.lastTurns = { ses_worker: { role: "assistant", completedAt: 300_000 } };
+		chats.chats.splice(chats.chats.indexOf(worker), 1, { ...worker, updatedAt: 300_000 });
+
+		expect((await swarm.methods.team({ chatId: "ses_root" }))!.members[0]).toMatchObject({
+			state: "completed",
+			completedAt: 300_000,
+		});
 	});
 });

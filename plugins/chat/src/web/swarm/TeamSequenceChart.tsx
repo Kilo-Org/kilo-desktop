@@ -8,6 +8,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { tint } from "./swarm-colors";
 import { sequenceArrows, threadIds, type SequenceArrow } from "./team-sequence";
 import type { Timeline, TimelineLane } from "./team-timeline";
+import { strokeOf, TimelineKeyStrip } from "./timeline-key";
 
 const LANE_HEIGHT = 48;
 /** The chart widens with density; equal timestamps still share a position on the time axis. */
@@ -16,19 +17,6 @@ const PAD = 16;
 
 const time = (timestamp: number) =>
 	new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-/** How a post's arrow is drawn: dashed for INFO, heavier for what blocks someone. */
-function strokeOf(type: SequenceArrow["type"]): { dash?: string; width: number } {
-	switch (type) {
-		case "INFO":
-			return { dash: "4 3", width: 1.25 };
-		case "HOLD":
-		case "VETO":
-			return { width: 2.25 };
-		default:
-			return { width: 1.5 };
-	}
-}
 
 /** The chart area's width in CSS pixels, followed as the pane resizes. */
 /**
@@ -68,7 +56,8 @@ function useWidth() {
  * its activity as a bar (to now while it runs; dashed to its last known moment
  * when nothing says when it stopped), and each board post as an arrow from
  * its sender's lane to its recipient's, in the sender's color — dashed for
- * INFO, heavier for HOLD and VETO, a fan of ticks for posts to everyone.
+ * INFO, heavier for HOLD and VETO, a fan of ticks for posts to everyone
+ * (`timeline-key` names each mark under the chart).
  * Hovering or focusing a post highlights its thread and links its replies;
  * Selecting reveals its full post with an explicit source jump. The axis
  * comes from `timeline`, so it holds still when the supplied posts change.
@@ -317,27 +306,7 @@ export function TeamSequenceChart({
 				<span>{time(timeline.from)}</span>
 				<span>{time(timeline.to)}</span>
 			</div>
-			<div
-				className="text-muted-foreground flex flex-col gap-2 text-xs"
-				aria-label="Timeline legend"
-			>
-				<ul className="flex flex-wrap gap-x-4 gap-y-1">
-					<li>Bars: activity span</li>
-					<li>Dashed bar: end unknown</li>
-					<li>Dashed arrow: INFO</li>
-					<li>Heavy arrow: HOLD / VETO</li>
-					<li>Ticks: to everyone</li>
-					<li>Dotted curve: reply</li>
-				</ul>
-				<p>
-					Activity spans use recorded starts, ends, and last known activity, not continuous
-					execution.
-				</p>
-				<p>
-					{arrows.length} plotted posts from loaded history
-					{more ? "; older posts are not loaded" : ""}. Only senders with a team lane are plotted.
-				</p>
-			</div>
+			<TimelineKeyStrip plotted={arrows.length} more={more} />
 			<div id={detailId} aria-live="polite">
 				{selected ? (
 					<section

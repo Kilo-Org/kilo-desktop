@@ -44,6 +44,7 @@ import {
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import {
 	Empty,
+	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
@@ -92,6 +93,7 @@ import { participantName } from "./swarm-team";
 import { useNow } from "./swarm-time";
 import { TeamRow } from "./team-section";
 import { TeamRuns } from "./TeamRuns";
+import { TimelineKeyButton } from "./timeline-key";
 import { teamRuns } from "./team-timeline";
 import { useSwarmBoard } from "./use-swarm-board";
 
@@ -591,6 +593,13 @@ function SwarmBoard({
 	const finished = board.team.filter(
 		(member) => !member.needsYou && ["done", "cancelled", "stopped"].includes(member.state),
 	);
+	/** Workers that all stopped without anyone posting: the board stays empty for good. */
+	const workers = board.team.filter((member) => !member.main);
+	const settledWithoutPosts =
+		workers.length > 0 && working.length === 0 && attention.length === 0
+			? finished.filter((member) => !member.main).length +
+				failed.filter((member) => !member.main).length
+			: 0;
 	const attentionLabel = (member: (typeof board.team)[number]) =>
 		member.attention?.includes("permission")
 			? "Permission required"
@@ -836,11 +845,38 @@ function SwarmBoard({
 										<EmptyMedia variant="icon">
 											<BotIcon />
 										</EmptyMedia>
-										<EmptyTitle>Nothing on the board yet</EmptyTitle>
-										<EmptyDescription>
-											Subagents post findings and questions here as they work.
-										</EmptyDescription>
+										{settledWithoutPosts ? (
+											<>
+												<EmptyTitle>No posts on this board</EmptyTitle>
+												<EmptyDescription>
+													{settledWithoutPosts === 1
+														? "The subagent finished without posting."
+														: `${settledWithoutPosts} subagents finished without posting.`}{" "}
+													Their reports went to the main agent, in the chat.
+												</EmptyDescription>
+											</>
+										) : (
+											<>
+												<EmptyTitle>Nothing on the board yet</EmptyTitle>
+												<EmptyDescription>
+													Subagents post findings and questions here as they work.
+												</EmptyDescription>
+											</>
+										)}
 									</EmptyHeader>
+									{settledWithoutPosts ? (
+										<EmptyContent>
+											<Button
+												variant="outline"
+												size="sm"
+												disabled={!panes}
+												onClick={openMain}
+												data-qa-id="swarm-board-empty-open-chat"
+											>
+												Open chat <ArrowUpRightIcon />
+											</Button>
+										</EmptyContent>
+									) : null}
 								</Empty>
 							) : (
 								<>
@@ -887,10 +923,15 @@ function SwarmBoard({
 						/>
 					</TabsContent>
 					<TabsContent value="timeline" className="min-h-0 overflow-y-auto py-3">
-						<h3 className="text-sm font-medium">Coordination over time</h3>
-						<p className="text-muted-foreground mt-1 mb-4 text-xs">
-							Inspect a post, then open its source in Activity. Based on loaded history.
-						</p>
+						<div className="mb-4 flex items-start justify-between gap-2">
+							<div className="flex min-w-0 flex-col gap-1">
+								<h3 className="text-sm font-medium">Coordination over time</h3>
+								<p className="text-muted-foreground text-xs">
+									Inspect a post, then open its source in Activity.
+								</p>
+							</div>
+							<TimelineKeyButton />
+						</div>
 						<TeamRuns
 							runs={runs}
 							messages={messages}

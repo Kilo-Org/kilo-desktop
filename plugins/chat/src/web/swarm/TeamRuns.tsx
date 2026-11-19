@@ -11,14 +11,15 @@ import {
 
 import { duration } from "./swarm-time";
 import { TeamSequenceChart } from "./TeamSequenceChart";
-import { RUN_GAP_MS, type Timeline } from "./team-timeline";
+import type { Timeline } from "./team-timeline";
 
 const time = (timestamp: number) =>
 	new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /**
  * Inferred activity periods, with the latest open and earlier periods folded.
- * These are quiet-gap groupings of loaded history, not recorded agent turns.
+ * These are quiet-gap groupings of loaded history, not recorded agent turns
+ * (the Timeline tab's Key says so).
  */
 export function TeamRuns({
 	runs,
@@ -60,10 +61,6 @@ export function TeamRuns({
 	);
 	return (
 		<div className="flex min-w-0 flex-col gap-3">
-			<p className="text-muted-foreground text-xs">
-				Periods are inferred from quiet gaps of at least {RUN_GAP_MS / 60_000} minutes, not recorded
-				agent turns.
-			</p>
 			<ol className="flex min-w-0 flex-col gap-3" data-qa-id="swarm-runs">
 				{runs.map((run, index) => {
 					const latest = index === runs.length - 1;

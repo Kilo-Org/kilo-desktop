@@ -9,12 +9,13 @@ import {
 	COMMAND_PRIORITY_LOW,
 	KEY_ENTER_COMMAND,
 	PASTE_COMMAND,
+	type CommandListenerPriority,
 } from "lexical";
 import type { Unstable_DirectiveFormatter } from "@assistant-ui/react";
 import {
 	type CSSProperties,
 	type FC,
-	type KeyboardEvent,
+	type KeyboardEvent as ReactKeyboardEvent,
 	type Ref,
 	useEffect,
 	useLayoutEffect,
@@ -32,7 +33,7 @@ type KiloLexicalComposerInputProps = {
 	disabled?: boolean;
 	cancelOnEscape?: boolean;
 	submitMode?: "enter" | "ctrlEnter" | "none";
-	onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
+	onKeyDown?: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
 	/** Takes a plain Enter before sending or queueing does, when it returns true. */
 	onEnter?: () => boolean;
 	/**
@@ -45,8 +46,6 @@ type KiloLexicalComposerInputProps = {
 	/** The input's accessible name. */
 	label?: string;
 	qaId?: string;
-	/** Whether Enter steers or queues prompts; an input without a queue (editing a sent message) turns it off. */
-	queueOnEnter?: boolean;
 	autoFocus?: boolean;
 };
 
@@ -68,7 +67,6 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	style,
 	label = "Message input",
 	qaId = "kilo-composer-input",
-	queueOnEnter = true,
 	autoFocus,
 }) => {
 	const editorGeneration = useEditorGeneration();
@@ -97,14 +95,24 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 		>
 			<LexicalInputAria label={label} qaId={qaId} />
 			<AttachmentPastePlugin />
-			{queueOnEnter ? (
-				<>
-					<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
-					<QueueEnterWhileRunningPlugin />
-				</>
+			<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
+			<QueueEnterWhileRunningPlugin />
+			{/* CRITICAL: ahead of the built-in handler, the queue and sending. */}
+			{onEnter ? (
+				<EnterHandlerPlugin onEnter={onEnter} priority={COMMAND_PRIORITY_CRITICAL} />
 			) : null}
-			{onEnter ? <EnterOverridePlugin onEnter={onEnter} /> : null}
-			{onSubmitEnter ? <SubmitEnterPlugin onSubmitEnter={onSubmitEnter} /> : null}
+			{/* LOW: after the built-in HIGH handler, which gives the `/` and mention
+			    menus first refusal (and sends nothing with submitMode "none"), and
+			    before plain text's EDITOR-priority newline. */}
+			{onSubmitEnter ? (
+				<EnterHandlerPlugin
+					onEnter={() => {
+						onSubmitEnter();
+						return true;
+					}}
+					priority={COMMAND_PRIORITY_LOW}
+				/>
+			) : null}
 			{autoFocus ? <FocusAtEndPlugin /> : null}
 		</LexicalComposerInput>
 	);
@@ -191,6 +199,17 @@ function AttachmentPastePlugin() {
 	return null;
 }
 
+const isPlainEnter = (event: KeyboardEvent | null): event is KeyboardEvent =>
+	!!event && !event.shiftKey && !event.isComposing && !event.ctrlKey && !event.metaKey;
+
+/**
+ * Whether Enter can steer or queue prompts here: the thread's composer when
+ * its thread has a queue, not a message's edit composer (which has none).
+ * `isEditing` can't tell them apart: the thread's composer is always editing.
+ */
+const useCanQueueOnEnter = () =>
+	useAuiState((s) => s.thread.capabilities.queue && s.composer.type !== "edit");
+
 // With an empty composer and a non-empty queue, Enter steers the top queued
 // message (same as its "Send now" button). Must run at CRITICAL priority: the
 // built-in HIGH handler preventDefaults Enter on an empty composer when idle,
@@ -204,17 +223,14 @@ function SteerQueueOnEnterPlugin({
 }) {
 	const [editor] = useLexicalComposerContext();
 	const aui = useAui();
-	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
+	const canQueue = useCanQueueOnEnter();
 
 	useEffect(() => {
 		return editor.registerCommand(
 			KEY_ENTER_COMMAND,
 			(event) => {
-				if (disabled || submitMode !== "enter") return false;
-				if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-					return false;
-				}
-				if (!canQueue) return false;
+				if (disabled || submitMode !== "enter" || !canQueue) return false;
+				if (!isPlainEnter(event)) return false;
 				const composer = aui.composer.getState();
 				if (!composer.isEmpty || composer.queue.length === 0) return false;
 				event.preventDefault();
@@ -245,32 +261,14 @@ function FocusAtEndPlugin() {
 	return null;
 }
 
-// LOW priority: after the built-in HIGH handler, which gives the `/` and
-// mention menus first refusal (and sends nothing with submitMode "none"), and
-// before plain text's EDITOR-priority newline.
-function SubmitEnterPlugin({ onSubmitEnter }: { onSubmitEnter: () => void }) {
-	const [editor] = useLexicalComposerContext();
-	const latest = useLatestRef(onSubmitEnter);
-	useEffect(
-		() =>
-			editor.registerCommand(
-				KEY_ENTER_COMMAND,
-				(event) => {
-					if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-						return false;
-					}
-					event.preventDefault();
-					latest.current();
-					return true;
-				},
-				COMMAND_PRIORITY_LOW,
-			),
-		[editor],
-	);
-	return null;
-}
-
-function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
+/** Takes a plain Enter at `priority` when `onEnter` returns true. */
+function EnterHandlerPlugin({
+	onEnter,
+	priority,
+}: {
+	onEnter: () => boolean;
+	priority: CommandListenerPriority;
+}) {
 	const [editor] = useLexicalComposerContext();
 	const latest = useLatestRef(onEnter);
 	useEffect(
@@ -278,16 +276,13 @@ function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
 			editor.registerCommand(
 				KEY_ENTER_COMMAND,
 				(event) => {
-					if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-						return false;
-					}
-					if (!latest.current()) return false;
+					if (!isPlainEnter(event) || !latest.current()) return false;
 					event.preventDefault();
 					return true;
 				},
-				COMMAND_PRIORITY_CRITICAL,
+				priority,
 			),
-		[editor, latest],
+		[editor, latest, priority],
 	);
 	return null;
 }
@@ -295,15 +290,13 @@ function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
 function QueueEnterWhileRunningPlugin() {
 	const [editor] = useLexicalComposerContext();
 	const aui = useAui();
-	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
+	const canQueue = useCanQueueOnEnter();
 
 	useEffect(() => {
 		return editor.registerCommand(
 			KEY_ENTER_COMMAND,
 			(event) => {
-				if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-					return false;
-				}
+				if (!isPlainEnter(event)) return false;
 				if (!canQueue || !aui.thread.getState().isRunning) return false;
 				if (aui.composer.getState().isEmpty) return false;
 				event.preventDefault();

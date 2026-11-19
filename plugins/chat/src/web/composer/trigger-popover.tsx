@@ -1,8 +1,11 @@
 "use client";
 
 import {
+	createContext,
+	useContext,
 	useEffect,
 	useRef,
+	useState,
 	type ComponentPropsWithoutRef,
 	type ComponentType,
 	type FC,
@@ -74,6 +77,45 @@ type ComposerTriggerPopoverProps = ComposerTriggerPopoverBaseProps &
 				directive?: never;
 		  }
 	);
+
+/**
+ * Where a composer's `/` and mention menus open. The thread's composer sits at
+ * the bottom of the pane, so its menus always open above; a composer inside
+ * the transcript (editing a sent prompt) picks the side with room.
+ */
+export type TriggerPopoverPlacement = "above" | "auto";
+
+const TriggerPopoverPlacementContext = createContext<TriggerPopoverPlacement>("above");
+
+export const TriggerPopoverPlacementProvider = TriggerPopoverPlacementContext.Provider;
+
+function scrollClip(element: HTMLElement): { top: number; bottom: number } {
+	for (let node = element.parentElement; node; node = node.parentElement) {
+		const { overflowY } = getComputedStyle(node);
+		if (overflowY === "auto" || overflowY === "scroll" || overflowY === "hidden") {
+			const rect = node.getBoundingClientRect();
+			return { top: rect.top, bottom: rect.bottom };
+		}
+	}
+	return { top: 0, bottom: window.innerHeight };
+}
+
+/**
+ * Opens below when the menu doesn't fit above its composer but has more room
+ * below. Measured as the menu attaches, before the browser paints it.
+ */
+function useOpensBelow(placement: TriggerPopoverPlacement) {
+	const [below, setBelow] = useState(false);
+	const measure = (element: HTMLDivElement | null) => {
+		if (placement !== "auto" || !element?.offsetParent) return;
+		const anchor = element.offsetParent.getBoundingClientRect();
+		const clip = scrollClip(element);
+		const spaceAbove = anchor.top - clip.top;
+		const spaceBelow = clip.bottom - anchor.bottom;
+		setBelow(spaceAbove < element.offsetHeight && spaceBelow > spaceAbove);
+	};
+	return [placement === "auto" && below, measure] as const;
+}
 
 function resolveIcon(
 	iconKey: string | undefined,
@@ -211,6 +253,7 @@ export const ComposerTriggerPopover: FC<ComposerTriggerPopoverProps> = ({
 	...props
 }) => {
 	const warnedRef = useRef(false);
+	const [opensBelow, measurePlacement] = useOpensBelow(useContext(TriggerPopoverPlacementContext));
 	const misconfigured = Boolean(directive) === Boolean(action);
 	useEffect(() => {
 		if (process.env.NODE_ENV === "production" || warnedRef.current || !misconfigured) return;
@@ -223,11 +266,14 @@ export const ComposerTriggerPopover: FC<ComposerTriggerPopoverProps> = ({
 	return (
 		<ComposerPrimitive.Unstable_TriggerPopover
 			data-slot="composer-trigger-popover"
+			data-side={opensBelow ? "bottom" : "top"}
 			className={cn(
-				"aui-composer-trigger-popover bg-popover/95 text-popover-foreground absolute start-0 bottom-full z-50 mb-2 flex w-full max-h-[min(20rem,calc(100dvh-14rem))] flex-col overflow-hidden rounded-lg shadow-md ring-1 ring-foreground/10 backdrop-blur-sm",
+				"aui-composer-trigger-popover bg-popover/95 text-popover-foreground absolute start-0 z-50 flex w-full max-h-[min(20rem,calc(100dvh-14rem))] flex-col overflow-hidden rounded-lg shadow-md ring-1 ring-foreground/10 backdrop-blur-sm",
+				opensBelow ? "top-full mt-2" : "bottom-full mb-2",
 				className,
 			)}
 			{...props}
+			ref={measurePlacement}
 		>
 			{directive ? (
 				<ComposerPrimitive.Unstable_TriggerPopover.Directive

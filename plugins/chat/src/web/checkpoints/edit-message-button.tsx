@@ -22,12 +22,9 @@ export const EditMessageButton: FC = () => {
 	const canEdit = useAuiState((s) => s.thread.capabilities.edit);
 	const answered = useIsAnsweredPrompt();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
-	const isEditing = useAuiState((s) => s.composer.isEditing);
 	const { pendingId } = useRevertPending();
 
 	if (!hasExtras || !canEdit || !answered) return null;
-
-	const disabled = isEditing || isRunning || pendingId !== null;
 
 	const startEditing = () => {
 		const message = aui.message.getState();
@@ -43,10 +40,8 @@ export const EditMessageButton: FC = () => {
 			tooltip={isRunning ? "Wait for agent to finish" : "Edit"}
 			aria-label="Edit message"
 			data-qa-id="kilo-edit-message-button"
-			disabled={disabled}
-			onClick={() => {
-				if (!disabled) startEditing();
-			}}
+			disabled={isRunning || pendingId !== null}
+			onClick={startEditing}
 		>
 			<PencilIcon className="size-3.5" />
 		</TooltipIconButton>

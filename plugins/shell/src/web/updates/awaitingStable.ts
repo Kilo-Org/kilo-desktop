@@ -13,8 +13,10 @@ export function awaitedStableVersion(state: UpdaterState): string | null {
 	if (!state.enabled || state.track !== "stable" || state.installedTrack !== "preview") {
 		return null;
 	}
+	// A failed check leaves us not knowing whether a newer Stable exists.
 	// Native "update-available" can leave availableVersion null when release notes fail.
 	if (
+		state.status === "error" ||
 		state.status === "downloading" ||
 		state.status === "downloaded" ||
 		state.status === "available" ||

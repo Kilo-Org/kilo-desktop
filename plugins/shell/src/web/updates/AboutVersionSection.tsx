@@ -223,8 +223,8 @@ export function AboutVersionSection() {
 								className="-mt-1.5 line-clamp-none px-3 pb-3 text-xs"
 								data-qa-id="update-track-awaiting-stable"
 							>
-								You're on a Preview build. You'll move to Stable automatically when Stable{" "}
-								{stableVersion} or later is released. To use the current Stable now,{" "}
+								You're on a Preview build. You'll be offered Stable {stableVersion} or later once
+								it's released. To use the current Stable now,{" "}
 								<ExternalLink
 									href={STABLE_DOWNLOADS_URL}
 									onOpen={(url) => void openDownload(url)}
@@ -293,9 +293,7 @@ function getUpdateDescription(state: DesktopUpdateState): string {
 			return `${updateAvailableLabel(state)}.`;
 		case "up-to-date": {
 			const stableVersion = awaitedStableVersion(state);
-			return stableVersion
-				? `Waiting for Stable ${stableVersion} or later to replace this Preview build.`
-				: "You're up to date.";
+			return stableVersion ? `Waiting for Stable ${stableVersion} or later.` : "You're up to date.";
 		}
 		case "idle":
 			return "Current version of the application.";

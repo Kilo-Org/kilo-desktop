@@ -293,10 +293,13 @@ describe("DesktopUpdaterService", () => {
 
 	it("reports the track the installed build came from, which a track change leaves alone", async () => {
 		vi.useFakeTimers();
-		const { service } = createService({ installedTrack: "preview" });
-		service.start();
-		expect(service.state).toMatchObject({ track: "preview", installedTrack: "preview" });
+		const switchedEarlier = createService({ track: "stable", installedTrack: "preview" }).service;
+		switchedEarlier.start();
+		expect(switchedEarlier.state).toMatchObject({ track: "stable", installedTrack: "preview" });
+		switchedEarlier.dispose();
 
+		const { service } = createService({ track: "preview", installedTrack: "preview" });
+		service.start();
 		await service.setTrack("stable");
 
 		expect(service.state).toMatchObject({ track: "stable", installedTrack: "preview" });

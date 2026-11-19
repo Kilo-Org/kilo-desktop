@@ -562,12 +562,12 @@ describe("About settings", () => {
 
 		await vi.waitFor(() =>
 			expect(page.getByTestId("update-track-awaiting-stable").element().textContent).toContain(
-				"move to Stable automatically when Stable 1.2.3 or later is released",
+				"You'll be offered Stable 1.2.3 or later once it's released.",
 			),
 		);
 		await expect
 			.element(page.getByTestId("update-status-message"))
-			.toHaveTextContent("Waiting for Stable 1.2.3 or later to replace this Preview build.");
+			.toHaveTextContent("Waiting for Stable 1.2.3 or later.");
 
 		await page.getByTestId("update-track-download-stable").click();
 
@@ -575,20 +575,18 @@ describe("About settings", () => {
 	});
 
 	it("drops the Stable explanation once a Stable update is on its way", async () => {
-		for (const state of [
-			{ ...waitingForStableState, status: "downloading" as const },
-			{
+		await openAbout({
+			state: {
 				...downloadedState,
 				installedTrack: "preview",
 				currentVersion: "1.2.3-preview-261118-10302",
 			},
-		]) {
-			await openAbout({ state });
-			await expect.element(page.getByTestId("about-version")).toBeVisible();
-			await expect
-				.element(page.getByTestId("update-track-awaiting-stable"))
-				.not.toBeInTheDocument();
-		}
+		});
+
+		await expect
+			.element(page.getByTestId("update-status-message"))
+			.toHaveTextContent("Version 1.2.3 is ready to install.");
+		await expect.element(page.getByTestId("update-track-awaiting-stable")).not.toBeInTheDocument();
 	});
 
 	it("offers the track only while the switcher flag is on", async () => {

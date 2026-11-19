@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { defineTool, type ToolImplementation } from "@kilo-desktop/plugin-core/contracts";
+import {
+	defineTool,
+	type ToolCallContext,
+	type ToolImplementation,
+} from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	AGENT_CHANNEL_REFUSAL_MESSAGE,
@@ -90,6 +94,24 @@ const POLICY_GUIDANCE =
 	"token or API key in the chat. ";
 
 /**
+ * `run` as a tool's run: the tool call's input and context pass through
+ * unchanged, and a failure (thrown or rejected) goes to `report`, then is
+ * rethrown unchanged.
+ */
+export function withPolicyFailureReporting(
+	run: (input: unknown, context: ToolCallContext) => unknown,
+	report: (error: unknown) => void,
+): (input: unknown, context: ToolCallContext) => Promise<unknown> {
+	return (input, context) =>
+		Promise.resolve()
+			.then(() => run(input, context))
+			.catch((error: unknown) => {
+				report(error);
+				throw error;
+			});
+}
+
+/**
  * Refuse a non-named channel supplied as a single `channel` field (the
  * channel-management tools) rather than inside a `channels` array. Same C1
  * gate-2 rationale: an agent must not point conda at a URL or local source.
@@ -153,19 +175,13 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 		readonly name: string;
 		readonly description: string;
 		readonly input: z.ZodType;
-		readonly run: (input: never) => unknown;
+		readonly run: (input: never, context: ToolCallContext) => unknown;
 	}): void => {
-		const run = definition.run as (input: unknown) => unknown;
+		const run = definition.run as (input: unknown, context: ToolCallContext) => unknown;
 		tools[definition.name] = defineTool({
 			description: definition.description,
 			input: definition.input,
-			run: (input: unknown) =>
-				Promise.resolve()
-					.then(() => run(input))
-					.catch((error: unknown) => {
-						reportPolicyFailure(error);
-						throw error;
-					}),
+			run: withPolicyFailureReporting(run, reportPolicyFailure),
 		});
 	};
 

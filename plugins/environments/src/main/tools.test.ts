@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { KernelError } from "@kilo-desktop/kernel";
 import type { ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
@@ -6,7 +6,7 @@ import type { ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 import manifest from "../../plugin.json";
 import { formatEnvironmentsErrorMessage } from "../contracts/common";
 import type { CondaMethods } from "./conda-service";
-import { condaTools } from "./tools";
+import { condaTools, withPolicyFailureReporting } from "./tools";
 
 const CONTEXT: ToolCallContext = {
 	chatId: null,
@@ -275,6 +275,27 @@ describe("a tool that fails on a package policy", () => {
 				},
 			},
 		]);
+	});
+
+	it("passes the tool call's context through to the tool unchanged", async () => {
+		const run = vi.fn((_input: unknown, _context: unknown) => "ran");
+		const report = vi.fn();
+
+		await expect(withPolicyFailureReporting(run, report)({ name: "dev" }, CONTEXT)).resolves.toBe(
+			"ran",
+		);
+		expect(run).toHaveBeenCalledExactlyOnceWith({ name: "dev" }, CONTEXT);
+		expect(report).not.toHaveBeenCalled();
+	});
+
+	it("reports a tool that throws synchronously, then rethrows it unchanged", async () => {
+		const run = () => {
+			throw blockedError;
+		};
+		const report = vi.fn();
+
+		await expect(withPolicyFailureReporting(run, report)({}, CONTEXT)).rejects.toBe(blockedError);
+		expect(report).toHaveBeenCalledExactlyOnceWith(blockedError);
 	});
 
 	it("sends nothing for other failures", async () => {

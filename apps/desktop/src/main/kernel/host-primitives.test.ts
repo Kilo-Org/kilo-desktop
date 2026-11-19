@@ -43,6 +43,7 @@ const UPDATER_STATE = {
 	enabled: true,
 	status: "idle",
 	track: "stable",
+	installedTrack: "stable",
 	currentVersion: "1.0.0",
 	availableVersion: null,
 	downloadedVersion: null,

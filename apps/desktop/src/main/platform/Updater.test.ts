@@ -38,6 +38,7 @@ function createService(
 		installWithShutdown?: (install: () => void) => void;
 		persistTrack?: (track: ReleaseTrack) => void;
 		track?: ReleaseTrack;
+		installedTrack?: ReleaseTrack;
 		currentVersion?: string;
 		windowsFeed?: FakeWindowsFeed;
 		linuxPackageFormat?: LinuxPackageFormat;
@@ -50,6 +51,7 @@ function createService(
 		platform: overrides.platform ?? "darwin",
 		arch: overrides.arch ?? "arm64",
 		track: overrides.track ?? "preview",
+		installedTrack: overrides.installedTrack ?? "preview",
 		currentVersion: overrides.currentVersion ?? "1.2.2",
 		publishUrls: overrides.publishUrls ?? {
 			preview: "https://updates.example.com",
@@ -286,6 +288,18 @@ describe("DesktopUpdaterService", () => {
 		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
 		expect(service.state).toMatchObject({ track: "stable", status: "checking" });
 		expect(states).toContainEqual(expect.objectContaining({ track: "stable", status: "idle" }));
+		service.dispose();
+	});
+
+	it("reports the track the installed build came from, which a track change leaves alone", async () => {
+		vi.useFakeTimers();
+		const { service } = createService({ installedTrack: "preview" });
+		service.start();
+		expect(service.state).toMatchObject({ track: "preview", installedTrack: "preview" });
+
+		await service.setTrack("stable");
+
+		expect(service.state).toMatchObject({ track: "stable", installedTrack: "preview" });
 		service.dispose();
 	});
 

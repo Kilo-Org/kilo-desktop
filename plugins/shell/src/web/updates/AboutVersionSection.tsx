@@ -3,6 +3,7 @@ import { DownloadIcon } from "lucide-react";
 
 import { useContextKey } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
@@ -20,11 +21,15 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import type { UpdaterState as DesktopUpdateState } from "@kilo-desktop/kernel";
 
 import { UPDATE_TRACK_SWITCHER_FLAG } from "../../contracts";
+import { awaitedStableVersion, STABLE_DOWNLOADS_URL } from "./awaitingStable";
 import { InstallUpdateDialog } from "./InstallUpdateDialog";
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
 import { updateAvailableLabel } from "./updateActions";
 import { useOpenDownload } from "./useOpenDownload";
 import { useUpdates } from "./useUpdates";
+
+/** One width for the update action and the track select, so they line up and labels don't resize them. */
+const ACTION_WIDTH = "w-36";
 
 /**
  * Settings → About's top block, contributed to `kilo.shell/about-section`:
@@ -45,6 +50,7 @@ export function AboutVersionSection() {
 	const openDownload = useOpenDownload();
 	const downloadUrl = state?.status === "available" ? state.downloadUrl : null;
 	const updateBusy = pending || state?.status === "checking" || state?.status === "downloading";
+	const stableVersion = state ? awaitedStableVersion(state) : null;
 
 	const check = async () => {
 		if (!updates || pending) return;
@@ -132,12 +138,18 @@ export function AboutVersionSection() {
 						</SummaryCard.Content>
 						<SummaryCard.Actions>
 							{state?.status === "downloaded" ? (
-								<Button size="sm" data-qa-id="update-install" onClick={() => setConfirmOpen(true)}>
+								<Button
+									size="sm"
+									className={ACTION_WIDTH}
+									data-qa-id="update-install"
+									onClick={() => setConfirmOpen(true)}
+								>
 									Restart to update
 								</Button>
 							) : downloadUrl ? (
 								<Button
 									size="sm"
+									className={ACTION_WIDTH}
 									data-qa-id="update-download"
 									onClick={() => void openDownload(downloadUrl)}
 								>
@@ -148,6 +160,7 @@ export function AboutVersionSection() {
 								<Button
 									size="sm"
 									variant="outline"
+									className={ACTION_WIDTH}
 									disabled={!state?.enabled || updateBusy}
 									data-qa-id="update-check"
 									onClick={() => void check()}
@@ -185,7 +198,7 @@ export function AboutVersionSection() {
 										id="update-track"
 										size="sm"
 										aria-label="Update track"
-										className="w-36"
+										className={ACTION_WIDTH}
 										disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
 										data-qa-id="update-track"
 									>
@@ -204,6 +217,24 @@ export function AboutVersionSection() {
 								</Select>
 							</SummaryCard.Actions>
 						</SummaryCard.Row>
+						{/* Below the row, not inside it, so the select keeps its place as this comes and goes. */}
+						{stableVersion ? (
+							<SummaryCard.Description
+								className="-mt-1.5 line-clamp-none px-3 pb-3 text-xs"
+								data-qa-id="update-track-awaiting-stable"
+							>
+								You're on a Preview build. You'll move to Stable automatically when Stable{" "}
+								{stableVersion} or later is released. To use the current Stable now,{" "}
+								<ExternalLink
+									href={STABLE_DOWNLOADS_URL}
+									onOpen={(url) => void openDownload(url)}
+									data-qa-id="update-track-download-stable"
+								>
+									download it
+								</ExternalLink>{" "}
+								and install it manually.
+							</SummaryCard.Description>
+						) : null}
 					</div>
 				) : null}
 
@@ -260,8 +291,12 @@ function getUpdateDescription(state: DesktopUpdateState): string {
 				: "An update is ready to install.";
 		case "available":
 			return `${updateAvailableLabel(state)}.`;
-		case "up-to-date":
-			return "You're up to date.";
+		case "up-to-date": {
+			const stableVersion = awaitedStableVersion(state);
+			return stableVersion
+				? `Waiting for Stable ${stableVersion} or later to replace this Preview build.`
+				: "You're up to date.";
+		}
 		case "idle":
 			return "Current version of the application.";
 	}

@@ -7,7 +7,7 @@ import {
 	type AnacondaAccountState,
 } from "@kilo-desktop/plugin-anaconda/contracts";
 
-import { invalidateConda, type CondaMethod } from "../../conda";
+import { condaQueryKey, type CondaMethod } from "../../conda";
 
 function accountKey({ session }: AnacondaAccountState): string {
 	if (session.status !== "authenticated") return session.status;
@@ -29,6 +29,7 @@ const ACCOUNT_FILTERED_READS: readonly CondaMethod[] = [
 	"findRepodata",
 	"previewInstall",
 	"previewUpdate",
+	"channelPolicies",
 ];
 
 /** Refreshes the account-filtered conda reads when the Anaconda account changes. */
@@ -41,6 +42,9 @@ export function useRefreshOnAnacondaAccountChange(): void {
 		const first = previous.current === null;
 		previous.current = key;
 		// The first known state is not a change: kilo.anaconda just arrived.
-		if (!first) void invalidateConda(queryClient, ACCOUNT_FILTERED_READS);
+		if (first) return;
+		for (const method of ACCOUNT_FILTERED_READS) {
+			void queryClient.invalidateQueries({ queryKey: condaQueryKey(method) });
+		}
 	}, [key, queryClient]);
 }

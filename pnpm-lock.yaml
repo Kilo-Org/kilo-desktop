@@ -1467,8 +1467,8 @@ importers:
         specifier: 7.8.27
         version: 7.8.27
       '@launchdarkly/node-client-sdk':
-        specifier: ^4.0.0
-        version: 4.4.3
+        specifier: ^4.4.4
+        version: 4.4.4
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
@@ -3602,17 +3602,17 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@launchdarkly/eventsource@0.2.4':
-    resolution: {integrity: sha512-fc5DFkpYwhgVKYK2mE446qcKxGRhnggdAWGTEXwVBehsJGXqpKmkxSyLC0RBbBt8SZn+WxpQLnw2BYu6tMD7Mw==}
+  '@launchdarkly/eventsource@0.2.5':
+    resolution: {integrity: sha512-LXH/j6k3jg4vuppfpmSEaw6NgHZYVeNAEKo4o1aiAIJYY6PgNpEwIuCAnhHim6w0e/YKbMGgpaLBhOjOvU7EyQ==}
 
-  '@launchdarkly/js-client-sdk-common@1.35.2':
-    resolution: {integrity: sha512-m58iyDIotxz0wjwpiTrn4Y8bGTC6zbzZm+vyLVrxKH/DsPq3t7HsVbV2dQJ32S2acqnqby3fuuoKLD3+VQjZbw==}
+  '@launchdarkly/js-client-sdk-common@1.35.3':
+    resolution: {integrity: sha512-rN6y8sRmIL8tjiCuJqsAxnAhfwHutpI8VVp2UYI2pXn4hKS4vPhmqOdgA+gLbRCY1SgJGmtwg3XJqt5vUpgheA==}
 
-  '@launchdarkly/js-sdk-common@2.32.2':
-    resolution: {integrity: sha512-LnJUCx9FZocgSVYN50lpXrxWt2CpxB7SZEd/fHf+im5hf+cGEaxQIylhXYBzN1tmse3n/vkODBgsZJNZ3pAcxA==}
+  '@launchdarkly/js-sdk-common@2.32.3':
+    resolution: {integrity: sha512-Z7C5wXFuvK9uFEg8Zbg18K7btqlDrcUgNFzFn/stVt3zEM9pZr58hJnhhWM854Ru0nFr325Wak7LS+v878mAYA==}
 
-  '@launchdarkly/node-client-sdk@4.4.3':
-    resolution: {integrity: sha512-rV8L6U8Wl69tS1EepqEvDa8Xo1QSRBWpYYytZvVFXvd+IYyfseobsCYxd88UOIYpNtlit0P5e79qXQoxOLaWWw==}
+  '@launchdarkly/node-client-sdk@4.4.4':
+    resolution: {integrity: sha512-ibbg4nCqMiKZs9xP+PTJPb8SIiJPSzmy9hSV7ofWd59rc+oAxOIuLMAn9XVP6j7eMyy+MWwMKvia2vbyxLuf6w==}
     engines: {node: '>=20'}
 
   '@lexical/a11y@0.53.0':
@@ -7560,6 +7560,7 @@ packages:
 
   electron-squirrel-startup@1.0.1:
     resolution: {integrity: sha512-sTfFIHGku+7PsHLJ7v0dRcZNkALrV+YEozINTW8X1nM//e5O3L+rfYuvSW00lmGHnYmUjARZulD8F2V8ISI9RA==}
+    deprecated: This package is archived and deprecated, it will not get any updates.
 
   electron-store@12.0.0:
     resolution: {integrity: sha512-Ju7DzgBm/gcbtTqcAd6vvgdg/FXr9AE31MdlN/OMcERBiBhHGlGZWHBFZb+nK9chqSHSGw/oIIPCFT29tPnLMQ==}
@@ -12033,18 +12034,18 @@ snapshots:
   '@koromix/koffi-win32-x64@3.3.8':
     optional: true
 
-  '@launchdarkly/eventsource@0.2.4': {}
+  '@launchdarkly/eventsource@0.2.5': {}
 
-  '@launchdarkly/js-client-sdk-common@1.35.2':
+  '@launchdarkly/js-client-sdk-common@1.35.3':
     dependencies:
-      '@launchdarkly/js-sdk-common': 2.32.2
+      '@launchdarkly/js-sdk-common': 2.32.3
 
-  '@launchdarkly/js-sdk-common@2.32.2': {}
+  '@launchdarkly/js-sdk-common@2.32.3': {}
 
-  '@launchdarkly/node-client-sdk@4.4.3':
+  '@launchdarkly/node-client-sdk@4.4.4':
     dependencies:
-      '@launchdarkly/eventsource': 0.2.4
-      '@launchdarkly/js-client-sdk-common': 1.35.2
+      '@launchdarkly/eventsource': 0.2.5
+      '@launchdarkly/js-client-sdk-common': 1.35.3
 
   '@lexical/a11y@0.53.0(typescript@7.0.2)':
     dependencies:

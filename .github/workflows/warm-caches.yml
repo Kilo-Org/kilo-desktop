@@ -2,8 +2,8 @@ name: Warm caches
 
 # CI runs only on pull requests and the merge queue, and a cache saved there is
 # visible to that branch alone, so before this every PR started cold: all
-# ~1,250 packages from the registry, plus the notebook runtime and Kilo CLI
-# downloads, on every job. Caches saved on main are visible to every PR and
+# ~1,250 packages from the registry, plus the pnpm CLI, notebook runtime and
+# Kilo CLI downloads, on every job. Caches saved on main are visible to every PR and
 # merge-queue run, so this saves them after each merge, on each runner type
 # CI uses (Linux 2/4 vCPU share a cache key).
 on:

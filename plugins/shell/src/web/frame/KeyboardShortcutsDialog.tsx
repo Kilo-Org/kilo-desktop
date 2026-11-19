@@ -21,6 +21,7 @@ import { useShortcutsOpen } from "./ui-state";
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
 import { chordLabels, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
+import { seriesRangeLabel, useNumberKeySeries } from "../settings/NumberKeysSettings";
 
 /** The keyboard cheat sheet (⌘/): every bound shortcut, searchable. */
 export function KeyboardShortcutsDialog() {
@@ -63,25 +64,58 @@ export function KeyboardShortcutsDialog() {
 function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInputElement> }) {
 	const [query, setQuery] = useState("");
 	const { commands, resolution, platform } = useShortcuts();
+	// A 1–9 set on one modifier reads as one row ("Go to tab 1–9"); a custom set keeps its rows.
+	const series = useNumberKeySeries().filter((entry) => entry.current !== "custom");
+	const seriesByFirst = new Map(series.map((entry) => [entry.commands[0], entry]));
+	const inSeries = new Set(series.flatMap((entry) => entry.commands));
+	const titles = new Map<string, string>(
+		commands.map((command) => [command.key, command.metadata.title]),
+	);
 	const groups = groupShortcutCommands(commands)
 		.map((group) => ({
-			...group,
-			commands: group.commands.filter(
-				(command) => (resolution.byCommand[command.key]?.length ?? 0) > 0,
-			),
+			name: group.name,
+			rows: group.commands.flatMap((command) => {
+				const entry = seriesByFirst.get(command.key);
+				if (entry) {
+					const label = seriesRangeLabel(entry, platform);
+					const members = entry.commands.map((key) => titles.get(key) ?? "");
+					return label
+						? [
+								{
+									key: command.key,
+									title: command.metadata.title.replace(/ 1$/, " 1–9"),
+									searchText: members.join(" "),
+									labels: [label],
+								},
+							]
+						: [];
+				}
+				if (inSeries.has(command.key)) return [];
+				const labels = chordLabels(resolution.byCommand[command.key] ?? [], platform);
+				return labels.length > 0
+					? [
+							{
+								key: command.key,
+								title: command.metadata.title,
+								searchText: command.metadata.title,
+								labels,
+							},
+						]
+					: [];
+			}),
 		}))
-		.filter((group) => group.commands.length > 0);
+		.filter((group) => group.rows.length > 0);
 	const needle = query.trim().toLowerCase();
 	const shown = groups
 		.map((group) => ({
 			...group,
-			commands: group.commands.filter((command) =>
-				command.metadata.title.toLowerCase().includes(needle),
+			rows: group.rows.filter((row) =>
+				`${row.title} ${row.searchText}`.toLowerCase().includes(needle),
 			),
 		}))
-		.filter((group) => group.commands.length > 0);
-	const total = groups.reduce((sum, group) => sum + group.commands.length, 0);
-	const matches = shown.reduce((sum, group) => sum + group.commands.length, 0);
+		.filter((group) => group.rows.length > 0);
+	const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
+	const matches = shown.reduce((sum, group) => sum + group.rows.length, 0);
 
 	return (
 		<>
@@ -119,16 +153,14 @@ function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInp
 					<section key={group.name} aria-label={group.name} className="flex flex-col">
 						<h3 className="text-muted-foreground pb-1.5 text-xs font-medium">{group.name}</h3>
 						<ul className="flex flex-col">
-							{group.commands.map((command) => (
+							{group.rows.map((row) => (
 								<li
-									key={command.key}
+									key={row.key}
 									className="flex h-8 items-center justify-between gap-4 text-sm"
-									data-qa-id={`keyboard-shortcut-${command.key}`}
+									data-qa-id={`keyboard-shortcut-${row.key}`}
 								>
-									<span className="min-w-0 truncate">{command.metadata.title}</span>
-									<ShortcutChip
-										labels={chordLabels(resolution.byCommand[command.key] ?? [], platform)}
-									/>
+									<span className="min-w-0 truncate">{row.title}</span>
+									<ShortcutChip labels={row.labels} />
 								</li>
 							))}
 						</ul>

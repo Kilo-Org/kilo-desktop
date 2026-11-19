@@ -58,6 +58,36 @@ describe("command palette toggling", () => {
 });
 
 describe("keyboard shortcuts list", () => {
+	it("lists each 1–9 set as one row with its key range", async () => {
+		const numbered = contributor(
+			"acme.nav",
+			{
+				"kernel/command": [1, 2, 9].map((digit) => ({
+					id: `tab-${digit}`,
+					title: digit === 9 ? "Go to last tab" : `Go to tab ${digit}`,
+					category: "Tabs",
+					order: digit,
+					keybinding: `Mod+${digit}`,
+				})),
+			},
+			(sdk) => {
+				for (const digit of [1, 2, 9])
+					sdk.extensions.implement(KernelCommand, `tab-${digit}`, () => {});
+			},
+		);
+		const { renderer } = await renderShell([numbered]);
+		void renderer.commands.execute("kilo.shell/show-shortcuts");
+
+		const row = page.getByTestId("keyboard-shortcut-acme.nav/tab-1");
+		await expect.element(row.getByText("Go to tab 1–9")).toBeVisible();
+		await expect.element(row.getByText("⌘1–9")).toBeVisible();
+		await expect
+			.element(page.getByTestId("keyboard-shortcut-acme.nav/tab-2"))
+			.not.toBeInTheDocument();
+		await page.getByTestId("keyboard-shortcuts-search").fill("last tab");
+		await expect.element(row).toBeVisible();
+	});
+
 	it("filters as you type and opens Settings from its footer", async () => {
 		const { plugin } = commandPlugin();
 		const { renderer } = await renderShell([plugin]);

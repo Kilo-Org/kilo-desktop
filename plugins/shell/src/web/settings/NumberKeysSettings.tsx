@@ -201,6 +201,16 @@ function modifierKeys(modifier: SeriesModifier, platform: KeyboardPlatform) {
 	return formatChord(chord, platform).slice(0, -1);
 }
 
+/** "⌘1–9" ("Ctrl+1–9" elsewhere) for a set on one modifier; null when it is off or custom. */
+export function seriesRangeLabel(
+	series: NumberKeySeries,
+	platform: KeyboardPlatform,
+): string | null {
+	const modifier = series.current;
+	if (modifier === "none" || modifier === "custom") return null;
+	return `${keysLabel([...modifierKeys(modifier, platform), "1"], platform)}–9`;
+}
+
 const qaId = (series: NumberKeySeries) => series.category.toLowerCase();
 
 function SeriesSummary({
@@ -211,17 +221,16 @@ function SeriesSummary({
 	platform: KeyboardPlatform;
 }) {
 	const modifier = series.current;
+	const label = seriesRangeLabel(series, platform);
 	return (
 		<li className="flex items-center gap-2" data-qa-id={`number-keys-summary-${qaId(series)}`}>
 			<span className="text-muted-foreground text-sm">{series.category}</span>
-			{modifier === "none" || modifier === "custom" ? (
+			{label ? (
+				<ShortcutChip labels={[label]} />
+			) : (
 				<span className="text-muted-foreground text-sm">
 					{modifier === "none" ? "Off" : "Custom"}
 				</span>
-			) : (
-				<ShortcutChip
-					labels={[`${keysLabel([...modifierKeys(modifier, platform), "1"], platform)}–9`]}
-				/>
 			)}
 		</li>
 	);

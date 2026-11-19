@@ -284,7 +284,7 @@ describe("an anaconda.org install link", () => {
 		expect(previewInstall.mock.calls[0]![0]).toMatchObject({
 			prefix: "/opt/anaconda3/envs/dev",
 			packages: ["numpy=1.26.4"],
-			channels: ["bioconda", "conda-forge", "defaults"],
+			channels: ["bioconda", "defaults", "conda-forge"],
 		});
 		await expect
 			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
@@ -294,7 +294,7 @@ describe("an anaconda.org install link", () => {
 		await vi.waitFor(() => expect(installPackages).toHaveBeenCalledOnce());
 		expect(installPackages.mock.calls[0]![0]).toMatchObject({
 			packages: ["numpy=1.26.4"],
-			channels: ["bioconda", "conda-forge", "defaults"],
+			channels: ["bioconda", "defaults", "conda-forge"],
 		});
 		expect(addChannel).not.toHaveBeenCalled();
 		// The environment opens once its package is installed.
@@ -339,6 +339,7 @@ describe("an anaconda.org install link", () => {
 			name: "numpy",
 			prefix: "/opt/anaconda3/envs/numpy",
 			packages: ["numpy=1.26.4"],
+			// The link's own channel leads.
 			channels: ["conda-forge", "defaults"],
 		});
 	});
@@ -394,7 +395,7 @@ describe("an anaconda.org install link", () => {
 			name: "linked",
 			prefix: "/opt/anaconda3/envs/linked",
 			packages: ["numpy=1.26.4"],
-			channels: ["bioconda", "conda-forge", "defaults"],
+			channels: ["bioconda", "defaults", "conda-forge"],
 		});
 		await expect.element(screen.getByTestId("environments-create-success")).toBeVisible();
 

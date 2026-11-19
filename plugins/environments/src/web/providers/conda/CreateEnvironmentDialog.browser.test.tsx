@@ -546,7 +546,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/custom/myenv");
-		expect(payload.channels).toEqual(["conda-forge", "defaults"]);
+		expect(payload.channels).toEqual(["defaults", "conda-forge"]);
 	});
 
 	it("filters the Python version list via the picker search box", async () => {

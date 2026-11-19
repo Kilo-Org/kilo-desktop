@@ -126,7 +126,7 @@ describe("AddPackageDialog", () => {
 		await waitForRows(baseElement, 1);
 		// Initial search waits for prefixOptions so the channel filter is present.
 		expect(find.mock.calls[0]![0]).toMatchObject({
-			channels: ["conda-forge", "defaults"],
+			channels: ["defaults", "conda-forge"],
 			limit: 50,
 		});
 		expect(find.mock.calls[0]![0].query).toBeUndefined();
@@ -136,7 +136,7 @@ describe("AddPackageDialog", () => {
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0]).toMatchObject({
 				query: "num",
-				channels: ["conda-forge", "defaults"],
+				channels: ["defaults", "conda-forge"],
 			});
 		});
 	});
@@ -282,7 +282,7 @@ describe("AddPackageDialog", () => {
 			name: "dev",
 			prefix: "/opt/anaconda3/envs/dev",
 			packages: ["numpy=2.0.0", "pandas"],
-			channels: ["conda-forge", "defaults"],
+			channels: ["defaults", "conda-forge"],
 		});
 		await vi.waitFor(() => {
 			expect(onClose).toHaveBeenCalledOnce();

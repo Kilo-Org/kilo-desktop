@@ -31,10 +31,18 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 		}
 	}
 
+	// Selection order is the channel priority conda solves with, so a channel
+	// toggled back on returns to its offered position rather than the end.
 	const toggle = (channel: string) => {
-		setSelected((prev) =>
-			prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel],
-		);
+		setSelected((prev) => {
+			if (prev.includes(channel)) return prev.filter((c) => c !== channel);
+			if (!available.includes(channel)) return [...prev, channel];
+			const next = new Set([...prev, channel]);
+			return [
+				...available.filter((c) => next.has(c)),
+				...prev.filter((c) => !available.includes(c)),
+			];
+		});
 	};
 
 	function reset() {

@@ -26,7 +26,7 @@ export function ChoicesLine({
 	return (
 		<nav aria-label="Choices" className="flex min-w-0 flex-wrap items-center gap-1">
 			{choices.map(({ label, icon, changeLabel, onChange, qaId }, index) => (
-				<Fragment key={`${index}:${label}`}>
+				<Fragment key={changeLabel}>
 					{index > 0 ? (
 						<ChevronRightIcon
 							className="text-muted-foreground size-3.5 shrink-0"

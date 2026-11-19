@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
-import { motion } from "motion/react";
+import { MotionConfig, motion } from "motion/react";
 
 import { KernelDialogs, type Contribution } from "@kilo-desktop/kernel";
 import {
@@ -215,15 +215,21 @@ export function ScreensViewport({ children }: { children: ReactNode }) {
 	const [inner, setInner] = useState<HTMLDivElement | null>(null);
 	const height = useMeasuredHeight(inner);
 	return (
-		<motion.div
-			// The padding keeps focus rings inside the clip while the height eases.
-			className="-m-1 overflow-hidden p-1"
-			initial={false}
-			animate={{ height: height === null ? "auto" : height + 8 }}
-			transition={{ duration: 0.25, ease: EASE }}
-		>
-			<div ref={setInner}>{children}</div>
-		</motion.div>
+		// Snaps under reduced motion; the New workspace dialog has no MotionConfig of its own.
+		<MotionConfig reducedMotion="user">
+			<motion.div
+				// The padding keeps focus rings inside the clip while the height eases.
+				className="-m-1 overflow-hidden p-1"
+				initial={false}
+				// The frame around it must reflow to the new height (a transform would only
+				// scale the content), and it is one short ease per screen change.
+				// react-doctor-disable-next-line react-doctor/no-layout-property-animation
+				animate={{ height: height === null ? "auto" : height + 8 }}
+				transition={{ duration: 0.25, ease: EASE }}
+			>
+				<div ref={setInner}>{children}</div>
+			</motion.div>
+		</MotionConfig>
 	);
 }
 

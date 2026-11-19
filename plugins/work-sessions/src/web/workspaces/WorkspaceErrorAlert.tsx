@@ -5,15 +5,15 @@ import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components
 
 /** Renders `backticked` spans (a command to run) as inline code. */
 function withInlineCode(message: string): ReactNode[] {
-	return message
-		.split(/(`[^`]+`)/)
-		.map((part, index) =>
-			part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
-				<code key={index}>{part.slice(1, -1)}</code>
-			) : (
-				part
-			),
-		);
+	return message.split(/(`[^`]+`)/).map((part, index) =>
+		part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
+			// Pieces of one fixed message: never reordered, and the same text may repeat.
+			// react-doctor-disable-next-line react-doctor/no-array-index-as-key
+			<code key={index}>{part.slice(1, -1)}</code>
+		) : (
+			part
+		),
+	);
 }
 
 export function errorMessage(reason: unknown, fallback: string): string {

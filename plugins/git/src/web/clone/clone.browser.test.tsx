@@ -66,13 +66,15 @@ function StandInNewFolderForm(props: NewFolderFormProps & { onCreated(w: Workspa
 			<button
 				type="button"
 				disabled={props.ready === false}
-				onClick={() =>
-					void props
-						.create({ name, color: "#34D399", parentPath: "/projects" })
-						.then(props.onCreated, (error: Error) => {
-							document.title = `${props.errorTitle}: ${error.message}`;
-						})
-				}
+				onClick={async () => {
+					try {
+						props.onCreated(
+							await props.create({ name, color: "#34D399", parentPath: "/projects" }),
+						);
+					} catch (error) {
+						document.title = `${props.errorTitle}: ${(error as Error).message}`;
+					}
+				}}
 			>
 				Create workspace
 			</button>

@@ -79,6 +79,8 @@ export function RepositoryList({
 }) {
 	"use no memo"; // useVirtualizer mutates one instance in place; memoized readers would show stale rows.
 	const listRef = useRef<HTMLDivElement>(null);
+	// This component opts out of React Compiler with "use no memo" above.
+	// react-doctor-disable-next-line react-hooks-js/incompatible-library
 	const virtualizer = useVirtualizer({
 		count: entries.length,
 		getScrollElement: () => listRef.current,

@@ -65,6 +65,8 @@ export function useGithubRepositories(github: GithubRepositoriesHandle | null, e
 	const query = useQuery(githubRepositoriesQuery(github, enabled));
 	const refreshing = query.data?.refreshing === true;
 	const { refetch } = query;
+	// Domain-object `on()` returns its unsubscribe, which is the cleanup returned here.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!refreshing || !github) return;
 		return github.on("refreshed", () => void refetch());

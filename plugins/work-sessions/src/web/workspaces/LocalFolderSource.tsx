@@ -79,6 +79,9 @@ function LocalFolderSource({ onCreated, appearance, children }: WorkspaceSourceP
 			);
 		} catch (reason) {
 			form.setError(errorMessage(reason, "Could not save workspace."));
+			// Only a failure unlocks the form: on success the host moves on (closes or
+			// advances) and the form stays locked until then, so it can't be resubmitted.
+			// react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
 			setPending(false);
 		}
 	};

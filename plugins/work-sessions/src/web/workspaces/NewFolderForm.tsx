@@ -70,6 +70,9 @@ export function NewFolderForm({
 			services.onCreated(workspace);
 		} catch (reason) {
 			setError({ title: errorTitle, message: errorMessage(reason, "Something went wrong.") });
+			// Only a failure unlocks the form: on success the host moves on (closes or
+			// advances) and the form stays locked until then, so it can't be resubmitted.
+			// react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
 			setPending(false);
 		}
 	};

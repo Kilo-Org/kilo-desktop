@@ -58,14 +58,15 @@ describe("command palette toggling", () => {
 });
 
 describe("keyboard shortcuts list", () => {
-	it("opens from Settings' full list link, filters as you type, and opens Settings from its footer", async () => {
+	it("filters as you type and opens Settings from its footer", async () => {
 		const { plugin } = commandPlugin();
-		await renderShell([plugin]);
+		const { renderer } = await renderShell([plugin]);
 		window.location.hash = "#/settings/appearance";
 		await expect.element(page.getByTestId("appearance-settings")).toBeVisible();
 		window.location.hash = "#/settings/keyboard-shortcuts";
 
-		await page.getByTestId("keyboard-shortcuts-show-all").click();
+		await expect.element(page.getByTestId("keyboard-shortcuts-settings")).toBeVisible();
+		void renderer.commands.execute("kilo.shell/show-shortcuts");
 		await expect.element(page.getByTestId("keyboard-shortcut-acme.cmds/deploy")).toBeVisible();
 		await page.getByTestId("keyboard-shortcuts-search").fill("deploy");
 		await expect

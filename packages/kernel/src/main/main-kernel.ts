@@ -555,6 +555,11 @@ function provideKeybindings(core: Kernel, host: MainKernelHost): void {
 					const { [command]: _removed, ...rest } = provider.state.overrides;
 					save(rest);
 				},
+				update: ({ set, reset }) => {
+					const overrides = { ...provider.state.overrides, ...set };
+					for (const command of reset) delete overrides[command];
+					save(overrides);
+				},
 				resetAll: () => save({}),
 			},
 		});

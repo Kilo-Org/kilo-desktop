@@ -50,7 +50,7 @@ describe("shortcuts settings", () => {
 		const { main, renderer } = await openShortcuts();
 
 		await page.getByTestId("shortcut-recorder-acme.cmds/deploy").click();
-		await expect.poll(() => renderer.keyboard.chords()).toEqual([]);
+		await expect.poll(() => renderer.keyboard.bindings()).toEqual([]);
 		await userEvent.keyboard("{Control>}{Alt>}j{/Alt}{/Control}");
 
 		await expect.poll(() => overridesOf(main)).toEqual({ "acme.cmds/deploy": "Ctrl+Alt+KeyJ" });
@@ -83,6 +83,48 @@ describe("shortcuts settings", () => {
 			.toBeVisible();
 
 		await page.getByTestId("keyboard-shortcuts-reset-all").click();
+		await expect.poll(() => overridesOf(main)).toEqual({});
+	});
+
+	it("swaps the 1–9 modifiers of tabs and sessions in App Navigation, then restores them", async () => {
+		const slots = (prefix: string, category: string, modifier: string) =>
+			[1, 2].map((digit) => ({
+				id: `${prefix}-${digit}`,
+				title: `Go to ${prefix} ${digit}`,
+				category,
+				keybinding: `${modifier}+${digit}`,
+			}));
+		const numbered = contributor(
+			"acme.nav",
+			{
+				"kernel/command": [...slots("tab", "Tabs", "Mod"), ...slots("session", "Sessions", "Ctrl")],
+			},
+			(sdk) => {
+				for (const id of ["tab-1", "tab-2", "session-1", "session-2"])
+					sdk.extensions.implement(KernelCommand, id, () => {});
+			},
+		);
+		const { main } = await openShortcuts([numbered]);
+		await expect.element(page.getByTestId("shortcut-row-acme.nav/tab-1")).not.toBeInTheDocument();
+
+		await page.getByTestId("number-keys-customize").click();
+		await page.getByTestId("number-keys-tabs-ctrl").click();
+		await expect
+			.poll(() => overridesOf(main))
+			.toEqual({
+				"acme.nav/tab-1": "Ctrl+Digit1",
+				"acme.nav/tab-2": "Ctrl+Digit2",
+				"acme.nav/session-1": "Meta+Digit1",
+				"acme.nav/session-2": "Meta+Digit2",
+			});
+		await expect
+			.element(page.getByTestId("number-keys-sessions-meta"))
+			.toHaveAttribute("aria-pressed", "true");
+
+		await page.getByTestId("number-keys-toggle-sessions").click();
+		await expect.poll(() => overridesOf(main)["acme.nav/session-1"]).toBeNull();
+
+		await page.getByTestId("number-keys-restore-defaults").click();
 		await expect.poll(() => overridesOf(main)).toEqual({});
 	});
 

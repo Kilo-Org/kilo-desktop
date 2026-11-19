@@ -414,6 +414,28 @@ describe("main kernel — keybinding overrides", () => {
 			[{}],
 		]);
 	});
+
+	it("applies several changes as one state and one save", async () => {
+		const save = vi.fn();
+		const kernel = boot(
+			[],
+			fakeHost({ keybindings: { load: () => ({ "acme.a/one": "Alt+KeyO" }), save } }),
+		);
+		await kernel.start();
+		const keybindings = kernel.kernelSdk.domainObjects.get(KernelKeybindings)!;
+		const states = vi.fn();
+		keybindings.subscribe(states);
+
+		await keybindings.methods.update({
+			set: { "acme.a/two": "Ctrl+Digit2", "acme.a/three": null },
+			reset: ["acme.a/one"],
+		});
+
+		const expected = { "acme.a/two": "Ctrl+Digit2", "acme.a/three": null };
+		expect(keybindings.getState().overrides).toEqual(expected);
+		expect(save.mock.calls).toEqual([[expected]]);
+		expect(states).toHaveBeenCalledOnce();
+	});
 });
 
 describe("main kernel — disabled plugins", () => {

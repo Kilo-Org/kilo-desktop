@@ -245,8 +245,28 @@ class ReconnectableRelay implements ElectronRelaySession {
 	}
 }
 
+/**
+ * Daemon capabilities the embedded notebook gates its environment picker on.
+ * `installedKernelspecs` is newer than the pinned binding's `RelayInfo` type,
+ * so both are read structurally; absent means unsupported and is not forwarded.
+ */
+type RelayCapabilities = { localEnvironmentSelection?: unknown; installedKernelspecs?: unknown };
+
+function capabilityFlags(info: RelayInfo) {
+	const { localEnvironmentSelection, installedKernelspecs } = info as RelayCapabilities;
+	return {
+		...(typeof localEnvironmentSelection === "boolean"
+			? { local_environment_selection: localEnvironmentSelection }
+			: {}),
+		...(typeof installedKernelspecs === "boolean"
+			? { installed_kernelspecs: installedKernelspecs }
+			: {}),
+	};
+}
+
 function readyInfo(info: RelayInfo) {
 	return {
+		...capabilityFlags(info),
 		notebook_id: info.notebookId,
 		...(info.cellCount === undefined ? {} : { cell_count: info.cellCount }),
 		...(info.needsTrustApproval === undefined

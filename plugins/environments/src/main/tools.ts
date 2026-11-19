@@ -94,6 +94,16 @@ const POLICY_GUIDANCE =
 	"token or API key in the chat. ";
 
 /**
+ * Clone's counterpart to {@link POLICY_GUIDANCE}: the backend reports every
+ * failed clone as SOLVE_FAILED, with no policy reason and no `[policy]` line.
+ */
+const CLONE_POLICY_GUIDANCE =
+	"A clone that the organization's package policy or a missing Anaconda sign-in prevents " +
+	"fails as a generic SOLVE_FAILED clone error that does not say so; report the error as " +
+	"given, and do not recreate the environment from another channel, pip or a URL to get " +
+	"around it. ";
+
+/**
  * `run` as a tool's run: the tool call's input and context pass through
  * unchanged, and a failure (thrown or rejected) goes to `report`, then is
  * rethrown unchanged.
@@ -252,7 +262,7 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 		description:
 			"Clone an existing conda environment into a new named environment. " +
 			"The new environment receives an exact copy of all packages from the source. " +
-			POLICY_GUIDANCE,
+			CLONE_POLICY_GUIDANCE,
 		input: condaEnvsCloneInputSchema,
 		run: (input: never) => conda().cloneEnvironment(input, CALLER),
 	});

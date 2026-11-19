@@ -182,17 +182,20 @@ describe("Anaconda channel preference", () => {
 	);
 });
 
+function descriptionOf(name: string): string | undefined {
+	return registry()
+		.all()
+		.find((candidate) => candidate.name === name)?.description;
+}
+
 describe("package policy and Anaconda sign-in guidance", () => {
 	it.each([
 		"conda.envs.create",
-		"conda.envs.clone",
 		"conda.packages.install",
 		"conda.packages.update",
 		"conda.repodata.find",
 	])("%s tells the agent to report a block verbatim and never route around it", (name) => {
-		const description = registry()
-			.all()
-			.find((candidate) => candidate.name === name)?.description;
+		const description = descriptionOf(name);
 		expect(description).toMatch(/POLICY_BLOCKED/);
 		expect(description).toMatch(/\[policy\]/);
 		expect(description).toMatch(/verbatim/i);
@@ -202,6 +205,17 @@ describe("package policy and Anaconda sign-in guidance", () => {
 		expect(description).toMatch(/CHANNEL_ACCESS_DENIED/);
 		expect(description).toMatch(/sign in to Anaconda \(not Kilo\)/i);
 		expect(description).toMatch(/never ask .* for a token/i);
+	});
+
+	// A clone's failure never carries a policy reason (the backend reports it as
+	// SOLVE_FAILED without a `[policy]` line), so it must not promise either.
+	it("conda.envs.clone promises no POLICY_BLOCKED or [policy] line, and still forbids routing around", () => {
+		const description = descriptionOf("conda.envs.clone");
+		expect(description).not.toMatch(/POLICY_BLOCKED/);
+		expect(description).not.toMatch(/\[policy\]/);
+		expect(description).not.toMatch(/NOT_SIGNED_IN|CHANNEL_ACCESS_DENIED/);
+		expect(description).toMatch(/generic SOLVE_FAILED/);
+		expect(description).toMatch(/do not .*another channel, pip or a URL/i);
 	});
 });
 

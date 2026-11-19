@@ -2,7 +2,7 @@ import "@assistant-ui/react-markdown/styles/dot.css";
 
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useMemo, type ComponentProps } from "react";
+import type { ComponentProps } from "react";
 
 import { cn } from "../lib/utils.js";
 import { composeMarkdownRenderer, type MarkdownRendererExtension } from "./markdown-extension.js";
@@ -172,6 +172,13 @@ export const markdownComponents = {
 	},
 } satisfies Components;
 
+interface MarkdownBodyProps {
+	readonly text: string;
+	readonly components?: Components;
+	readonly extensions?: readonly MarkdownRendererExtension[];
+	readonly skipHtml?: boolean;
+}
+
 export function MarkdownContent({
 	text,
 	className,
@@ -179,29 +186,40 @@ export function MarkdownContent({
 	extensions = NO_MARKDOWN_EXTENSIONS,
 	skipHtml = true,
 	...props
-}: Omit<ComponentProps<"div">, "children"> & {
-	readonly text: string;
-	readonly components?: Components;
-	readonly extensions?: readonly MarkdownRendererExtension[];
-	readonly skipHtml?: boolean;
-}) {
-	const renderer = useMemo(
-		() =>
-			composeMarkdownRenderer(
-				components ? { ...markdownComponents, ...components } : markdownComponents,
-				extensions,
-			),
-		[components, extensions],
-	);
+}: Omit<ComponentProps<"div">, "children"> & MarkdownBodyProps) {
 	return (
 		<div className={cn("aui-md text-sm", className)} {...props}>
-			<ReactMarkdown
-				remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
-				components={renderer.components}
+			<MarkdownBody
+				text={text}
+				{...(components ? { components } : {})}
+				extensions={extensions}
 				skipHtml={skipHtml}
-			>
-				{text}
-			</ReactMarkdown>
+			/>
 		</div>
+	);
+}
+
+/**
+ * Split from `MarkdownContent` so the composed renderer is cached on
+ * `components`/`extensions` alone, not on the wrapper's rest props.
+ */
+function MarkdownBody({
+	text,
+	components,
+	extensions = NO_MARKDOWN_EXTENSIONS,
+	skipHtml,
+}: MarkdownBodyProps) {
+	const renderer = composeMarkdownRenderer(
+		components ? { ...markdownComponents, ...components } : markdownComponents,
+		extensions,
+	);
+	return (
+		<ReactMarkdown
+			remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
+			components={renderer.components}
+			skipHtml={skipHtml}
+		>
+			{text}
+		</ReactMarkdown>
 	);
 }

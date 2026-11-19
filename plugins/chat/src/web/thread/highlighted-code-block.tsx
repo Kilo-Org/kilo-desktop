@@ -1,48 +1,14 @@
 import type { SyntaxHighlighterProps } from "@assistant-ui/react-markdown";
-import {
-	getHighlighterIfLoaded,
-	getSharedHighlighter,
-	type DiffsHighlighter,
-	type DiffsStreamTokenizer,
-	type ThemedToken,
-} from "@pierre/diffs";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import type { DiffsHighlighter, DiffsStreamTokenizer, ThemedToken } from "@pierre/diffs";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import { useDiffTheme } from "../tools/diff-theme";
 import { tokenStyle } from "./token-style";
+import { useLoadedHighlighter } from "./use-loaded-highlighter";
 
 /** Past this a block stays plain: every token becomes a DOM node. */
 const MAX_HIGHLIGHT_LENGTH = 50_000;
 const TOKENIZE_MAX_LINE_LENGTH = 1_000;
-const PLAIN_LANGUAGES = new Set(["", "text", "txt", "plain", "plaintext"]);
-
-/**
- * The window's shared Shiki highlighter (the one file previews use) once it
- * has `language` and `theme` loaded; until then, or for a language Shiki
- * lacks, nothing. Loading is lazy so a reply without code pays nothing. A
- * failed load is not remembered: it may be a missing grammar, but it may also
- * be a theme or chunk failure that a later block can recover from.
- */
-function useLoadedHighlighter(language: string, theme: string): DiffsHighlighter | undefined {
-	const highlightable = !PLAIN_LANGUAGES.has(language);
-	const loaded = highlightable ? getHighlighterIfLoaded({ theme, lang: language }) : undefined;
-	const [, setLoadCount] = useState(0);
-
-	useEffect(() => {
-		if (!highlightable || loaded) return;
-		let cancelled = false;
-		getSharedHighlighter({ themes: [theme], langs: [language], preferredHighlighter: "shiki-js" })
-			.catch(() => undefined)
-			.finally(() => {
-				if (!cancelled) setLoadCount((count) => count + 1);
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [highlightable, loaded, language, theme]);
-
-	return loaded;
-}
 
 function tokenNode(token: ThemedToken, foreground: string): ReactNode {
 	const style = tokenStyle(token, foreground);
@@ -143,6 +109,37 @@ function highlight(
 	return session.rendered;
 }
 
+/** One block's highlight session across its renders, released with `dispose`. */
+class BlockHighlighter {
+	readonly #sessions: Sessions = { current: null };
+
+	/** The colored tokens of `code`; see `HighlightedCode`. */
+	render(
+		highlighter: DiffsHighlighter | undefined,
+		language: string,
+		theme: string,
+		code: string,
+	): ReactNode {
+		if (code.length > MAX_HIGHLIGHT_LENGTH) {
+			// The session cannot resume past the cap; release its tokenizer and elements.
+			this.dispose();
+			return code;
+		}
+		if (!highlighter) {
+			// A theme switch has no highlighter for a moment; keep the colors of the
+			// text already shown instead of flashing it plain.
+			const session = this.#sessions.current;
+			return session?.language === language && session.code === code ? session.rendered : code;
+		}
+		return highlight(this.#sessions, highlighter, language, theme, code);
+	}
+
+	dispose() {
+		this.#sessions.current?.tokenizer.dispose();
+		this.#sessions.current = null;
+	}
+}
+
 /**
  * The colored tokens of `code`, or `code` itself past the size cap, until the
  * grammar loads, or for a language Shiki lacks, so the text is always exactly
@@ -150,30 +147,10 @@ function highlight(
  */
 function HighlightedCode({ code, language }: { readonly code: string; readonly language: string }) {
 	const { shiki: theme } = useDiffTheme();
-	const highlighter = useLoadedHighlighter(language, theme);
-	const sessions = useRef<HighlightSession | null>(null);
-
-	useEffect(
-		() => () => {
-			sessions.current?.tokenizer.dispose();
-			sessions.current = null;
-		},
-		[],
-	);
-
-	if (code.length > MAX_HIGHLIGHT_LENGTH) {
-		// The session cannot resume past the cap; release its tokenizer and elements.
-		sessions.current?.tokenizer.dispose();
-		sessions.current = null;
-		return code;
-	}
-	if (!highlighter) {
-		// A theme switch has no highlighter for a moment; keep the colors of the
-		// text already shown instead of flashing it plain.
-		const session = sessions.current;
-		return session?.language === language && session.code === code ? session.rendered : code;
-	}
-	return highlight(sessions, highlighter, language, theme, code);
+	const highlighter = useLoadedHighlighter(language, theme, code);
+	const [blockHighlighter] = useState(() => new BlockHighlighter());
+	useEffect(() => () => blockHighlighter.dispose(), [blockHighlighter]);
+	return blockHighlighter.render(highlighter, language, theme, code);
 }
 
 /**

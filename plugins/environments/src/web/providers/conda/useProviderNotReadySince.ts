@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 /**
  * Track when the conda backend's "not ready" streak began.
  *
- * Returns the epoch-ms timestamp of the first *settled* `PROVIDER_NOT_READY`
- * failure, held stable until the read `resolved` (succeeded, or settled into a
+ * Returns the epoch-ms timestamp (`failedAt`) of the first *settled*
+ * `PROVIDER_NOT_READY` failure, held stable until the read `resolved` (succeeded, or settled into a
  * different error), then reset to `null`.
  *
  * It latches on settled signals rather than on the live query state on
@@ -19,21 +19,22 @@ import { useEffect, useState } from "react";
 export function useProviderNotReadySince({
 	notReady,
 	resolved,
+	failedAt,
 }: {
 	/** True only when the query has *settled* on a PROVIDER_NOT_READY error. */
 	notReady: boolean;
 	/** True once the read has succeeded or settled on a non-not-ready error. */
 	resolved: boolean;
+	/** Epoch ms when the query last settled on an error (`errorUpdatedAt`). */
+	failedAt: number;
 }): number | null {
 	const [since, setSince] = useState<number | null>(null);
 
-	useEffect(() => {
-		if (resolved) {
-			setSince(null);
-		} else if (notReady) {
-			setSince((prev) => prev ?? Date.now());
-		}
-	}, [notReady, resolved]);
+	if (resolved) {
+		if (since !== null) setSince(null);
+	} else if (notReady && since === null) {
+		setSince(failedAt);
+	}
 
 	return since;
 }

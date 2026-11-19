@@ -38,9 +38,8 @@ export function PrivacySettings() {
 					? cause.message
 					: "Could not update privacy settings. Retry the change.",
 			);
-		} finally {
-			setPending(null);
 		}
+		setPending(null);
 	};
 
 	return (

@@ -269,7 +269,6 @@ describe("exec", () => {
 		await gitExec(["init"], testRepoPath);
 
 		writeFileSync(join(testRepoPath, "README.md"), "HELLO WORLD!");
-		await gitExec(["add", "README.md"], testRepoPath);
 
 		const result = await gitExec(
 			["status", "--untracked-files=all", "--porcelain", "-z"],
@@ -277,7 +276,7 @@ describe("exec", () => {
 		);
 
 		expect(result.exitCode).toBe(0);
-		expect(result.stdout.includes("README.md")).toBe(true);
+		expect(result.stdout.includes("?? README.md")).toBe(true);
 	});
 
 	describe("environment", () => {

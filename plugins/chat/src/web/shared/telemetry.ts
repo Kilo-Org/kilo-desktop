@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { KernelTelemetry, type PluginSdk } from "@kilo-desktop/kernel";
 import { useSdk } from "@kilo-desktop/kernel/web";
 
@@ -21,6 +19,5 @@ export function trackerFor(sdk: PluginSdk): Track {
 
 /** {@link trackerFor} for a component. */
 export function useTracker(): Track {
-	const sdk = useSdk();
-	return useMemo(() => trackerFor(sdk), [sdk]);
+	return trackerFor(useSdk());
 }

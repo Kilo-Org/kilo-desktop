@@ -172,7 +172,7 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 			...current,
 			panes: [...current.panes, pane],
 			activePaneId: activate || current.activePaneId === null ? pane.id : current.activePaneId,
-			...(input.placement === "tab" ? tabLayout(current, pane, activate) : {}),
+			...(input.placement === "tab" ? tabLayout(current, pane, activate, input.groupId) : {}),
 		});
 		panes.emit("opened", { workSessionId: input.workSessionId, pane });
 		track(sdk, "pane-opened", { paneType: paneTypeOf(pane.kind) });
@@ -211,7 +211,7 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 	 * The layout with `pane` as a tab of the active pane's group. Before the
 	 * canvas saves one, it starts from what the canvas shows: a column per pane.
 	 */
-	function tabLayout(current: WorkSessionPanes, pane: Pane, activate: boolean) {
+	function tabLayout(current: WorkSessionPanes, pane: Pane, activate: boolean, groupId?: string) {
 		const { activePaneId } = current;
 		if (!activePaneId) return {};
 		const descriptorOf = (open: Pane) =>
@@ -220,10 +220,16 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 				kind: kindMetadata(open.kind)?.layoutKind ?? "tool",
 				title: open.title,
 			});
-		const saved =
-			parseLayoutJson(current.layout) ??
-			createLayout(current.panes.map(descriptorOf), activePaneId);
-		const group = findPaneGroup(saved, activePaneId);
+		// Panes the saved layout doesn't list yet get the groups the canvas gives them,
+		// so a `groupId` the canvas showed is found here.
+		const saved = current.panes.reduce(
+			(layout, open) =>
+				findPaneGroup(layout, open.id) ? layout : addPane(layout, descriptorOf(open)),
+			parseLayoutJson(current.layout) ?? createLayout([], activePaneId),
+		);
+		const group =
+			saved.groups.find((candidate) => candidate.id === groupId) ??
+			findPaneGroup(saved, activePaneId);
 		if (!group) return {};
 		let layout = movePaneToGroup(addPane(saved, descriptorOf(pane)), pane.id, group.id);
 		if (!activate) layout = setActivePane(layout, activePaneId);

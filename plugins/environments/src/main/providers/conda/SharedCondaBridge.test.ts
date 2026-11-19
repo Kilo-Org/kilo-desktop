@@ -127,7 +127,6 @@ describe("SharedCondaBridge", () => {
 
 		bridge.dispose();
 		preferences.change(false);
-		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(spawn).toHaveBeenCalledTimes(1);
 	});

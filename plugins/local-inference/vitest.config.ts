@@ -32,7 +32,10 @@ export default defineConfig({
 				},
 			},
 			{
-				plugins: [react(), tailwindcss()],
+				plugins: [
+					react({ compiler: true, exclude: [/\/node_modules\//, /\/\.vitest\//] }),
+					tailwindcss(),
+				],
 				resolve: { dedupe: ["react", "react-dom"] },
 				// Pre-bundle dependencies reached by the mounted settings UI. Discovering
 				// one mid-run reloads the browser tester iframe and can strand Vitest.

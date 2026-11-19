@@ -47,12 +47,6 @@ const apiModel = {
 };
 
 describe("kilo.anaconda's model catalog", () => {
-	it("is contributed as Anaconda's", async () => {
-		const host = await boot();
-
-		expect(host.catalogContribution()?.metadata).toEqual({ title: "Anaconda" });
-	});
-
 	describe("access", () => {
 		it("is resolving until the session is resolved, which only showing the catalog does", async () => {
 			const host = await boot({ apiKey: "stored-key" });

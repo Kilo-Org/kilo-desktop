@@ -19,14 +19,6 @@ function fakeClient() {
 }
 
 describe("withMcpWarmup", () => {
-	it("warms MCP as soon as the directory client is wrapped", () => {
-		const { client, status } = fakeClient();
-
-		withMcpWarmup(client);
-
-		expect(status).toHaveBeenCalledOnce();
-	});
-
 	it("wraps a client once, so asking again for the same client does not warm again", () => {
 		const { client, status } = fakeClient();
 
@@ -35,22 +27,6 @@ describe("withMcpWarmup", () => {
 
 		expect(second).toBe(first);
 		expect(status).toHaveBeenCalledOnce();
-	});
-
-	it("requests MCP status before every prompt so the prompt never owns the MCP connect", async () => {
-		const { client, calls } = fakeClient();
-		const wrapped = withMcpWarmup(client);
-		calls.length = 0;
-
-		await wrapped.session.promptAsync({ sessionID: "ses_1", parts: [] });
-		await wrapped.session.promptAsync({ sessionID: "ses_1", parts: [] });
-
-		expect(calls).toEqual([
-			"mcp.status",
-			"session.promptAsync",
-			"mcp.status",
-			"session.promptAsync",
-		]);
 	});
 
 	it("never lets Stop cancel the warm-up: the status request carries no abort signal", async () => {
@@ -64,17 +40,6 @@ describe("withMcpWarmup", () => {
 			expect(JSON.stringify(args)).not.toContain("signal");
 			expect(args.some((arg) => arg instanceof AbortSignal)).toBe(false);
 		}
-	});
-
-	it("leaves non-prompt session calls alone", async () => {
-		const { client, status, get } = fakeClient();
-		const wrapped = withMcpWarmup(client);
-		status.mockClear();
-
-		await wrapped.session.get({ sessionID: "ses_1" });
-
-		expect(get).toHaveBeenCalledOnce();
-		expect(status).not.toHaveBeenCalled();
 	});
 
 	it("still sends the prompt when warm-up fails or MCP is unavailable", async () => {

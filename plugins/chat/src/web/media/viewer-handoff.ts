@@ -28,6 +28,12 @@ export function handOffViewerItems(
 	}
 }
 
+/** The items handed off for `key` at exactly `revision`, left in place. */
+export function peekViewerItems(key: string, revision: number): readonly MediaItem[] | null {
+	const entry = handoffs.get(key);
+	return entry?.revision === revision ? entry.items : null;
+}
+
 /**
  * The items handed off for `key` at exactly `revision`, once: taking them
  * removes them, so a closed pane doesn't keep its images alive here. An

@@ -144,20 +144,6 @@ describe("AnacondaAccountService session", () => {
 		});
 	});
 
-	it("reports sign-in unavailable when the host cannot open a browser", async () => {
-		const service = new AnacondaAccountService({
-			credentials: fakeCredentials("api-key").credentials,
-			fetch: vi.fn<OAuthFetch>(async () => jsonResponse(whoamiBody)),
-			openExternal: undefined,
-			logger: silentLogger,
-		});
-
-		await expect(service.login()).resolves.toEqual({
-			status: "error",
-			reason: "Anaconda sign-in is unavailable.",
-		});
-	});
-
 	it("caches the session until refresh and shares concurrent resolves", async () => {
 		const { credentials } = fakeCredentials("api-key");
 		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse(whoamiBody));

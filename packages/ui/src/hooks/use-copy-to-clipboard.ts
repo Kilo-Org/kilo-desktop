@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import useMountedState from "react-use/esm/useMountedState.js";
 import useSetState from "react-use/esm/useSetState.js";
 
@@ -25,25 +24,22 @@ export function useCopyToClipboard(
 		error: undefined,
 	});
 
-	const copyToClipboard = useCallback(
-		(value: string) => {
-			if (!isMounted()) return;
-			if (value === "") {
-				setState({ value, error: new Error("Cannot copy empty string to clipboard.") });
-				return;
-			}
-			writeText(value).then(
-				() => {
-					if (isMounted()) setState({ value, error: undefined });
-				},
-				(error: unknown) => {
-					if (!isMounted()) return;
-					setState({ value, error: error instanceof Error ? error : new Error(String(error)) });
-				},
-			);
-		},
-		[isMounted, setState, writeText],
-	);
+	const copyToClipboard = (value: string) => {
+		if (!isMounted()) return;
+		if (value === "") {
+			setState({ value, error: new Error("Cannot copy empty string to clipboard.") });
+			return;
+		}
+		writeText(value).then(
+			() => {
+				if (isMounted()) setState({ value, error: undefined });
+			},
+			(error: unknown) => {
+				if (!isMounted()) return;
+				setState({ value, error: error instanceof Error ? error : new Error(String(error)) });
+			},
+		);
+	};
 
 	return [state, copyToClipboard];
 }

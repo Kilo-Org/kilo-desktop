@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { SquareIcon } from "lucide-react";
 
@@ -65,7 +65,7 @@ const ROW_STATUS: Record<SubagentDisplayStatus, NonNullable<ToolCallStatusLike>>
 };
 
 /** A `task` call as a one-line delegation row inside its {@link DelegationGroup}. */
-export const TaskActivity: ToolCallComponent = memo(({ args, status, toolCallId }) => {
+export const TaskActivity: ToolCallComponent = ({ args, status, toolCallId }) => {
 	const hidden = useIsDelegationRowHidden(toolCallId);
 	const originalParts = useAuiState((state) => {
 		const custom = state.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
@@ -140,5 +140,5 @@ export const TaskActivity: ToolCallComponent = memo(({ args, status, toolCallId 
 			/>
 		</div>
 	);
-});
+};
 TaskActivity.displayName = "TaskActivity";

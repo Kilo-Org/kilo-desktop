@@ -1,5 +1,4 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
-import { useMemo } from "react";
 
 import { useDiffTheme } from "./diff-theme";
 
@@ -19,7 +18,7 @@ const PIERRE_DIFF_OPTIONS = {
 
 export function usePierreDiffOptions() {
 	const { mode, shiki } = useDiffTheme();
-	return useMemo(() => ({ ...PIERRE_DIFF_OPTIONS, theme: shiki, themeType: mode }), [mode, shiki]);
+	return { ...PIERRE_DIFF_OPTIONS, theme: shiki, themeType: mode };
 }
 
 const hashDiffSource = (source: string): string => {

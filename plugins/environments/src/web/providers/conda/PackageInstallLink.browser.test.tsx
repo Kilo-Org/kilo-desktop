@@ -466,8 +466,11 @@ describe("an anaconda.org install link", () => {
 
 	it("keeps the person's step when a later check of the channel fails", async () => {
 		let checks = 0;
+		// Focus refetches the panel's queries; the dialog's channel check opts out.
+		const listEnvironments = vi.fn(async () => ENVIRONMENTS);
 		await renderLink({
 			search: link({ package: "numpy", channel: "conda-forge" }),
+			listEnvironments,
 			resolveChannel: async ({ channel }) => {
 				checks += 1;
 				if (checks === 1) return resolved(channel, true);
@@ -480,10 +483,13 @@ describe("an anaconda.org install link", () => {
 		await userEvent.fill(screen.getByTestId("environments-install-link-search"), "dat");
 
 		// Coming back to the window must not undo an answered check.
+		const panelReads = listEnvironments.mock.calls.length;
 		try {
 			focusManager.setFocused(false);
 			focusManager.setFocused(true);
-			await new Promise((resolve) => setTimeout(resolve, 300));
+			await vi.waitFor(() =>
+				expect(listEnvironments.mock.calls.length).toBeGreaterThan(panelReads),
+			);
 		} finally {
 			focusManager.setFocused(undefined);
 		}

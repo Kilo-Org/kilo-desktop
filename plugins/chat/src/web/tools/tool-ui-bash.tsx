@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import { CheckIcon, CircleXIcon } from "lucide-react";
 
@@ -15,7 +14,7 @@ import {
 } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
-export const BashTerminal: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const command = typeof args?.command === "string" ? args.command : "";
 	const isRunning = status?.type === "running";
 	const isCancelled = isCancelledToolStatus(status);
@@ -71,5 +70,5 @@ export const BashTerminal: ToolCallComponent = memo(({ args, result, status, too
 			}
 		/>
 	);
-});
+};
 BashTerminal.displayName = "BashTerminal";

@@ -1,11 +1,9 @@
-import { memo } from "react";
-
 import { SoloAwareExpandableRow, SoloAwareLabelRow } from "./tool-ui-activity-row";
 import { getToolFilePath } from "./tool-ui-file-mutation";
 import { basename, resultText, ToolOutputText, truncate } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
-export const ReadActivity: ToolCallComponent = memo(({ args, status }) => {
+export const ReadActivity: ToolCallComponent = ({ args, status }) => {
 	const path = getToolFilePath(args as Record<string, unknown> | undefined);
 	const fileName = path ? basename(path) : undefined;
 
@@ -18,10 +16,10 @@ export const ReadActivity: ToolCallComponent = memo(({ args, status }) => {
 			status={status}
 		/>
 	);
-});
+};
 ReadActivity.displayName = "ReadActivity";
 
-export const GrepActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+export const GrepActivity: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const record = args as Record<string, unknown> | undefined;
 	const pattern =
 		typeof record?.pattern === "string"
@@ -44,10 +42,10 @@ export const GrepActivity: ToolCallComponent = memo(({ args, result, status, too
 			detail={<ToolOutputText text={output} />}
 		/>
 	);
-});
+};
 GrepActivity.displayName = "GrepActivity";
 
-export const GlobActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+export const GlobActivity: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const record = args as Record<string, unknown> | undefined;
 	const pattern =
 		typeof record?.pattern === "string"
@@ -70,5 +68,5 @@ export const GlobActivity: ToolCallComponent = memo(({ args, result, status, too
 			detail={<ToolOutputText text={output} />}
 		/>
 	);
-});
+};
 GlobActivity.displayName = "GlobActivity";

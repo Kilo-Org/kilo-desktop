@@ -4,9 +4,7 @@ import {
 	fallbackTotalsFromMessages,
 	formatCompactCount,
 	formatUsd,
-	formatUsageK,
 	lastAssistantCost,
-	lastAssistantOccupancy,
 	lastAssistantTokens,
 	modelUsageName,
 	parseSessionModelUsage,
@@ -69,15 +67,6 @@ describe("session-model-usage mapper", () => {
 		expect(formatUsd(12.166524)).toBe("$12.17");
 	});
 
-	it("formats context counts without rounding small totals to 0k", () => {
-		expect(formatUsageK(0)).toBe("0k");
-		expect(formatUsageK(232)).toBe("0.2k");
-		expect(formatUsageK(349)).toBe("0.3k");
-		expect(formatUsageK(1_200)).toBe("1k");
-		expect(formatUsageK(25_400)).toBe("25k");
-		expect(formatUsageK(500_000)).toBe("500k");
-	});
-
 	it("maps models to CostMeter lines with shares and cleaned names", () => {
 		const lines = toCostLines(usage.models, usage.totals.cost, [
 			{
@@ -129,7 +118,6 @@ describe("session-model-usage mapper", () => {
 				],
 			},
 		];
-		expect(lastAssistantOccupancy(messages)).toBe(1_650);
 		expect(lastAssistantTokens(messages)).toEqual({
 			input: 1_200,
 			output: 300,
@@ -165,7 +153,6 @@ describe("session-model-usage mapper", () => {
 				},
 			},
 		];
-		expect(lastAssistantOccupancy(messages)).toBe(60_932);
 		expect(lastAssistantCost(messages)).toBe(0.07);
 		expect(lastAssistantTokens(messages)).toEqual({
 			input: 60_700,

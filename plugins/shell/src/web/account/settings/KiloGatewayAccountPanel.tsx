@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { ArrowUpRightIcon, CircleAlertIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
@@ -50,14 +50,10 @@ export function KiloGatewayAccountPanel({
 } = {}) {
 	const auth = useKiloAccount();
 
-	const orgOptions = useMemo(
-		() => (auth.profile ? buildOrgOptions(auth.profile.profile) : []),
-		[auth.profile],
-	);
-	const currentOrgValue = useMemo(
-		() => (auth.profile ? resolveCurrentOrgValue(auth.profile, orgOptions) : undefined),
-		[auth.profile, orgOptions],
-	);
+	const orgOptions = auth.profile ? buildOrgOptions(auth.profile.profile) : [];
+	const currentOrgValue = auth.profile
+		? resolveCurrentOrgValue(auth.profile, orgOptions)
+		: undefined;
 
 	const copyText = auth.copyText;
 
@@ -353,9 +349,11 @@ function useDismissibleOrganizationError(
 	switching: boolean,
 ): (OrganizationError & { dismiss: () => void }) | null {
 	const [dismissed, setDismissed] = useState<OrganizationError | null>(null);
-	useEffect(() => {
+	const [wasSwitching, setWasSwitching] = useState(switching);
+	if (switching !== wasSwitching) {
+		setWasSwitching(switching);
 		if (switching) setDismissed(null);
-	}, [switching]);
+	}
 	if (!error || (dismissed && sameOrganizationError(dismissed, error))) return null;
 	return { ...error, dismiss: () => setDismissed(error) };
 }

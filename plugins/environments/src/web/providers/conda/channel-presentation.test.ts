@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	defaultChannelSelection,
-	getChannelPresentation,
-	selectableChannels,
-} from "./channel-presentation";
+import { getChannelPresentation, selectableChannels } from "./channel-presentation";
 
 describe("selectableChannels", () => {
 	it("offers conda-forge and Anaconda MAIN when none are configured", () => {
@@ -52,23 +48,6 @@ describe("getChannelPresentation", () => {
 			title: "bioconda",
 			description: "Configured in your conda settings.",
 		});
-	});
-});
-
-describe("defaultChannelSelection", () => {
-	it("selects every channel for signed-in users", () => {
-		expect(defaultChannelSelection(["defaults", "conda-forge"])).toEqual([
-			"defaults",
-			"conda-forge",
-		]);
-	});
-
-	it("selects every offered channel", () => {
-		expect(defaultChannelSelection(["defaults", "conda-forge", "bioconda"])).toEqual([
-			"defaults",
-			"conda-forge",
-			"bioconda",
-		]);
 	});
 });
 

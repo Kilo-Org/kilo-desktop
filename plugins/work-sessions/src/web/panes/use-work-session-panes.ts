@@ -1,5 +1,3 @@
-import { useCallback } from "react";
-
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 
 import {
@@ -11,9 +9,7 @@ import {
 
 /** A work session's panes, as the panes domain object holds them. */
 export function useWorkSessionPanes(workSessionId: string): WorkSessionPanes {
-	const select = useCallback(
-		(state: PanesState) => state.byWorkSession[workSessionId] ?? EMPTY_WORK_SESSION_PANES,
-		[workSessionId],
-	);
+	const select = (state: PanesState) =>
+		state.byWorkSession[workSessionId] ?? EMPTY_WORK_SESSION_PANES;
 	return useDomainObjectState(Panes, select) ?? EMPTY_WORK_SESSION_PANES;
 }

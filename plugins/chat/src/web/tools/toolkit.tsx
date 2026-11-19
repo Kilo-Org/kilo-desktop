@@ -1,5 +1,5 @@
 import type { ToolCallMessagePartComponent, Toolkit } from "@assistant-ui/react";
-import { memo, useMemo, type ComponentType, type FC } from "react";
+import { memo, type ComponentType, type FC } from "react";
 
 import type { Contribution } from "@kilo-desktop/kernel";
 import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
@@ -22,7 +22,7 @@ const selectComponent = (implementation: ToolRendererImplementation) => implemen
 
 /**
  * The name Kilo calls a `tools` entry by: a desktop tool's `kilo.core/tool`
- * contribution key (`kilo.terminal/open_terminal`) by its wire name, one of
+ * contribution key (`kilo.terminal/open`) by its wire name, one of
  * Kilo's own tools (`bash`) as it is.
  */
 export const toolNameOf = (tool: string): string =>
@@ -98,12 +98,18 @@ export function buildToolkit(contributions: readonly RendererContribution[]): Co
 export function useContributedToolkit(): Toolkit {
 	const renderers = useExtensions(ToolRenderer);
 	const apps = useExtensions(McpApp);
-	return useMemo(() => {
-		const { toolkit, categories } = buildToolkit(renderers);
-		setContributedToolCategories(categories);
-		setHostableMcpApps(hostableMcpApps(apps));
-		return toolkit;
-	}, [renderers, apps]);
+	return publishToolkit(renderers, apps);
+}
+
+/** The toolkit, publishing its categories and hostable MCP Apps window-wide on the way. */
+function publishToolkit(
+	renderers: readonly RendererContribution[],
+	apps: readonly Contribution<typeof McpApp>[],
+): Toolkit {
+	const { toolkit, categories } = buildToolkit(renderers);
+	setContributedToolCategories(categories);
+	setHostableMcpApps(hostableMcpApps(apps));
+	return toolkit;
 }
 
 export function hostableMcpApps(

@@ -174,7 +174,7 @@ describe("ElectronNotebookHostService", () => {
 		});
 	});
 
-	it("connects a scoped peer to the external singleton and exposes no socket to the renderer", async () => {
+	it("connects a scoped peer to the external singleton and announces the daemon ready", async () => {
 		const platform = fakePlatform();
 		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		const hostPort = port();

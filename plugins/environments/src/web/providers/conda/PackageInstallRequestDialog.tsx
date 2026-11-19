@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { Alert, AlertDescription } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -349,6 +349,21 @@ function ChannelStep({
 	);
 }
 
+/** `envs` whose name or prefix contains `query`, by name. */
+function matchingEnvironments(envs: readonly CondaEnv[], query: string): CondaEnv[] {
+	const term = query.trim().toLowerCase();
+	const matches = term
+		? envs.filter(
+				(env) =>
+					environmentDisplayName(env).toLowerCase().includes(term) ||
+					env.prefix.toLowerCase().includes(term),
+			)
+		: envs;
+	return matches.toSorted((a, b) =>
+		environmentDisplayName(a).localeCompare(environmentDisplayName(b)),
+	);
+}
+
 function TargetStep({
 	request,
 	onChooseEnvironment,
@@ -367,20 +382,7 @@ function TargetStep({
 	const newEnvironmentDescriptionId = useId();
 	const existingHeadingId = useId();
 	const suggestedName = suggestEnvironmentName(request.package, envs.data ?? []);
-	const visible = useMemo(() => {
-		const term = query.trim().toLowerCase();
-		const rows = envs.data ?? [];
-		const matches = term
-			? rows.filter(
-					(env) =>
-						environmentDisplayName(env).toLowerCase().includes(term) ||
-						env.prefix.toLowerCase().includes(term),
-				)
-			: rows;
-		return matches.toSorted((a, b) =>
-			environmentDisplayName(a).localeCompare(environmentDisplayName(b)),
-		);
-	}, [envs.data, query]);
+	const visible = matchingEnvironments(envs.data ?? [], query);
 
 	return (
 		<>

@@ -107,9 +107,8 @@ export function ModelDownloadSection({
 			await onStart(identity);
 		} catch (error) {
 			updateError(artifactKey, error instanceof Error ? error.message : String(error));
-		} finally {
-			setStartingKey((current) => (current === artifactKey ? undefined : current));
 		}
+		setStartingKey((current) => (current === artifactKey ? undefined : current));
 	};
 	const cancelDownload = async () => {
 		if (!identity || !artifactKey || download?.status !== "downloading") return;
@@ -119,9 +118,8 @@ export function ModelDownloadSection({
 			await onCancel(identity);
 		} catch (error) {
 			updateError(artifactKey, error instanceof Error ? error.message : String(error));
-		} finally {
-			setCancellingKey((current) => (current === artifactKey ? undefined : current));
 		}
+		setCancellingKey((current) => (current === artifactKey ? undefined : current));
 	};
 
 	return (

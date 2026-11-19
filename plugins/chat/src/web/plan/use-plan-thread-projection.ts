@@ -1,5 +1,5 @@
 import { useOpenCodeThreadState } from "@assistant-ui/react-opencode";
-import { useRef } from "react";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { getPlanProjectionForMessage, projectPlanThread } from "./plan-projection";
 
@@ -27,9 +27,7 @@ export function usePlanHiddenCallIds(messageId: string): ReadonlySet<string> | u
 	const selected = useOpenCodeThreadState(
 		(state) => getPlanProjectionForMessage(projectPlanThread(state), messageId)?.hiddenCallIds,
 	);
-	const last = useRef(selected);
-	if (!sameMembers(last.current, selected)) last.current = selected;
-	return last.current;
+	return useStableValue(selected, sameMembers);
 }
 
 /** Whether the message's plan is ready, which ends its turn. */

@@ -9,7 +9,8 @@ import type { FC, ReactElement, ReactNode } from "react";
 import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
 import { type WorkSession } from "../../contracts";
 
-import { formatRelativeTimeLabel, type SessionActivity } from "./session-activity";
+import type { SessionActivity } from "./session-activity";
+import { SessionRelativeTime } from "./session-row-display";
 import { directoryBasename } from "../shared/directory";
 import { WorkSessionDecoration } from "../../contracts";
 
@@ -79,7 +80,7 @@ const SessionRowDetails: FC<Omit<SessionRowHoverCardProps, "trigger">> = ({
 						title={new Date(activity.updatedAt).toLocaleString()}
 						className="text-muted-foreground shrink-0 text-xs tabular-nums"
 					>
-						{formatRelativeTimeLabel(activity.updatedAt, Date.now())}
+						<SessionRelativeTime timestamp={activity.updatedAt} />
 					</time>
 				) : null}
 			</div>

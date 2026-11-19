@@ -98,9 +98,8 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 				if (fallbackKey && fallbackKey !== key) markApproved(fallbackKey);
 			} catch (caught) {
 				setError(errorText(caught, "Could not approve the plan."));
-			} finally {
-				setSubmitting(false);
 			}
+			setSubmitting(false);
 		})();
 	};
 
@@ -120,9 +119,8 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 				aui.composer.send();
 			} catch (caught) {
 				setError(errorText(caught, "Could not refine the plan."));
-			} finally {
-				setSubmitting(false);
 			}
+			setSubmitting(false);
 		})();
 	};
 

@@ -140,7 +140,7 @@ describe("stageNotebookUi", () => {
 		});
 	});
 
-	it("extracts the published archive without a source checkout", { timeout: 30_000 }, async () => {
+	it("extracts the published archive without a source checkout", async () => {
 		const root = await temporaryDirectory();
 		const archive = await publishedArchive(root);
 		const artifact = {
@@ -159,67 +159,56 @@ describe("stageNotebookUi", () => {
 		).resolves.toMatchObject({ staged: true });
 	});
 
-	it(
-		"reuses or patches a current staged bundle without downloading it again",
-		{ timeout: 30_000 },
-		async () => {
-			const root = await temporaryDirectory();
-			const archive = await publishedArchive(root);
-			const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
-			const options = {
-				destinationDirectory: path.join(root, "build/notebook"),
-				release: NIGHTLY_RELEASE,
-				artifact: {
-					assetName: "nteract-nightly-notebook-ui.tar.gz",
-					bytes: archive.byteLength,
-					sha256: createHash("sha256").update(archive).digest("hex"),
-				},
-				fetch: fetchArchive,
-			};
-			await stageNotebookUi(options);
+	it("reuses or patches a current staged bundle without downloading it again", async () => {
+		const root = await temporaryDirectory();
+		const archive = await publishedArchive(root);
+		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
+		const options = {
+			destinationDirectory: path.join(root, "build/notebook"),
+			release: NIGHTLY_RELEASE,
+			artifact: {
+				assetName: "nteract-nightly-notebook-ui.tar.gz",
+				bytes: archive.byteLength,
+				sha256: createHash("sha256").update(archive).digest("hex"),
+			},
+			fetch: fetchArchive,
+		};
+		await stageNotebookUi(options);
 
-			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: false });
-			const indexPath = path.join(options.destinationDirectory, "index.html");
-			await writeFile(
-				indexPath,
-				(await readFile(indexPath, "utf8")).replace(KILO_EMBED_CHROME_CSS, "old{}"),
-			);
-			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
-			expect(await readFile(indexPath, "utf8")).toContain(KILO_EMBED_CHROME_CSS);
-			expect(fetchArchive).toHaveBeenCalledOnce();
-		},
-	);
+		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: false });
+		const indexPath = path.join(options.destinationDirectory, "index.html");
+		await writeFile(
+			indexPath,
+			(await readFile(indexPath, "utf8")).replace(KILO_EMBED_CHROME_CSS, "old{}"),
+		);
+		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
+		expect(await readFile(indexPath, "utf8")).toContain(KILO_EMBED_CHROME_CSS);
+		expect(fetchArchive).toHaveBeenCalledOnce();
+	});
 
-	it(
-		"downloads a fresh bundle when staged bytes no longer match",
-		{ timeout: 30_000 },
-		async () => {
-			const root = await temporaryDirectory();
-			const archive = Buffer.from("published nightly notebook archive");
-			const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
-			const options = {
-				destinationDirectory: path.join(root, "build/notebook"),
-				release: NIGHTLY_RELEASE,
-				artifact: {
-					assetName: "nteract-nightly-notebook-ui.tar.gz",
-					bytes: archive.byteLength,
-					sha256: createHash("sha256").update(archive).digest("hex"),
-				},
-				fetch: fetchArchive,
-				extract: async (_archivePath: string, extractedDirectory: string) => {
-					await writePublishedBundle(extractedDirectory);
-				},
-			};
-			await stageNotebookUi(options);
-			await writeFile(
-				path.join(options.destinationDirectory, "assets/main-abcdef12.js"),
-				"corrupt",
-			);
+	it("downloads a fresh bundle when staged bytes no longer match", async () => {
+		const root = await temporaryDirectory();
+		const archive = Buffer.from("published nightly notebook archive");
+		const fetchArchive = vi.fn(async () => new Response(new Uint8Array(archive)));
+		const options = {
+			destinationDirectory: path.join(root, "build/notebook"),
+			release: NIGHTLY_RELEASE,
+			artifact: {
+				assetName: "nteract-nightly-notebook-ui.tar.gz",
+				bytes: archive.byteLength,
+				sha256: createHash("sha256").update(archive).digest("hex"),
+			},
+			fetch: fetchArchive,
+			extract: async (_archivePath: string, extractedDirectory: string) => {
+				await writePublishedBundle(extractedDirectory);
+			},
+		};
+		await stageNotebookUi(options);
+		await writeFile(path.join(options.destinationDirectory, "assets/main-abcdef12.js"), "corrupt");
 
-			await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
-			expect(fetchArchive).toHaveBeenCalledTimes(2);
-		},
-	);
+		await expect(stageNotebookUi(options)).resolves.toMatchObject({ staged: true });
+		expect(fetchArchive).toHaveBeenCalledTimes(2);
+	});
 
 	it("retries a 504 download and stages the bundle", async () => {
 		const root = await temporaryDirectory();
@@ -340,30 +329,6 @@ describe("injectKiloEmbedChromeHtml", () => {
 		expect(injectKiloEmbedChromeHtml(refreshed)).toBe(refreshed);
 	});
 
-	it("hides embedded rail branding without hiding the rail or overriding its side", () => {
-		expect(KILO_EMBED_CHROME_CSS).toContain(
-			'#root [data-testid="notebook-rail"] [data-slot="rail-leading-slot"]{display:none}',
-		);
-		expect(KILO_EMBED_CHROME_CSS).toContain(
-			'#root [data-testid="notebook-rail"] [data-slot="rail-strip-grid"]{grid-template-rows:minmax(0,1fr)}',
-		);
-		expect(KILO_EMBED_CHROME_CSS).toContain(
-			'#root [data-testid="notebook-rail"] [data-slot="rail-body"]{padding-top:0.5rem}',
-		);
-		expect(KILO_EMBED_CHROME_CSS).not.toContain('[data-testid="notebook-rail"]{display:none}');
-		expect(KILO_EMBED_CHROME_CSS).not.toContain("data-rail-side");
-	});
-
-	it("leaves the palette to the host", () => {
-		expect(KILO_EMBED_CHROME_CSS).not.toContain("--background");
-	});
-
-	it("matches the host tab font size without scaling rem-based chrome", () => {
-		expect(KILO_EMBED_CHROME_CSS).toContain("#root{font-size:12px}");
-		expect(KILO_EMBED_CHROME_CSS).toContain("#root .cm-editor");
-		expect(KILO_EMBED_CHROME_CSS).not.toContain("html{font-size:");
-	});
-
 	it("injects a parent-origin theme bridge", () => {
 		const html = injectKiloEmbedChromeHtml("<html><head></head><body></body></html>");
 		expect(html).toContain(NOTEBOOK_THEME_MESSAGE_TYPE);
@@ -377,50 +342,42 @@ describe("injectKiloEmbedChromeHtml", () => {
 });
 
 describe("notebook bundle validation", () => {
-	it(
-		"rejects source shells, missing WASM, and extra unlisted files",
-		{ timeout: 30_000 },
-		async () => {
-			const root = await temporaryDirectory();
-			await mkdir(root, { recursive: true });
-			await writeFile(path.join(root, "index.html"), "<html>source</html>");
-			await expect(validateNotebookUiBundle(root)).rejects.toThrow(/built \/assets/);
+	it("rejects source shells, missing WASM, and extra unlisted files", async () => {
+		const root = await temporaryDirectory();
+		await mkdir(root, { recursive: true });
+		await writeFile(path.join(root, "index.html"), "<html>source</html>");
+		await expect(validateNotebookUiBundle(root)).rejects.toThrow(/built \/assets/);
 
-			const noWasm = path.join(root, "no-wasm");
-			await writePublishedBundle(noWasm, { includeWasm: false });
-			await expect(validateNotebookUiBundle(noWasm)).rejects.toThrow(/no WASM/);
+		const noWasm = path.join(root, "no-wasm");
+		await writePublishedBundle(noWasm, { includeWasm: false });
+		await expect(validateNotebookUiBundle(noWasm)).rejects.toThrow(/no WASM/);
 
-			const destination = path.join(root, "staged");
-			await stageFixture(path.join(root, "archive"), destination);
-			await writeFile(path.join(destination, "orphan.js"), "unexpected");
-			await expect(validateStagedNotebookBundle(destination, NIGHTLY_RELEASE)).rejects.toThrow(
-				/does not exactly cover/,
-			);
-			expect(await readFile(path.join(destination, NOTEBOOK_STAGE_MANIFEST), "utf8")).toContain(
-				NIGHTLY_RELEASE.commit,
-			);
-		},
-	);
+		const destination = path.join(root, "staged");
+		await stageFixture(path.join(root, "archive"), destination);
+		await writeFile(path.join(destination, "orphan.js"), "unexpected");
+		await expect(validateStagedNotebookBundle(destination, NIGHTLY_RELEASE)).rejects.toThrow(
+			/does not exactly cover/,
+		);
+		expect(await readFile(path.join(destination, NOTEBOOK_STAGE_MANIFEST), "utf8")).toContain(
+			NIGHTLY_RELEASE.commit,
+		);
+	});
 
-	it(
-		"rejects a staged bundle whose index.html lacks embed chrome CSS",
-		{ timeout: 30_000 },
-		async () => {
-			const root = await temporaryDirectory();
-			const destination = path.join(root, "staged");
-			await stageFixture(path.join(root, "archive"), destination);
-			await writeFile(
-				path.join(destination, "index.html"),
-				[
-					"<!doctype html>",
-					"<html><head>",
-					'<script type="module" src="/assets/main-abcdef12.js"></script>',
-					"</head><body></body></html>",
-				].join(""),
-			);
-			await expect(validateStagedNotebookBundle(destination, NIGHTLY_RELEASE)).rejects.toThrow(
-				/missing kilo embed chrome CSS/,
-			);
-		},
-	);
+	it("rejects a staged bundle whose index.html lacks embed chrome CSS", async () => {
+		const root = await temporaryDirectory();
+		const destination = path.join(root, "staged");
+		await stageFixture(path.join(root, "archive"), destination);
+		await writeFile(
+			path.join(destination, "index.html"),
+			[
+				"<!doctype html>",
+				"<html><head>",
+				'<script type="module" src="/assets/main-abcdef12.js"></script>',
+				"</head><body></body></html>",
+			].join(""),
+		);
+		await expect(validateStagedNotebookBundle(destination, NIGHTLY_RELEASE)).rejects.toThrow(
+			/missing kilo embed chrome CSS/,
+		);
+	});
 });

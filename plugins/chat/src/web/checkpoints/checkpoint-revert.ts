@@ -1,5 +1,4 @@
 import { type useAui, useAuiState, type ThreadMessage } from "@assistant-ui/react";
-import { useMemo } from "react";
 import type { OpenCodeServerMessage } from "@assistant-ui/react-opencode";
 import type { CreateAttachment } from "@assistant-ui/core";
 import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client";
@@ -260,7 +259,7 @@ export function deriveRevertedUserRows(
  * subscribe only to stable references (primitive boundary id, the
  * `messageOrder` array and `messagesById` object — both replaced only on
  * session/history updates, never on streaming deltas); the row model itself
- * is derived in `useMemo` so `Object.is` comparisons hold.
+ * is memoized on them so `Object.is` comparisons hold.
  */
 export const useRevertedUserRows = (): RevertedUserRow[] => {
 	const boundaryId = useRevertBoundaryId();
@@ -270,10 +269,7 @@ export const useRevertedUserRows = (): RevertedUserRow[] => {
 	const messagesById = useAuiState(
 		(s) => selectOpenCodeExtras(s.thread.extras)?.state.messagesById,
 	);
-	return useMemo(
-		() => deriveRevertedUserRows(boundaryId, messageOrder, messagesById),
-		[boundaryId, messageOrder, messagesById],
-	);
+	return deriveRevertedUserRows(boundaryId, messageOrder, messagesById);
 };
 
 /**

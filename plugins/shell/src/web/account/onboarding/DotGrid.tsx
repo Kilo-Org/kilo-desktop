@@ -313,6 +313,182 @@ export function isInteractiveTarget(target: EventTarget | null): boolean {
 	return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
 }
 
+/** Runs the dot grid on `canvas` until the returned cleanup is called. */
+function animateDotGrid(
+	canvas: HTMLCanvasElement,
+	introOrigin: RefObject<HTMLElement | null> | undefined,
+): (() => void) | undefined {
+	const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, antialias: false });
+	if (!gl) return;
+	const program = createProgram(gl);
+	if (!program) return;
+
+	const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	gl.useProgram(program);
+	const buffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+	const position = gl.getAttribLocation(program, "a_position");
+	gl.enableVertexAttribArray(position);
+	gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+
+	const uniforms: Uniforms = {};
+	const uniform = (name: string) => (uniforms[name] ??= gl.getUniformLocation(program, name));
+	gl.uniform1f(uniform("u_dotSize"), SETTINGS.dotSize);
+	gl.uniform1f(uniform("u_gap"), SETTINGS.gap);
+	gl.uniform1f(uniform("u_hoverRadius"), SETTINGS.hoverRadius);
+	gl.uniform1f(uniform("u_neighborScale"), SETTINGS.neighborScale);
+	gl.uniform1f(uniform("u_rippleTravelEase"), SETTINGS.rippleTravelEase);
+	gl.uniform1f(uniform("u_rippleWidthStart"), SETTINGS.rippleWidthStart);
+	gl.uniform1f(uniform("u_rippleWidthEnd"), SETTINGS.rippleWidthEnd);
+	gl.uniform1f(uniform("u_rippleTailSpacing"), SETTINGS.rippleTailSpacing);
+	gl.uniform1f(uniform("u_rippleTailStrength"), SETTINGS.rippleTailStrength);
+	gl.uniform1f(uniform("u_rippleFadeStart"), SETTINGS.rippleFadeStart);
+	gl.uniform1f(uniform("u_rippleFadePower"), SETTINGS.rippleFadePower);
+	gl.uniform2f(uniform("u_clearHalfSize"), ...SETTINGS.clearHalfSize);
+	gl.uniform1f(uniform("u_clearRadius"), SETTINGS.clearRadius);
+	gl.uniform1f(uniform("u_clearFalloff"), SETTINGS.clearFalloff);
+
+	const applyPalette = () => {
+		const palette = canvas.matches(':is([data-theme="dark"] *)') ? PALETTE.dark : PALETTE.light;
+		gl.uniform3fv(uniform("u_colorFill"), hexToRgb(palette.fill));
+		palette.gradient.forEach((hex, index) =>
+			gl.uniform3fv(uniform(`u_gradientColor${index}`), hexToRgb(hex)),
+		);
+	};
+	applyPalette();
+
+	let rect = canvas.getBoundingClientRect();
+	const resize = () => {
+		rect = canvas.getBoundingClientRect();
+		let ratio = Math.min(window.devicePixelRatio || 1, SETTINGS.maxPixelRatio);
+		const pixels = rect.width * rect.height * ratio * ratio;
+		if (pixels > SETTINGS.maxPixelCount) ratio *= Math.sqrt(SETTINGS.maxPixelCount / pixels);
+		canvas.width = Math.max(1, Math.round(rect.width * ratio));
+		canvas.height = Math.max(1, Math.round(rect.height * ratio));
+		gl.viewport(0, 0, canvas.width, canvas.height);
+		gl.uniform2f(uniform("u_resolution"), canvas.width, canvas.height);
+		gl.uniform1f(uniform("u_pixelRatio"), ratio);
+	};
+
+	let pointer: [number, number] = [...OFFSCREEN];
+	let trail = Array.from({ length: TRAIL_POINTS }, () => [...OFFSCREEN] as [number, number]);
+	let pointerActive = false;
+	let hoverIntensity = 0;
+	let rippleStart: number | null = null;
+	let frame: number | null = null;
+
+	const draw = () => {
+		const now = performance.now();
+		frame = null;
+		hoverIntensity += ((pointerActive ? 1 : 0) - hoverIntensity) * 0.12;
+		const head = trail[0]!;
+		if (pointerActive) {
+			head[0] += (pointer[0] - head[0]) * 0.34;
+			head[1] += (pointer[1] - head[1]) * 0.34;
+		}
+		const follow = 0.34 - 0.26 * SETTINGS.trail;
+		for (let index = 1; index < TRAIL_POINTS; index++) {
+			const point = trail[index]!;
+			const previous = trail[index - 1]!;
+			const rate = Math.max(0.045, follow * (1 - 0.035 * index));
+			point[0] += (previous[0] - point[0]) * rate;
+			point[1] += (previous[1] - point[1]) * rate;
+		}
+		if (!pointerActive && hoverIntensity < 0.01) {
+			hoverIntensity = 0;
+			trail = trail.map(() => [...OFFSCREEN] as [number, number]);
+		}
+
+		let rippleProgress = 1;
+		if (rippleStart !== null) {
+			rippleProgress = Math.min((now - rippleStart) / SETTINGS.rippleDuration, 1);
+			if (rippleProgress >= 1) rippleStart = null;
+		}
+
+		gl.uniform2fv(uniform("u_trail"), trail.flat());
+		gl.uniform1f(uniform("u_hoverIntensity"), hoverIntensity);
+		gl.uniform1f(uniform("u_rippleProgress"), rippleProgress);
+		gl.clearColor(0, 0, 0, 0);
+		gl.clear(gl.COLOR_BUFFER_BIT);
+		gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+		if (rippleStart !== null || pointerActive || hoverIntensity > 0) schedule();
+	};
+	const schedule = () => {
+		frame ??= window.requestAnimationFrame(draw);
+	};
+
+	const startRipple = (clientX: number, clientY: number) => {
+		if (reduceMotion || rect.width === 0 || rect.height === 0) return;
+		gl.uniform2f(
+			uniform("u_rippleOrigin"),
+			(clientX - rect.left) / rect.width,
+			1 - (clientY - rect.top) / rect.height,
+		);
+		rippleStart = performance.now();
+		schedule();
+	};
+
+	const onPointerMove = (event: PointerEvent) => {
+		if (reduceMotion || event.pointerType === "touch") return;
+		pointer = [event.clientX - rect.left, event.clientY - rect.top];
+		if (!pointerActive && hoverIntensity < 0.01) {
+			trail = trail.map(() => [...pointer] as [number, number]);
+		}
+		pointerActive = true;
+		schedule();
+	};
+	const onPointerLeave = () => {
+		if (!pointerActive) return;
+		pointerActive = false;
+		schedule();
+	};
+	const onPointerDown = (event: PointerEvent) => {
+		if (!isInteractiveTarget(event.target)) startRipple(event.clientX, event.clientY);
+	};
+
+	const resizeObserver = new ResizeObserver(() => {
+		resize();
+		schedule();
+	});
+	resizeObserver.observe(canvas);
+	const themeObserver = new MutationObserver(() => {
+		applyPalette();
+		schedule();
+	});
+	themeObserver.observe(document.documentElement, {
+		attributes: true,
+		attributeFilter: ["data-theme"],
+		subtree: true,
+	});
+	resize();
+	schedule();
+
+	window.addEventListener("pointermove", onPointerMove, { passive: true });
+	document.documentElement.addEventListener("pointerleave", onPointerLeave);
+	window.addEventListener("blur", onPointerLeave);
+	window.addEventListener("pointerdown", onPointerDown);
+	const intro = window.setTimeout(() => {
+		const box = introOrigin?.current?.getBoundingClientRect();
+		if (box) startRipple(box.left + box.width / 2, box.top + box.height / 2);
+		else startRipple(rect.left + rect.width / 2, rect.top + rect.height / 2);
+	}, SETTINGS.introDelay);
+
+	return () => {
+		window.clearTimeout(intro);
+		if (frame !== null) window.cancelAnimationFrame(frame);
+		resizeObserver.disconnect();
+		themeObserver.disconnect();
+		window.removeEventListener("pointermove", onPointerMove);
+		document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+		window.removeEventListener("blur", onPointerLeave);
+		window.removeEventListener("pointerdown", onPointerDown);
+		gl.deleteBuffer(buffer);
+		gl.deleteProgram(program);
+	};
+}
+
 export function DotGrid({
 	className,
 	introOrigin,
@@ -325,175 +501,8 @@ export function DotGrid({
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
-		const gl = canvas?.getContext("webgl2", { premultipliedAlpha: true, antialias: false });
-		if (!canvas || !gl) return;
-		const program = createProgram(gl);
-		if (!program) return;
-
-		const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-		gl.useProgram(program);
-		const buffer = gl.createBuffer();
-		gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-		gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-		const position = gl.getAttribLocation(program, "a_position");
-		gl.enableVertexAttribArray(position);
-		gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-
-		const uniforms: Uniforms = {};
-		const uniform = (name: string) => (uniforms[name] ??= gl.getUniformLocation(program, name));
-		gl.uniform1f(uniform("u_dotSize"), SETTINGS.dotSize);
-		gl.uniform1f(uniform("u_gap"), SETTINGS.gap);
-		gl.uniform1f(uniform("u_hoverRadius"), SETTINGS.hoverRadius);
-		gl.uniform1f(uniform("u_neighborScale"), SETTINGS.neighborScale);
-		gl.uniform1f(uniform("u_rippleTravelEase"), SETTINGS.rippleTravelEase);
-		gl.uniform1f(uniform("u_rippleWidthStart"), SETTINGS.rippleWidthStart);
-		gl.uniform1f(uniform("u_rippleWidthEnd"), SETTINGS.rippleWidthEnd);
-		gl.uniform1f(uniform("u_rippleTailSpacing"), SETTINGS.rippleTailSpacing);
-		gl.uniform1f(uniform("u_rippleTailStrength"), SETTINGS.rippleTailStrength);
-		gl.uniform1f(uniform("u_rippleFadeStart"), SETTINGS.rippleFadeStart);
-		gl.uniform1f(uniform("u_rippleFadePower"), SETTINGS.rippleFadePower);
-		gl.uniform2f(uniform("u_clearHalfSize"), ...SETTINGS.clearHalfSize);
-		gl.uniform1f(uniform("u_clearRadius"), SETTINGS.clearRadius);
-		gl.uniform1f(uniform("u_clearFalloff"), SETTINGS.clearFalloff);
-
-		const applyPalette = () => {
-			const palette = canvas.matches(':is([data-theme="dark"] *)') ? PALETTE.dark : PALETTE.light;
-			gl.uniform3fv(uniform("u_colorFill"), hexToRgb(palette.fill));
-			palette.gradient.forEach((hex, index) =>
-				gl.uniform3fv(uniform(`u_gradientColor${index}`), hexToRgb(hex)),
-			);
-		};
-		applyPalette();
-
-		let rect = canvas.getBoundingClientRect();
-		const resize = () => {
-			rect = canvas.getBoundingClientRect();
-			let ratio = Math.min(window.devicePixelRatio || 1, SETTINGS.maxPixelRatio);
-			const pixels = rect.width * rect.height * ratio * ratio;
-			if (pixels > SETTINGS.maxPixelCount) ratio *= Math.sqrt(SETTINGS.maxPixelCount / pixels);
-			canvas.width = Math.max(1, Math.round(rect.width * ratio));
-			canvas.height = Math.max(1, Math.round(rect.height * ratio));
-			gl.viewport(0, 0, canvas.width, canvas.height);
-			gl.uniform2f(uniform("u_resolution"), canvas.width, canvas.height);
-			gl.uniform1f(uniform("u_pixelRatio"), ratio);
-		};
-
-		let pointer: [number, number] = [...OFFSCREEN];
-		let trail = Array.from({ length: TRAIL_POINTS }, () => [...OFFSCREEN] as [number, number]);
-		let pointerActive = false;
-		let hoverIntensity = 0;
-		let rippleStart: number | null = null;
-		let frame: number | null = null;
-
-		const draw = () => {
-			const now = performance.now();
-			frame = null;
-			hoverIntensity += ((pointerActive ? 1 : 0) - hoverIntensity) * 0.12;
-			const head = trail[0]!;
-			if (pointerActive) {
-				head[0] += (pointer[0] - head[0]) * 0.34;
-				head[1] += (pointer[1] - head[1]) * 0.34;
-			}
-			const follow = 0.34 - 0.26 * SETTINGS.trail;
-			for (let index = 1; index < TRAIL_POINTS; index++) {
-				const point = trail[index]!;
-				const previous = trail[index - 1]!;
-				const rate = Math.max(0.045, follow * (1 - 0.035 * index));
-				point[0] += (previous[0] - point[0]) * rate;
-				point[1] += (previous[1] - point[1]) * rate;
-			}
-			if (!pointerActive && hoverIntensity < 0.01) {
-				hoverIntensity = 0;
-				trail = trail.map(() => [...OFFSCREEN] as [number, number]);
-			}
-
-			let rippleProgress = 1;
-			if (rippleStart !== null) {
-				rippleProgress = Math.min((now - rippleStart) / SETTINGS.rippleDuration, 1);
-				if (rippleProgress >= 1) rippleStart = null;
-			}
-
-			gl.uniform2fv(uniform("u_trail"), trail.flat());
-			gl.uniform1f(uniform("u_hoverIntensity"), hoverIntensity);
-			gl.uniform1f(uniform("u_rippleProgress"), rippleProgress);
-			gl.clearColor(0, 0, 0, 0);
-			gl.clear(gl.COLOR_BUFFER_BIT);
-			gl.drawArrays(gl.TRIANGLES, 0, 3);
-
-			if (rippleStart !== null || pointerActive || hoverIntensity > 0) schedule();
-		};
-		const schedule = () => {
-			frame ??= window.requestAnimationFrame(draw);
-		};
-
-		const startRipple = (clientX: number, clientY: number) => {
-			if (reduceMotion || rect.width === 0 || rect.height === 0) return;
-			gl.uniform2f(
-				uniform("u_rippleOrigin"),
-				(clientX - rect.left) / rect.width,
-				1 - (clientY - rect.top) / rect.height,
-			);
-			rippleStart = performance.now();
-			schedule();
-		};
-
-		const onPointerMove = (event: PointerEvent) => {
-			if (reduceMotion || event.pointerType === "touch") return;
-			pointer = [event.clientX - rect.left, event.clientY - rect.top];
-			if (!pointerActive && hoverIntensity < 0.01) {
-				trail = trail.map(() => [...pointer] as [number, number]);
-			}
-			pointerActive = true;
-			schedule();
-		};
-		const onPointerLeave = () => {
-			if (!pointerActive) return;
-			pointerActive = false;
-			schedule();
-		};
-		const onPointerDown = (event: PointerEvent) => {
-			if (!isInteractiveTarget(event.target)) startRipple(event.clientX, event.clientY);
-		};
-
-		const resizeObserver = new ResizeObserver(() => {
-			resize();
-			schedule();
-		});
-		resizeObserver.observe(canvas);
-		const themeObserver = new MutationObserver(() => {
-			applyPalette();
-			schedule();
-		});
-		themeObserver.observe(document.documentElement, {
-			attributes: true,
-			attributeFilter: ["data-theme"],
-			subtree: true,
-		});
-		resize();
-		schedule();
-
-		window.addEventListener("pointermove", onPointerMove, { passive: true });
-		document.documentElement.addEventListener("pointerleave", onPointerLeave);
-		window.addEventListener("blur", onPointerLeave);
-		window.addEventListener("pointerdown", onPointerDown);
-		const intro = window.setTimeout(() => {
-			const box = introOrigin?.current?.getBoundingClientRect();
-			if (box) startRipple(box.left + box.width / 2, box.top + box.height / 2);
-			else startRipple(rect.left + rect.width / 2, rect.top + rect.height / 2);
-		}, SETTINGS.introDelay);
-
-		return () => {
-			window.clearTimeout(intro);
-			if (frame !== null) window.cancelAnimationFrame(frame);
-			resizeObserver.disconnect();
-			themeObserver.disconnect();
-			window.removeEventListener("pointermove", onPointerMove);
-			document.documentElement.removeEventListener("pointerleave", onPointerLeave);
-			window.removeEventListener("blur", onPointerLeave);
-			window.removeEventListener("pointerdown", onPointerDown);
-			gl.deleteBuffer(buffer);
-			gl.deleteProgram(program);
-		};
+		if (!canvas) return;
+		return animateDotGrid(canvas, introOrigin);
 	}, [introOrigin]);
 
 	return (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import {
 	findRanges,
@@ -73,6 +73,11 @@ export interface DomFindController {
 	prev(): void;
 }
 
+interface FindRequest {
+	readonly query: string;
+	readonly caseSensitive: boolean;
+}
+
 export interface UseDomFindOptions {
 	readonly rootRef: RefObject<HTMLElement | null>;
 	/** CSS selector (relative to root) for the subtree to search; defaults to the root itself. */
@@ -87,8 +92,10 @@ export interface UseDomFindOptions {
  */
 export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): DomFindController {
 	const [open, setOpen] = useState(false);
-	const [query, setQueryState] = useState("");
-	const [caseSensitive, setCaseSensitive] = useState(false);
+	// Replaced (never mutated) on every query or option change, including a
+	// selection that seeds the open bar with its current query, so each one
+	// triggers a recompute.
+	const [request, setRequest] = useState<FindRequest>({ query: "", caseSensitive: false });
 	const [matches, setMatches] = useState<Range[]>([]);
 	const [activeIndex, setActiveIndex] = useState(-1);
 
@@ -99,25 +106,22 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 	// follows it scrolls. Recomputes caused by content changes never move the
 	// viewport, otherwise streaming would keep yanking the reader back.
 	const revealPendingRef = useRef(false);
-	// Bumped when a selection seeds the search, so the recompute runs (and
-	// scrolls) right away even when the open bar's query is unchanged.
-	const [seedVersion, setSeedVersion] = useState(0);
 	const sessionHandleRef = useRef<{ close: () => void }>({ close: () => {} });
 
-	const resolveSearchRoot = useCallback((): Element | null => {
+	const resolveSearchRoot = (): Element | null => {
 		const root = rootRef.current;
 		if (!root) return null;
 		if (!searchRootSelector) return root;
 		return root.querySelector(searchRootSelector);
-	}, [rootRef, searchRootSelector]);
+	};
 
-	const clearHighlights = useCallback(() => {
+	const clearHighlights = () => {
 		const registry = highlightRegistry();
 		registry?.delete(MATCH_HIGHLIGHT);
 		registry?.delete(ACTIVE_HIGHLIGHT);
-	}, []);
+	};
 
-	const closeBar = useCallback(() => {
+	const closeBar = () => {
 		if (currentSession === sessionHandleRef.current) currentSession = null;
 		setOpen(false);
 		setMatches([]);
@@ -125,14 +129,14 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 		activeRangeRef.current = null;
 		revealPendingRef.current = false;
 		clearHighlights();
-	}, [clearHighlights]);
+	};
 
 	// Keep the module-scoped session pointer wired to the latest closeBar.
 	useEffect(() => {
 		sessionHandleRef.current.close = closeBar;
 	}, [closeBar]);
 
-	const openBar = useCallback(() => {
+	const openBar = () => {
 		if (currentSession && currentSession !== sessionHandleRef.current) currentSession.close();
 		currentSession = sessionHandleRef.current;
 		const selected = selectedSearchText(resolveSearchRoot());
@@ -140,13 +144,12 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 			// Start at the selected occurrence rather than the first match.
 			activeRangeRef.current = selected.range.cloneRange();
 			revealPendingRef.current = true;
-			setQueryState(selected.text);
-			setSeedVersion((version) => version + 1);
+			setRequest((current) => ({ ...current, query: selected.text }));
 		}
 		setOpen(true);
-	}, [resolveSearchRoot]);
+	};
 
-	const recompute = useCallback(() => {
+	const recompute = ({ query, caseSensitive }: FindRequest) => {
 		const searchRoot = resolveSearchRoot();
 		const ranges = searchRoot ? findRanges(searchRoot, query, { caseSensitive }) : [];
 		const index = anchoredIndex(ranges, activeRangeRef.current);
@@ -160,7 +163,7 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 			revealPendingRef.current = false;
 			if (active) scrollRangeIntoView(active);
 		}
-	}, [caseSensitive, query, resolveSearchRoot]);
+	};
 
 	// Recompute on open / query / option change (debounced) and whenever the
 	// searched content mutates (e.g. streaming), preserving the query.
@@ -171,11 +174,11 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 		let pendingSince: number | null = null;
 		const run = () => {
 			pendingSince = null;
-			recompute();
+			recompute(request);
 		};
 		const schedule = () => {
 			const now = performance.now();
-			pendingSince ??= now;
+			if (pendingSince === null) pendingSince = now;
 			const untilMaxWait = RECOMPUTE_MAX_WAIT_MS - (now - pendingSince);
 			window.clearTimeout(timer);
 			timer = window.setTimeout(run, Math.max(0, Math.min(RECOMPUTE_DEBOUNCE_MS, untilMaxWait)));
@@ -191,7 +194,7 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 			window.clearTimeout(timer);
 			observer.disconnect();
 		};
-	}, [open, recompute, resolveSearchRoot, seedVersion]);
+	}, [open, recompute, request, resolveSearchRoot]);
 
 	// Register the computed ranges with the CSS highlight registry. The active
 	// match is painted via a separate highlight so it can be styled distinctly.
@@ -224,35 +227,32 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 		};
 	}, [clearHighlights]);
 
-	const setQuery = useCallback((value: string) => {
+	const setQuery = (value: string) => {
 		revealPendingRef.current = true;
-		setQueryState(value);
-	}, []);
-	const toggleCaseSensitive = useCallback(() => {
+		setRequest((current) => (current.query === value ? current : { ...current, query: value }));
+	};
+	const toggleCaseSensitive = () => {
 		revealPendingRef.current = true;
-		setCaseSensitive((value) => !value);
-	}, []);
-	const goTo = useCallback(
-		(index: number) => {
-			const range = matches[index];
-			if (!range) return;
-			activeRangeRef.current = range;
-			setActiveIndex(index);
-			scrollRangeIntoView(range);
-		},
-		[matches],
-	);
-	const next = useCallback(() => {
+		setRequest((current) => ({ ...current, caseSensitive: !current.caseSensitive }));
+	};
+	const goTo = (index: number) => {
+		const range = matches[index];
+		if (!range) return;
+		activeRangeRef.current = range;
+		setActiveIndex(index);
+		scrollRangeIntoView(range);
+	};
+	const next = () => {
 		if (matches.length > 0) goTo((activeIndex + 1) % matches.length);
-	}, [activeIndex, goTo, matches.length]);
-	const prev = useCallback(() => {
+	};
+	const prev = () => {
 		if (matches.length > 0) goTo((activeIndex - 1 + matches.length) % matches.length);
-	}, [activeIndex, goTo, matches.length]);
+	};
 
 	return {
 		open,
-		query,
-		caseSensitive,
+		query: request.query,
+		caseSensitive: request.caseSensitive,
 		total: matches.length,
 		activeIndex,
 		setQuery,

@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { ArrowUpIcon } from "lucide-react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -13,7 +12,7 @@ import { useSubagentActivity } from "./SubagentActivityContext";
  * points at them when they are scrolled away, folded, or delegated in the
  * background, and jumps to the first running one.
  */
-export const ComposerSubagentStrip = memo(() => {
+export function ComposerSubagentStrip() {
 	const { activeActivities } = useSubagentActivity();
 	const reveal = useDelegationRevealStore((state) => state.reveal);
 	const first = activeActivities[0];
@@ -43,5 +42,4 @@ export const ComposerSubagentStrip = memo(() => {
 			</button>
 		</ComposerShelf>
 	);
-});
-ComposerSubagentStrip.displayName = "ComposerSubagentStrip";
+}

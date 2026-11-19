@@ -36,7 +36,10 @@ import { listWorkspacePackageNames } from "./config/workspace-packages.js";
 import { getRpmVersion, LINUX_PACKAGE_FORMAT_FILE } from "./config/linux-package.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
-import { ensureNodePtySpawnHelpersExecutable } from "@kilo-desktop/plugin-terminal/packaging";
+import {
+	ensureNodePtySpawnHelpersExecutable,
+	validateTerminalBundle,
+} from "@kilo-desktop/plugin-terminal/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -286,6 +289,9 @@ const config: ForgeConfig = {
 					path.join(buildPath, "node_modules", "node-pty"),
 					platform,
 					arch,
+				);
+				await validateTerminalBundle(
+					path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
 				);
 				await assertNoShippedSource(buildPath, workspacePackageNames);
 				await writeAppLegalFiles({

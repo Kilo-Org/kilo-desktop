@@ -1,6 +1,5 @@
 import type { PartState } from "@assistant-ui/react";
 import { useAuiState } from "@assistant-ui/react";
-import { useMemo } from "react";
 
 import { HtmlRenderPart } from "../html-render/HtmlRenderToolUI";
 import { isFoldHoistedPart, showsHoistedPage } from "../tools/activity-grouping";
@@ -41,8 +40,9 @@ export function AssistantImagePart({
  */
 export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: string }) {
 	const parts = useOpenCodeParts();
-	const attachments = useMemo(() => toolImageAttachments(parts, toolCallId), [parts, toolCallId]);
-	if (useIsInTurnWorkFold() || attachments.length === 0) return null;
+	const folded = useIsInTurnWorkFold();
+	const attachments = toolImageAttachments(parts, toolCallId);
+	if (folded || attachments.length === 0) return null;
 	return (
 		<div className="my-2 flex flex-wrap gap-2" data-qa-id="chat-tool-images">
 			{attachments.map((attachment, index) => (
@@ -63,7 +63,7 @@ export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: stri
  */
 export function TurnSavedImages() {
 	const parts = useOpenCodeParts();
-	const { images, more } = useMemo(() => savedImages(parts), [parts]);
+	const { images, more } = savedImages(parts);
 	if (images.length === 0) return null;
 	return (
 		<div

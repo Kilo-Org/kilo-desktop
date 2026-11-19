@@ -133,8 +133,9 @@ describe("DeleteEnvironmentDialog", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-delete-submit"));
+		// `waitFor` polls across a task boundary, which drains the rejected
+		// mutation's promise handlers before this reads the telemetry spy.
 		await vi.waitFor(() => expect(deleteFn).toHaveBeenCalledOnce());
-		await new Promise((resolve) => setTimeout(resolve, 50));
 
 		expect(track).not.toHaveBeenCalled();
 	});

@@ -184,7 +184,7 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 
 		await expect.poll(() => withoutHeader.length).toBeGreaterThan(0);
 		expect(withHeader).toEqual([]);
-	}, 60_000);
+	});
 
 	it("keeps a fork's hidden note as a synthetic part that starts no turn", async () => {
 		const kilo = createKiloChatClient(connection);
@@ -209,7 +209,7 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 		await expect
 			.poll(async () => (await kilo.statuses(project))[fork.id]?.type ?? "idle")
 			.toBe("idle");
-	}, 60_000);
+	});
 
 	async function messages(chatId: string) {
 		const { data } = await sdk().session.messages(

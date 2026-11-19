@@ -69,10 +69,6 @@ export class ChatApprovalSelectorPage {
 		await pressPageKeyboard("Escape");
 	}
 
-	async closeByClickingOutside(): Promise<void> {
-		await click(this.messageInput());
-	}
-
 	async reloadApp(): Promise<void> {
 		await reloadPage();
 		await expectElementToBeEnabled(

@@ -49,7 +49,7 @@ function injectThemeBootstrap(): Plugin {
 export default defineConfig({
 	base: "./",
 	plugins: [
-		react(),
+		react({ compiler: true }),
 		tailwindcss(),
 		injectThemeBootstrap(),
 		sentryVitePlugin({

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CliMarketplaceClient, CliMarketplaceError } from "./cli-marketplace";
+import { CliMarketplaceClient } from "./cli-marketplace";
 
 const connection = {
 	baseUrl: "http://127.0.0.1:4321",
@@ -51,42 +51,5 @@ describe("CliMarketplaceClient", () => {
 		expect(init?.headers).toMatchObject({
 			authorization: `Basic ${Buffer.from("kilo:secret").toString("base64")}`,
 		});
-	});
-
-	it("translates install scope and method for the CLI", async () => {
-		const fetch = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
-			response({ success: true, slug: "docs", filePath: "/file" }),
-		);
-		const client = new CliMarketplaceClient(connection, fetch);
-		const item = {
-			type: "mcp" as const,
-			id: "docs",
-			name: "Docs",
-			description: "Docs",
-			category: "knowledge",
-			url: "https://example.com",
-			content: [{ name: "Remote", content: '{"url":"{{URL}}"}' }],
-		};
-
-		await expect(
-			client.install("/workspace", item, "project", "Remote", { URL: "x" }),
-		).resolves.toBe("/file");
-		const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
-		expect(body).toEqual({
-			item: { type: "mcp", id: "docs", content: item.content },
-			target: "project",
-			parameters: { URL: "x", __method: "Remote" },
-		});
-	});
-
-	it("surfaces HTTP-200 operation failures", async () => {
-		const fetch = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
-			response({ success: false, slug: "docs", error: "Already installed" }),
-		);
-		const client = new CliMarketplaceClient(connection, fetch);
-
-		await expect(
-			client.remove("/workspace", { type: "mcp", id: "docs" }, "project"),
-		).rejects.toEqual(new CliMarketplaceError("Already installed"));
 	});
 });

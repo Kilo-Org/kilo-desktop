@@ -105,6 +105,8 @@ export class FakeKiloServer {
 	};
 	readonly chats = new Map<string, FakeChat>();
 	readonly requests: RecordedRequest[] = [];
+	/** Chats whose newest message page a read finished answering, in order. */
+	readonly messagePagesSent: string[] = [];
 	/** What `/agent` lists: primary agents the agent picker offers. */
 	agents: Record<string, unknown>[] = [
 		{ name: "code", mode: "primary" },
@@ -336,6 +338,7 @@ export class FakeKiloServer {
 		if (action === "message" && request.method === "GET") {
 			if (this.historyReadDelayMs)
 				await new Promise((resolve) => setTimeout(resolve, this.historyReadDelayMs));
+			this.messagePagesSent.push(chat.id);
 			return this.#messagePage(chat, url.searchParams);
 		}
 		if (action === "prompt_async") {

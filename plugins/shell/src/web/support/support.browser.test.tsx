@@ -141,11 +141,16 @@ async function bootSupport(options: BootOptions = {}) {
 
 describe("Kilo server failures", () => {
 	it("stays quiet while the server starts normally", async () => {
-		const { setStatus, notices } = await bootSupport({ status: { status: "starting" } });
+		const { setStatus, notices, host } = await bootSupport({ status: { status: "starting" } });
 
 		setStatus({ status: "ready", version: "7.8.17" });
 
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		// The renderer's mirror showing "ready" means its notice watcher saw it.
+		await vi.waitFor(() =>
+			expect(host.renderer.kernelSdk.domainObjects.get(KiloServer)?.getState()).toMatchObject({
+				status: "ready",
+			}),
+		);
 		expect(notices()).toEqual({});
 	});
 
@@ -191,7 +196,12 @@ describe("Kilo server failures", () => {
 	it("stays quiet without kilo.shell's notifications", async () => {
 		const { setStatus, host } = await bootSupport({ withoutNotifications: true });
 		setStatus({ status: "error", message: "down" });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		// The failure reached the renderer's watcher, which found no notifications.
+		await vi.waitFor(() =>
+			expect(host.renderer.kernelSdk.domainObjects.get(KiloServer)?.getState()).toMatchObject({
+				status: "error",
+			}),
+		);
 		expect(host.renderer.kernelSdk.domainObjects.get(Notifications)).toBeNull();
 	});
 });

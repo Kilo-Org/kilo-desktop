@@ -111,6 +111,22 @@ export const PERMISSION_RENDERERS = {
 	localFileAnswers: "local-file-answers",
 } as const;
 
+/** Its `kilo.chat/tool-renderer` contributions. */
+export const TOOL_RENDERERS = {
+	/** Package-policy and Anaconda sign-in failures as a card in the transcript. */
+	condaPolicy: "conda-policy",
+} as const;
+
+/** The conda tools whose failures may be a package-policy block or an Anaconda sign-in refusal. */
+export const POLICY_CARD_TOOL_IDS = [
+	"conda.envs.create",
+	"conda.envs.clone",
+	"conda.packages.install",
+	"conda.packages.update",
+	"conda.packages.remove",
+	"conda.repodata.find",
+] as const;
+
 /** The telemetry events kilo.environments declares (`kernel/telemetry-event` ids). */
 export const ENVIRONMENTS_TELEMETRY_EVENTS = {
 	environmentCreated: "environment-created",

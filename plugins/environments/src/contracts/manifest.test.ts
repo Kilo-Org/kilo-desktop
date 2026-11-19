@@ -29,6 +29,8 @@ import {
 	MUTATING_CONDA_TOOL_IDS,
 	PACKAGE_INSTALL_DEEP_LINK,
 	PERMISSION_RENDERERS,
+	POLICY_CARD_TOOL_IDS,
+	TOOL_RENDERERS,
 } from "./index";
 
 describe("kilo.environments manifest", () => {
@@ -112,6 +114,20 @@ describe("kilo.environments manifest", () => {
 			{ id: PERMISSION_RENDERERS.condaTools, tools: MUTATING_CONDA_TOOL_IDS.map(key) },
 			{ id: PERMISSION_RENDERERS.condaCli },
 			{ id: PERMISSION_RENDERERS.localFileAnswers },
+		]);
+	});
+
+	it("draws the failures of the conda tools that resolve packages as policy cards in the chat", () => {
+		expect(contributions("kilo.chat/tool-renderer")).toEqual([
+			{ id: TOOL_RENDERERS.condaPolicy, tools: POLICY_CARD_TOOL_IDS.map(key) },
+		]);
+		expect(POLICY_CARD_TOOL_IDS).toEqual([
+			"conda.envs.create",
+			"conda.envs.clone",
+			"conda.packages.install",
+			"conda.packages.update",
+			"conda.packages.remove",
+			"conda.repodata.find",
 		]);
 	});
 });

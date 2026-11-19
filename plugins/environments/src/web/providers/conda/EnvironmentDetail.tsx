@@ -62,6 +62,8 @@ import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog";
 import { compareCondaVersions } from "./compare-conda-versions";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
 import { environmentDisplayName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
+import { InlineFailure } from "./EnvironmentsFailure";
 import { ListViewMenu, type SortDirection } from "./ListViewMenu";
 import { PackageRowActions } from "./PackageRowActions";
 import { UpdateIcon } from "./package-change-icons";
@@ -197,7 +199,8 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 		prefix: env.prefix,
 	});
 	const installed = packages.data?.packages ?? [];
-	const { upgrades, allUpgradable, checkingUpdates } = usePackageUpgrades(conda, installed);
+	const { upgrades, allUpgradable, checkingUpdates, updateCheckError, retryUpdateCheck } =
+		usePackageUpgrades(conda, installed);
 	const { upgradableMap } = upgrades;
 
 	const [search, setSearch] = useState("");
@@ -410,6 +413,32 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 					</div>
 				)}
 
+				{updateCheckError && !packages.isPending && !packages.isError ? (
+					<InlineFailure
+						reason={updateCheckError}
+						error={friendlyEnvironmentsError(
+							updateCheckError,
+							"Could not look up newer versions of the installed packages.",
+						)}
+						title="Couldn't check for updates"
+						onSignedIn={retryUpdateCheck}
+						className="shrink-0 rounded-lg border p-3"
+						qaId="environments-conda-detail-update-check-error"
+					>
+						<Button
+							type="button"
+							variant="outline"
+							size="xs"
+							className="self-start"
+							onClick={retryUpdateCheck}
+							data-qa-id="environments-conda-detail-update-check-retry"
+						>
+							<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+							Try again
+						</Button>
+					</InlineFailure>
+				) : null}
+
 				{packages.isPending ? (
 					<PackagesLoading />
 				) : packages.isError ? (
@@ -533,12 +562,21 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 
 /**
  * Latest versions for installed conda packages, to detect upgrades. Pip
- * packages are excluded (no conda repodata); names are capped at 500.
+ * packages are excluded (no conda repodata); names are capped at 500. A
+ * failed lookup (e.g. an Anaconda sign-in) is reported, so the environment
+ * never looks up to date when it could not be checked.
  */
 function usePackageUpgrades(
 	conda: ReturnType<typeof useConda>,
 	installed: readonly CondaPackage[],
-): { upgrades: Upgrades; allUpgradable: UpgradablePackage[]; checkingUpdates: boolean } {
+): {
+	upgrades: Upgrades;
+	allUpgradable: UpgradablePackage[];
+	checkingUpdates: boolean;
+	/** The lookup failed: updates are unknown, never "up to date". */
+	updateCheckError: Error | null;
+	retryUpdateCheck: () => void;
+} {
 	const condaPackageNames = installed.filter((p) => p.channel !== "pypi").map((p) => p.name);
 	const hasCondaPackages = condaPackageNames.length > 0;
 	// Query uses the installed package names when available, or a dummy
@@ -548,11 +586,17 @@ function usePackageUpgrades(
 		? { names: condaPackageNames.slice(0, 500), limit: 500 }
 		: { names: ["__placeholder__"], limit: 1 };
 	const repodata = useCondaQuery(conda, "findRepodata", repodataArgs);
-	const upgrades = deriveUpgrades(repodata.data as CondaRepodataFindResult | undefined, installed);
+	const failed = repodata.isError && hasCondaPackages;
+	const upgrades = deriveUpgrades(
+		failed ? undefined : (repodata.data as CondaRepodataFindResult | undefined),
+		installed,
+	);
 	return {
 		upgrades,
 		allUpgradable: toUpgradables(upgradableOf(installed, upgrades.upgradableMap), upgrades),
 		checkingUpdates: repodata.isPending && hasCondaPackages,
+		updateCheckError: failed ? repodata.error : null,
+		retryUpdateCheck: () => void repodata.refetch(),
 	};
 }
 

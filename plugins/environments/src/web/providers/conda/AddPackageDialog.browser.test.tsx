@@ -195,6 +195,8 @@ describe("AddPackageDialog", () => {
 
 		await userEvent.fill(screen.getByTestId("environments-conda-add-pkg-search"), "nothing");
 		await expect.element(screen.getByText("No results for “nothing”")).toBeVisible();
+		// Never a hint to try other channels: a policy may be why it is missing.
+		await expect.element(screen.getByText("Check the spelling.", { exact: true })).toBeVisible();
 	});
 
 	it("dedupes repodata rows by name", async () => {
@@ -724,6 +726,68 @@ describe("AddPackageDialog", () => {
 					refused: { org: "acme", channel: "acme/main" },
 				}),
 			);
+
+		it("asks to sign in to Anaconda when a channel refuses the search, then searches again", async () => {
+			let signedIn = false;
+			const find = vi.fn((_input: CondaRepodataFindInput) => {
+				if (!signedIn) throw notSignedIn();
+				return [pkg("numpy")];
+			});
+			const signIn = vi.fn(async () => {
+				signedIn = true;
+				return { ok: true as const };
+			});
+			const { baseElement, host } = await renderDialog({ find, anaconda: { signIn } });
+			const screen = page.elementLocator(baseElement);
+
+			const failure = screen.getByTestId("environments-conda-add-pkg-search-error");
+			await expect.element(failure).toBeVisible();
+			await expect
+				.element(failure.getByText("Sign in to Anaconda", { exact: true }).first())
+				.toBeVisible();
+			await expect
+				.element(
+					failure.getByText(
+						"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+					),
+				)
+				.toBeVisible();
+			expect(screen.getByText(/No results/).query()).toBeNull();
+			await vi.waitFor(() =>
+				expect(host.tracked).toContainEqual(
+					expect.objectContaining({
+						event: "Environment Policy Blocked",
+						data: expect.objectContaining({ surface: "ui", errorCode: "NOT_SIGNED_IN" }),
+					}),
+				),
+			);
+
+			await userEvent.click(failure.getByTestId("environments-anaconda-sign-in"));
+
+			await waitForRows(baseElement, 1);
+			expect(signIn).toHaveBeenCalledOnce();
+		});
+
+		it("explains any other failed search with Try again, never as no results", async () => {
+			let attempt = 0;
+			const find = vi.fn((_input: CondaRepodataFindInput) => {
+				attempt += 1;
+				if (attempt === 1) {
+					throw new Error("PROVIDER_NOT_READY: anaconda-bridge-sidecar error: repodata timed out");
+				}
+				return [pkg("numpy")];
+			});
+			const { baseElement } = await renderDialog({ find });
+			const screen = page.elementLocator(baseElement);
+
+			const failure = screen.getByTestId("environments-conda-add-pkg-search-error");
+			await expect.element(failure.getByText("Couldn't search packages")).toBeVisible();
+			await expect.element(failure.getByText(/repodata timed out/)).toBeVisible();
+
+			await userEvent.click(failure.getByTestId("environments-conda-add-pkg-search-error-retry"));
+
+			await waitForRows(baseElement, 1);
+		});
 
 		it("asks to sign in to Anaconda, and re-runs the preview once signed in", async () => {
 			let signedIn = false;

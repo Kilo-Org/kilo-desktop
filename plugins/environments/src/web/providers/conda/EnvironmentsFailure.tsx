@@ -34,10 +34,13 @@ export function InlineFailure({
 	reason,
 	error,
 	qaId,
+	title,
 	onSignedIn,
 	className,
 	children,
 }: FailureProps & {
+	/** A first line saying what failed, when the message alone would not. */
+	title?: string;
 	/** After an Anaconda sign-in, e.g. to run the failed request again. */
 	onSignedIn?: () => void;
 	className?: string;
@@ -50,6 +53,7 @@ export function InlineFailure({
 			role="alert"
 			data-qa-id={qaId}
 		>
+			{title ? <span className="font-medium">{title}</span> : null}
 			<span className="whitespace-pre-line">{error.message}</span>
 			<PolicyErrorDetails
 				code={error.code}

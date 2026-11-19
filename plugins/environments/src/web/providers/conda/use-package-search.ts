@@ -18,6 +18,8 @@ interface LoadedResults {
 	limit: number;
 	packages: CondaRepodataPackage[];
 	truncated: boolean;
+	/** The lookup failed; shown instead of results, never as "no results". */
+	error?: unknown;
 }
 
 interface UsePackageSearchOptions {
@@ -44,7 +46,11 @@ export interface PackageSearch {
 	hasMore: boolean;
 	/** More results exist, but the cap was reached: the user must refine. */
 	atCap: boolean;
+	/** Why the current query/channels could not be searched (e.g. NOT_SIGNED_IN); null otherwise. */
+	error: unknown;
 	loadMore: () => void;
+	/** Searches the current query/channels again, e.g. after a failure or a sign-in. */
+	retry: () => void;
 }
 
 function dedupeByName(packages: CondaRepodataPackage[]): CondaRepodataPackage[] {
@@ -63,6 +69,11 @@ function dedupeByName(packages: CondaRepodataPackage[]): CondaRepodataPackage[] 
  * deliberately left out of the main-side read-cache key, so a wider request
  * reuses the cached backend index and returns the same leading rows — the list
  * extends in place and keeps its scroll position.
+ *
+ * A failed lookup is kept as `error`, so the table can explain it (an
+ * Anaconda sign-in, a backend failure) instead of claiming there are no
+ * results. Results are keyed on the Anaconda account as well, since
+ * repodata is filtered for it.
  */
 export function usePackageSearch({
 	conda,
@@ -74,7 +85,9 @@ export function usePackageSearch({
 	const trimmed = query.trim();
 	// The account is part of the key: repodata is filtered for it.
 	const account = useAnacondaAccountKey();
-	const key = JSON.stringify([trimmed, channels ?? null, account]);
+	// So is each retry, which starts the search again from the first batch.
+	const [attempt, setAttempt] = useState(0);
+	const key = JSON.stringify([trimmed, channels ?? null, account, attempt]);
 	const [requested, setRequested] = useState({ key, limit: PACKAGE_SEARCH_BATCH });
 	const [loaded, setLoaded] = useState<LoadedResults | null>(null);
 	const loadedKeyRef = useRef<string | null>(null);
@@ -102,10 +115,10 @@ export function usePackageSearch({
 						loadedKeyRef.current = key;
 						setLoaded({ key, limit, packages: dedupeByName(packages), truncated });
 					})
-					.catch(() => {
+					.catch((error: unknown) => {
 						if (stale) return;
 						loadedKeyRef.current = key;
-						setLoaded({ key, limit, packages: [], truncated: false });
+						setLoaded({ key, limit, packages: [], truncated: false, error });
 					});
 			},
 			widening ? 0 : DEBOUNCE_MS,
@@ -121,6 +134,7 @@ export function usePackageSearch({
 	if (!open && loaded !== null && loaded.key !== key) setLoaded(null);
 
 	const current = loaded?.key === key ? loaded : null;
+	const error = current?.error ?? null;
 	const loading = current === null;
 	const loadingMore = current !== null && current.limit < limit;
 	const hasMore = current !== null && current.truncated && current.limit < PACKAGE_SEARCH_CAP;
@@ -135,12 +149,16 @@ export function usePackageSearch({
 		);
 	};
 
+	const retry = () => setAttempt((value) => value + 1);
+
 	return {
-		packages: (current ?? loaded)?.packages ?? [],
+		packages: error ? [] : ((current ?? loaded)?.packages ?? []),
 		loading,
 		loadingMore,
 		hasMore,
 		atCap,
+		error,
 		loadMore,
+		retry,
 	};
 }

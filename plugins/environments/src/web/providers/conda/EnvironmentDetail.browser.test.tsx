@@ -2,6 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
 	type CondaEnv,
 	type CondaPackage,
@@ -72,11 +73,7 @@ function defaultHandlers(
 				throw new Error("not implemented in test");
 			}),
 		"conda.channels.list": opts.channelsList ?? (async () => ["defaults", "conda-forge"]),
-		"conda.repodata.find":
-			opts.repodataFind ??
-			(async () => {
-				throw new Error("not implemented in test");
-			}),
+		"conda.repodata.find": opts.repodataFind ?? (async () => ({ packages: [], truncated: false })),
 		"conda.envs.prefixOptions":
 			opts.prefixOptions ??
 			(async () => {
@@ -534,6 +531,59 @@ describe("EnvironmentDetail", () => {
 				baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]'),
 			).toHaveLength(MOCK_PACKAGES.length);
 		});
+	});
+
+	it("says it couldn't check for updates instead of showing the environment up to date", async () => {
+		let signedIn = false;
+		const repodataFind = vi.fn(async () => {
+			if (!signedIn) {
+				throw new Error(
+					formatEnvironmentsErrorMessage("NOT_SIGNED_IN", "Sign in to use acme/main", {
+						refused: { org: "acme", channel: "acme/main" },
+					}),
+				);
+			}
+			return UPGRADE_HANDLERS.repodataFind!(undefined as never);
+		});
+		const signIn = vi.fn(async () => {
+			signedIn = true;
+			return { ok: true as const };
+		});
+		const { baseElement, host } = await renderWithConda(
+			<EnvironmentDetail env={MOCK_ENV} onBack={() => {}} />,
+			{
+				handlers: defaultHandlers({ ...UPGRADE_HANDLERS, repodataFind }),
+				anaconda: { signIn },
+			},
+		);
+		const screen = page.elementLocator(baseElement);
+
+		const failure = screen.getByTestId("environments-conda-detail-update-check-error");
+		await expect.element(failure).toBeVisible();
+		await expect.element(failure.getByText("Couldn't check for updates")).toBeVisible();
+		await expect
+			.element(
+				failure.getByText(
+					"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+				),
+			)
+			.toBeVisible();
+		expect(screen.getByTestId("environments-conda-detail-update-all").query()).toBeNull();
+		await vi.waitFor(() =>
+			expect(host.tracked).toContainEqual(
+				expect.objectContaining({
+					event: "Environment Policy Blocked",
+					data: expect.objectContaining({ surface: "ui", errorCode: "NOT_SIGNED_IN" }),
+				}),
+			),
+		);
+
+		await userEvent.click(failure.getByTestId("environments-anaconda-sign-in"));
+
+		await expect
+			.element(screen.getByTestId("environments-conda-detail-update-all"))
+			.toHaveTextContent("Update 1 package");
+		expect(screen.getByTestId("environments-conda-detail-update-check-error").query()).toBeNull();
 	});
 
 	it("Update all opens the update sheet with every upgradable package", async () => {

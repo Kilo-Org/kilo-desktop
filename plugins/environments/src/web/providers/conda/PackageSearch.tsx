@@ -241,6 +241,18 @@ export function PackageResultsTable({
 		return () => observer.disconnect();
 	}, [hasMore, loadingMore, loadMore, rowCount]);
 
+	if (search.error) {
+		return (
+			<FailureEmptyState
+				reason={search.error}
+				error={friendlyEnvironmentsError(search.error, "Could not search the selected channels.")}
+				title="Couldn't search packages"
+				onRetry={search.retry}
+				qaId={`${qaPrefix}-search-error`}
+			/>
+		);
+	}
+
 	if (!loading && packages.length === 0) {
 		return (
 			<Empty className="border" data-qa-id={`${qaPrefix}-empty`}>
@@ -253,7 +265,7 @@ export function PackageResultsTable({
 					</EmptyTitle>
 					<EmptyDescription>
 						{query.trim()
-							? "Check the spelling or choose other channels."
+							? "Check the spelling."
 							: "The selected channels do not provide any packages."}
 					</EmptyDescription>
 				</EmptyHeader>

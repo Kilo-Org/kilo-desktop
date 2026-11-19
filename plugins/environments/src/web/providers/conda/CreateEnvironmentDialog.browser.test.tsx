@@ -4,6 +4,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
 
+import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
 	type CondaEnvsCheckPrefixInput,
 	type CondaEnvsCheckPrefixResult,
@@ -580,6 +581,39 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await vi.waitFor(async () => {
 			expect(await screen.getByRole("option", { name: "3.11.9" }).all()).toHaveLength(0);
 		});
+	});
+
+	it("offers only Latest, and says why, when the Python versions can't be looked up", async () => {
+		const { baseElement } = await renderDialog({
+			search: (input) => {
+				if (input.names?.includes("python")) {
+					throw new Error(
+						formatEnvironmentsErrorMessage("NOT_SIGNED_IN", "Sign in to use acme/main", {
+							refused: { org: "acme", channel: "acme/main" },
+						}),
+					);
+				}
+				return { packages: [pkg("numpy")], truncated: false };
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		const failure = screen.getByTestId("environments-create-python-error");
+		await expect.element(failure).toBeVisible();
+		await expect
+			.element(failure.getByText("Couldn't load Python versions, so only Latest is offered."))
+			.toBeVisible();
+		await expect
+			.element(
+				failure.getByText(
+					"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+				),
+			)
+			.toBeVisible();
+
+		await userEvent.click(screen.getByTestId("environments-create-python"));
+		await expect.element(screen.getByRole("option", { name: "Latest" })).toBeVisible();
+		expect(await screen.getByRole("option").all()).toHaveLength(1);
 	});
 
 	it("shows the package size column for the latest version by default", async () => {

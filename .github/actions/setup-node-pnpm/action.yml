@@ -11,6 +11,14 @@ inputs:
       builds pass "false" so they install pnpm and every package fresh.
     required: false
     default: "true"
+  save-pnpm-store:
+    description: >
+      Save the pnpm store when no cache matches the lockfile exactly. Pass
+      "false" in all but one job per runner type in a run: after a lockfile
+      change every job misses, each compresses a 0.5-0.9 GB store at job end,
+      and only the first save is kept.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -72,9 +80,15 @@ runs:
         expected=$(gh api "repos/pnpm/pnpm/releases/tags/v$VERSION" \
           --jq ".assets[] | select(.name == \"$ASSET\") | .digest")
         [[ "$expected" == sha256:* ]] || { echo "::error::No sha256 digest for $ASSET in pnpm v$VERSION"; exit 1; }
-        gh release download "v$VERSION" --repo pnpm/pnpm --pattern "$ASSET" --dir "$download"
 
+        # A stalled stream (under 100 KB/s for 30 s) aborts and retries rather
+        # than holding the job, as the slow registry downloads did.
         archive="$download/$ASSET"
+        curl --fail --location --silent --show-error \
+          --connect-timeout 15 --speed-limit 102400 --speed-time 30 --max-time 300 \
+          --retry 3 --retry-all-errors --retry-delay 5 \
+          --output "$archive" \
+          "https://github.com/pnpm/pnpm/releases/download/v$VERSION/$ASSET"
         # Hash stdin: given a path with backslashes (Windows), sha256sum
         # escapes the line and prefixes the hash with "\".
         if command -v sha256sum > /dev/null; then
@@ -125,8 +139,17 @@ runs:
     # pnpm fetches only what changed. Caches saved on a PR branch are invisible
     # to other PRs; .github/workflows/warm-caches.yml saves them on main.
     - name: Cache the pnpm store
-      if: inputs.pnpm-cache == 'true'
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          pnpm-store-${{ runner.os }}-${{ runner.arch }}-
+
+    - name: Restore the pnpm store
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
         key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}

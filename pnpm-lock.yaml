@@ -241,8 +241,8 @@ catalogs:
       specifier: ^7.8.6
       version: 7.8.6
     type-fest:
-      specifier: ^6.0.1
-      version: 6.0.1
+      specifier: ^6.0.2
+      version: 6.0.2
     typescript:
       specifier: ^7.0.2
       version: 7.0.2
@@ -518,7 +518,7 @@ importers:
         version: 4.23.15
       type-fest:
         specifier: 'catalog:'
-        version: 6.0.1
+        version: 6.0.2
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
@@ -7560,6 +7560,7 @@ packages:
 
   electron-squirrel-startup@1.0.1:
     resolution: {integrity: sha512-sTfFIHGku+7PsHLJ7v0dRcZNkALrV+YEozINTW8X1nM//e5O3L+rfYuvSW00lmGHnYmUjARZulD8F2V8ISI9RA==}
+    deprecated: This package is archived and deprecated, it will not get any updates.
 
   electron-store@12.0.0:
     resolution: {integrity: sha512-Ju7DzgBm/gcbtTqcAd6vvgdg/FXr9AE31MdlN/OMcERBiBhHGlGZWHBFZb+nK9chqSHSGw/oIIPCFT29tPnLMQ==}
@@ -10291,8 +10292,8 @@ packages:
     resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
     engines: {node: '>=20'}
 
-  type-fest@6.0.1:
-    resolution: {integrity: sha512-nnRRKEpyNxX4XkeR6dpMy27ZNT5/nE3D73fs5FcKW/+OtqwSmdshWUw5azvpsMzjst5rAUe61ZxilQ70YFS9yA==}
+  type-fest@6.0.2:
+    resolution: {integrity: sha512-eVBdZcUsT0GbeVcuMHJG4qiZeHF7ANdJtzMtAD+r94rw7PQZ4zAK43ik+jZZ6woURQA6QIz6Kz5uv0HbMs0AQQ==}
     engines: {node: '>=22'}
 
   typed-array-buffer@1.0.3:
@@ -18969,7 +18970,7 @@ snapshots:
     dependencies:
       tagged-tag: 1.0.0
 
-  type-fest@6.0.1:
+  type-fest@6.0.2:
     dependencies:
       tagged-tag: 1.0.0
 

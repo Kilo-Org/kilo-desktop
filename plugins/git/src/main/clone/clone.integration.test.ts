@@ -44,9 +44,12 @@ function servedRemote(): string {
 	git(source, ["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
 	const remote = createTempDir();
 	git(remote, ["clone", "--bare", source, "."]);
-	vi.stubEnv("GIT_CONFIG_COUNT", "1");
+	vi.stubEnv("GIT_CONFIG_COUNT", "2");
 	vi.stubEnv("GIT_CONFIG_KEY_0", `url.${remote}.insteadOf`);
 	vi.stubEnv("GIT_CONFIG_VALUE_0", REMOTE_URL);
+	// Windows runners set core.autocrlf, which would check README.md out with CRLF.
+	vi.stubEnv("GIT_CONFIG_KEY_1", "core.autocrlf");
+	vi.stubEnv("GIT_CONFIG_VALUE_1", "false");
 	return remote;
 }
 

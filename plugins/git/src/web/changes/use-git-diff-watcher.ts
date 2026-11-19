@@ -60,6 +60,8 @@ function useFileChanges(options: {
 		excludes: [...spec.excludes],
 	});
 
+	// Domain-object `on()` returns its unsubscribe, which is the cleanup returned here.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!files || !options.enabled) return;
 		return files.on("changed", (event) => {

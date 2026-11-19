@@ -101,6 +101,9 @@ export function handOverLegacyChoices(
 				const missing = favorites.filter((favorite) => !existing.has(modelKey(favorite)));
 				void (async () => {
 					for (const favorite of missing) {
+						// Serial on purpose: each call rewrites the same persisted favourites list, so
+						// concurrent writes could drop entries and would scramble the legacy order.
+						// react-doctor-disable-next-line react-doctor/async-await-in-loop
 						await models.methods.setFavorite({ ...favorite, favorite: true });
 					}
 				})()

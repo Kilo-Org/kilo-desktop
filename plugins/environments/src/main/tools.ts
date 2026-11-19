@@ -31,7 +31,7 @@ function hasOnlyNamedChannels(value: { channels?: string[] | undefined }): boole
 }
 
 /** Shared refusal for a model-supplied non-named channel. */
-const NO_INPUT = z.object({}).strict();
+const NO_INPUT = z.strictObject({});
 
 /** Tool calls reach the conda methods as kilo.environments' own. */
 const CALLER = { pluginId: ENVIRONMENTS_PLUGIN_ID, process: "main" } as const;

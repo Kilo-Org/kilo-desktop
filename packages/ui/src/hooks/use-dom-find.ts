@@ -167,6 +167,8 @@ export function useDomFind({ rootRef, searchRootSelector }: UseDomFindOptions): 
 
 	// Recompute on open / query / option change (debounced) and whenever the
 	// searched content mutates (e.g. streaming), preserving the query.
+	// The debounce timer is cleared in the returned teardown.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!open) return;
 		const searchRoot = resolveSearchRoot();

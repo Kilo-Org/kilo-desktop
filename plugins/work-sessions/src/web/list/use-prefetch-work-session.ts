@@ -28,8 +28,11 @@ export function usePrefetchWorkSession() {
 			.workSessions.find((candidate) => candidate.id === workSessionId);
 		const sessionPanes = panes?.getState().byWorkSession[workSessionId]?.panes ?? [];
 		if (!workSession) return;
+		const kindsByKey = new Map<string, (typeof kinds)[number]>(
+			kinds.map((kind) => [kind.key, kind]),
+		);
 		for (const pane of sessionPanes) {
-			const prefetchPane = implementationOf(kinds.find((kind) => kind.key === pane.kind))?.prefetch;
+			const prefetchPane = implementationOf(kindsByKey.get(pane.kind))?.prefetch;
 			try {
 				prefetchPane?.({ workSession, pane, panes: sessionPanes });
 			} catch {

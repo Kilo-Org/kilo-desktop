@@ -141,6 +141,8 @@ async function collectFiles(root: string, relativeDirectory = ""): Promise<strin
 		const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
 		safeRelativePath(relativePath);
 		const absolutePath = path.join(root, relativePath);
+		// A build-time scan that stops at the first unsafe entry, in sorted order.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		const info = await lstat(absolutePath);
 		if (info.isSymbolicLink()) {
 			throw new Error(`notebook bundle contains a symbolic link: ${relativePath}`);
@@ -285,6 +287,8 @@ export async function validateStagedNotebookBundle(
 		) {
 			throw new Error(`invalid notebook staging manifest record: ${record.path}`);
 		}
+		// One file in memory at a time, stopping at the first checksum mismatch.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		const bytes = await readFile(path.join(directory, record.path));
 		if (bytes.byteLength !== record.bytes || digest(bytes) !== record.sha256) {
 			throw new Error(`notebook bundle checksum mismatch: ${record.path}`);

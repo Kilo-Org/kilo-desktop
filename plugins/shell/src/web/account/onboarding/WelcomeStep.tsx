@@ -66,6 +66,8 @@ export function WelcomeStep({
 			</motion.div>
 
 			<motion.div className="flex flex-col items-center gap-2" {...blurUp(0.25)}>
+				{/* DialogTitle renders its children inside the h1. */}
+				{/* react-doctor-disable-next-line react-doctor/heading-has-content */}
 				<DialogTitle render={<h1 />} className="text-2xl font-medium tracking-tight">
 					Welcome to Kilo
 				</DialogTitle>

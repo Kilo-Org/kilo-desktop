@@ -24,6 +24,13 @@ an issue first so we can confirm we would take the change. See CONTRIBUTING.md.
 
 <!-- How was this verified? Describe the testing strategy: unit, integration, e2e, manual. -->
 
+## Screenshots
+
+<!--
+For user-visible changes: before/after for changed UI, or screenshots of new UI. Delete if nothing visible changed.
+Agents: upload with `gh attach ./shot.png --markdown` (gh extension install sudosubin/gh-attach). If it fails, list the local paths here and ask the user to drag them in.
+-->
+
 ## Reviewer Focus
 
 <!-- Where should the reviewer spend their time? Flag areas of uncertainty, new patterns, or sensitive paths. -->

@@ -1,0 +1,42 @@
+name: React Doctor
+
+on:
+  # Comments new findings on the PR; the full-scope gate keeps the score at 100.
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  # Records the score on main to track its trend.
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+
+concurrency:
+  group: react-doctor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  react-doctor:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Installs the pinned react-doctor devDependency, which the Action runs.
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm install --frozen-lockfile
+      - id: node
+        run: echo "version=$(cat .nvmrc)" >> "$GITHUB_OUTPUT"
+      - uses: millionco/react-doctor@695e46eee203a5d1855020191aa7e9c010a1250e # v2
+        with:
+          blocking: warning
+          scope: full
+          node-version: ${{ steps.node.outputs.version }}

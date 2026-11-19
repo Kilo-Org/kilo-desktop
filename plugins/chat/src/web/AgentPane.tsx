@@ -503,6 +503,8 @@ function CommandNames({
 }) {
 	const { commands } = useSlashCommands(directory);
 	const commandNames = serverCommandNames(commands);
+	// The parent stores the names in a ref read at send time, so reporting them re-renders nothing.
+	// react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
 	useLayoutEffect(() => onNames(commandNames), [onNames, commandNames]);
 	return null;
 }

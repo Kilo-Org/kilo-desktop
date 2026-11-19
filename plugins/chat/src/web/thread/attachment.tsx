@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type FC } from "react";
+import { type FC } from "react";
 import { CircleAlertIcon, FileTextIcon, XIcon } from "lucide-react";
 import {
 	AttachmentPrimitive,
@@ -107,11 +107,6 @@ const AttachmentUI: FC = () => {
 		lightbox,
 		available: lightboxAvailable,
 	} = useAttachmentLightbox(!isComposer);
-	const onTileKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (event.key !== "Enter" && event.key !== " ") return;
-		event.preventDefault();
-		openLightbox();
-	};
 
 	return (
 		<Tooltip>
@@ -124,18 +119,16 @@ const AttachmentUI: FC = () => {
 			>
 				<TooltipTrigger
 					render={
-						<div
+						<button
+							type="button"
 							ref={lightboxRef}
 							onClick={openLightbox}
-							onKeyDown={lightboxAvailable ? onTileKeyDown : undefined}
 							data-qa-id="chat-attachment-tile"
 							className={cn(
-								"aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-3 active:scale-[0.96] motion-reduce:transition-none dark:after:ring-white/10",
+								"aui-attachment-tile bg-muted block hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-3 active:scale-[0.96] motion-reduce:transition-none dark:after:ring-white/10",
 								isError && "after:ring-destructive/60 dark:after:ring-destructive/60",
 								lightboxAvailable && "cursor-zoom-in",
 							)}
-							role="button"
-							tabIndex={0}
 							aria-label={`${typeLabel} attachment${
 								isError ? ", upload failed" : isUploading ? ", uploading" : ""
 							}`}
@@ -144,20 +137,20 @@ const AttachmentUI: FC = () => {
 				>
 					<AttachmentThumb />
 					{isUploading && (
-						<div
+						<span
 							aria-hidden="true"
 							className="aui-attachment-tile-uploading bg-background/60 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
 						>
 							<Spinner className="text-muted-foreground size-4" />
-						</div>
+						</span>
 					)}
 					{isError && (
-						<div
+						<span
 							aria-hidden="true"
 							className="aui-attachment-tile-error bg-background/70 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
 						>
 							<CircleAlertIcon className="text-destructive size-4" />
-						</div>
+						</span>
 					)}
 				</TooltipTrigger>
 				{lightbox}

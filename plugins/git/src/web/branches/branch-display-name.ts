@@ -23,3 +23,11 @@ export function splitRemoteBranch(branch: Pick<GitBranch, "name" | "ref">): {
 export function branchDisplayName(branch: Pick<GitBranch, "name" | "kind" | "ref">): string {
 	return branch.kind === "remote" ? splitRemoteBranch(branch).path : branch.name;
 }
+
+/**
+ * The value a picker item carries and is searched by: the full `origin/...`
+ * name for a remote branch, so typing the remote matches it, else its label.
+ */
+export function branchSearchValue(branch: Pick<GitBranch, "name" | "kind" | "ref">): string {
+	return branch.kind === "remote" ? branch.name : branchDisplayName(branch);
+}

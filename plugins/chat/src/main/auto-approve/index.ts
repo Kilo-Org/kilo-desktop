@@ -201,6 +201,8 @@ export function activateAutoApprove(sdk: PluginSdk): void {
 		for (const chat of Object.values(handle.getState().chats)) {
 			for (const permissionId of chat.activity.pendingPermissionIds) {
 				if (generation !== snapshot) return;
+				// Serial on purpose: a mode change bumps `generation` and must stop the drain mid-way.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await consider(chat.id, permissionId);
 			}
 		}

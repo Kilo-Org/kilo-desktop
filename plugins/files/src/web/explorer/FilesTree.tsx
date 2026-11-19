@@ -195,6 +195,9 @@ export function FilesTree({
 	};
 
 	return (
+		// The capture only re-opens an already-selected row on mouse click; the tree
+		// handles keyboard activation of its rows itself.
+		// react-doctor-disable-next-line react-doctor/click-events-have-key-events
 		<div
 			className="flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
 			data-qa-id="files-explorer"

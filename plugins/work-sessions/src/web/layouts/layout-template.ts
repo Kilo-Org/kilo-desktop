@@ -251,11 +251,15 @@ export async function applyLayoutTemplate(
 	});
 	const kept: Pane[] = [];
 	for (const pane of plan.unplaced) {
+		// A close may ask the person to confirm, so panes close one at a time.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		if (!close || !(await close(pane))) kept.push(pane);
 	}
 	const bySlot = new Map(plan.reused);
 	const placed = new Set([...plan.reused.values()].map((pane) => pane.id));
 	for (const { slotId, kind, object } of plan.opens) {
+		// Opens run in slot order so a singleton kind's one pane lands in its first slot.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		const pane = await panes.methods.open({
 			workSessionId,
 			kind,

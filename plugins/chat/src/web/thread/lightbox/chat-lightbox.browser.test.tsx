@@ -13,11 +13,11 @@ function OpensOnMount({ label }: { readonly label: string }) {
 		() => ({ kind: "mermaid", code: "flowchart LR\n  A --> B", label }),
 		[label],
 	);
-	const item = useLightboxItem(input);
+	const { ref, open } = useLightboxItem(input);
 	useEffect(() => {
-		item.open();
-	}, [item]);
-	return <div ref={item.ref} />;
+		open();
+	}, [open]);
+	return <div ref={ref} />;
 }
 
 describe("the transcript's viewer registry", () => {

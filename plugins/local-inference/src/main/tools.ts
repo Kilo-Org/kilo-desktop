@@ -13,7 +13,7 @@ export function localInferenceTools(options: {
 			description:
 				"Open the Local Model Server settings in the desktop app. Use this when the user asks " +
 				"to view, configure, or manage their local model server or local model catalog.",
-			input: z.object({}).strict(),
+			input: z.strictObject({}),
 			run: async () => {
 				await options.openSettings();
 				return { opened: true };

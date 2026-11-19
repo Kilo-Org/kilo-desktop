@@ -697,6 +697,8 @@ function usePackageRowWindow(
 ) {
 	// TanStack Virtual returns a mutable instance the compiler cannot memoize safely.
 	"use no memo";
+	// This hook opts out of the compiler and returns plain values, not the instance.
+	// react-doctor-disable-next-line react-hooks-js/incompatible-library
 	const virtualizer = useVirtualizer({
 		count: packages.length,
 		getScrollElement: () => scrollRef.current,

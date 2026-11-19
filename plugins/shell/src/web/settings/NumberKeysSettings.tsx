@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 
-import { formatChord, type KeyboardPlatform } from "@kilo-desktop/kernel";
+import type { KeyboardPlatform } from "@kilo-desktop/kernel";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
@@ -8,16 +8,17 @@ import { Switch } from "@kilo-desktop/ui/components/switch";
 import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
 import { keysLabel, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 import {
-	collectNumberKeySeries,
+	modifierKeys,
 	planModifierChange,
 	planTurnOn,
 	type NumberKeySeries,
 	type OverridePlan,
+	seriesRangeLabel,
 	type SeriesModifier,
+	useNumberKeySeries,
 } from "./number-keys";
 
 interface ModifierOption {
@@ -42,9 +43,8 @@ function optionsFor(platform: KeyboardPlatform): readonly ModifierOption[] {
 }
 
 function keyPrefix(modifier: NumberKeySeries["current"], platform: KeyboardPlatform): string {
-	const option = optionsFor(platform).find((candidate) => candidate.value === modifier);
-	if (!option) return "";
-	return platform === "mac" ? option.symbol : `${option.name}+`;
+	if (modifier === "none" || modifier === "custom") return "";
+	return keysLabel([...modifierKeys(modifier, platform), ""], platform);
 }
 
 type PreviewKind = "tabs" | "sessions";
@@ -190,27 +190,6 @@ function NumberKeysPreview({
 	);
 }
 
-function modifierKeys(modifier: SeriesModifier, platform: KeyboardPlatform) {
-	const chord = {
-		code: "Digit1",
-		meta: modifier === "meta",
-		ctrl: modifier === "ctrl",
-		alt: modifier === "alt",
-		shift: false,
-	};
-	return formatChord(chord, platform).slice(0, -1);
-}
-
-/** "⌘1–9" ("Ctrl+1–9" elsewhere) for a set on one modifier; null when it is off or custom. */
-export function seriesRangeLabel(
-	series: NumberKeySeries,
-	platform: KeyboardPlatform,
-): string | null {
-	const modifier = series.current;
-	if (modifier === "none" || modifier === "custom") return null;
-	return `${keysLabel([...modifierKeys(modifier, platform), "1"], platform)}–9`;
-}
-
 const qaId = (series: NumberKeySeries) => series.category.toLowerCase();
 
 function SeriesSummary({
@@ -276,22 +255,6 @@ function ModifierSegments({
 	);
 }
 
-/** The 1–9 series, in the list's group order so Tabs comes before Sessions. */
-export function useNumberKeySeries(): NumberKeySeries[] {
-	const { commands, overrides, platform } = useShortcuts();
-	return collectNumberKeySeries(
-		groupShortcutCommands(commands)
-			.flatMap((group) => group.commands)
-			.map((command) => ({
-				key: command.key,
-				scoped: command.when !== undefined,
-				metadata: command.metadata,
-			})),
-		overrides,
-		platform,
-	);
-}
-
 /**
  * App Navigation: picks the modifier each "go to item 1–9" series jumps with
  * (⌘ for tabs, ⌃ for sessions). A pick rewrites the series' per-slot
@@ -302,7 +265,9 @@ export function NumberKeysSettings() {
 	const [expanded, setExpanded] = useState(false);
 	const series = useNumberKeySeries();
 	if (series.length === 0) return null;
-	const customized = series.some((entry) => entry.commands.some((key) => key in overrides));
+	const customized = series.some((entry) =>
+		[...entry.digits.keys()].some((key) => key in overrides),
+	);
 
 	// One update, so the previews never see a half-moved series (or a half-done swap).
 	const apply = (plan: OverridePlan) => {
@@ -323,7 +288,9 @@ export function NumberKeysSettings() {
 		);
 	const restoreDefaults = () =>
 		apply(
-			Object.fromEntries(series.flatMap((entry) => entry.commands.map((key) => [key, undefined]))),
+			Object.fromEntries(
+				series.flatMap((entry) => [...entry.digits.keys()].map((key) => [key, undefined])),
+			),
 		);
 
 	return (

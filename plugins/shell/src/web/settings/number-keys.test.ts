@@ -23,7 +23,9 @@ describe("number-key series", () => {
 	it("finds each category's 1–9 commands that share one modifier", () => {
 		const series = collectNumberKeySeries(commands, {}, "mac");
 
-		expect(series.map(({ category, current, commands }) => [category, current, commands])).toEqual([
+		expect(
+			series.map(({ category, current, digits }) => [category, current, [...digits.keys()]]),
+		).toEqual([
 			["Tabs", "meta", ["acme/tab-1", "acme/tab-2", "acme/tab-9"]],
 			["Sessions", "ctrl", ["acme/session-1", "acme/session-2", "acme/session-9"]],
 		]);

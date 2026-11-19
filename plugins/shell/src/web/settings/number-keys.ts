@@ -1,5 +1,9 @@
+import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
+import { keysLabel } from "../shared/shortcuts/ShortcutKeys";
+import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 import {
 	defaultChords,
+	formatChord,
 	parseChord,
 	serializeChord,
 	type KeybindingCommand,
@@ -17,7 +21,6 @@ export interface NumberKeySeries {
 	readonly category: string;
 	/** Command key → the digit key it jumps with (`Digit1`…`Digit9`). */
 	readonly digits: ReadonlyMap<string, string>;
-	readonly commands: readonly string[];
 	readonly defaultModifier: SeriesModifier;
 	readonly current: SeriesModifier | "none" | "custom";
 	/** Modifiers its slots jump with now; a custom set can hold one on most slots. */
@@ -44,12 +47,11 @@ function digitChord(code: string, modifier: SeriesModifier): string {
 }
 
 function slotState(
-	commands: readonly string[],
 	digits: ReadonlyMap<string, string>,
 	overrides: OverridePlan,
 	defaultModifier: SeriesModifier,
 ): Pick<NumberKeySeries, "current" | "held"> {
-	const slots = commands.map((key) => {
+	const slots = [...digits.keys()].map((key) => {
 		const override = overrides[key];
 		if (override === undefined) return defaultModifier;
 		if (override === null) return "none";
@@ -84,27 +86,23 @@ export function collectNumberKeySeries(
 	}
 	return [...found]
 		.filter(([, { digits }]) => digits.size > 1)
-		.map(([category, { modifier, digits }]) => {
-			const keys = [...digits.keys()];
-			return {
-				category,
-				digits,
-				commands: keys,
-				defaultModifier: modifier,
-				...slotState(keys, digits, overrides, modifier),
-			};
-		});
+		.map(([category, { modifier, digits }]) => ({
+			category,
+			digits,
+			defaultModifier: modifier,
+			...slotState(digits, overrides, modifier),
+		}));
 }
 
 function overridesFor(series: NumberKeySeries, modifier: SeriesModifier | "none"): OverridePlan {
 	return Object.fromEntries(
-		series.commands.map((key) => [
+		[...series.digits].map(([key, code]) => [
 			key,
 			modifier === "none"
 				? null
 				: modifier === series.defaultModifier
 					? undefined
-					: digitChord(series.digits.get(key)!, modifier),
+					: digitChord(code, modifier),
 		]),
 	);
 }
@@ -155,4 +153,35 @@ export function planTurnOn(
 		[target.defaultModifier, ...choices].find((candidate) => !taken.has(candidate)) ??
 		target.defaultModifier;
 	return planModifierChange(all, category, modifier, choices);
+}
+
+/** A modifier's keys as shown ("⌘", or "Ctrl" elsewhere). */
+export function modifierKeys(modifier: SeriesModifier, platform: KeyboardPlatform): string[] {
+	return formatChord(parseChord(digitChord("Digit1", modifier))!, platform).slice(0, -1);
+}
+
+/** "⌘1–9" ("Ctrl+1–9" elsewhere) for a set on one modifier; null when it is off or custom. */
+export function seriesRangeLabel(
+	series: NumberKeySeries,
+	platform: KeyboardPlatform,
+): string | null {
+	const modifier = series.current;
+	if (modifier === "none" || modifier === "custom") return null;
+	return `${keysLabel([...modifierKeys(modifier, platform), "1"], platform)}–9`;
+}
+
+/** The 1–9 series, in the list's group order so Tabs comes before Sessions. */
+export function useNumberKeySeries(): NumberKeySeries[] {
+	const { commands, overrides, platform } = useShortcuts();
+	return collectNumberKeySeries(
+		groupShortcutCommands(commands)
+			.flatMap((group) => group.commands)
+			.map((command) => ({
+				key: command.key,
+				scoped: command.when !== undefined,
+				metadata: command.metadata,
+			})),
+		overrides,
+		platform,
+	);
 }

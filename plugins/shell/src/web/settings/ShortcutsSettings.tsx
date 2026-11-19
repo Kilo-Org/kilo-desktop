@@ -17,7 +17,8 @@ import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
-import { NumberKeysSettings, useNumberKeySeries } from "./NumberKeysSettings";
+import { NumberKeysSettings } from "./NumberKeysSettings";
+import { useNumberKeySeries } from "./number-keys";
 import {
 	chordLabels,
 	keysLabel,
@@ -142,7 +143,7 @@ export function ShortcutsSettings() {
 		for (const loser of losers) takenBy.set(loser, titles.get(winner!) ?? winner!);
 	}
 	// App Navigation edits the 1–9 series as a whole, so their slots aren't listed one by one.
-	const inSeries = new Set(useNumberKeySeries().flatMap((series) => series.commands));
+	const inSeries = new Set(useNumberKeySeries().flatMap((series) => [...series.digits.keys()]));
 	const groups = groupShortcutCommands(commands.filter((command) => !inSeries.has(command.key)));
 	const hasOverrides = Object.keys(overrides).length > 0;
 

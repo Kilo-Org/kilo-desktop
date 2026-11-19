@@ -21,7 +21,7 @@ import { useShortcutsOpen } from "./ui-state";
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
 import { chordLabels, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
-import { seriesRangeLabel, useNumberKeySeries } from "../settings/NumberKeysSettings";
+import { seriesRangeLabel, useNumberKeySeries } from "../settings/number-keys";
 
 /** The keyboard cheat sheet (⌘/): every bound shortcut, searchable. */
 export function KeyboardShortcutsDialog() {
@@ -66,8 +66,8 @@ function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInp
 	const { commands, resolution, platform } = useShortcuts();
 	// A 1–9 set on one modifier reads as one row ("Go to tab 1–9"); a custom set keeps its rows.
 	const series = useNumberKeySeries().filter((entry) => entry.current !== "custom");
-	const seriesByFirst = new Map(series.map((entry) => [entry.commands[0], entry]));
-	const inSeries = new Set(series.flatMap((entry) => entry.commands));
+	const seriesByFirst = new Map(series.map((entry) => [[...entry.digits.keys()][0], entry]));
+	const inSeries = new Set(series.flatMap((entry) => [...entry.digits.keys()]));
 	const titles = new Map<string, string>(
 		commands.map((command) => [command.key, command.metadata.title]),
 	);
@@ -78,7 +78,7 @@ function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInp
 				const entry = seriesByFirst.get(command.key);
 				if (entry) {
 					const label = seriesRangeLabel(entry, platform);
-					const members = entry.commands.map((key) => titles.get(key) ?? "");
+					const members = [...entry.digits.keys()].map((key) => titles.get(key) ?? "");
 					return label
 						? [
 								{

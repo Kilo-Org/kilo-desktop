@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as ErrorMessageModule from "./environments-error-message";
+
 vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: {
 		error: vi.fn(),
@@ -7,7 +9,8 @@ vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	},
 }));
 
-vi.mock("./environments-error-message", () => ({
+vi.mock("./environments-error-message", async (importOriginal) => ({
+	...(await importOriginal<typeof ErrorMessageModule>()),
 	friendlyEnvironmentsError: vi.fn((_reason: unknown, fallback: string) => ({
 		code: null,
 		message: fallback,
@@ -90,6 +93,16 @@ describe("job copy", () => {
 		]) {
 			expect(copy.errorTitle).toMatch(/^Could not /);
 		}
+	});
+
+	it("explains a failed backup as a clone, never as a dependency conflict", () => {
+		jobToastOptions(backupEnvironmentJob("a", "a-backup")).error("boom");
+
+		expect(friendlyEnvironmentsError).toHaveBeenCalledWith(
+			"boom",
+			"Could not back up the environment.",
+			{ operation: "clone" },
+		);
 	});
 
 	it("gives imports their own fallback message", () => {

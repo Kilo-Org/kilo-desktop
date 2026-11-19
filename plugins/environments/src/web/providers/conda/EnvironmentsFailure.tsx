@@ -36,17 +36,20 @@ export function InlineFailure({
 	qaId,
 	title,
 	onSignedIn,
+	reported = true,
 	className,
 	children,
 }: FailureProps & {
 	/** A first line saying what failed, when the message alone would not. */
 	title?: string;
+	/** False when the same failure is already reported elsewhere (its job toast). */
+	reported?: boolean;
 	/** After an Anaconda sign-in, e.g. to run the failed request again. */
 	onSignedIn?: () => void;
 	className?: string;
 	children?: ReactNode;
 }) {
-	useReportPolicyFailureOnce(reason);
+	useReportPolicyFailureOnce(reported ? reason : undefined);
 	return (
 		<div
 			className={cn("text-destructive flex flex-col gap-2 text-sm", className)}

@@ -181,6 +181,49 @@ describe("friendlyEnvironmentsError for policy and Anaconda sign-in failures", (
 	});
 });
 
+describe("friendlyEnvironmentsError for an operation", () => {
+	const signedOut = new Error(
+		formatEnvironmentsErrorMessage("NOT_SIGNED_IN", "Sign in to use acme/main", {
+			refused: { org: "acme", channel: "acme/main" },
+		}),
+	);
+
+	it("asks to sign in to change the environment when a removal is refused", () => {
+		expect(friendlyEnvironmentsError(signedOut, "fallback", { operation: "remove" })).toEqual({
+			code: "NOT_SIGNED_IN",
+			message:
+				"Sign in to Anaconda to change this environment: removing packages re-solves it against its channels.",
+			detail: "Sign in to use acme/main",
+			policy: { refused: { org: "acme", channel: "acme/main" } },
+		});
+	});
+
+	it("never calls a failed clone a dependency conflict, keeping the bridge's text as detail", () => {
+		const failed = new Error("SOLVE_FAILED: conda:environment:failed-to-clone");
+
+		expect(
+			friendlyEnvironmentsError(failed, "Could not back up the environment.", {
+				operation: "clone",
+			}),
+		).toEqual({
+			code: "SOLVE_FAILED",
+			message: "Could not back up the environment.",
+			detail: "conda:environment:failed-to-clone",
+		});
+	});
+
+	it("keeps the usual copy for other failures of the operation", () => {
+		expect(friendlyEnvironmentsError(signedOut, "fallback", { operation: "clone" }).message).toBe(
+			"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+		);
+		expect(
+			friendlyEnvironmentsError(new Error("SOLVE_FAILED: conflict"), "fallback", {
+				operation: "remove",
+			}).message,
+		).toContain("Could not resolve a compatible set of packages");
+	});
+});
+
 describe("errorCardTitle", () => {
 	const title = (...args: Parameters<typeof formatEnvironmentsErrorMessage>) =>
 		errorCardTitle(friendlyEnvironmentsError(failure(...args), "x"));

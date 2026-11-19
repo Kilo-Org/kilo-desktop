@@ -949,7 +949,7 @@ describe("AddPackageDialog", () => {
 			expect(card.getByTestId("environments-anaconda-sign-in").query()).toBeNull();
 		});
 
-		it("explains an install the policy blocks in its failure toast", async () => {
+		it("summarises an install the policy blocks in its failure toast, with the details a click away", async () => {
 			const install = vi.fn(async (): Promise<CondaPackagesInstallResult> => {
 				throw new Error(
 					formatEnvironmentsErrorMessage("POLICY_BLOCKED", "pandas 1.0.0 is blocked", {
@@ -978,10 +978,21 @@ describe("AddPackageDialog", () => {
 			const toast = screen.getByTestId("environments-job-error-policy");
 			await expect.element(toast).toBeVisible();
 			await expect.element(toast.getByText("pandas 1.0.0 is blocked")).toBeVisible();
+			// One line in the toast; the blocked list opens from Details.
+			expect(
+				toast.getByText("Blocked by the policy “No critical CVEs” in acme").query(),
+			).toBeNull();
+			await userEvent.click(toast.getByTestId("environments-job-error-details"));
+
+			const details = page.getByTestId("environments-job-error-dialog");
+			await expect.element(details).toBeVisible();
 			await expect
-				.element(toast.getByText("Blocked by the policy “No critical CVEs” in acme"))
+				.element(details.getByText("Blocked by your organization's policy"))
 				.toBeVisible();
-			await expect.element(toast.getByText("Reason: CVE-2099-0001 (critical)")).toBeVisible();
+			await expect
+				.element(details.getByText("Blocked by the policy “No critical CVEs” in acme"))
+				.toBeVisible();
+			await expect.element(details.getByText("Reason: CVE-2099-0001 (critical)")).toBeVisible();
 			await vi.waitFor(() =>
 				expect(host.tracked).toContainEqual({
 					event: "Environment Policy Blocked",

@@ -85,6 +85,11 @@ describe("ImportEnvironmentDialog", () => {
 
 		await expect.element(screen.getByTestId("environments-import-file-display")).toBeVisible();
 		await expect.element(screen.getByTestId("environments-import-file-preview")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("environments-import-policy-note"))
+			.toHaveTextContent(
+				"The file's own channels and its pip: section are not covered by your organization's package policy.",
+			);
 	});
 
 	it("extracts and pre-fills the name from the YAML content", async () => {

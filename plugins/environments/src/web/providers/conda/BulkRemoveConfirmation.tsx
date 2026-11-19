@@ -13,6 +13,7 @@ import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda"
 import { useConda, useCondaMutation } from "../../conda";
 import { environmentDisplayName } from "./environment-display";
 import { friendlyEnvironmentsError } from "./environments-error-message";
+import { InlineFailure } from "./EnvironmentsFailure";
 
 interface BulkRemoveConfirmationProps {
 	env: CondaEnv;
@@ -84,16 +85,18 @@ export function BulkRemoveConfirmation({
 				</ul>
 
 				{remove.isError && (
-					<p
-						className="text-destructive text-sm"
-						role="alert"
-						data-qa-id="environments-conda-bulk-remove-error"
-					>
-						{
-							friendlyEnvironmentsError(remove.error, "Could not remove the selected packages.")
-								.message
-						}
-					</p>
+					<InlineFailure
+						reason={remove.error}
+						error={friendlyEnvironmentsError(
+							remove.error,
+							"Could not remove the selected packages.",
+							{
+								operation: "remove",
+							},
+						)}
+						onSignedIn={handleConfirm}
+						qaId="environments-conda-bulk-remove-error"
+					/>
 				)}
 
 				<AlertDialogFooter>

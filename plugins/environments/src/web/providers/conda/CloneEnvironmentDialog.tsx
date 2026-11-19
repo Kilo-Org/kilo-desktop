@@ -18,6 +18,7 @@ import type { CondaEnv } from "../../../contracts/providers/conda";
 import { useConda, useCondaMutation } from "../../conda";
 import { environmentDisplayName, validateEnvironmentName } from "./environment-display";
 import { friendlyEnvironmentsError } from "./environments-error-message";
+import { InlineFailure } from "./EnvironmentsFailure";
 
 interface CloneEnvironmentDialogProps {
 	env: CondaEnv;
@@ -31,6 +32,7 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 	const [name, setName] = useState(`${env.name || sourceName}-copy`);
 	const [validationError, setValidationError] = useState<string | null>(null);
 	const [serverError, setServerError] = useState<string | null>(null);
+	const [cloneFailure, setCloneFailure] = useState<unknown>(null);
 
 	const mutation = useCondaMutation(conda, "cloneEnvironment", {
 		invalidates: ["listEnvironments"],
@@ -55,12 +57,12 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 		}
 
 		setServerError(null);
+		setCloneFailure(null);
 		mutation.mutate(
 			{ sourceName: env.name, sourcePrefix: env.prefix, name: name.trim() },
 			{
 				onSuccess: () => onClose(),
-				onError: (reason) =>
-					setServerError(friendlyEnvironmentsError(reason, "Could not clone environment.").message),
+				onError: (reason) => setCloneFailure(reason),
 			},
 		);
 	}
@@ -93,6 +95,15 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 					</Field>
 
 					{serverError ? <FieldError>{serverError}</FieldError> : null}
+					{cloneFailure ? (
+						<InlineFailure
+							reason={cloneFailure}
+							error={friendlyEnvironmentsError(cloneFailure, "Could not clone environment.", {
+								operation: "clone",
+							})}
+							qaId="environments-clone-error"
+						/>
+					) : null}
 
 					<DialogFooter>
 						<DialogClose render={<Button variant="outline" disabled={mutation.isPending} />}>

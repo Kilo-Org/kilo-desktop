@@ -140,6 +140,21 @@ describe("CloneEnvironmentDialog", () => {
 			.toBeVisible();
 	});
 
+	it("does not call a failed clone a dependency conflict", async () => {
+		const clone = () => {
+			throw new Error("SOLVE_FAILED: conda:environment:failed-to-clone");
+		};
+		const { baseElement } = await renderDialog({ clone });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-clone-submit"));
+
+		await expect
+			.element(screen.getByTestId("environments-clone-error"))
+			.toHaveTextContent("Could not clone environment.");
+		expect(screen.getByText(/compatible set of packages/).query()).toBeNull();
+	});
+
 	it("shows structural guard error when env.name is empty (prefix-only env)", async () => {
 		const env: CondaEnv = { name: "", prefix: "/opt/anaconda3" };
 		const { baseElement } = await renderDialog({ env });

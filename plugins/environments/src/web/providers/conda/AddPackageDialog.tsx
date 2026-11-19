@@ -9,7 +9,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@kilo-desktop/ui/components/dialog";
-import { FieldError } from "@kilo-desktop/ui/components/field";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -27,6 +26,7 @@ import {
 	type ChangeSummary,
 } from "./DependencyPreview";
 import { environmentDisplayName } from "./environment-display";
+import { InlineFailure } from "./EnvironmentsFailure";
 import {
 	friendlyEnvironmentsError,
 	type FriendlyEnvironmentsError,
@@ -371,14 +371,17 @@ export function AddPackageDialog({
 
 					<DialogFooter className="sm:items-center">
 						{install.isError ? (
-							<FieldError className="sm:mr-auto" data-qa-id="environments-conda-add-pkg-error">
-								{
-									friendlyEnvironmentsError(
-										install.error,
-										"Could not install the selected packages.",
-									).message
-								}
-							</FieldError>
+							<InlineFailure
+								reason={install.error}
+								error={friendlyEnvironmentsError(
+									install.error,
+									"Could not install the selected packages.",
+								)}
+								// The job's failure toast reports it.
+								reported={false}
+								className="sm:mr-auto"
+								qaId="environments-conda-add-pkg-error"
+							/>
 						) : null}
 						{install.isPending ? (
 							<Button

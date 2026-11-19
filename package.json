@@ -21,7 +21,7 @@
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env KILO_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @kilo-desktop/desktop start\"",
 		"format": "oxfmt --no-error-on-unmatched-pattern",
 		"format:check": "oxfmt --check",
-		"react-doctor": "react-doctor --yes --no-score --no-supply-chain --blocking warning",
+		"react-doctor": "react-doctor --yes --no-score --blocking warning",
 		"lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/plugin-schema.mjs --check && node scripts/check-react-compiler.mjs",
 		"lint:react-compiler": "node scripts/check-react-compiler.mjs",
 		"lint:fix": "oxlint --fix",

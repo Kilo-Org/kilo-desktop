@@ -1,4 +1,4 @@
-// React Doctor (https://react.doctor). Run: npx react-doctor@latest --verbose
+// React Doctor (https://react.doctor). Run: pnpm run react-doctor --verbose
 // Rules are off only where they conflict with this repo's conventions; real
 // exceptions elsewhere carry an inline `react-doctor-disable-next-line` with a reason.
 {
@@ -18,6 +18,8 @@
 		// `Reorder` needs the full motion bundle anyway, so LazyMotion saves nothing.
 		"react-doctor/use-lazy-motion": "off",
 	},
+	// Dependency health is reviewed when packages change, not on every scan.
+	"supplyChain": { "enabled": false },
 	"ignore": {
 		// Vitest's dependency cache is gitignored, but React Doctor still scans it.
 		"files": ["**/.vitest/**"],

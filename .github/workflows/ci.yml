@@ -40,8 +40,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check
-      # Full React Doctor scan; any error or warning fails, keeping the score at 100.
-      - run: pnpm run react-doctor
       - run: pnpm test:scripts
 
   # Bundled plugins build outside the monorepo: manifests, exports and

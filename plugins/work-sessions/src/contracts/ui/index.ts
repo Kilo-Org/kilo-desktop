@@ -6,3 +6,4 @@ export * from "./pane-kind";
 export * from "./window";
 export * from "./work-session-surfaces";
 export * from "./pane-windows";
+export * from "./workspace-source";

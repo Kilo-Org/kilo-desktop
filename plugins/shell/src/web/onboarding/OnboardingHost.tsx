@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { Contribution, WhenExpression } from "@kilo-desktop/kernel";
 import {
@@ -18,7 +18,7 @@ import {
 	type OnboardingStepImplementation,
 	type OnboardingStepView,
 } from "../../contracts";
-import { OnboardingFrame } from "./OnboardingFrame";
+import { OnboardingFrame, StepContent, type StepChrome } from "./OnboardingFrame";
 
 /**
  * Dev override that reopens onboarding every launch
@@ -76,11 +76,13 @@ function useRequiredStep(steps: readonly Step[]): Step | undefined {
  * whenever its condition holds, even after onboarding is done, and can't be
  * dismissed; satisfying it advances the tour, or closes the overlay if the
  * tour wouldn't otherwise show. Escape and "Exit setup" record a skip; the
- * last step's action records completion.
+ * last step's action records completion. One frame stays mounted for the
+ * whole flow: each step renders its own content inside it (so it animates out
+ * as the next comes in) and reports its footer state back here.
  */
 export function OnboardingHost() {
 	const desktop = useContextKey("kernel/desktop");
-	const forced = useContextKey(FORCE_ONBOARDING_KEY);
+	const forced = useContextKey(FORCE_ONBOARDING_KEY) || true; // TEMP: always show onboarding for review
 	const onboarding = useDomainObject(Onboarding);
 	const state = useDomainObjectState(Onboarding, selectState);
 	const kernel = useKernel();
@@ -94,6 +96,13 @@ export function OnboardingHost() {
 	const [furthest, setFurthest] = useState(0);
 	const shown = useRef(false);
 	const steps = offeredSteps(kernel, implemented, offered, required);
+	// The current step's footer state and primary action, reported by the step
+	// as it renders (the frame stays mounted across steps, so steps animate).
+	const [chrome, setChrome] = useState<{ stepKey: string; chrome: StepChrome } | null>(null);
+	const action = useRef<(() => void) | null>(null);
+	const setAction = (run: (() => void) | null) => {
+		action.current = run;
+	};
 
 	const tourVisible =
 		desktop && state !== undefined && !closed && (!finishedCurrentVersion(state) || forced);
@@ -139,11 +148,28 @@ export function OnboardingHost() {
 	};
 	const previous = steps[index - 1];
 
-	const renderFrame = (view: OnboardingStepView) => (
+	const layout = current.metadata.layout;
+	const renderStep = (view: OnboardingStepView) => (
+		<>
+			<ReportChrome stepKey={current.key} view={view} onChrome={setChrome} onAction={setAction} />
+			<StepContent layout={layout} view={view} />
+		</>
+	);
+
+	return (
 		<OnboardingFrame
 			stepKey={current.key}
-			layout={current.metadata.layout}
-			view={view}
+			layout={layout}
+			content={
+				<RenderContribution
+					key={current.key}
+					contribution={current}
+					select={selectStep}
+					props={{ next, children: renderStep }}
+				/>
+			}
+			chrome={chrome?.stepKey === current.key ? chrome.chrome : NO_CHROME}
+			onPrimary={() => action.current?.()}
 			progress={steps
 				.filter((step) => step.metadata.layout === "card")
 				.map((step) => ({ id: step.key, label: step.metadata.label }))}
@@ -156,15 +182,52 @@ export function OnboardingHost() {
 			onDismiss={dismiss}
 		/>
 	);
+}
 
-	return (
-		<RenderContribution
-			key={current.key}
-			contribution={current}
-			select={selectStep}
-			props={{ next, children: renderFrame }}
-		/>
-	);
+/** Until a step reports its chrome (before its first paint): nothing to press. */
+const NO_CHROME: StepChrome = { skippable: false, busy: false, primary: null };
+
+/**
+ * Hands the host a step's footer state as it renders, only when it changes
+ * (so reporting never loops), and before paint, so the footer never shows the
+ * previous step's buttons. The primary action itself is kept current apart.
+ */
+function ReportChrome({
+	stepKey,
+	view,
+	onChrome,
+	onAction,
+}: {
+	readonly stepKey: string;
+	readonly view: OnboardingStepView;
+	readonly onChrome: (chrome: { stepKey: string; chrome: StepChrome }) => void;
+	readonly onAction: (run: (() => void) | null) => void;
+}) {
+	const skippable = view.skippable === true;
+	const busy = view.busy === true;
+	const label = view.primary === undefined ? null : (view.primary?.label ?? null);
+	const disabled = view.primary?.disabled === true;
+	const kind = view.primary === undefined ? "continue" : view.primary === null ? "none" : "own";
+	useLayoutEffect(() => {
+		onChrome({
+			stepKey,
+			chrome: {
+				skippable,
+				busy,
+				primary:
+					kind === "continue"
+						? "continue"
+						: kind === "none" || label === null
+							? null
+							: { label, disabled },
+			},
+		});
+	}, [onChrome, stepKey, skippable, busy, kind, label, disabled]);
+	const run = view.primary?.onClick ?? null;
+	useLayoutEffect(() => {
+		onAction(run);
+	});
+	return null;
 }
 
 /** Runs in the step's plugin context, keyed per step so its hooks never mix with another's. */

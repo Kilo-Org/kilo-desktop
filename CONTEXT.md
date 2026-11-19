@@ -36,7 +36,7 @@ plugins/          Bundled plugins, in layers: kernel → kilo.core → kilo.shel
 ├── developer/    @kilo-desktop/plugin-developer kilo.developer: Settings → Developer → Diagnostics, behind the `developer` flag
 ├── environments/ @kilo-desktop/plugin-environments kilo.environments: conda environments and packages through the bundled conda bridge, for the person and the agent
 ├── files/        @kilo-desktop/plugin-files kilo.files: the Files pane — browse, edit and mention the files in a work session's workspace folders
-├── git/          @kilo-desktop/plugin-git   kilo.git: git for workspace folders — work sessions' isolation (`kilo.work-sessions/vcs`), the Changes pane, branches, repository actions and pull requests
+├── git/          @kilo-desktop/plugin-git   kilo.git: git for workspace folders — work sessions' isolation (`kilo.work-sessions/vcs`), the Changes pane, branches, repository actions, pull requests and cloning a repository into a new workspace
 ├── local-inference/ @kilo-desktop/plugin-local-inference kilo.local-inference: the Local Model Server — GGUF models on this device through a managed llama.cpp router, offered to Kilo as an AI provider and to the composer's model picker
 ├── marketplace/  @kilo-desktop/plugin-marketplace kilo.marketplace: Kilo's Marketplace of agents, skills and MCP servers — the Agent Behavior settings section
 ├── notebook/     @kilo-desktop/plugin-notebook kilo.notebook: Notebook panes — nteract notebooks over the runtimed daemon, the `*.ipynb` opener, notebook agent tools and Kilo plugin

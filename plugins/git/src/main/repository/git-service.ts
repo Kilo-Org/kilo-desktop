@@ -27,6 +27,7 @@ import type {
 	GitWorktreeResult,
 } from "../../contracts/models";
 import type { IBranch, RepositoryType, WorktreeEntry } from "@kilo-desktop/git-client";
+import { cloneGitUrl } from "../clone/git-url-clone";
 import { findDefaultBranch } from "./find-default-branch";
 import { hostPathIdentity, type PathIdentity } from "./path-identity";
 import {
@@ -1635,6 +1636,14 @@ export class GitService {
 		for (const patchPath of [...this.#inFlightPatchPaths]) {
 			await this.releasePatch(patchPath).catch(() => undefined);
 		}
+	}
+
+	/**
+	 * `git clone`s a remote URL into `destination`, a new folder outside
+	 * every workspace (the caller makes it one), so no workspace check.
+	 */
+	cloneUrl(url: string, destination: string): Promise<void> {
+		return cloneGitUrl(this.#client, { url, destination });
 	}
 
 	async available(): Promise<boolean> {

@@ -5,18 +5,23 @@ import {
 	WORKSPACE_DIALOGS_KEY,
 	Workspaces,
 	type Workspace,
+	WorkspaceSource,
 	type WorkspaceDialogInput,
 } from "../../contracts";
+import { localFolderSource } from "./LocalFolderSource";
 import { workspaceStep } from "./onboarding/workspace-step";
 import { WorkspaceDialogsDialog } from "./WorkspaceDialogs";
 
 /**
  * The workspaces area: the workspace dialogs (a `kilo.shell/dialog`, opened
  * by the add / manage / edit / delete commands through kilo.shell's
- * navigation) and the onboarding step that creates the first workspace.
+ * navigation), the Local folder source of the New workspace dialog (through
+ * its own `workspace-source` point) and the onboarding step that creates the
+ * first workspace.
  */
 export function activateWorkspaces(sdk: PluginSdk): void {
 	sdk.extensions.implement(Dialog, "workspace-dialogs", WorkspaceDialogsDialog);
+	sdk.extensions.implement(WorkspaceSource, "local-folder", localFolderSource);
 	const command = (id: string, input: (args: unknown) => WorkspaceDialogInput | null) =>
 		sdk.extensions.implement(KernelCommand, id, async (args) => {
 			const dialogInput = input(args);

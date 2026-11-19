@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
@@ -50,6 +50,7 @@ async function boot(
 		loadSqlite?: SqliteLoader;
 		plugins?: PluginRegistration[];
 		logger?: KernelLogger;
+		documentsDirectory?: string | null;
 	} = {},
 ) {
 	const storage = options.storage ?? createMemoryStorage("/data/kilo.work-sessions");
@@ -65,6 +66,9 @@ async function boot(
 				now: () => 1_000,
 				...(options.originDatabase ? { originDatabase: options.originDatabase } : {}),
 				...(options.loadSqlite ? { loadSqlite: options.loadSqlite } : {}),
+				...(options.documentsDirectory === undefined
+					? {}
+					: { documentsDirectory: () => options.documentsDirectory ?? null }),
 			}),
 		},
 	});
@@ -146,6 +150,115 @@ describe("creating workspaces", () => {
 			]),
 		).rejects.toThrow(/exactly one primary/);
 		expect(workspaces.getState().workspaces).toEqual([]);
+	});
+});
+
+describe("workspaces in new folders", () => {
+	it("makes requested new folders empty before saving the workspace", async () => {
+		const project = await folder("Project");
+		const fresh = path.join(root, "Fresh Idea");
+		const { workspaces, events } = await boot();
+
+		const created = await workspaces.methods.create({
+			name: "Fresh Idea",
+			folders: [
+				{ path: fresh, isPrimary: true },
+				{ path: project, isPrimary: false },
+			],
+			createFolders: [fresh],
+		});
+
+		expect(created.folders.map((entry) => entry.path)).toEqual([fresh, project]);
+		await expect(readdir(fresh)).resolves.toEqual([]);
+		expect(events).toEqual([{ name: "created", change: { before: null, after: created } }]);
+	});
+
+	it("refuses to make a new folder over an existing one and saves nothing", async () => {
+		const project = await folder("Project");
+		const { workspaces } = await boot();
+
+		await expect(
+			workspaces.methods.create({
+				folders: [{ path: project, isPrimary: true }],
+				createFolders: [project],
+			}),
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: 'A folder named "Project" already exists in that location.',
+		});
+		expect(workspaces.getState().workspaces).toEqual([]);
+	});
+
+	it("removes the new folder again when the workspace can't be saved", async () => {
+		const fresh = path.join(root, "Fresh");
+		const { workspaces } = await boot();
+
+		await expect(
+			workspaces.methods.create({
+				color: "orange",
+				folders: [{ path: fresh, isPrimary: true }],
+				createFolders: [fresh],
+			}),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		await expect(readdir(root)).resolves.toEqual([]);
+	});
+
+	it("offers Documents first, then the location of the last new folder, across launches", async () => {
+		const documents = await folder("Documents");
+		const projects = await folder("projects");
+		const storage = createMemoryStorage("/data/kilo.work-sessions");
+		const { workspaces } = await boot({ storage, documentsDirectory: documents });
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: documents,
+		});
+
+		const fresh = path.join(projects, "Fresh");
+		await workspaces.methods.create({
+			folders: [{ path: fresh, isPrimary: true }],
+			createFolders: [fresh],
+		});
+
+		const relaunched = await boot({ storage, documentsDirectory: documents });
+		await expect(relaunched.workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: projects,
+		});
+	});
+
+	it("remembers a location a source made a folder in, unless it has since gone", async () => {
+		const documents = await folder("Documents");
+		const clones = await folder("clones");
+		const { workspaces } = await boot({ documentsDirectory: documents });
+
+		await workspaces.methods.rememberNewFolderLocation({ path: clones });
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: clones,
+		});
+
+		await rm(clones, { recursive: true });
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: documents,
+		});
+	});
+
+	it("offers no location when neither exists", async () => {
+		const { workspaces } = await boot({ documentsDirectory: path.join(root, "missing") });
+
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({ path: null });
+	});
+
+	it("says where a new folder would go without making it", async () => {
+		await folder("taken");
+		const { workspaces } = await boot();
+
+		await expect(
+			workspaces.methods.newFolderPath({ parentPath: root, name: " app " }),
+		).resolves.toEqual({
+			path: path.join(root, "app"),
+		});
+		await expect(
+			workspaces.methods.newFolderPath({ parentPath: root, name: "taken" }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		await expect(readdir(root)).resolves.toEqual(["taken"]);
 	});
 });
 

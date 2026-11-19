@@ -21,7 +21,7 @@ import {
 	type PluginEntry,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
-import { createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
+import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
@@ -56,6 +56,7 @@ import manifest from "../../plugin.json";
 import {
 	CHANGES_PANE_KIND,
 	GIT_DEFINITIONS,
+	GithubRepositories,
 	PullRequests,
 	Repository,
 	type PullRequestsState,
@@ -65,6 +66,11 @@ export type ThemeState = DomainObjectState<typeof Theme>;
 /** Fakes for some of kilo.git's repository methods, by name. */
 export type RepositoryFake = Partial<
 	Record<keyof (typeof Repository)["methods"], (input: never) => unknown>
+>;
+
+/** Fakes for kilo.git's GitHub repository list methods, by name. */
+export type GithubRepositoriesFake = Partial<
+	Record<keyof (typeof GithubRepositories)["methods"], (input: never) => unknown>
 >;
 
 export const ROOT = "/workspace/project";
@@ -176,6 +182,12 @@ export interface GitHostOptions {
 	readonly chatWeb?: PluginEntry;
 	/** kilo.git's window entry; the real one by default. */
 	readonly gitWeb?: PluginEntry;
+	/** Sets `kernel/desktop` (the clone sources show only on desktop). */
+	readonly desktop?: boolean;
+	/** `Workspaces.newFolderLocation`'s answer. */
+	readonly newFolderLocation?: string | null;
+	/** Fakes for `kilo.git/github-repositories`, by method name; absent leaves it unprovided. */
+	readonly githubRepositories?: GithubRepositoriesFake;
 }
 
 /**
@@ -210,6 +222,9 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 					setActive: unused("setActive"),
 					authorize: () => ({ allowed: true }),
 					checkFolders: () => undefined,
+					newFolderLocation: () => ({ path: options.newFolderLocation ?? null }),
+					newFolderPath: unused("newFolderPath"),
+					rememberNewFolderLocation: unused("rememberNewFolderLocation"),
 				},
 			});
 			files = sdk.domainObjects.provide(FileWatcher, {
@@ -271,6 +286,7 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 	const opens: string[] = [];
 	let pullRequests!: DomainObjectProvider<typeof PullRequests>;
 	let repository: DomainObjectProvider<typeof Repository> | undefined;
+	let githubRepositories: DomainObjectProvider<typeof GithubRepositories> | undefined;
 	const gitMain: PluginEntry = definePlugin({
 		activate(sdk) {
 			pullRequests = sdk.domainObjects.provide(PullRequests, {
@@ -293,6 +309,22 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 					},
 				}) as never,
 			});
+			const githubFake = options.githubRepositories;
+			if (githubFake) {
+				githubRepositories = sdk.domainObjects.provide(GithubRepositories, {
+					initialState: {},
+					methods: {
+						list: (input) => {
+							record("github.list", input);
+							return (githubFake.list ?? unused("list"))(input as never) as never;
+						},
+						resolve: (input) => {
+							record("github.resolve", input);
+							return (githubFake.resolve ?? unused("resolve"))(input as never) as never;
+						},
+					},
+				});
+			}
 		},
 	});
 
@@ -329,6 +361,7 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 
 	const gitWeb = options.gitWeb ?? (await import("../web/index")).gitWebEntry;
 	const { main, renderer } = await createTestKernelPair({
+		host: createTestHost({ desktop: options.desktop ?? false }),
 		main: [
 			{
 				manifest: coreManifest,
@@ -413,6 +446,12 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 		setWorkSessions: (list: WorkSession[]) =>
 			act(async () => {
 				workSessions.setState({ workSessions: list });
+				await main.flush();
+			}),
+		/** kilo.git's main announces that a background GitHub list refresh settled. */
+		emitGithubRefreshed: () =>
+			act(async () => {
+				githubRepositories?.emit("refreshed", {});
 				await main.flush();
 			}),
 		/** kilo.git's main announces a renamed worktree branch. */

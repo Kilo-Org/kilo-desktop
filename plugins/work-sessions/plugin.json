@@ -180,10 +180,22 @@
 			"id": "permission-auto-answer",
 			"kind": "additive",
 			"description": "Whether a plugin answers an agent permission request for the person."
+		},
+		{
+			"id": "workspace-source",
+			"kind": "additive",
+			"description": "A way to start a workspace, offered in the New workspace dialog."
 		}
 	],
 	"contributes": {
 		"extensions": {
+			"kilo.work-sessions/workspace-source": [
+				{
+					"id": "local-folder",
+					"title": "Local folder",
+					"description": "Use folders on this computer, or create a new one."
+				}
+			],
 			"kilo.shell/main": [
 				{
 					"id": "work-sessions"
@@ -236,10 +248,7 @@
 				{
 					"id": "workspace",
 					"label": "Workspace",
-					"priority": 700,
-					"showWhen": {
-						"none": ["kilo.work-sessions/hasWorkspaces"]
-					}
+					"priority": 700
 				}
 			],
 			"kilo.shell/settings-section": [

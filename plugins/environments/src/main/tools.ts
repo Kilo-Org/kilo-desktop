@@ -77,8 +77,9 @@ const POLICY_GUIDANCE =
 	"Fails with POLICY_BLOCKED when the user's organization's package policy blocks a " +
 	"requested package. The error names each blocked package, and its final `[policy]` " +
 	"line carries the same as JSON (`blocked`: package, version, channel, org, policy, " +
-	"reason). Then tell the user which package and version is blocked, by which policy, " +
-	"in which org, and why, quoting the policy and the reason verbatim; do not retry from " +
+	"reason). Then, unless your instructions say the chat already shows these details, " +
+	"tell the user which package and version is blocked, by which policy, in which org, " +
+	"and why, quoting the policy and the reason verbatim. Either way, do not retry from " +
 	"another channel, pip or a URL, or otherwise try to get around the policy (a blocked " +
 	"package is not unavailable); suggest asking the organization's administrator. A " +
 	"SOLVE_FAILED whose `[policy]` line has `policyNote: true` means the policy may have " +
@@ -88,6 +89,21 @@ const POLICY_GUIDANCE =
 	"sign in to Anaconda (not Kilo) in Kilo Desktop, or to ask their administrator for " +
 	"access, then try again; do not retry from another channel. Never ask the user for a " +
 	"token or API key in the chat. ";
+
+/**
+ * Kilo's own chats draw these failures as kilo.environments' policy card
+ * (blocked packages, policy, org, reason, an Anaconda sign-in button), so
+ * the agent's reply only adds the next step. External MCP clients have no
+ * card and keep {@link POLICY_GUIDANCE}'s verbatim report.
+ */
+export const POLICY_CARD_INSTRUCTION =
+	"When a conda tool fails with POLICY_BLOCKED, NOT_SIGNED_IN or CHANNEL_ACCESS_DENIED, or " +
+	"with SOLVE_FAILED whose `[policy]` line has `policyNote: true`, this chat already shows " +
+	"the person a card with the blocked packages, the policy, the organization, the reason " +
+	"and an Anaconda sign-in button. Do not repeat those details or the channel. Reply in " +
+	"one short sentence with the next step: ask the organization's administrator, choose a " +
+	"version the policy allows, or sign in to Anaconda, then ask again. Still never retry " +
+	"from another channel, pip or a URL.";
 
 /**
  * Refuse a non-named channel supplied as a single `channel` field (the

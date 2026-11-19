@@ -202,7 +202,7 @@ describe("kilo.environments in main", () => {
 		expect(openSettings).toHaveBeenCalledWith(ENVIRONMENTS_SETTINGS_SECTION);
 	});
 
-	it("asks before conda-family commands in every chat, and hides its tools while unavailable", async () => {
+	it("asks before conda-family commands in every chat, keeps the agent from repeating the policy card, and hides its tools while unavailable", async () => {
 		const ready = await boot();
 		const config = await ready.chatConfig();
 		expect(config.disableTools).toBeUndefined();
@@ -211,6 +211,15 @@ describe("kilo.environments in main", () => {
 			pattern: "*conda install*",
 			action: "ask",
 		});
+
+		expect(config.instructions).toEqual([
+			expect.stringMatching(
+				/POLICY_BLOCKED, NOT_SIGNED_IN or CHANNEL_ACCESS_DENIED.*`policyNote: true`.*already shows the person a card/s,
+			),
+		]);
+		expect(config.instructions?.[0]).toMatch(/Do not repeat those details or the channel/);
+		expect(config.instructions?.[0]).toMatch(/one short sentence with the next step/);
+		expect(config.instructions?.[0]).toMatch(/never retry from another channel, pip or a URL/);
 
 		const disabled = await boot({ flag: false });
 		const hidden = await disabled.chatConfig();

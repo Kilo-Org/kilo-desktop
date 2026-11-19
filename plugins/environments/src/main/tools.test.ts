@@ -189,20 +189,25 @@ describe("package policy and Anaconda sign-in guidance", () => {
 		"conda.packages.install",
 		"conda.packages.update",
 		"conda.repodata.find",
-	])("%s tells the agent to report a block verbatim and never route around it", (name) => {
-		const description = registry()
-			.all()
-			.find((candidate) => candidate.name === name)?.description;
-		expect(description).toMatch(/POLICY_BLOCKED/);
-		expect(description).toMatch(/\[policy\]/);
-		expect(description).toMatch(/verbatim/i);
-		expect(description).toMatch(/do not retry from another channel, pip or a URL/i);
-		expect(description).toMatch(/administrator/i);
-		expect(description).toMatch(/NOT_SIGNED_IN/);
-		expect(description).toMatch(/CHANNEL_ACCESS_DENIED/);
-		expect(description).toMatch(/sign in to Anaconda \(not Kilo\)/i);
-		expect(description).toMatch(/never ask .* for a token/i);
-	});
+	])(
+		"%s tells the agent to report a block verbatim unless the chat shows it, and never route around it",
+		(name) => {
+			const description = registry()
+				.all()
+				.find((candidate) => candidate.name === name)?.description;
+			expect(description).toMatch(/POLICY_BLOCKED/);
+			expect(description).toMatch(/\[policy\]/);
+			expect(description).toMatch(
+				/unless your instructions say the chat already shows these details, tell the user .* verbatim/i,
+			);
+			expect(description).toMatch(/do not retry from another channel, pip or a URL/i);
+			expect(description).toMatch(/administrator/i);
+			expect(description).toMatch(/NOT_SIGNED_IN/);
+			expect(description).toMatch(/CHANNEL_ACCESS_DENIED/);
+			expect(description).toMatch(/sign in to Anaconda \(not Kilo\)/i);
+			expect(description).toMatch(/never ask .* for a token/i);
+		},
+	);
 });
 
 const BLOCKED = {

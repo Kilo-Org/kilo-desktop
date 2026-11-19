@@ -1,3 +1,5 @@
+# Husky already runs hooks with `sh -e`; set it here too so direct runs stop at the first failure.
+set -e
 pnpm exec lint-staged
 # Scans only staged source; exits immediately when nothing React-related is staged.
 pnpm run react-doctor --staged

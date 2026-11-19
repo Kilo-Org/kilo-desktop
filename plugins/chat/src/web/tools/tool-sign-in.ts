@@ -6,20 +6,12 @@ import {
 	type ToolSignInPrompt,
 } from "@kilo-desktop/plugin-core/contracts";
 
+import { toolResultText } from "../../contracts";
+
 export type { ToolSignInPrompt };
 
 /** Kilo serves the app's agent tools from its "desktop" MCP server, prefixing their names. */
 const KILO_DESKTOP_TOOL_PREFIX = "desktop_";
-
-function resultText(result: unknown): string {
-	if (result === undefined || result === null) return "";
-	if (typeof result === "string") return result;
-	try {
-		return JSON.stringify(result) ?? "";
-	} catch {
-		return "";
-	}
-}
 
 interface ToolCallOutcome {
 	readonly toolName: string;
@@ -38,7 +30,7 @@ export function signInRefusalKind(call: ToolCallOutcome): "required" | "declined
 	if (call.isError !== true || !call.toolName.startsWith(KILO_DESKTOP_TOOL_PREFIX)) {
 		return undefined;
 	}
-	const text = resultText(call.result);
+	const text = toolResultText(call.result);
 	if (text.includes(SIGN_IN_REQUIRED_TOOL_ERROR_CODE)) return "required";
 	if (text.includes(SIGN_IN_DECLINED_TOOL_ERROR_CODE)) return "declined";
 	return undefined;

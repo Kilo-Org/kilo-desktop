@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { Contribution, QualifiedId } from "@kilo-desktop/kernel";
 
-import { McpApp, ToolRenderer } from "../../contracts";
+import {
+	McpApp,
+	ToolRenderer,
+	type ToolCallProps,
+	type ToolRendererImplementation,
+} from "../../contracts";
 import { buildToolkit, hostableMcpApps, toolNameOf } from "./toolkit";
 
 const NOTHING = { component: () => null };
@@ -10,6 +15,7 @@ const NOTHING = { component: () => null };
 function renderer(
 	key: QualifiedId,
 	metadata: { tools: string[]; standalone?: boolean; category?: "terminal" },
+	implementation: ToolRendererImplementation = NOTHING,
 ): Contribution<typeof ToolRenderer> {
 	return {
 		key,
@@ -18,7 +24,7 @@ function renderer(
 		id: key.slice(key.indexOf("/") + 1),
 		priority: 0,
 		metadata: { standalone: false, ...metadata },
-		implementation: NOTHING,
+		implementation,
 		implementedRemotely: false,
 		source: "manifest",
 	};
@@ -54,6 +60,42 @@ describe("buildToolkit", () => {
 		]);
 
 		expect(toolkit.plan_exit).toMatchObject({ type: "backend", display: "standalone" });
+	});
+
+	it("asks the tool's first renderer which of its calls stand alone", () => {
+		const failed = (call: ToolCallProps) => call.isError === true;
+		const { toolkit, standaloneCalls } = buildToolkit([
+			renderer(
+				"kilo.other/install",
+				{ tools: ["kilo.other/install"] },
+				{
+					...NOTHING,
+					isStandalone: failed,
+				},
+			),
+			renderer(
+				"kilo.third/install",
+				{ tools: ["kilo.other/install"] },
+				{
+					...NOTHING,
+					isStandalone: () => true,
+				},
+			),
+			renderer("kilo.chat/bash", { tools: ["bash"] }),
+		]);
+
+		expect(toolkit.desktop_other_install).not.toHaveProperty("display");
+		expect([...standaloneCalls.keys()]).toEqual(["desktop_other_install"]);
+		const isStandalone = standaloneCalls.get("desktop_other_install")!;
+		const call: ToolCallProps = {
+			toolCallId: "call-1",
+			toolName: "desktop_other_install",
+			args: {},
+			argsText: "{}",
+			status: { type: "complete" },
+		};
+		expect(isStandalone(call)).toBe(false);
+		expect(isStandalone({ ...call, isError: true })).toBe(true);
 	});
 
 	it("leaves out contributions bound in another process", () => {

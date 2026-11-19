@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { GroupByContext, PartState } from "@assistant-ui/react";
 
 import { SIGN_IN_REQUIRED_TOOL_ERROR_CODE } from "@kilo-desktop/plugin-core/contracts";
@@ -8,6 +8,7 @@ const signInRequiredToolMessage = (audience: "kilo" | "external") =>
 
 import { HTML_RENDER_TOOL_NAME as HTML_RENDER_AGENT_TOOL_NAME } from "../../contracts";
 import { createActivityGroupBy, createTurnWorkGroupBy } from "./activity-grouping";
+import { setStandaloneToolCalls } from "./standalone-tool-calls";
 
 const context: GroupByContext = {};
 
@@ -324,5 +325,53 @@ describe("createTurnWorkGroupBy", () => {
 			["group-turn-work", "group-delegation-0"],
 			["group-turn-work", "group-delegation-0"],
 		]);
+	});
+});
+
+describe("calls a tool's renderer picks to stand alone", () => {
+	const INSTALL = "desktop_acme_install";
+	const failedInstall = refusedToolPart("install-2", INSTALL, "POLICY_BLOCKED: pillow 8.4.0");
+
+	afterEach(() => setStandaloneToolCalls(new Map()));
+
+	it("keeps only the picked calls out of their activity group and the settled turn's fold", () => {
+		setStandaloneToolCalls(new Map([[INSTALL, (call) => call.isError === true]]));
+		const parts = [
+			toolPart("read-1", "read"),
+			toolPart("install-1", INSTALL),
+			failedInstall,
+			textPart("Pillow 8.4.0 is blocked by your organization's policy."),
+		];
+
+		expect(groupPaths(parts)).toEqual([
+			["group-activity", "group-reading"],
+			["group-activity", "group-mcp-desktop"],
+			[],
+			[],
+		]);
+		const groupBy = createTurnWorkGroupBy(parts);
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-mcp-desktop"],
+			[],
+			[],
+		]);
+	});
+
+	it("folds the call as usual when the renderer's question throws", () => {
+		setStandaloneToolCalls(
+			new Map([
+				[
+					INSTALL,
+					() => {
+						throw new Error("boom");
+					},
+				],
+			]),
+		);
+		const parts = [toolPart("read-1", "read"), failedInstall, textPart("Done.")];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(groupBy(failedInstall, context)[0]).toBe("group-turn-work");
 	});
 });

@@ -106,6 +106,12 @@ function GreetCard(props: ToolRendererProps) {
 - `standalone: true` keeps calls out of activity groups and the settled
   turn's fold (cards that stay actionable); `category` puts them in a
   built-in group (`editing`, `terminal`, `web`…).
+- To pull out only some calls (a failure the person can fix), implement
+  `isStandalone(call)` next to `component`; it is asked of the tool's
+  highest-priority renderer. kilo.environments uses it for package policy and
+  Anaconda sign-in failures.
+- `toolResultText(result)` reads a call's output as text (a string, or an
+  MCP result's text content).
 - kilo.chat ships its own renderers for Kilo's built-in tools through this
   point.
 

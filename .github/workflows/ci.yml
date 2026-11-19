@@ -180,6 +180,13 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       GIT_CONFIG_NOSYSTEM: "true"
+      # The packages with real Git and filesystem checks per platform.
+      PLATFORM_PACKAGES: >-
+        @kilo-desktop/git-client
+        @kilo-desktop/plugin-core
+        @kilo-desktop/plugin-git
+        @kilo-desktop/plugin-notebook
+        @kilo-desktop/plugin-work-sessions
     steps:
       # Job-level env cannot use the runner context, so pin GIT_CONFIG_GLOBAL
       # here before checkout. An empty writable file (not /dev/null) lets
@@ -192,7 +199,15 @@ jobs:
           echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/kilo-test-gitconfig" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
+      # Only these packages and their dependencies (12 of 29 projects, ~900 of
+      # ~1,400 packages): linking the whole workspace was most of this job's
+      # time on Windows. The root project comes along, with turbo and vitest.
+      - name: Install the platform-tested packages
+        shell: bash
+        run: |
+          filters=()
+          for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package..."); done
+          pnpm install --frozen-lockfile "${filters[@]}"
       - uses: ./.github/actions/turbo-cache
         with:
           vitest: "true"
@@ -201,13 +216,10 @@ jobs:
       # Turbo-managed tasks: cached, and the packages run concurrently.
       - name: Run platform compatibility tests
         shell: bash
-        run: >-
-          pnpm exec turbo run test:platform
-          --filter=@kilo-desktop/git-client
-          --filter=@kilo-desktop/plugin-core
-          --filter=@kilo-desktop/plugin-git
-          --filter=@kilo-desktop/plugin-notebook
-          --filter=@kilo-desktop/plugin-work-sessions
+        run: |
+          filters=()
+          for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package"); done
+          pnpm exec turbo run test:platform "${filters[@]}"
 
   # Plans PR e2e before any runner packages the app: the specs the diff can
   # reach (e2e/scripts/select-pr-e2e.ts) and a shard count sized by their

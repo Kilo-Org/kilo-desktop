@@ -13,10 +13,12 @@ inputs:
     default: "true"
   save-pnpm-store:
     description: >
-      Save the pnpm store when no cache matches the lockfile exactly. Pass
-      "false" in all but one job per runner type in a run: after a lockfile
+      Allow saving the pnpm store when no cache matches the lockfile exactly.
+      Pass "false" in all but one job per runner type in a run: after a lockfile
       change every job misses, each compresses a 0.5-0.9 GB store at job end,
-      and only the first save is kept.
+      and only the first save is kept. Even when allowed, a pull request saves
+      only if it changes pnpm-lock.yaml, and the merge queue never saves (see
+      the "Decide whether to save the pnpm store" step).
     required: false
     default: "true"
 
@@ -134,13 +136,39 @@ runs:
       shell: bash
       run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
+    # A pull request that leaves pnpm-lock.yaml alone gets its exact store from
+    # main once warm-caches.yml finishes; a run that starts first (right after
+    # a lockfile change merges) restores an older store, and saving its own
+    # copy would only spend ~35 s uploading what main is about to hold. A merge
+    # queue save is readable only by that queue run's temporary branch.
+    # Fails toward saving if the base commit can't be fetched.
+    - name: Decide whether to save the pnpm store
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true'
+      id: save-store
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        save=true
+        case "$GITHUB_EVENT_NAME" in
+          merge_group) save=false ;;
+          pull_request)
+            if git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA" &&
+              git diff --quiet "$BASE_SHA" HEAD -- pnpm-lock.yaml; then
+              save=false
+            fi
+            ;;
+        esac
+        echo "Save the pnpm store on a miss: $save"
+        echo "save=$save" >> "$GITHUB_OUTPUT"
+
     # Our own cache rather than setup-node's: setup-node only restores an exact
     # lockfile match, so after any dependency change every PR downloaded all
     # ~1,250 packages again. The prefix fallback restores the closest store and
     # pnpm fetches only what changed. Caches saved on a PR branch are invisible
     # to other PRs; .github/workflows/warm-caches.yml saves them on main.
     - name: Cache the pnpm store
-      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true'
+      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
@@ -149,7 +177,7 @@ runs:
           pnpm-store-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Restore the pnpm store
-      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store != 'true'
+      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}

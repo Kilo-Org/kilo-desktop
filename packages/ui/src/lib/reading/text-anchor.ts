@@ -53,21 +53,16 @@ function offsetOf(index: TextIndex, container: Node, offset: number): number {
 		const slice = index.slices.find((candidate) => candidate.node === container);
 		return slice ? slice.start + offset : -1;
 	}
-	// An element position: the text before its `offset`-th child.
-	const child = container.childNodes[offset] ?? null;
-	const range = document.createRange();
-	range.setStart(container, 0);
-	if (child) range.setEndBefore(child);
-	else range.setEnd(container, container.childNodes.length);
-	let last = -1;
+	// An element position falls between text nodes: it sits where the last
+	// text node before it ends (0 when none comes before it).
+	const point = document.createRange();
+	point.setStart(container, offset);
+	let end = 0;
 	for (const slice of index.slices) {
-		if (range.intersectsNode(slice.node) && !(child && child.contains(slice.node))) {
-			last = slice.start + slice.node.data.length;
-		}
+		if (point.comparePoint(slice.node, 0) >= 0) break;
+		end = slice.start + slice.node.data.length;
 	}
-	if (last >= 0) return last;
-	const first = index.slices.find((slice) => child?.contains(slice.node) ?? false);
-	return first ? first.start : index.text.length;
+	return end;
 }
 
 /** The quote for a range inside the roots, or null when it is outside them or empty. */

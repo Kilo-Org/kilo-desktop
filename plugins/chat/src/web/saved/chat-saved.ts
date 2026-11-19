@@ -2,6 +2,8 @@ import type { PluginSdk } from "@kilo-desktop/kernel";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import {
 	Panes,
+	SAVED_ANCHOR_MAX,
+	SAVED_TEXT_MAX,
 	SavedItems,
 	SavedSource,
 	WorkSessionsWindow,
@@ -64,21 +66,19 @@ export class ChatSaved {
 		return this.sdk.domainObjects.get(Chats)?.getState().chats[chatId]?.title ?? "";
 	}
 
+	/** Saves selected reply text; "too-long" when it is past what Saved keeps, null on failure. */
 	async saveText(
 		chat: ChatRef,
 		messageId: string,
 		selector: TextQuote,
 		surface: SavedSurface,
-	): Promise<SavedItem | null> {
-		const anchor: ChatTextAnchor = { v: 1, messageId, selector };
-		return this.#add(
-			chat,
-			CHAT_TEXT_SOURCE,
-			selector.exact,
-			JSON.stringify(anchor),
-			"text",
-			surface,
-		);
+	): Promise<SavedItem | "too-long" | null> {
+		const anchor = JSON.stringify({ v: 1, messageId, selector } satisfies ChatTextAnchor);
+		if (selector.exact.length > SAVED_TEXT_MAX || anchor.length > SAVED_ANCHOR_MAX) {
+			this.reading.track("saved-action-failed", { action: "add", kind: "text" });
+			return "too-long";
+		}
+		return this.#add(chat, CHAT_TEXT_SOURCE, selector.exact, anchor, "text", surface);
 	}
 
 	async bookmark(chat: ChatRef): Promise<SavedItem | null> {
@@ -184,6 +184,8 @@ export class ChatSaved {
 				ref: chatPaneObject(item.ref.id),
 			});
 		} catch {
+			// Nothing should act on it later if that chat is opened another way.
+			this.reveals.cancel(item.ref.id);
 			return "unavailable";
 		}
 		return pending;

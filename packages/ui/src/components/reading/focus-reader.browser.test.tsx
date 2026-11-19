@@ -90,6 +90,22 @@ describe("FocusReader", () => {
 		expect(opacity("Paragraph 1.").style.opacity).toBe("0.22");
 	});
 
+	it("leaves Shift+↑ ↓ to extend a text selection", async () => {
+		render(<Reader initialBlock={0} movesWith="keys" />);
+		await expect.poll(() => opacity("Paragraph 1.").style.opacity).toBe("");
+		const keydown = new KeyboardEvent("keydown", {
+			key: "ArrowDown",
+			shiftKey: true,
+			bubbles: true,
+			cancelable: true,
+		});
+
+		window.dispatchEvent(keydown);
+
+		expect(keydown.defaultPrevented).toBe(false);
+		expect(opacity("Paragraph 1.").style.opacity).toBe("");
+	});
+
 	it("uses the reading theme for the whole reader, with dimming from its own text colour", async () => {
 		render(<Reader themeId="gruvbox" scheme="light" initialBlock={1} />);
 		const root = page.getByTestId("focus-reader").element() as HTMLElement;

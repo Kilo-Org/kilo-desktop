@@ -37,6 +37,13 @@ export interface FocusSource<TTarget extends FocusTargetBase = FocusTargetBase> 
 	targetNearMiddle(): TTarget | null;
 	/** Scrolls the pane to a block, on the way out of Focus. */
 	reveal(target: TTarget): void;
+	/** What entering at `target` reads, for telemetry: its block count and whether it is still streaming. */
+	entryContext(target: TTarget): FocusEntryContext;
+}
+
+export interface FocusEntryContext {
+	readonly blockCount: number;
+	readonly streaming: boolean;
 }
 
 type Listener = () => void;

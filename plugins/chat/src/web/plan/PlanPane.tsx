@@ -142,6 +142,10 @@ function PlanRevision({
 		const index = blockIndexAt(readingBlocks(root), box.top + box.height / 2);
 		return { kind: "plan", block: Math.max(0, index) };
 	};
+	const entryContext = () => {
+		const root = surface();
+		return { blockCount: root ? readingBlocks(root).length : 0, streaming: false };
+	};
 	useFocusSource({
 		kind: "plan",
 		available: Boolean(body),
@@ -151,14 +155,11 @@ function PlanRevision({
 			const block = root ? readingBlocks(root)[target.block] : undefined;
 			block?.elements[0]?.scrollIntoView({ block: "center" });
 		},
+		entryContext,
 	});
 	const enter = (source: "rail" | "reading-control", target = targetNearMiddle()) => {
 		if (!context || !target) return;
-		const root = surface();
-		void context.reading.enter(context, target, source, {
-			blockCount: root ? readingBlocks(root).length : 0,
-			streaming: false,
-		});
+		void context.reading.enter(context, target, source, entryContext());
 	};
 
 	return (

@@ -235,6 +235,21 @@ describe("Focus in the chat", () => {
 		expect(JSON.stringify(envelopes.map(({ data }) => data))).not.toMatch(/login|redirect/u);
 	});
 
+	it("reports what the shortcut enters on, as the rail does", async () => {
+		const envelopes: TelemetryEnvelope[] = [];
+		const host = await showReply(envelopes);
+		await expect
+			.poll(() => host.host.renderer.contextKeys.get("kilo.chat/focusAvailable"))
+			.toBe(true);
+
+		await host.run("toggle-focus");
+
+		await expect.element(inFocus()).toBeInTheDocument();
+		await expect
+			.poll(() => envelopes.find(({ name }) => name === "Focus Entered")?.data)
+			.toMatchObject({ source: "shortcut", blockCount: "2-5", streaming: false });
+	});
+
 	it("saves text selected in Focus, marked in the reading theme's inverted colours", async () => {
 		const host = await showReply();
 		await page.getByText("Finally we add a regression test.").first().hover();

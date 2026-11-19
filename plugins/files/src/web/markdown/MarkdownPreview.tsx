@@ -165,6 +165,10 @@ function ReadingMarkdownPreview({ hasText, children }: { hasText: boolean; child
 			block: Math.max(0, blockIndexAt(readingBlocks(root), box.top + box.height / 2)),
 		};
 	};
+	const blockCount = () => {
+		const root = surface();
+		return root ? readingBlocks(root).length : 0;
+	};
 	useFocusSourceRegistration({
 		available: hasText,
 		targetNearMiddle,
@@ -173,11 +177,11 @@ function ReadingMarkdownPreview({ hasText, children }: { hasText: boolean; child
 			const block = root ? readingBlocks(root)[target.block] : undefined;
 			block?.elements[0]?.scrollIntoView({ block: "center" });
 		},
+		blockCount,
 	});
 	const enter = (source: "rail" | "reading-control", target = targetNearMiddle()) => {
 		if (!context || !target) return;
-		const root = surface();
-		void context.reading.enter(context, target, source, root ? readingBlocks(root).length : 0);
+		void context.reading.enter(context, target, source, blockCount());
 	};
 	return (
 		<div

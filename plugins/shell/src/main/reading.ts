@@ -93,7 +93,7 @@ export function provideReading(
 	});
 
 	const usage: DomainObjectProvider<typeof ReadingUsage> = sdk.domainObjects.provide(ReadingUsage, {
-		initialState: { ...NO_USAGE, ...store.get("usage") },
+		initialState: normalizeUsage(store.get("usage")),
 		methods: {
 			recordFocusEntered: () => {
 				const before = usage.state;
@@ -114,7 +114,13 @@ export function provideReading(
 		if (!sdk.domainObjects.get(KernelDataCollection)?.getState().allowed) return;
 		const last = store.get("lastSnapshotAt");
 		if (last !== null && now() - last < DAY_MS) return;
-		store.set({ lastSnapshotAt: now() });
+		// Best-effort reporting: a failed write (a full or read-only disk) must
+		// not surface from a consent subscription or the timer.
+		try {
+			store.set({ lastSnapshotAt: now() });
+		} catch {
+			return;
+		}
 		const settings = reading.state;
 		track("reading-preferences-snapshot", {
 			themeId: settings.themeId ?? "app",
@@ -158,6 +164,23 @@ function launchState(
 	const preferred = presets.presets.find((preset) => preset.id === presets.defaultId);
 	if (!preferred) return { preferences: normalizeReadingSettings(storedPreferences), presets };
 	return { preferences: preferred.settings, presets: { ...presets, activeId: preferred.id } };
+}
+
+/** Stored usage, field by field: a bad field falls back rather than failing activation. */
+function normalizeUsage(value: unknown): ReadingUsageState {
+	const stored =
+		value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+	const visits = stored.focusVisits;
+	const entered = stored.lastFocusEnteredAt;
+	const exit = stored.lastFocusExit as Record<string, unknown> | null | undefined;
+	return {
+		focusVisits: Number.isInteger(visits) && (visits as number) >= 0 ? (visits as number) : 0,
+		lastFocusEnteredAt: Number.isFinite(entered) ? (entered as number) : null,
+		lastFocusExit:
+			exit && Number.isFinite(exit.at) && typeof exit.workSessionId === "string"
+				? { at: exit.at as number, workSessionId: exit.workSessionId }
+				: null,
+	};
 }
 
 function merge(current: ReadingSettings, patch: ReadingPatch): ReadingSettings {

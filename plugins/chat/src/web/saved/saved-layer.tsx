@@ -105,7 +105,16 @@ export const SavedLayer: FC<{
 			surface,
 		);
 		value.saved.reading.track("selection-menu-used", { action: "save", surface });
-		if (!item) return selection.dismiss();
+		if (item === "too-long" || !item) {
+			selection.dismiss();
+			showToast({
+				message:
+					item === "too-long"
+						? "Too long to save. Select a shorter passage."
+						: "Couldn't save this text",
+			});
+			return;
+		}
 		showRemove(item, rect);
 		showToast({
 			message: "Added to Saved",
@@ -150,6 +159,8 @@ export const SavedLayer: FC<{
 			{children}
 			{selection && value ? (
 				<SelectionMenu
+					// Save and Remove differ in width: a new menu re-centres for the new mode.
+					key={selection.mode}
 					anchor={selection.rect}
 					mode={selection.mode}
 					onSave={() => void save()}
@@ -311,14 +322,24 @@ function useReplySelection(
 		const onKeyUp = (event: KeyboardEvent) => {
 			if (event.shiftKey || event.key.startsWith("Arrow")) read(event);
 		};
-		const onScroll = () => setSelection(null);
+		// The replies scroll inside an ancestor (the transcript viewport, the
+		// Focus scroller), and scroll events don't bubble: listen at the document
+		// and close the menu when what scrolled moves the replies.
+		const onScroll = (event: Event) => {
+			const scrolled = event.target;
+			if (
+				scrolled === document ||
+				(scrolled instanceof Node && (scrolled.contains(root) || root.contains(scrolled)))
+			)
+				setSelection(null);
+		};
 		root.addEventListener("pointerup", onUp);
 		root.addEventListener("keyup", onKeyUp);
-		root.addEventListener("scroll", onScroll, { capture: true, passive: true });
+		document.addEventListener("scroll", onScroll, { capture: true, passive: true });
 		return () => {
 			root.removeEventListener("pointerup", onUp);
 			root.removeEventListener("keyup", onKeyUp);
-			root.removeEventListener("scroll", onScroll, { capture: true });
+			document.removeEventListener("scroll", onScroll, { capture: true });
 		};
 	}, [latestItems, root]);
 	return { selection: shown, showRemove };

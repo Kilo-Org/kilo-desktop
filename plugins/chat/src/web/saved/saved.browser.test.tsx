@@ -21,7 +21,7 @@ const ANSWER =
 
 const EARLIER_ANSWER = "Login reads the session cookie first.";
 
-async function showReply({ earlierTurn = false } = {}) {
+async function showReply({ earlierTurn = false, answer = ANSWER } = {}) {
 	const server = new FakeKiloServer();
 	server.addChat({
 		id: "ses_a",
@@ -38,7 +38,7 @@ async function showReply({ earlierTurn = false } = {}) {
 				: []),
 			userMessage("ses_a", "msg_1", "Why does login fail?"),
 			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "text", text: ANSWER, time: { start: 3, end: 4 } },
+				{ type: "text", text: answer, time: { start: 3, end: 4 } },
 			]),
 		],
 	});
@@ -127,6 +127,29 @@ describe("Save in the chat", () => {
 		await expect
 			.poll(() => host.workSessions.saved().state.items.map(({ text }) => text))
 			.toEqual(["We should keep the return URL in the session."]);
+	});
+
+	it("says a selection is too long to save instead of failing silently", async () => {
+		const long = "Detail. ".repeat(1_400).trim();
+		const host = await showReply({ answer: `${ANSWER}\n\n${long}` });
+
+		await selectText(long, long);
+		await page.getByTestId("chat-selection-menu-save").click();
+
+		await expect
+			.element(page.getByTestId("chat-saved-toast"))
+			.toHaveTextContent("Too long to save. Select a shorter passage.");
+		expect(host.workSessions.saved().state.items).toEqual([]);
+	});
+
+	it("closes the menu when the transcript scrolls", async () => {
+		await showReply();
+		await selectText("keep the return URL", "We should keep the return URL in the session.");
+		await expect.element(page.getByTestId("chat-selection-menu-save")).toBeVisible();
+
+		document.querySelector('[data-slot="aui_thread-viewport"]')!.dispatchEvent(new Event("scroll"));
+
+		await expect.element(page.getByTestId("chat-selection-menu")).not.toBeInTheDocument();
 	});
 
 	it("turns Save into Remove once saved, which takes the text straight back out", async () => {

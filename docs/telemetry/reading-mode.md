@@ -42,5 +42,5 @@ plugin's manifest.
 | Saved Page Searched          | kilo.work-sessions            | Once per search, after typing settles                                    | `queryLength` (bucket), `results` (count)                                                                                                                                                                                                                                                                                                                                                                           |
 | Saved Page Filtered          | kilo.work-sessions            | A filter chip is chosen                                                  | `filter` (all · chats · text)                                                                                                                                                                                                                                                                                                                                                                                       |
 
-`kilo.chat/src/web/reading/reading-telemetry.ts` types kilo.chat's events; a
+`plugins/chat/src/web/reading/reading-telemetry.ts` types kilo.chat's events; a
 unit test keeps that list equal to its manifest's declarations.

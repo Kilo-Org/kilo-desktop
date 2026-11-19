@@ -11,6 +11,9 @@ export function useDimmingPreview(saved: number): {
 	onDimmingInput: (dimming: number) => void;
 } {
 	const [preview, setPreview] = useState<{ value: number; over: number } | null>(null);
+	// A newer saved value spends the preview for good, so a later return to
+	// the old value (Reset, a preset) can't bring it back.
+	if (preview && preview.over !== saved) setPreview(null);
 	const onDimmingInput = (value: number) => setPreview({ value, over: saved });
 	return { dimming: preview?.over === saved ? preview.value : saved, onDimmingInput };
 }

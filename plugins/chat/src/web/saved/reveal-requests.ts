@@ -53,6 +53,11 @@ export class RevealRequests {
 		return pending;
 	}
 
+	/** Drops a chat's untaken request as unavailable (its chat couldn't be opened). */
+	cancel(chatId: string): void {
+		this.take(chatId)?.resolve("unavailable");
+	}
+
 	#settle(request: RevealRequest, result: SavedRevealResult): void {
 		if (this.#pending === request) this.#pending = null;
 		request.resolve(result);

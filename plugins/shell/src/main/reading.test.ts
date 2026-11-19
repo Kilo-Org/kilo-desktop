@@ -303,6 +303,40 @@ describe("reading presets (main)", () => {
 });
 
 describe("reading usage (main)", () => {
+	it("falls back field by field when stored usage is damaged", async () => {
+		const storage = createMemoryStorage("/data/kilo.shell");
+		storage.saved.set("reading", {
+			usage: { focusVisits: "3", lastFocusEnteredAt: 2_000, lastFocusExit: { at: 1 } },
+		});
+
+		const { usage } = await boot({ storage });
+
+		expect(usage.getState()).toEqual({
+			focusVisits: 0,
+			lastFocusEnteredAt: 2_000,
+			lastFocusExit: null,
+		});
+	});
+
+	it("skips the daily snapshot when its write fails, without throwing", async () => {
+		const storage = createMemoryStorage("/data/kilo.shell");
+		const kv = storage.kv.bind(storage);
+		storage.kv = (options) => {
+			const store = kv(options);
+			return {
+				...store,
+				set: (patch) => {
+					if ("lastSnapshotAt" in patch) throw new Error("disk full");
+					return store.set(patch);
+				},
+			};
+		};
+
+		const { sent } = await boot({ storage });
+
+		expect(sent()).toEqual([]);
+	});
+
 	it("counts Focus visits and remembers the last exit", async () => {
 		let now = 1_000;
 		const { usage } = await boot({ now: () => now });

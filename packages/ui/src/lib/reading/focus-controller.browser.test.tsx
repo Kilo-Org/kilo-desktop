@@ -12,6 +12,7 @@ function source(paneId: string, reveal = vi.fn()): FocusSource<Target> {
 		available: () => true,
 		targetNearMiddle: () => ({ kind: "doc", block: 2 }),
 		reveal,
+		entryContext: () => ({ blockCount: 3, streaming: false }),
 	};
 }
 

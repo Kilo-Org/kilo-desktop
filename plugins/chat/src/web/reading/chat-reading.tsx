@@ -245,7 +245,7 @@ export function activateChatReading(sdk: PluginSdk): ChatReading {
 			reading.track("focus-entry-failed", { reason: source ? "no-content" : "unavailable" });
 			return;
 		}
-		await reading.enter(source, target, "shortcut", { blockCount: 0, streaming: false });
+		await reading.enter(source, target, "shortcut", source.entryContext(target));
 	});
 	for (const id of ["exit-focus", "focus-move"] as const) {
 		sdk.extensions.implement(KernelCommand, id, () => undefined);

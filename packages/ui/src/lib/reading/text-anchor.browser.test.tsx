@@ -88,4 +88,13 @@ describe("text anchors", () => {
 			locateQuote(first, { exact: "missing", prefix: "", suffix: "", startHint: 0 }),
 		).toBeNull();
 	});
+
+	it("reads a start before an empty element as the start of the text, not its end", () => {
+		const root = mount("<p><span></span>Alpha beta</p>");
+		const range = document.createRange();
+		range.setStart(root.querySelector("p")!, 0);
+		range.setEnd(root.querySelector("p")!.lastChild!, 5);
+
+		expect(quoteOf(root, range)?.exact).toBe("Alpha");
+	});
 });

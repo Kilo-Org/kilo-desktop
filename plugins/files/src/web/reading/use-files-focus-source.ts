@@ -10,6 +10,8 @@ interface Options {
 	readonly available: boolean;
 	readonly targetNearMiddle: () => FileFocusTarget | null;
 	readonly reveal: (target: FileFocusTarget) => void;
+	/** How many blocks Focus will read (a Markdown file never streams). */
+	readonly blockCount: () => number;
 }
 
 /** Registers the pane's rendered Markdown as something Focus can read while it is mounted. */
@@ -29,6 +31,7 @@ export function useFocusSourceRegistration(options: Options): void {
 			available: () => latest.current.available,
 			targetNearMiddle: () => latest.current.targetNearMiddle(),
 			reveal: (target) => latest.current.reveal(target),
+			entryContext: () => ({ blockCount: latest.current.blockCount(), streaming: false }),
 		};
 		return reading.focus.register(source);
 	}, [latest, reading, workSessionId, paneId]);

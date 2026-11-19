@@ -255,7 +255,8 @@ export function FocusReader({
 				return;
 			}
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-				if (mod || event.altKey) return;
+				// Shift+↑ ↓ extends a text selection, as anywhere else.
+				if (mod || event.altKey || event.shiftKey) return;
 				event.preventDefault();
 				const current = Math.max(0, focusedIndex.current);
 				const next = event.key === "ArrowDown" ? current + 1 : current - 1;

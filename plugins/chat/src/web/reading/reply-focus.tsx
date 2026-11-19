@@ -13,7 +13,12 @@ import { usePlanHiddenCallIds } from "../plan/use-plan-thread-projection";
 import { createActivityGroupBy, createTurnWorkGroupBy } from "../tools/activity-grouping";
 import { SavedLayer } from "../saved/saved-layer";
 import { MarkdownText } from "../thread/markdown-text";
-import { replyBlocks, replyTargetNearMiddle, revealReplyBlock } from "./chat-focus";
+import {
+	replyBlocks,
+	replyTargetNearMiddle,
+	revealReplyBlock,
+	type ChatFocusTarget,
+} from "./chat-focus";
 import { useChatReading, useFocusContainer, useFocusSession } from "./chat-reading";
 import { PaneFocusRail, PaneReadingControl, replyTargetFromRail } from "./reading-ui";
 import { useFocusSource } from "./use-focus-source";
@@ -46,20 +51,23 @@ export function useTranscriptReading(column: HTMLElement | null) {
 		reveal: (target) => {
 			if (target.kind === "reply") revealReplyBlock(viewport(), target.messageId, target.block);
 		},
+		entryContext: (target) => entryContext(target),
 	});
+
+	const entryContext = (target: ChatFocusTarget) => {
+		const message =
+			target.kind === "reply"
+				? viewport()?.querySelector(`[data-message-id="${CSS.escape(target.messageId)}"]`)
+				: null;
+		return { blockCount: message ? replyBlocks(message).length : 0, streaming: isRunning };
+	};
 
 	const enter = (
 		source: "rail" | "reading-control",
 		target = replyTargetNearMiddle(viewport()),
 	) => {
 		if (!context || !target || target.kind !== "reply") return;
-		const message = viewport()?.querySelector(
-			`[data-message-id="${CSS.escape(target.messageId)}"]`,
-		);
-		void context.reading.enter(context, target, source, {
-			blockCount: message ? replyBlocks(message).length : 0,
-			streaming: isRunning,
-		});
+		void context.reading.enter(context, target, source, entryContext(target));
 	};
 
 	return { available: Boolean(context) && hasReply, enter };

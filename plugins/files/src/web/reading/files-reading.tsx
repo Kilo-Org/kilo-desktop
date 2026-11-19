@@ -210,7 +210,7 @@ export function activateFilesReading(sdk: PluginSdk): FilesReading {
 			reading.track("focus-entry-failed", { reason: source ? "no-content" : "unavailable" });
 			return;
 		}
-		await reading.enter(source, target, "shortcut", 0);
+		await reading.enter(source, target, "shortcut", source.entryContext(target).blockCount);
 	});
 
 	let available = false;

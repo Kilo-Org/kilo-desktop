@@ -16,7 +16,8 @@ import { defaultChannelSelection, selectableChannels } from "./channel-presentat
 const NO_CHANNELS: readonly string[] = [];
 
 export function useChannelSelection(configured: string[] | undefined, extra?: readonly string[]) {
-	const available = [...new Set([...(extra ?? []), ...selectableChannels(configured ?? [])])];
+	const availableSet = new Set([...(extra ?? []), ...selectableChannels(configured ?? [])]);
+	const available = [...availableSet];
 	const availableKey = available.join("\n");
 	const [selected, setSelected] = useState<string[]>(() => defaultChannelSelection(available));
 	const [seededFor, setSeededFor] = useState(availableKey);
@@ -36,12 +37,9 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 	const toggle = (channel: string) => {
 		setSelected((prev) => {
 			if (prev.includes(channel)) return prev.filter((c) => c !== channel);
-			if (!available.includes(channel)) return [...prev, channel];
+			if (!availableSet.has(channel)) return [...prev, channel];
 			const next = new Set([...prev, channel]);
-			return [
-				...available.filter((c) => next.has(c)),
-				...prev.filter((c) => !available.includes(c)),
-			];
+			return [...available.filter((c) => next.has(c)), ...prev.filter((c) => !availableSet.has(c))];
 		});
 	};
 
@@ -51,7 +49,8 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 	}
 
 	const channelsArg = selected.length > 0 ? selected : undefined;
-	const allSelected = available.length > 0 && available.every((c) => selected.includes(c));
+	const selectedSet = new Set(selected);
+	const allSelected = available.length > 0 && available.every((c) => selectedSet.has(c));
 	const summary = allSelected
 		? "All channels"
 		: selected.length === 0
@@ -59,7 +58,7 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 			: `${selected.length} channel${selected.length === 1 ? "" : "s"}`;
 	const defaults = defaultChannelSelection(available);
 	const customized =
-		defaults.length !== selected.length || defaults.some((channel) => !selected.includes(channel));
+		defaults.length !== selected.length || defaults.some((channel) => !selectedSet.has(channel));
 
 	return {
 		available,

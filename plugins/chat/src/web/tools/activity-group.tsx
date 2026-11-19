@@ -330,10 +330,13 @@ export const ManualDisclosureProvider: FC<PropsWithChildren<{ scope?: string }>>
 			if (current.get(id) === open) return current;
 			const next = new Map(current);
 			next.set(id, open);
-			if (scope !== undefined) memory?.set(scope, next);
 			return next;
 		});
 	};
+	// Entries are only ever added, so an empty map means nothing was toggled yet.
+	useEffect(() => {
+		if (scope !== undefined && openById.size > 0) memory?.set(scope, openById);
+	}, [memory, scope, openById]);
 	const value = { openById, setOpen };
 	return (
 		<ManualDisclosureContext.Provider value={value}>{children}</ManualDisclosureContext.Provider>

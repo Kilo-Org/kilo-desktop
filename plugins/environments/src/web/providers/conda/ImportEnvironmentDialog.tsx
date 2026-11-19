@@ -397,6 +397,8 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 							>
 								<pre className="p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
 									{fileContent.split("\n").map((line, i) => (
+										// Read-only preview lines are stateless and never reorder; duplicates make text keys collide.
+										// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 										<YamlLine key={i} line={line} />
 									))}
 								</pre>

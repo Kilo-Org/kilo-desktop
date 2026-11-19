@@ -82,10 +82,6 @@ type ScrollMotion = {
 	lastTime: number;
 };
 
-function createScrollMotion(): ScrollMotion {
-	return { frame: 0, target: 0, velocity: 0, lastTime: 0 };
-}
-
 function cancelHorizontalScroll(motionRef: { current: ScrollMotion }) {
 	const motion = motionRef.current;
 	if (motion.frame) cancelAnimationFrame(motion.frame);
@@ -629,7 +625,7 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 	const [contentRegistry] = useState(createPaneContentMountRegistry);
 	const [columnMountVersion, onColumnReady] = useReducer((version: number) => version + 1, 0);
 	const layoutRef = useLatestRef(layout);
-	const scrollMotionRef = useRef<ScrollMotion>(createScrollMotion());
+	const scrollMotionRef = useRef<ScrollMotion>({ frame: 0, target: 0, velocity: 0, lastTime: 0 });
 	const panRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
 	const userScrolledRef = useRef(false);
 	const revealedGroupIdRef = useRef<string | null>(null);

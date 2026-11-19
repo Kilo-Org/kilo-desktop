@@ -92,6 +92,8 @@ describe("formatType", () => {
 		).toBe("{ a: string } & { b: number }");
 		expect(formatType(z.map(z.string(), z.number()))).toBe("Map<string, number>");
 		expect(formatType(z.set(z.string()))).toBe("Set<string>");
+		// Contributed schemas may still use z.promise, so the formatter keeps covering it.
+		// react-doctor-disable-next-line react-doctor/zod-v4-no-deprecated-schema-apis
 		expect(formatType(z.promise(z.string()))).toBe("Promise<string>");
 		expect(formatType(z.function())).toBe("(...args: unknown[]) => unknown");
 		expect(formatType(z.string().optional())).toBe("string | undefined");

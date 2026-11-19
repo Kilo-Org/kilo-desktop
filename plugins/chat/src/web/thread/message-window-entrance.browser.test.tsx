@@ -5,8 +5,8 @@ import {
 	useExternalStoreRuntime,
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
-import { act, cleanup, render } from "@testing-library/react";
-import { useState, type FC } from "react";
+import { cleanup, render } from "@testing-library/react";
+import type { FC } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { WindowedMessages } from "./message-window";
@@ -35,11 +35,7 @@ const Message: FC = () => {
 
 afterEach(cleanup);
 
-let setSnapshot: (snapshot: Snapshot) => void = () => undefined;
-
-const Transcript: FC<{ initial: Snapshot }> = ({ initial }) => {
-	const [snapshot, set] = useState(initial);
-	setSnapshot = set;
+const Transcript: FC<{ snapshot: Snapshot }> = ({ snapshot }) => {
 	const runtime = useExternalStoreRuntime({
 		messages: snapshot.messages,
 		isRunning: snapshot.isRunning,
@@ -63,73 +59,66 @@ const lastAssistant = () => {
 };
 const animates = (element: HTMLElement) => getComputedStyle(element).animationName !== "none";
 
+/** Renders the transcript at `initial`; the returned function moves it to a new snapshot. */
+function renderTranscript(initial: Snapshot): (snapshot: Snapshot) => void {
+	const { rerender } = render(<Transcript snapshot={initial} />);
+	return (snapshot) => rerender(<Transcript snapshot={snapshot} />);
+}
+
 describe("message entrance animation", () => {
 	it("plays once for a turn whose placeholder messages are swapped for the server's", () => {
-		render(
-			<Transcript initial={{ messages: [user("msg_0"), assistant("msg_0a")], isRunning: false }} />,
-		);
+		const setSnapshot = renderTranscript({
+			messages: [user("msg_0"), assistant("msg_0a")],
+			isRunning: false,
+		});
 
 		// Sent: the pending user message, and assistant-ui's optimistic reply.
-		act(() =>
-			setSnapshot({
-				messages: [user("msg_0"), assistant("msg_0a"), user("local:abc")],
-				isRunning: true,
-			}),
-		);
+		setSnapshot({
+			messages: [user("msg_0"), assistant("msg_0a"), user("local:abc")],
+			isRunning: true,
+		});
 		expect(animates(lastAssistant())).toBe(true);
 
 		// The server echoes the user message under its own id; the optimistic reply's id changes.
-		act(() =>
-			setSnapshot({
-				messages: [user("msg_0"), assistant("msg_0a"), user("msg_1")],
-				isRunning: true,
-			}),
-		);
+		setSnapshot({
+			messages: [user("msg_0"), assistant("msg_0a"), user("msg_1")],
+			isRunning: true,
+		});
 		expect(animates(lastAssistant())).toBe(false);
 
 		// The server's reply replaces the optimistic one.
-		act(() =>
-			setSnapshot({
-				messages: [user("msg_0"), assistant("msg_0a"), user("msg_1"), assistant("msg_1a")],
-				isRunning: true,
-			}),
-		);
+		setSnapshot({
+			messages: [user("msg_0"), assistant("msg_0a"), user("msg_1"), assistant("msg_1a")],
+			isRunning: true,
+		});
 		expect(animates(lastAssistant())).toBe(false);
 
 		// The next turn extends the transcript, so it enters again.
-		act(() =>
-			setSnapshot({
-				messages: [
-					user("msg_0"),
-					assistant("msg_0a"),
-					user("msg_1"),
-					assistant("msg_1a"),
-					user("msg_2"),
-					assistant("msg_2a"),
-				],
-				isRunning: false,
-			}),
-		);
+		setSnapshot({
+			messages: [
+				user("msg_0"),
+				assistant("msg_0a"),
+				user("msg_1"),
+				assistant("msg_1a"),
+				user("msg_2"),
+				assistant("msg_2a"),
+			],
+			isRunning: false,
+		});
 		expect(animates(lastAssistant())).toBe(true);
 	});
 
 	it("plays for messages that follow a revert, which shortened the transcript", () => {
-		render(
-			<Transcript
-				initial={{
-					messages: [user("msg_0"), assistant("msg_0a"), user("msg_1"), assistant("msg_1a")],
-					isRunning: false,
-				}}
-			/>,
-		);
+		const setSnapshot = renderTranscript({
+			messages: [user("msg_0"), assistant("msg_0a"), user("msg_1"), assistant("msg_1a")],
+			isRunning: false,
+		});
 
-		act(() => setSnapshot({ messages: [user("msg_0"), assistant("msg_0a")], isRunning: false }));
-		act(() =>
-			setSnapshot({
-				messages: [user("msg_0"), assistant("msg_0a"), user("msg_3"), assistant("msg_3a")],
-				isRunning: false,
-			}),
-		);
+		setSnapshot({ messages: [user("msg_0"), assistant("msg_0a")], isRunning: false });
+		setSnapshot({
+			messages: [user("msg_0"), assistant("msg_0a"), user("msg_3"), assistant("msg_3a")],
+			isRunning: false,
+		});
 
 		expect(animates(lastAssistant())).toBe(true);
 	});

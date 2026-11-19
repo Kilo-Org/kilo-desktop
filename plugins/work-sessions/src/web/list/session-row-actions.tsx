@@ -395,6 +395,8 @@ export const SessionRenameInput: FC<{
 	onRename: (title: string) => Promise<unknown>;
 	onDone: (restoreFocus: boolean) => void;
 }> = ({ title, onRename, onDone }) => {
+	// The edit draft is seeded from the title once, when renaming starts.
+	// react-doctor-disable-next-line react-doctor/no-derived-useState
 	const [value, setValue] = useState(title);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const settledRef = useRef(false);

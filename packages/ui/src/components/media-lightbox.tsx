@@ -268,6 +268,8 @@ function LightboxView({
 	) : null;
 
 	return (
+		// A focus sink that catches keyboard shortcuts bubbling from the lightbox; every action also has a real button.
+		// react-doctor-disable-next-line react-doctor/no-static-element-interactions
 		<div
 			ref={root}
 			tabIndex={-1}

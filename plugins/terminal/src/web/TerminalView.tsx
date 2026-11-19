@@ -217,6 +217,8 @@ export function TerminalView({ workSessionId, pane, workspaceId, directory }: Pa
 	}
 	return (
 		<div ref={viewRef} className="bg-pane flex min-h-0 flex-1" data-qa-id="terminal-view">
+			{/* First-party terminal UI isolated by its dedicated protocol origin and CSP; a sandbox granting scripts and same-origin would add no boundary. */}
+			{/* react-doctor-disable-next-line react-doctor/iframe-missing-sandbox */}
 			<iframe
 				key={frameKey}
 				ref={setFrame}

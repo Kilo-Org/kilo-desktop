@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import {
 	useEffect,
+	useLayoutEffect,
 	useRef,
 	useState,
 	type FC,
@@ -1178,8 +1179,8 @@ const VirtualizedCatalogRows: FC<
 	"use no memo";
 	// TanStack's useVirtualizer mutates one instance in place, so memoizing its readers would show stale rows.
 	const listRef = useRef<HTMLDivElement>(null);
-	const listEntriesRef = useRef(listEntries);
-	listEntriesRef.current = listEntries;
+	// This component opts out of React Compiler with "use no memo" above.
+	// react-doctor-disable-next-line react-hooks-js/incompatible-library
 	const virtualizer = useVirtualizer({
 		count: listEntries.length,
 		getScrollElement: () => listRef.current,
@@ -1201,19 +1202,21 @@ const VirtualizedCatalogRows: FC<
 		},
 	});
 
-	// Keep highlight→scroll wiring current without an effect (ref update during render).
-	scrollToHighlightedRef.current = (id) => {
-		if (id === SIGN_IN_ITEM_ID) {
-			listRef.current?.scrollTo({ top: 0 });
-			return;
-		}
-		const index = listEntriesRef.current.findIndex(
-			(entry) => entry.kind === "model" && entry.model.id === id,
-		);
-		if (index >= 0) {
-			virtualizer.scrollToIndex(index, { align: "auto" });
-		}
-	};
+	// Only keyboard handlers call this, after commit, so the committed rows are the ones to scroll.
+	useLayoutEffect(() => {
+		scrollToHighlightedRef.current = (id) => {
+			if (id === SIGN_IN_ITEM_ID) {
+				listRef.current?.scrollTo({ top: 0 });
+				return;
+			}
+			const index = listEntries.findIndex(
+				(entry) => entry.kind === "model" && entry.model.id === id,
+			);
+			if (index >= 0) {
+				virtualizer.scrollToIndex(index, { align: "auto" });
+			}
+		};
+	});
 
 	const virtualItems = virtualizer.getVirtualItems();
 
@@ -1256,18 +1259,16 @@ const VirtualizedCatalogRows: FC<
 									className="absolute top-0 left-0 w-full"
 									style={{ transform: `translateY(${virtualRow.start}px)` }}
 								>
-									<div
+									<h3
 										className={cn(
 											// Same inset and type as CommandGroup headings, so labels line up with items.
 											"text-muted-foreground px-1.5 pb-1 text-xs font-medium",
 											virtualRow.index === 0 ? "pt-1" : "pt-2",
 										)}
 										data-qa-id={`kilo-model-section-${entry.id}`}
-										role="heading"
-										aria-level={3}
 									>
 										{entry.label}
-									</div>
+									</h3>
 								</div>
 							);
 						}
@@ -1712,6 +1713,8 @@ const EnkryptRiskIndicator: FC<{ value: number }> = ({ value }) => {
 	const display = value.toFixed(1);
 	const marker = value < 100 / 3 ? "bg-success" : value < 200 / 3 ? "bg-warning" : "bg-destructive";
 	return (
+		// A native <meter> renders only its own gauge and hides children, so it can't show the score text.
+		// react-doctor-disable-next-line react-doctor/prefer-tag-over-role
 		<div
 			role="meter"
 			aria-label="Enkrypt risk score"

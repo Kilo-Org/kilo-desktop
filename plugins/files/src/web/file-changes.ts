@@ -48,6 +48,8 @@ export function useWorkspaceFileChanges(options: FileChangeOptions): void {
 	});
 	const watching = (options.enabled ?? true) && includes.length > 0;
 
+	// The domain object's `on` returns its unsubscribe, which the effect returns.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!files || !watching) return;
 		return files.on("changed", (event) => {

@@ -20,8 +20,11 @@ const sameRequests = (
 	b: readonly OpenCodePermissionRequest[],
 ) => a.length === b.length && a.every((request, index) => request === b[index]);
 
-const sameIds = (a: readonly string[], b: readonly string[]) =>
-	a.length === b.length && a.every((id) => b.includes(id));
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+	if (a.length !== b.length) return false;
+	const inB = new Set(b);
+	return a.every((id) => inB.has(id));
+}
 
 const selectHolding = (state: DomainObjectState<typeof AutoApprove>) => state.holding;
 const selectMode = (state: DomainObjectState<typeof AutoApprove>) => state.mode;
@@ -75,9 +78,10 @@ export function hiddenPermissions(
 		readonly rules: AutoAnswerRules;
 	},
 ): OpenCodePermissionRequest[] {
+	const holding = new Set(state.holding);
 	return pending.filter(
 		(request) =>
-			state.holding.includes(request.id) ||
+			holding.has(request.id) ||
 			(!state.released.has(request.id) &&
 				state.now - request.askedAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS &&
 				autoAnswers(request, state.rules)),
@@ -96,8 +100,8 @@ function withoutHidden(
 	hiddenKey: string,
 ): readonly OpenCodePermissionRequest[] {
 	if (!hiddenKey) return pending;
-	const hiddenIds = hiddenKey.split("\n");
-	return pending.filter((request) => !hiddenIds.includes(request.id));
+	const hiddenIds = new Set(hiddenKey.split("\n"));
+	return pending.filter((request) => !hiddenIds.has(request.id));
 }
 
 /**
@@ -118,9 +122,10 @@ export function useVisiblePermissionRequests(
 	const [held, setHeld] = useState(holding);
 	const [released, setReleased] = useState<ReadonlySet<string>>(() => new Set());
 	const [now, setNow] = useState(() => Date.now());
+	const holdingIds = new Set(holding);
 	if (!sameIds(held, holding)) {
 		setHeld(holding);
-		const letGo = held.filter((id) => !holding.includes(id));
+		const letGo = held.filter((id) => !holdingIds.has(id));
 		if (letGo.length > 0) setReleased(new Set([...released, ...letGo]));
 	}
 
@@ -130,7 +135,7 @@ export function useVisiblePermissionRequests(
 		now,
 		rules: { mode, signedIn, signInTools: signInToolNames(tools) },
 	});
-	const unreported = hidden.filter((request) => !holding.includes(request.id));
+	const unreported = hidden.filter((request) => !holdingIds.has(request.id));
 	const nextRevealAt = unreported.length
 		? Math.min(...unreported.map((request) => request.askedAt)) + PERMISSION_AUTO_ANSWER_TIMEOUT_MS
 		: undefined;

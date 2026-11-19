@@ -121,8 +121,12 @@ function PanelSlot({
 				"flex min-h-0",
 				settled ? "min-w-[calc(280px+--spacing(1.5))]" : "overflow-hidden",
 			)}
+			// A one-shot reveal that must reflow the main pane; it snaps under reduced motion.
+			// react-doctor-disable-next-line react-doctor/no-layout-property-animation
 			initial={{ width: 0 }}
+			// react-doctor-disable-next-line react-doctor/no-layout-property-animation
 			animate={{ width: "auto" }}
+			// react-doctor-disable-next-line react-doctor/no-layout-property-animation
 			exit={{ width: 0 }}
 			transition={reduceMotion ? SHELL_LAYOUT_SNAP : SHELL_LAYOUT_SPRING}
 			onAnimationStart={() => setSettled(false)}

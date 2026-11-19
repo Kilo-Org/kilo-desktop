@@ -86,6 +86,8 @@ export function useAiProviders() {
 	};
 
 	const requested = useRef(false);
+	// The request runs once (`requested`), and `reload` only sets state while mounted.
+	// react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
 	useEffect(() => {
 		if (!models || ready || requested.current) return;
 		requested.current = true;

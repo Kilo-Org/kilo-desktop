@@ -135,6 +135,8 @@ export class ServiceSupervisor {
 		const runs = [...this.#runs.values()].sort(
 			(a, b) => this.#options.pluginOrder(b.pluginId) - this.#options.pluginOrder(a.pluginId),
 		);
+		// Services stop one at a time in reverse plugin order so dependents stop before their dependencies.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		for (const run of runs) await this.#stop(run);
 	}
 

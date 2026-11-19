@@ -38,12 +38,7 @@ import type {
 import { useConda, useCondaMutation } from "../../conda";
 import { usePathForFile } from "../../app";
 import { validateEnvironmentName } from "./environment-display";
-import {
-	importEnvironmentJob,
-	jobToastOptions,
-	showJobError,
-	showJobSuccess,
-} from "./environments-toasts";
+import { importEnvironmentJob, showJobSuccess, useJobToasts } from "./environments-toasts";
 
 const ACCEPTED_EXTENSIONS = [".yml", ".yaml"];
 
@@ -107,6 +102,7 @@ interface ImportEnvironmentDialogProps {
 export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDialogProps) {
 	const conda = useConda();
 	const pathForFile = usePathForFile();
+	const { jobToastOptions, showJobError } = useJobToasts();
 	const [filePath, setFilePath] = useState<string | null>(null);
 	const [fileName, setFileName] = useState<string | null>(null);
 	const [fileContent, setFileContent] = useState<string | null>(null);

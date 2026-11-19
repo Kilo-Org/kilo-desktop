@@ -18,13 +18,19 @@ import {
 	type FriendlyEnvironmentsError,
 } from "./environments-error-message";
 import { PolicyErrorDetails } from "./PolicyErrorDetails";
-import { useReportPolicyFailureOnce } from "./use-track-policy-failure";
+import { useTrackPolicyFailure } from "./use-track-policy-failure";
 
 /**
  * Wording for one long-running environments job. Every job reports through
  * stock sonner `toast.promise`: loading → success, or a failure that stays on
  * screen until dismissed because it is usually actionable ("an environment
  * already exists at that location").
+ *
+ * A failed job is reported as `environment-policy-blocked` when its toast is
+ * raised, through the reporter of the environments component that started
+ * the job ({@link useJobToasts}). Never from inside the toast: kilo.shell
+ * hosts `<Toaster>`, so a toast's content runs with kilo.shell's identity and
+ * the kernel would drop the event as one kilo.shell never declared.
  */
 export interface JobToastCopy {
 	loading: string;
@@ -39,25 +45,36 @@ export interface JobToastCopy {
 	operation?: EnvironmentsOperation;
 }
 
-/** `toast.promise` options for a job; pass `id` to continue an existing toast. */
-export function jobToastOptions(copy: JobToastCopy, id?: string | number) {
+/** Reports a job's failure as telemetry (see `useTrackPolicyFailure`). */
+export type ReportJobFailure = (reason: unknown) => void;
+
+/**
+ * `toast.promise` options for a job; pass `id` to continue an existing toast.
+ * A failure is passed to `reportFailure` once, when its toast is raised.
+ */
+export function jobToastOptions(
+	copy: JobToastCopy,
+	reportFailure: ReportJobFailure,
+	id?: string | number,
+) {
 	return {
 		...(id !== undefined ? { id } : {}),
 		loading: copy.loading,
 		...(copy.loadingDescription ? { description: copy.loadingDescription } : {}),
 		success: () => ({ message: copy.success, description: copy.successDescription }),
-		error: (reason: unknown) => jobErrorToast(copy, reason),
+		error: (reason: unknown) => jobErrorToast(copy, reason, reportFailure),
 	};
 }
 
-function jobErrorToast(copy: JobToastCopy, reason: unknown) {
+function jobErrorToast(copy: JobToastCopy, reason: unknown, reportFailure: ReportJobFailure) {
+	reportFailure(reason);
 	const error = copy.operation
 		? friendlyEnvironmentsError(reason, copy.errorFallback, { operation: copy.operation })
 		: friendlyEnvironmentsError(reason, copy.errorFallback);
 	return {
 		message: copy.errorTitle,
 		description: hasPolicyDetails(error) ? (
-			<PolicyFailureSummary title={copy.errorTitle} error={error} reason={reason} />
+			<PolicyFailureSummary title={copy.errorTitle} error={error} />
 		) : (
 			error.message
 		),
@@ -84,18 +101,15 @@ function oneLine(message: string): string {
  * A job's policy or Anaconda sign-in failure in its toast: a one-line
  * summary and "Details", which opens the whole message with
  * {@link PolicyErrorDetails} (blocked packages, policy note, sign-in).
- * Reported once when shown.
+ * Reported by `jobErrorToast`, not here (see {@link JobToastCopy}).
  */
 function PolicyFailureSummary({
 	title,
 	error,
-	reason,
 }: {
 	title: string;
 	error: FriendlyEnvironmentsError;
-	reason: unknown;
 }) {
-	useReportPolicyFailureOnce(reason);
 	const [open, setOpen] = useState(false);
 	return (
 		<div className="flex flex-col items-start gap-1.5" data-qa-id="environments-job-error-policy">
@@ -135,10 +149,30 @@ export function showJobSuccess(copy: JobToastCopy): void {
 	toast.success(copy.success, { description: copy.successDescription });
 }
 
-/** Report a job that failed while its dialog was still open. */
-export function showJobError(copy: JobToastCopy, reason: unknown): void {
-	const { message, ...options } = jobErrorToast(copy, reason);
+/** Report a job that failed while its dialog was still open; `reportFailure` gets the failure once. */
+export function showJobError(
+	copy: JobToastCopy,
+	reason: unknown,
+	reportFailure: ReportJobFailure,
+): void {
+	const { message, ...options } = jobErrorToast(copy, reason, reportFailure);
 	toast.error(message, options);
+}
+
+/**
+ * {@link jobToastOptions} and {@link showJobError} bound to the calling
+ * component's policy-failure reporter. Call it in the environments component
+ * that starts the job, so the failure is sent as kilo.environments however
+ * long after the job the toast is raised.
+ */
+export function useJobToasts() {
+	const reportFailure = useTrackPolicyFailure();
+	return {
+		jobToastOptions: (copy: JobToastCopy, id?: string | number) =>
+			jobToastOptions(copy, reportFailure, id),
+		showJobError: (copy: JobToastCopy, reason: unknown) =>
+			showJobError(copy, reason, reportFailure),
+	};
 }
 
 function packageCount(count: number): string {

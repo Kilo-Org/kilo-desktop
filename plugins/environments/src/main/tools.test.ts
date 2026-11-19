@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { KernelError } from "@kilo-desktop/kernel";
 import type { ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
@@ -6,7 +6,7 @@ import type { ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 import manifest from "../../plugin.json";
 import { formatEnvironmentsErrorMessage } from "../contracts/common";
 import type { CondaMethods } from "./conda-service";
-import { condaTools } from "./tools";
+import { condaTools, withPolicyFailureReporting } from "./tools";
 
 const CONTEXT: ToolCallContext = {
 	chatId: null,
@@ -182,17 +182,20 @@ describe("Anaconda channel preference", () => {
 	);
 });
 
+function descriptionOf(name: string): string | undefined {
+	return registry()
+		.all()
+		.find((candidate) => candidate.name === name)?.description;
+}
+
 describe("package policy and Anaconda sign-in guidance", () => {
 	it.each([
 		"conda.envs.create",
-		"conda.envs.clone",
 		"conda.packages.install",
 		"conda.packages.update",
 		"conda.repodata.find",
 	])("%s tells the agent to report a block verbatim and never route around it", (name) => {
-		const description = registry()
-			.all()
-			.find((candidate) => candidate.name === name)?.description;
+		const description = descriptionOf(name);
 		expect(description).toMatch(/POLICY_BLOCKED/);
 		expect(description).toMatch(/\[policy\]/);
 		expect(description).toMatch(/verbatim/i);
@@ -202,6 +205,17 @@ describe("package policy and Anaconda sign-in guidance", () => {
 		expect(description).toMatch(/CHANNEL_ACCESS_DENIED/);
 		expect(description).toMatch(/sign in to Anaconda \(not Kilo\)/i);
 		expect(description).toMatch(/never ask .* for a token/i);
+	});
+
+	// A clone's failure never carries a policy reason (the backend reports it as
+	// SOLVE_FAILED without a `[policy]` line), so it must not promise either.
+	it("conda.envs.clone promises no POLICY_BLOCKED or [policy] line, and still forbids routing around", () => {
+		const description = descriptionOf("conda.envs.clone");
+		expect(description).not.toMatch(/POLICY_BLOCKED/);
+		expect(description).not.toMatch(/\[policy\]/);
+		expect(description).not.toMatch(/NOT_SIGNED_IN|CHANNEL_ACCESS_DENIED/);
+		expect(description).toMatch(/generic SOLVE_FAILED/);
+		expect(description).toMatch(/do not .*another channel, pip or a URL/i);
 	});
 });
 
@@ -275,6 +289,27 @@ describe("a tool that fails on a package policy", () => {
 				},
 			},
 		]);
+	});
+
+	it("passes the tool call's context through to the tool unchanged", async () => {
+		const run = vi.fn((_input: unknown, _context: unknown) => "ran");
+		const report = vi.fn();
+
+		await expect(withPolicyFailureReporting(run, report)({ name: "dev" }, CONTEXT)).resolves.toBe(
+			"ran",
+		);
+		expect(run).toHaveBeenCalledExactlyOnceWith({ name: "dev" }, CONTEXT);
+		expect(report).not.toHaveBeenCalled();
+	});
+
+	it("reports a tool that throws synchronously, then rethrows it unchanged", async () => {
+		const run = () => {
+			throw blockedError;
+		};
+		const report = vi.fn();
+
+		await expect(withPolicyFailureReporting(run, report)({}, CONTEXT)).rejects.toBe(blockedError);
+		expect(report).toHaveBeenCalledExactlyOnceWith(blockedError);
 	});
 
 	it("sends nothing for other failures", async () => {

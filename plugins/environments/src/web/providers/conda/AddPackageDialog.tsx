@@ -31,12 +31,7 @@ import {
 	friendlyEnvironmentsError,
 	type FriendlyEnvironmentsError,
 } from "./environments-error-message";
-import {
-	installPackagesJob,
-	jobToastOptions,
-	showJobError,
-	showJobSuccess,
-} from "./environments-toasts";
+import { installPackagesJob, showJobSuccess, useJobToasts } from "./environments-toasts";
 import {
 	ChannelListFailure,
 	PackageResultsTable,
@@ -83,6 +78,7 @@ export function AddPackageDialog({
 }: AddPackageDialogProps) {
 	const conda = useConda();
 	const trackPolicyFailure = useTrackPolicyFailure();
+	const { jobToastOptions, showJobError } = useJobToasts();
 	const install = useCondaMutation(conda, "installPackages", {
 		invalidates: ["listPackages", "findRepodata"],
 	});

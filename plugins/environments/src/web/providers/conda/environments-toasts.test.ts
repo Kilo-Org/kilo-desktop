@@ -32,13 +32,15 @@ import {
 	updatePackagesJob,
 } from "./environments-toasts";
 
+const reportFailure = vi.fn();
+
 beforeEach(() => {
 	vi.clearAllMocks();
 });
 
 describe("jobToastOptions", () => {
 	it("maps the job copy onto toast.promise loading, success and error states", () => {
-		const options = jobToastOptions(createEnvironmentJob("my-env"));
+		const options = jobToastOptions(createEnvironmentJob("my-env"), reportFailure);
 
 		expect(options.loading).toBe("Creating my-env…");
 		expect(options.description).toBe("Resolving dependencies and installing packages.");
@@ -49,7 +51,7 @@ describe("jobToastOptions", () => {
 	});
 
 	it("keeps failures on screen with the friendly error as the description", () => {
-		const options = jobToastOptions(deleteEnvironmentJob("my-env"));
+		const options = jobToastOptions(deleteEnvironmentJob("my-env"), reportFailure);
 
 		expect(options.error("boom")).toEqual({
 			message: "Could not delete my-env",
@@ -62,9 +64,20 @@ describe("jobToastOptions", () => {
 		);
 	});
 
+	it("reports a failure once, when its toast is raised, and never a success", () => {
+		const options = jobToastOptions(installPackagesJob("dev", 1), reportFailure);
+
+		options.success();
+		expect(reportFailure).not.toHaveBeenCalled();
+		options.error("boom");
+		expect(reportFailure).toHaveBeenCalledExactlyOnceWith("boom");
+	});
+
 	it("continues an existing toast when given an id", () => {
-		expect(jobToastOptions(updatePackagesJob("dev", 2), "t-1")).toMatchObject({ id: "t-1" });
-		expect(jobToastOptions(updatePackagesJob("dev", 2))).not.toHaveProperty("id");
+		expect(jobToastOptions(updatePackagesJob("dev", 2), reportFailure, "t-1")).toMatchObject({
+			id: "t-1",
+		});
+		expect(jobToastOptions(updatePackagesJob("dev", 2), reportFailure)).not.toHaveProperty("id");
 	});
 });
 
@@ -96,7 +109,7 @@ describe("job copy", () => {
 	});
 
 	it("explains a failed backup as a clone, never as a dependency conflict", () => {
-		jobToastOptions(backupEnvironmentJob("a", "a-backup")).error("boom");
+		jobToastOptions(backupEnvironmentJob("a", "a-backup"), reportFailure).error("boom");
 
 		expect(friendlyEnvironmentsError).toHaveBeenCalledWith(
 			"boom",
@@ -120,11 +133,13 @@ describe("showJobSuccess / showJobError", () => {
 		});
 	});
 
-	it("reports a failed job with a persistent error toast", () => {
-		showJobError(createEnvironmentJob("my-env"), new Error("boom"));
+	it("reports a failed job with a persistent error toast, and passes the failure on once", () => {
+		const reason = new Error("boom");
+		showJobError(createEnvironmentJob("my-env"), reason, reportFailure);
 		expect(toast.error).toHaveBeenCalledWith("Could not create my-env", {
 			description: "Could not create the environment.",
 			duration: Infinity,
 		});
+		expect(reportFailure).toHaveBeenCalledExactlyOnceWith(reason);
 	});
 });

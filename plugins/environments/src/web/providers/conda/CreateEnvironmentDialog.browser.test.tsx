@@ -2,7 +2,7 @@ import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
@@ -14,7 +14,11 @@ import {
 	type CondaRepodataFindResult,
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import {
+	renderWithConda,
+	ShellHostedToaster,
+	type EnvironmentsHostOptions,
+} from "../../../test/environments-host";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog";
 import { PREFIX_CHECK_DEBOUNCE_MS } from "./use-create-prefix-check";
 
@@ -50,7 +54,9 @@ async function renderDialog(
 		find?: () => CondaRepodataPackage[];
 		/** Full control over the search response, e.g. to page by `limit`. */
 		search?: (input: CondaRepodataFindInput) => CondaRepodataFindResult;
-		create?: (input: CondaEnvsCreateInput) => CondaEnvsCreateResult;
+		create?: (
+			input: CondaEnvsCreateInput,
+		) => CondaEnvsCreateResult | Promise<CondaEnvsCreateResult>;
 		/**
 		 * Override the prefix check. By default it behaves like the real one
 		 * against an in-memory disk: `taken` prefixes plus every prefix a
@@ -64,7 +70,9 @@ async function renderDialog(
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["1.26.4", "1.25.0"]), pkg("pandas")]);
-	const create: (input: CondaEnvsCreateInput) => CondaEnvsCreateResult =
+	const create: (
+		input: CondaEnvsCreateInput,
+	) => CondaEnvsCreateResult | Promise<CondaEnvsCreateResult> =
 		options.create ?? (() => ({ jobId: "job-1", environment: { name: "x", prefix: "/x" } }));
 	const disk = new Set(options.taken ?? []);
 	const checkPrefix =
@@ -93,7 +101,7 @@ async function renderDialog(
 	return renderWithConda(
 		<>
 			<CreateEnvironmentDialog open onClose={() => {}} />
-			<Toaster />
+			<ShellHostedToaster />
 		</>,
 		hostOptions,
 	);
@@ -364,6 +372,56 @@ describe("CreateEnvironmentDialog (modal)", () => {
 				customLocation: false,
 			},
 		});
+	});
+
+	it("reports a create the policy blocks as kilo.environments once, from its background toast", async () => {
+		const policyId = "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10";
+		const blockedReady = deferred<void>();
+		const create = async (): Promise<CondaEnvsCreateResult> => {
+			await blockedReady.promise;
+			throw new Error(
+				formatEnvironmentsErrorMessage("POLICY_BLOCKED", "pandas 1.0.0 is blocked", {
+					blocked: [
+						{
+							package: "pandas",
+							version: "1.0.0",
+							channel: "acme/main",
+							org: "acme",
+							policy: "No critical CVEs",
+							policyId,
+							reason: null,
+						},
+					],
+				}),
+			);
+		};
+		const { baseElement, host } = await renderDialog({ create });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+		await userEvent.click(screen.getByTestId("environments-create-submit"));
+		await userEvent.click(screen.getByTestId("environments-create-background"));
+		blockedReady.resolve();
+
+		// The toast is hosted with kilo.shell's identity; the kernel drops events
+		// kilo.shell never declared, so the event only arrives sent as kilo.environments.
+		await expect.element(page.getByTestId("environments-job-error-policy")).toBeVisible();
+		const policyBlocked = () =>
+			host.tracked.filter(({ event }) => event === "Environment Policy Blocked");
+		await vi.waitFor(() =>
+			expect(policyBlocked()).toEqual([
+				{
+					event: "Environment Policy Blocked",
+					data: {
+						surface: "ui",
+						errorCode: "POLICY_BLOCKED",
+						blockedCount: 1,
+						policyNote: false,
+						policyIds: [policyId],
+					},
+				},
+			]),
+		);
 	});
 
 	it("opens the channel chooser popover from the Channels button", async () => {

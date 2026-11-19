@@ -31,7 +31,7 @@ import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../
 import { useTrack } from "../../app";
 import type { CondaEnv, CondaRepodataFindResult } from "../../../contracts/providers/conda";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
-import { useChannelSelection } from "./use-channel-selection";
+import { configuredChannelsOf, useChannelSelection } from "./use-channel-selection";
 import { validateEnvironmentName } from "./environment-display";
 import {
 	createEnvironmentJob,
@@ -40,6 +40,7 @@ import {
 	showJobSuccess,
 } from "./environments-toasts";
 import {
+	ChannelListFailure,
 	PackageResultsTable,
 	PackageSearchInput,
 	SelectedPackagesPane,
@@ -159,11 +160,11 @@ export function CreateEnvironmentDialog({
 				})
 			: null;
 	const canCreate = prefixCheck.status === "available" && !mutation.isPending;
-	const channels = useChannelSelection(prefixQuery.data?.channels, preset?.channels);
+	const channels = useChannelSelection(configuredChannelsOf(prefixQuery), preset?.channels);
 	const search = usePackageSearch({
 		conda,
 		open,
-		ready: !prefixQuery.isPending,
+		ready: channels.ready,
 		query,
 		channels: channels.channelsArg,
 	});
@@ -181,7 +182,7 @@ export function CreateEnvironmentDialog({
 	// static list only when the lookup returns nothing (offline / provider
 	// not ready).
 	useEffect(() => {
-		if (!open) return;
+		if (!open || !channels.ready) return;
 		let cancelled = false;
 		const args = channels.channelsArg
 			? { names: ["python"], limit: 1, channels: channels.channelsArg }
@@ -200,7 +201,7 @@ export function CreateEnvironmentDialog({
 		return () => {
 			cancelled = true;
 		};
-	}, [open, channels.channelsArg, conda]);
+	}, [open, channels.ready, channels.channelsArg, conda]);
 
 	function resetForm() {
 		setName("");
@@ -397,12 +398,20 @@ export function CreateEnvironmentDialog({
 								/>
 							</div>
 
-							<PackageResultsTable
-								search={search}
-								query={query}
-								selection={selection}
-								qaPrefix="environments-create-package"
-							/>
+							{channels.status === "failed" ? (
+								<ChannelListFailure
+									reason={channels.error}
+									onRetry={() => void prefixQuery.refetch()}
+									qaPrefix="environments-create-package"
+								/>
+							) : (
+								<PackageResultsTable
+									search={search}
+									query={query}
+									selection={selection}
+									qaPrefix="environments-create-package"
+								/>
+							)}
 						</div>
 
 						{selection.selected.length > 0 ? (

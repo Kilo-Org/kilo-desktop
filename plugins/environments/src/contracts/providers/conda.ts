@@ -403,6 +403,9 @@ export type CondaEnvsReadFileResult = z.infer<typeof condaEnvsReadFileResultSche
  * Result of `conda.envs.prefixOptions` — the directories where conda
  * looks for and creates environments (`envs_dirs` from `conda info`).
  * The first entry is the default location used when no prefix is specified.
+ * `channels` are the configured channels' canonical names (`defaults`,
+ * `conda-forge`, `acme/main`), in configured order; empty when none are
+ * configured. They are never expanded into per-subdir URLs.
  */
 export const condaEnvsPrefixOptionsResultSchema = z.object({
 	envsDirs: z.array(z.string().min(1)),

@@ -869,6 +869,53 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("prefixOptions()", () => {
+		it("offers the configured channels by name, not conda.info's per-subdir URLs", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "bridge.ping") return Promise.resolve({});
+				if (method === "conda.info") {
+					return Promise.resolve({
+						envs_dirs: ["/opt/conda/envs", "", "/home/user/.conda/envs"],
+						channels: [
+							"https://repo.anaconda.cloud/repo/main/osx-arm64",
+							"https://repo.anaconda.cloud/repo/main/noarch",
+						],
+					});
+				}
+				if (method === "conda_tools.list_channels") {
+					return Promise.resolve([
+						{ name: "defaults", urls: ["https://repo.anaconda.cloud/repo/main/osx-arm64"] },
+						{ name: "acme/modelcatalog--main", urls: [] },
+					]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+
+			expect(await backend.prefixOptions()).toEqual({
+				envsDirs: ["/opt/conda/envs", "/home/user/.conda/envs"],
+				channels: ["defaults", "acme/modelcatalog--main"],
+			});
+		});
+
+		it("has no channels when none are configured", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "bridge.ping") return Promise.resolve({});
+				if (method === "conda.info") return Promise.resolve({ envs_dirs: ["/opt/conda/envs"] });
+				if (method === "conda_tools.list_channels") return Promise.resolve([]);
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+
+			expect(await backend.prefixOptions()).toEqual({
+				envsDirs: ["/opt/conda/envs"],
+				channels: [],
+			});
+		});
+	});
+
 	describe("addChannel()", () => {
 		it("sends conda_tools.add_channel then returns updated channels", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {

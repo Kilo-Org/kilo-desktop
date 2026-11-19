@@ -2,31 +2,53 @@ import { useState } from "react";
 
 import { defaultChannelSelection, selectableChannels } from "./channel-presentation";
 
-/**
- * Channel choice for the package-search dialogs (create environment, add
- * packages). Defaults to every selectable channel; the user can toggle any
- * channel off/on freely. Channels backed by an Anaconda API key fail at fetch
- * time with a handled error — there is no in-dialog sign-in step.
- *
- * `extra` channels (an install link's channel) are offered and selected
- * ahead of the configured ones, even before `configured` is known: conda
- * prefers the channels it is given first. The selection is seeded once, from
- * what is offered when the first channels arrive.
- */
+/** The configured channels as the dialogs know them: still loading, failed, or loaded (maybe empty). */
+export type ConfiguredChannels =
+	| { readonly status: "loading" }
+	| { readonly status: "failed"; readonly error: unknown }
+	| { readonly status: "loaded"; readonly channels: readonly string[] };
+
+/** {@link ConfiguredChannels} from a `prefixOptions` query. */
+export function configuredChannelsOf(query: {
+	readonly isPending: boolean;
+	readonly isError: boolean;
+	readonly error: unknown;
+	readonly data?: { readonly channels: readonly string[] } | undefined;
+}): ConfiguredChannels {
+	if (query.data) return { status: "loaded", channels: query.data.channels };
+	if (query.isError) return { status: "failed", error: query.error };
+	return { status: "loading" };
+}
+
 const NO_CHANNELS: readonly string[] = [];
 
-export function useChannelSelection(configured: string[] | undefined, extra?: readonly string[]) {
-	const available = [...new Set([...(extra ?? []), ...selectableChannels(configured ?? [])])];
+/**
+ * Channel choice for the package-search dialogs (create environment, add
+ * packages). Offers {@link selectableChannels}: the configured channels, or
+ * `defaults` and `conda-forge` only once the list has loaded empty. While the
+ * list loads, or after it failed, nothing is offered but `extra`, and `ready`
+ * stays false so the dialogs hold search and preview; a failure is exposed as
+ * `error` and never replaced by the fixed channels.
+ *
+ * `extra` channels (an install link's channel) are offered and selected
+ * ahead of the configured ones, even before the list is known: conda prefers
+ * the channels it is given first. Until the person changes the selection, it
+ * follows what is offered; afterwards their choice is kept (re-seeded only
+ * when they have deselected everything).
+ */
+export function useChannelSelection(configured: ConfiguredChannels, extra?: readonly string[]) {
+	const loadedChannels =
+		configured.status === "loaded" ? selectableChannels(configured.channels) : [];
+	const available = [...new Set([...(extra ?? []), ...loadedChannels])];
 	const availableKey = available.join("\n");
 	const [selected, setSelected] = useState<string[]>(() => defaultChannelSelection(available));
 	const [seededFor, setSeededFor] = useState(availableKey);
+	const [touched, setTouched] = useState(false);
 	const [open, setOpen] = useState(false);
 
-	// Seed the defaults once channels arrive, without overriding a selection the
-	// user already made.
 	if (seededFor !== availableKey) {
 		setSeededFor(availableKey);
-		if (available.length > 0 && selected.length === 0) {
+		if (available.length > 0 && (!touched || selected.length === 0)) {
 			setSelected(defaultChannelSelection(available));
 		}
 	}
@@ -34,6 +56,7 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 	// Selection order is the channel priority conda solves with, so a channel
 	// toggled back on returns to its offered position rather than the end.
 	const toggle = (channel: string) => {
+		setTouched(true);
 		setSelected((prev) => {
 			if (prev.includes(channel)) return prev.filter((c) => c !== channel);
 			if (!available.includes(channel)) return [...prev, channel];
@@ -46,11 +69,13 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 	};
 
 	function reset() {
+		setTouched(false);
 		setSelected(defaultChannelSelection(available));
 		setOpen(false);
 	}
 
-	const channelsArg = selected.length > 0 ? selected : undefined;
+	const ready = configured.status === "loaded";
+	const channelsArg = ready && selected.length > 0 ? selected : undefined;
 	const allSelected = available.length > 0 && available.every((c) => selected.includes(c));
 	const summary = allSelected
 		? "All channels"
@@ -62,6 +87,11 @@ export function useChannelSelection(configured: string[] | undefined, extra?: re
 		defaults.length !== selected.length || defaults.some((channel) => !selected.includes(channel));
 
 	return {
+		/** Whether the configured channels are known; search and preview wait for it. */
+		ready,
+		status: configured.status,
+		/** Why the configured channels could not be read, when they could not. */
+		error: configured.status === "failed" ? configured.error : undefined,
 		available,
 		/** The `extra` channels, which the chooser labels as the install link's. */
 		linkChannels: extra ?? NO_CHANNELS,

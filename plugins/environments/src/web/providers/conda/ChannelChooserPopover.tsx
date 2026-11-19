@@ -30,9 +30,9 @@ interface ChannelChooserPopoverProps {
 
 /**
  * Channel picker for package search, rendered as the toolbar filter button
- * used beside other search inputs. Every offered channel toggles freely with
- * no sign-in step; channels backed by an Anaconda API key fail at fetch time
- * with a handled error.
+ * used beside other search inputs. Every offered channel toggles freely; a
+ * channel that refuses the Anaconda account fails at fetch time, and the
+ * search offers "Sign in to Anaconda" then.
  */
 export function ChannelChooserPopover({
 	open,

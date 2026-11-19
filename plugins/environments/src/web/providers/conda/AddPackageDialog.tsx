@@ -37,6 +37,7 @@ import {
 	showJobSuccess,
 } from "./environments-toasts";
 import {
+	ChannelListFailure,
 	PackageResultsTable,
 	PackageSearchInput,
 	PanelSectionHeading,
@@ -45,7 +46,11 @@ import {
 	usePackageSelection,
 	type PackageInstallPreset,
 } from "./PackageSearch";
-import { useChannelSelection } from "./use-channel-selection";
+import {
+	configuredChannelsOf,
+	useChannelSelection,
+	type ConfiguredChannels,
+} from "./use-channel-selection";
 import { useTrackPolicyFailure } from "./use-track-policy-failure";
 import { usePackageSearch } from "./use-package-search";
 
@@ -88,11 +93,11 @@ export function AddPackageDialog({
 	const { selected } = selection;
 
 	const prefixQuery = useCondaQuery(conda, "prefixOptions");
-	const channels = useChannelSelection(prefixQuery.data?.channels, preset?.channels);
+	const channels = useChannelSelection(configuredChannelsOf(prefixQuery), preset?.channels);
 	const search = usePackageSearch({
 		conda,
 		open,
-		ready: !prefixQuery.isPending,
+		ready: channels.ready,
 		query,
 		channels: channels.channelsArg,
 	});
@@ -128,7 +133,7 @@ export function AddPackageDialog({
 	const solveKey = `${selected.map(selectedPackageToSpec).join(",")}|${(channels.channelsArg ?? []).join(",")}`;
 
 	const runPreview = () => {
-		if (selected.length === 0) return;
+		if (selected.length === 0 || !channels.ready) return;
 		const specs = selected.map(selectedPackageToSpec);
 		if (solveKey === lastSolveKeyRef.current && previewRef.current && !previewErrorRef.current)
 			return;
@@ -169,7 +174,7 @@ export function AddPackageDialog({
 	// or channels change, so the install button re-locks until the solver
 	// re-solves the new specs — otherwise it would stay enabled against a stale
 	// solve during the debounce window.
-	const previewKey = open && selected.length > 0 ? solveKey : null;
+	const previewKey = open && selected.length > 0 && channels.ready ? solveKey : null;
 	const [shownPreviewKey, setShownPreviewKey] = useState(previewKey);
 	if (shownPreviewKey !== previewKey) {
 		setShownPreviewKey(previewKey);
@@ -180,7 +185,7 @@ export function AddPackageDialog({
 	// Auto-preview when the selection changes — debounced so rapid clicks
 	// don't fire a solver request per toggle.
 	useEffect(() => {
-		if (!open || selected.length === 0) {
+		if (!open || selected.length === 0 || !channels.ready) {
 			lastSolveKeyRef.current = "";
 			return;
 		}
@@ -194,7 +199,7 @@ export function AddPackageDialog({
 		}
 		const timer = setTimeout(runPreview, PREVIEW_DEBOUNCE_MS);
 		return () => clearTimeout(timer);
-	}, [open, selected, solveKey, runPreview]);
+	}, [open, selected, solveKey, runPreview, channels.ready]);
 
 	const selectedNames = new Set(selected.map((s) => s.name));
 	const changes = summarizeChanges(preview, selectedNames, depFilter);
@@ -325,14 +330,22 @@ export function AddPackageDialog({
 									onToggle={channels.toggle}
 								/>
 							</div>
-							<PackageResultsTable
-								search={search}
-								query={query}
-								selection={selection}
-								installedByName={installedByName}
-								disabled={install.isPending}
-								qaPrefix="environments-conda-add-pkg"
-							/>
+							{channels.status === "failed" ? (
+								<ChannelListFailure
+									reason={channels.error}
+									onRetry={() => void prefixQuery.refetch()}
+									qaPrefix="environments-conda-add-pkg"
+								/>
+							) : (
+								<PackageResultsTable
+									search={search}
+									query={query}
+									selection={selection}
+									installedByName={installedByName}
+									disabled={install.isPending}
+									qaPrefix="environments-conda-add-pkg"
+								/>
+							)}
 						</div>
 
 						{selected.length > 0 ? (
@@ -345,6 +358,7 @@ export function AddPackageDialog({
 									filter={depFilter}
 									onFilterChange={setDepFilter}
 									onRetry={runPreview}
+									channelsStatus={channels.status}
 								/>
 							</SelectedPackagesPane>
 						) : null}
@@ -404,6 +418,7 @@ function DependencyChangesSection({
 	filter,
 	onFilterChange,
 	onRetry,
+	channelsStatus,
 }: {
 	preview: CondaPackagesPreviewResult | null;
 	loading: boolean;
@@ -412,6 +427,8 @@ function DependencyChangesSection({
 	filter: ChangeFilter;
 	onFilterChange: (filter: ChangeFilter) => void;
 	onRetry: () => void;
+	/** The preview waits for the configured channels, and never runs without them. */
+	channelsStatus: ConfiguredChannels["status"];
 }) {
 	const resolved = preview !== null && !loading && !error;
 	const categoryCount = Object.values(changes.counts).filter((count) => count > 0).length;
@@ -438,7 +455,11 @@ function DependencyChangesSection({
 			>
 				Dependency changes
 			</PanelSectionHeading>
-			{error ? (
+			{channelsStatus === "failed" ? (
+				<p className="text-muted-foreground px-4 py-1.5 text-xs">
+					Load your conda channels to see what else changes.
+				</p>
+			) : error ? (
 				<div className="px-4">
 					<SolverErrorCard
 						error={error}

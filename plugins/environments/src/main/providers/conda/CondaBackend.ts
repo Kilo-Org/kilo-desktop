@@ -98,6 +98,7 @@ export interface CondaCreateFromFileRequest {
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 	findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]>;
+	/** Where environments can go, and the configured channels by canonical name. */
 	prefixOptions(ctx?: CondaCallContext): Promise<{ envsDirs: string[]; channels: string[] }>;
 
 	create(

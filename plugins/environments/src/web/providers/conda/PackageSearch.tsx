@@ -36,6 +36,8 @@ import {
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { CondaRepodataPackage } from "../../../contracts/providers/conda";
+import { friendlyEnvironmentsError } from "./environments-error-message";
+import { FailureEmptyState } from "./EnvironmentsFailure";
 import type { PackageSearch } from "./use-package-search";
 
 /** Sentinel Select value for the "latest" (unpinned) package version. */
@@ -162,6 +164,30 @@ export function PackageSearchInput({
 				<SearchIcon aria-hidden="true" />
 			</InputGroupAddon>
 		</InputGroup>
+	);
+}
+
+/**
+ * The configured channels could not be read, so there is nothing to search:
+ * says why, with "Try again". Never falls back to fixed channels.
+ */
+export function ChannelListFailure({
+	reason,
+	onRetry,
+	qaPrefix,
+}: {
+	reason: unknown;
+	onRetry: () => void;
+	qaPrefix: string;
+}) {
+	return (
+		<FailureEmptyState
+			reason={reason}
+			error={friendlyEnvironmentsError(reason, "Could not read your conda channels.")}
+			title="Couldn't load your conda channels"
+			onRetry={onRetry}
+			qaId={`${qaPrefix}-channels-error`}
+		/>
 	);
 }
 

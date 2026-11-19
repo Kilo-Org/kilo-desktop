@@ -125,15 +125,15 @@ async function waitForInstallEnabled(baseElement: HTMLElement) {
 afterEach(cleanup);
 
 describe("AddPackageDialog", () => {
-	it("searches repodata with the query and selected channels after the debounce", async () => {
+	it("searches only the configured channels with the query after the debounce", async () => {
 		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
-		const { baseElement } = await renderDialog({ find, channels: ["conda-forge"] });
+		const { baseElement } = await renderDialog({ find, channels: ["conda-forge", "bioconda"] });
 		const screen = page.elementLocator(baseElement);
 
 		await waitForRows(baseElement, 1);
 		// Initial search waits for prefixOptions so the channel filter is present.
 		expect(find.mock.calls[0]![0]).toMatchObject({
-			channels: ["defaults", "conda-forge"],
+			channels: ["conda-forge", "bioconda"],
 			limit: 50,
 		});
 		expect(find.mock.calls[0]![0].query).toBeUndefined();
@@ -143,9 +143,50 @@ describe("AddPackageDialog", () => {
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0]).toMatchObject({
 				query: "num",
-				channels: ["defaults", "conda-forge"],
+				channels: ["conda-forge", "bioconda"],
 			});
 		});
+	});
+
+	it("searches defaults and conda-forge when no channel is configured", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		const { baseElement } = await renderDialog({ find, channels: [] });
+
+		await waitForRows(baseElement, 1);
+		expect(find.mock.calls[0]![0].channels).toEqual(["defaults", "conda-forge"]);
+	});
+
+	it("holds the search when the channel list fails, and searches once it loads", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		let fail = true;
+		const { baseElement } = await renderWithConda(
+			<AddPackageDialog env={ENV} open onClose={() => {}} />,
+			{
+				handlers: {
+					"conda.envs.prefixOptions": async () => {
+						if (fail) throw new Error("PROVIDER_NOT_READY: anaconda-bridge-sidecar error: exited");
+						return { envsDirs: [], channels: ["acme/main"] };
+					},
+					"conda.packages.list": async () => ({ envName: "dev", packages: [] }),
+					"conda.repodata.find": async (input: CondaRepodataFindInput) => ({
+						packages: find(input),
+						truncated: false,
+					}),
+				},
+			},
+		);
+		const screen = page.elementLocator(baseElement);
+
+		const failure = screen.getByTestId("environments-conda-add-pkg-channels-error");
+		await expect.element(failure).toBeVisible();
+		await expect.element(failure.getByText("Couldn't load your conda channels")).toBeVisible();
+		expect(find).not.toHaveBeenCalled();
+
+		fail = false;
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-error-retry"));
+
+		await waitForRows(baseElement, 1);
+		expect(find.mock.calls[0]![0].channels).toEqual(["acme/main"]);
 	});
 
 	it("shows an empty-state message when the search has no results", async () => {
@@ -265,7 +306,7 @@ describe("AddPackageDialog", () => {
 	it("installs pinned specs for the chosen versions and closes on success", async () => {
 		const install = vi.fn(async (_input: CondaPackagesInstallInput) => installResult());
 		const onClose = vi.fn();
-		const { baseElement } = await renderDialog({ install, onClose, channels: ["conda-forge"] });
+		const { baseElement } = await renderDialog({ install, onClose, channels: ["acme/main"] });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -289,7 +330,7 @@ describe("AddPackageDialog", () => {
 			name: "dev",
 			prefix: "/opt/anaconda3/envs/dev",
 			packages: ["numpy=2.0.0", "pandas"],
-			channels: ["defaults", "conda-forge"],
+			channels: ["acme/main"],
 		});
 		await vi.waitFor(() => {
 			expect(onClose).toHaveBeenCalledOnce();

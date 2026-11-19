@@ -171,6 +171,11 @@ function splitPolicyBlockedDetail(detail: string | undefined): { summary?: strin
 	};
 }
 
+/** repo.anaconda.cloud refused the request: the Anaconda (not Kilo) account is missing or refused. */
+export function needsAnacondaSignIn(code: EnvironmentsErrorCode | null): boolean {
+	return code === "NOT_SIGNED_IN" || code === "CHANNEL_ACCESS_DENIED";
+}
+
 /**
  * The title of an error card (the Add packages and Update previews). A solve
  * failure is a "Dependency conflict"; other failures are not called one.

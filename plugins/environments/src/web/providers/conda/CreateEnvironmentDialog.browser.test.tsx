@@ -378,6 +378,19 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(chooser.getByRole("menuitemcheckbox", { name: /Anaconda/ })).toBeVisible();
 	});
 
+	it("offers exactly the configured channels, adding no product channel", async () => {
+		const { baseElement } = await renderDialog({ channels: ["acme/main", "bioconda"] });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
+		const chooser = page.getByTestId("environments-channel-chooser");
+		await expect
+			.element(chooser.getByRole("menuitemcheckbox", { name: /acme\/main/ }))
+			.toBeChecked();
+		await expect.element(chooser.getByRole("menuitemcheckbox", { name: /bioconda/ })).toBeChecked();
+		expect(await chooser.getByRole("menuitemcheckbox").all()).toHaveLength(2);
+	});
+
 	it("offers the product channel selector when conda reports no configured channels", async () => {
 		const { baseElement } = await renderDialog({ channels: [] });
 		const screen = page.elementLocator(baseElement);
@@ -532,8 +545,11 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "env", prefix: "/custom/myenv" },
 		}));
-		const { baseElement } = await renderDialog({ create });
+		const { baseElement } = await renderDialog({ create, channels: ["conda-forge", "bioconda"] });
 		const screen = page.elementLocator(baseElement);
+		await expect
+			.element(screen.getByTestId("environments-create-package-row").first())
+			.toBeVisible();
 
 		// Change location to a custom path
 		await userEvent.clear(screen.getByTestId("environments-create-location"));
@@ -546,7 +562,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/custom/myenv");
-		expect(payload.channels).toEqual(["defaults", "conda-forge"]);
+		expect(payload.channels).toEqual(["conda-forge", "bioconda"]);
 	});
 
 	it("filters the Python version list via the picker search box", async () => {

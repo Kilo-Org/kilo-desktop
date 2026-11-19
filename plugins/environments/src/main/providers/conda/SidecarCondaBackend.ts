@@ -30,7 +30,7 @@
  * Mapping from CondaBackend methods to bridge JSON-RPC methods:
  * - list()              → conda_tools.describe_environments
  * - findDistributions() → conda_tools.find_distributions
- * - prefixOptions()     → conda.info (envs_dirs + channels)
+ * - prefixOptions()     → conda.info (envs_dirs) + conda_tools.list_channels
  * - create()            → conda.create (skip_preview=true)
  * - clone()             → conda.clone (destinationName=<target>)
  * - createFromFile()    → conda.create_from_file (file=<path>)
@@ -365,15 +365,20 @@ export class SidecarCondaBackend implements CondaBackend {
 		);
 	}
 
+	/**
+	 * `channels` are the configured channels' canonical names
+	 * (`conda_tools.list_channels`), not `conda.info`'s `channels`, which
+	 * expands each one into per-subdir URLs.
+	 */
 	async prefixOptions(ctx?: CondaCallContext): Promise<{ envsDirs: string[]; channels: string[] }> {
-		const info = await this.#call<CondaInfoResult>("conda.info", {}, ctx);
+		const [info, configured] = await Promise.all([
+			this.#call<CondaInfoResult>("conda.info", {}, ctx),
+			this.listChannels(ctx),
+		]);
 		const envsDirs = Array.isArray(info.envs_dirs)
 			? info.envs_dirs.filter((d): d is string => typeof d === "string" && d.length > 0)
 			: [];
-		const channels = Array.isArray(info.channels)
-			? info.channels.filter((c): c is string => typeof c === "string" && c.length > 0)
-			: [];
-		return { envsDirs, channels };
+		return { envsDirs, channels: configured.filter((channel) => channel.length > 0) };
 	}
 
 	async create(

@@ -16,6 +16,7 @@ import type {
 	PolicyBlockedPackage,
 	PolicyNotice,
 } from "../../../contracts/common";
+import { needsAnacondaSignIn } from "./environments-error-message";
 
 /** Shown for a solve failure the bridge flagged with `policy_note`. */
 export const POLICY_NOTE_MESSAGE =
@@ -46,7 +47,7 @@ export function PolicyErrorDetails({
 }: PolicyErrorDetailsProps) {
 	const blocked = policy?.blocked ?? [];
 	const policyNote = policy?.policyNote === true;
-	const needsSignIn = code === "NOT_SIGNED_IN" || code === "CHANNEL_ACCESS_DENIED";
+	const needsSignIn = needsAnacondaSignIn(code);
 	if (blocked.length === 0 && !policyNote && !needsSignIn) return null;
 	return (
 		<div className={cn("flex flex-col gap-2", className)} data-qa-id="environments-policy-details">

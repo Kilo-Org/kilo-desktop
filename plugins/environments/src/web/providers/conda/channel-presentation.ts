@@ -10,28 +10,28 @@ export interface ChannelPresentation {
 export const CONDA_FORGE_CHANNEL = "conda-forge";
 export const ANACONDA_MAIN_CHANNEL = "defaults";
 
+/** Offered when no channel is configured; solver priority, so Anaconda's vetted channel wins. */
+const FALLBACK_CHANNELS = [ANACONDA_MAIN_CHANNEL, CONDA_FORGE_CHANNEL];
+
 /**
- * Product channels are always offered, even when `conda info` reports no
- * configured channels. Keep custom configured channels after these defaults.
- * Order is solver priority: Anaconda's vetted channel wins over conda-forge.
+ * The channels Settings offers: exactly the configured ones, in configured
+ * order, with repeats dropped. No product channel is added and no Anaconda
+ * alias is folded into `defaults`, so an organization whose configured
+ * channels are policy channels never gets an unfiltered channel added here.
+ * Only when nothing is configured are `defaults` and `conda-forge` offered
+ * (the bridge adds no channel of its own, so they are sent as request
+ * channels).
  */
-export function selectableChannels(configuredChannels: string[]): string[] {
-	return [
-		ANACONDA_MAIN_CHANNEL,
-		CONDA_FORGE_CHANNEL,
-		...configuredChannels.filter(
-			(channel) =>
-				channel !== CONDA_FORGE_CHANNEL &&
-				channel !== ANACONDA_MAIN_CHANNEL &&
-				!isAnacondaChannel(channel),
-		),
-	];
+export function selectableChannels(configuredChannels: readonly string[]): string[] {
+	if (configuredChannels.length === 0) return [...FALLBACK_CHANNELS];
+	return [...new Set(configuredChannels)];
 }
 
 /**
  * Channel names that resolve to Anaconda's vetted repository, either directly
  * ("defaults", "main", …) or as a full URL to repo.anaconda.com / the
- * anaconda channel on anaconda.org.
+ * anaconda channel on anaconda.org. Presentation only: which channels are
+ * offered never depends on it.
  */
 const ANACONDA_NAMES = new Set(["defaults", "anaconda", "main", "r", "msys2", "pro"]);
 

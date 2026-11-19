@@ -58,7 +58,7 @@ import {
 	friendlyEnvironmentsError,
 	type FriendlyEnvironmentsError,
 } from "./environments-error-message";
-import { backupEnvironmentJob, jobToastOptions, updatePackagesJob } from "./environments-toasts";
+import { backupEnvironmentJob, updatePackagesJob, useJobToasts } from "./environments-toasts";
 import {
 	ChangeFilterMenu,
 	DependencyChangeList,
@@ -162,6 +162,7 @@ export function UpdateConfirmationDialog({
 }: UpdateConfirmationDialogProps) {
 	const conda = useConda();
 	const trackPolicyFailure = useTrackPolicyFailure();
+	const { jobToastOptions } = useJobToasts();
 	const queryClient = useQueryClient();
 	const existingEnvNames = useExistingEnvironmentNames(conda);
 	const cloneMutation = useCondaMutation(conda, "cloneEnvironment", {

@@ -17,8 +17,9 @@ export function usePanelListRows(
 	overrides: Readonly<Record<string, string | null>>,
 ): ReadonlyMap<string, ShortcutsListRow> {
 	const kernel = useKernel();
+	const panels = useExtensions(ShortcutsPanel);
 	const rows = new Map<string, ShortcutsListRow>();
-	for (const panel of useExtensions(ShortcutsPanel)) {
+	for (const panel of panels) {
 		const claimed = new Set(panel.metadata.commands);
 		try {
 			const listed = panel.implementation?.listRows?.({

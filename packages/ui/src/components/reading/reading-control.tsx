@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { ArrowUpDownIcon, ScanLineIcon } from "lucide-react";
 
@@ -353,8 +353,13 @@ function FocusOptions({
 }: Pick<ReadingControlProps, "settings" | "onChange" | "onDimmingInput" | "footnote"> & {
 	qaId: string;
 }) {
+	// The slider's own value while dragged; a newly saved value replaces it.
 	const [dimming, setDimming] = useState(settings.focus.dimming);
-	useEffect(() => setDimming(settings.focus.dimming), [settings.focus.dimming]);
+	const [savedDimming, setSavedDimming] = useState(settings.focus.dimming);
+	if (savedDimming !== settings.focus.dimming) {
+		setSavedDimming(settings.focus.dimming);
+		setDimming(settings.focus.dimming);
+	}
 	return (
 		<div className="flex flex-col gap-3" data-qa-id={`${qaId}-focus-options`}>
 			<Row label="Moves with">

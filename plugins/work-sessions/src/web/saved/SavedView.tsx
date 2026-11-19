@@ -6,7 +6,7 @@ import {
 	SquareTerminalIcon,
 	XIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 
 import {
 	useDomainObject,
@@ -40,6 +40,7 @@ import {
 	type WorkSessionsWindowState,
 	type WorkspacesState,
 } from "../../contracts";
+import { useNow } from "../list/session-row-display";
 import { useTracker } from "../shared/telemetry";
 
 export const SAVED_VIEW_KEY = "kilo.work-sessions/saved";
@@ -65,6 +66,9 @@ interface Group {
 }
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+/** How old an item is now, bucketed for telemetry (read when an action happens). */
+const ageOf = (item: SavedItem) => ageBucket(Date.now() - item.createdAt);
+
 function timeAgo(at: number, now: number): string {
 	const minutes = Math.round((at - now) / 60_000);
 	if (minutes === 0) return "just now";
@@ -91,16 +95,13 @@ export const SavedView: FC = () => {
 	const sources = useExtensions(SavedSource);
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<Filter>("all");
-	const now = Date.now();
+	const now = useNow(30_000);
 
 	const sourceOf = (item: SavedItem) => sources.find((source) => source.key === item.source);
 	const filterOf = (item: SavedItem): Exclude<Filter, "all"> =>
 		sourceOf(item)?.metadata.filter ?? (item.text ? "text" : "chats");
 
-	const workSessionById = useMemo(
-		() => new Map(workSessions.map((workSession) => [workSession.id, workSession])),
-		[workSessions],
-	);
+	const workSessionById = new Map(workSessions.map((workSession) => [workSession.id, workSession]));
 	const headingOf = (workSession: WorkSession | undefined, item: SavedItem) => {
 		const name = workSession?.title || item.title || "Untitled session";
 		const workspace = workspaces.find((candidate) => candidate.id === workSession?.workspaceId);
@@ -151,7 +152,7 @@ export const SavedView: FC = () => {
 			});
 		}, 800);
 		return () => clearTimeout(timer);
-	}, [matching.length, needle, track]);
+	}, [lastSearched, matching.length, needle, track]);
 
 	const open = async (item: SavedItem, position: number) => {
 		const source = sourceOf(item);
@@ -169,7 +170,7 @@ export const SavedView: FC = () => {
 		}
 		track("saved-item-opened", {
 			kind: kindOf(item, source?.metadata.presentation),
-			ageBucket: ageBucket(Date.now() - item.createdAt),
+			ageBucket: ageOf(item),
 			sameSession: item.workSessionId === activeWorkSessionId,
 			resolved,
 			position: Math.min(position, 50),
@@ -188,7 +189,7 @@ export const SavedView: FC = () => {
 			track("saved-item-removed", {
 				kind,
 				via: "saved-page",
-				ageBucket: ageBucket(Date.now() - item.createdAt),
+				ageBucket: ageOf(item),
 			});
 			if (!removed) return;
 			toast("Removed from Saved", {

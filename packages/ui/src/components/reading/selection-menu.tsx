@@ -2,6 +2,7 @@ import { BookmarkMinusIcon, BookmarkPlusIcon, CopyIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type FC } from "react";
 import { createPortal } from "react-dom";
 
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useFocusLayer, useFocusPortalContainer } from "./focus-context";
@@ -39,8 +40,7 @@ export const SelectionMenu: FC<SelectionMenuProps> = ({
 	const container = useFocusPortalContainer();
 	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 	useFocusLayer(true);
-	const latest = useRef(onDismiss);
-	latest.current = onDismiss;
+	const latest = useLatestRef(onDismiss);
 
 	useLayoutEffect(() => {
 		const menu = ref.current;
@@ -71,7 +71,7 @@ export const SelectionMenu: FC<SelectionMenuProps> = ({
 			window.removeEventListener("keydown", onKey, true);
 			window.removeEventListener("pointerdown", onDown, true);
 		};
-	}, []);
+	}, [latest]);
 
 	const button =
 		"text-foreground hover:bg-state-hover flex h-[26px] items-center gap-1.5 rounded-[6px] px-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50";

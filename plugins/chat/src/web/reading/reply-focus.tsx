@@ -4,7 +4,7 @@ import {
 	useAuiState,
 	type AssistantState,
 } from "@assistant-ui/react";
-import { useCallback, useEffect, useMemo, useRef, type FC, type ReactNode } from "react";
+import { useEffect, useRef, type FC, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -37,7 +37,7 @@ export function useTranscriptReading(column: HTMLElement | null) {
 	const context = useChatReading();
 	const hasReply = useAuiState(hasReplyText);
 	const isRunning = useAuiState((state) => state.thread.isRunning);
-	const viewport = useCallback(() => column?.closest(VIEWPORT) ?? null, [column]);
+	const viewport = () => column?.closest(VIEWPORT) ?? null;
 
 	useFocusSource({
 		kind: "reply",
@@ -48,19 +48,19 @@ export function useTranscriptReading(column: HTMLElement | null) {
 		},
 	});
 
-	const enter = useCallback(
-		(source: "rail" | "reading-control", target = replyTargetNearMiddle(viewport())) => {
-			if (!context || !target || target.kind !== "reply") return;
-			const message = viewport()?.querySelector(
-				`[data-message-id="${CSS.escape(target.messageId)}"]`,
-			);
-			void context.reading.enter(context, target, source, {
-				blockCount: message ? replyBlocks(message).length : 0,
-				streaming: isRunning,
-			});
-		},
-		[context, isRunning, viewport],
-	);
+	const enter = (
+		source: "rail" | "reading-control",
+		target = replyTargetNearMiddle(viewport()),
+	) => {
+		if (!context || !target || target.kind !== "reply") return;
+		const message = viewport()?.querySelector(
+			`[data-message-id="${CSS.escape(target.messageId)}"]`,
+		);
+		void context.reading.enter(context, target, source, {
+			blockCount: message ? replyBlocks(message).length : 0,
+			streaming: isRunning,
+		});
+	};
 
 	return { available: Boolean(context) && hasReply, enter };
 }
@@ -105,10 +105,7 @@ export const ReplyFocusPortal: FC = () => {
 	const session = useFocusSession(context?.reading);
 	const container = useFocusContainer(context?.reading);
 	const reading = context?.reading;
-	const showFocusToast = useCallback(
-		(node: ReactNode | null) => reading?.showFocusToast(node),
-		[reading],
-	);
+	const showFocusToast = (node: ReactNode | null) => reading?.showFocusToast(node);
 	const readingChat = session?.paneId === context?.paneId && session?.target.kind === "reply";
 	if (!context || !readingChat || !container) return null;
 	return createPortal(
@@ -178,13 +175,9 @@ const FocusReplyMessage: FC = () => {
 	const messageId = useAuiState((state) => state.message.id);
 	const running = useAuiState((state) => state.message.status?.type === "running");
 	const hiddenPlanCallIds = usePlanHiddenCallIds(messageId);
-	const groupBy = useMemo(
-		() =>
-			running
-				? createActivityGroupBy(parts, { hiddenPlanCallIds })
-				: createTurnWorkGroupBy(parts, { hiddenPlanCallIds }),
-		[hiddenPlanCallIds, parts, running],
-	);
+	const groupBy = running
+		? createActivityGroupBy(parts, { hiddenPlanCallIds })
+		: createTurnWorkGroupBy(parts, { hiddenPlanCallIds });
 	const wasRunning = useRef(running);
 	useEffect(() => {
 		if (wasRunning.current && !running) context?.reading.noteReplyFinished();

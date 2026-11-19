@@ -2,8 +2,6 @@ import {
 	use,
 	useEffect,
 	useLayoutEffect,
-	useMemo,
-	useRef,
 	useState,
 	type CSSProperties,
 	type FC,
@@ -17,6 +15,7 @@ import {
 	FocusReader,
 	type FocusReaderProps,
 } from "@kilo-desktop/ui/components/reading/focus-reader";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { ReadingControl } from "@kilo-desktop/ui/components/reading/reading-control";
 import { useDimmingPreview } from "@kilo-desktop/ui/lib/reading/use-dimming-preview";
 import { rememberExcerpt } from "@kilo-desktop/ui/lib/reading/excerpts";
@@ -44,10 +43,7 @@ export const FOCUS_FOOTNOTE = "Works in the chat, plans and Markdown files. Esc 
 export function useReadingSurfaceStyle(base: "chat" | "ui"): CSSProperties {
 	const reading = useChatReading()?.reading;
 	const { settings, textSizes } = useReadingPreferences(reading);
-	return useMemo(
-		() => readingTypography("chat", settings, textSizes[base]).cssVars as CSSProperties,
-		[base, settings, textSizes],
-	);
+	return readingTypography("chat", settings, textSizes[base]).cssVars as CSSProperties;
 }
 
 /**
@@ -61,11 +57,8 @@ export function useReadingThemeScope(): {
 } {
 	const reading = useChatReading()?.reading;
 	const { settings, appTheme } = useReadingPreferences(reading);
-	const { themeId, mode } = appTheme;
-	return useMemo(() => {
-		const scope = reading ? readingSurfaceTheme(settings, { themeId, mode }) : null;
-		return scope ? { style: scope.style, ...scope.attributes } : {};
-	}, [reading, settings, themeId, mode]);
+	const scope = reading ? readingSurfaceTheme(settings, appTheme) : null;
+	return scope ? { style: scope.style, ...scope.attributes } : {};
 }
 
 /**
@@ -130,7 +123,8 @@ export const PaneFocusRail: FC<{
 }> = ({ host, onFocusFrom, placement = "inside" }) => {
 	const secondary = useContextKey("kernel/secondaryWindow");
 	const shortcut = useShortcutLabel(TOGGLE_FOCUS);
-	if (secondary || !useChatReading()) return null;
+	const context = useChatReading();
+	if (secondary || !context) return null;
 	return (
 		<FocusRail
 			host={host}
@@ -159,84 +153,83 @@ export function replyTargetFromRail(target: FocusRailTarget): ChatFocusTarget | 
  * so the window is never left covered by an empty take-over.
  */
 export function createFocusTakeover(reading: ChatReading): FC<TakeoverProps> {
-	return function ChatFocusTakeover({ close }) {
-		const session = useFocusSession(reading);
-		const preferences = useReadingPreferences(reading);
-		const shortcut = useShortcutLabel(TOGGLE_FOCUS);
-		const [container, setContainer] = useState<HTMLDivElement | null>(null);
-		const sessionId = session?.id ?? null;
+	return (props) => <ChatFocusTakeover {...props} reading={reading} />;
+}
 
-		useLayoutEffect(() => {
-			reading.focus.setContainer(container);
-		}, [container]);
-		const closeRef = useRef(close);
-		closeRef.current = close;
-		useEffect(() => {
-			if (sessionId === null) {
-				closeRef.current();
-				return;
+function ChatFocusTakeover({ close, reading }: TakeoverProps & { reading: ChatReading }) {
+	const session = useFocusSession(reading);
+	const preferences = useReadingPreferences(reading);
+	const shortcut = useShortcutLabel(TOGGLE_FOCUS);
+	const [container, setContainer] = useState<HTMLDivElement | null>(null);
+	const sessionId = session?.id ?? null;
+
+	useLayoutEffect(() => {
+		reading.focus.setContainer(container);
+	}, [container, reading]);
+	const closeRef = useLatestRef(close);
+	useEffect(() => {
+		if (sessionId === null) {
+			closeRef.current();
+			return;
+		}
+		return reading.focus.hold(sessionId);
+	}, [closeRef, reading, sessionId]);
+	const toast = useFocusToast(reading);
+	const { dimming, onDimmingInput } = useDimmingPreview(preferences.settings.focus.dimming);
+
+	if (!session) return null;
+	const resolved = resolveReadingTheme(preferences.settings, preferences.appTheme);
+	const theme = readingThemeStyle(resolved.themeId, resolved.mode);
+	return (
+		<FocusReader
+			key={session.id}
+			theme={theme}
+			scheme={resolved.mode}
+			typography={readingTypography("focus", preferences.settings)}
+			dimming={dimming}
+			movesWith={preferences.settings.focus.movesWith}
+			initialBlock={startBlock(session.target)}
+			onExit={(request) => void reading.focus.exit(request)}
+			onFocusChange={(index, block) =>
+				reading.focus.focusedBlock(
+					index,
+					session.target.kind === "reply" && block ? (chatTargetOf(block) ?? undefined) : undefined,
+				)
 			}
-			return reading.focus.hold(sessionId);
-		}, [sessionId]);
-		const toast = useFocusToast(reading);
-		const { dimming, onDimmingInput } = useDimmingPreview(preferences.settings.focus.dimming);
-
-		if (!session) return null;
-		const resolved = resolveReadingTheme(preferences.settings, preferences.appTheme);
-		const theme = readingThemeStyle(resolved.themeId, resolved.mode);
-		return (
-			<FocusReader
-				key={session.id}
-				theme={theme}
-				scheme={resolved.mode}
-				typography={readingTypography("focus", preferences.settings)}
-				dimming={dimming}
-				movesWith={preferences.settings.focus.movesWith}
-				initialBlock={startBlock(session.target)}
-				onExit={(request) => void reading.focus.exit(request)}
-				onFocusChange={(index, block) =>
-					reading.focus.focusedBlock(
-						index,
-						session.target.kind === "reply" && block
-							? (chatTargetOf(block) ?? undefined)
-							: undefined,
-					)
-				}
-				onCopy={(text) => rememberExcerpt(text, session.target.kind)}
-				onVisitEnd={(summary) => reading.visitEnded(summary)}
-				control={
-					<ReadingControl
-						settings={preferences.settings}
-						onChange={(patch, setting) => preferences.update(patch, setting, "focus")}
-						onDimmingInput={onDimmingInput}
-						onReset={() => preferences.reset("focus")}
-						appTheme={preferences.appTheme}
-						baseSize={16}
-						inFocus
-						focusOn
-						onFocusChange={(on) => {
-							if (!on) void reading.focus.exit("reading-control");
-						}}
-						{...(shortcut ? { focusShortcut: shortcut } : {})}
-						footnote={FOCUS_FOOTNOTE}
-						onOpenChange={(open) => {
-							if (open) reading.track("reading-control-opened", { surface: "focus" });
-						}}
-						qaId="chat-reading-focus"
-						{...(preferences.presets ? { presets: preferences.presets } : {})}
-					/>
-				}
-				toast={toast ?? undefined}
-			>
-				<div
-					ref={setContainer}
-					data-qa-id="chat-focus-content"
-					data-focus-target={session.target.kind}
-					data-shiki-theme={theme.shiki}
+			onCopy={(text) => rememberExcerpt(text, session.target.kind)}
+			onVisitEnd={(summary) => reading.visitEnded(summary)}
+			control={
+				<ReadingControl
+					settings={preferences.settings}
+					onChange={(patch, setting) => preferences.update(patch, setting, "focus")}
+					onDimmingInput={onDimmingInput}
+					onReset={() => preferences.reset("focus")}
+					appTheme={preferences.appTheme}
+					baseSize={16}
+					inFocus
+					focusOn
+					onFocusChange={(on) => {
+						if (!on) void reading.focus.exit("reading-control");
+					}}
+					{...(shortcut ? { focusShortcut: shortcut } : {})}
+					footnote={FOCUS_FOOTNOTE}
+					onOpenChange={(open) => {
+						if (open) reading.track("reading-control-opened", { surface: "focus" });
+					}}
+					qaId="chat-reading-focus"
+					{...(preferences.presets ? { presets: preferences.presets } : {})}
 				/>
-			</FocusReader>
-		);
-	};
+			}
+			toast={toast ?? undefined}
+		>
+			<div
+				ref={setContainer}
+				data-qa-id="chat-focus-content"
+				data-focus-target={session.target.kind}
+				data-shiki-theme={theme.shiki}
+			/>
+		</FocusReader>
+	);
 }
 
 /** Where the reader starts: a reply's paragraph is found among the whole chat's blocks. */

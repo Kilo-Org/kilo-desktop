@@ -1,11 +1,12 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 
 import { locateQuote } from "@kilo-desktop/ui/lib/reading/text-anchor";
 
 import type { RevealRequests } from "./reveal-requests";
 import { parseTextAnchor, replySurfaces } from "./saved-anchor";
 
-const SETTLE_TRIES = 20;
+/** Frames a reveal waits for its message to mount. */
+export const SETTLE_TRIES = 20;
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
@@ -22,9 +23,6 @@ export function useRevealRequests(
 	/** The transcript shows its messages, older history included (or given up on). */
 	ready = true,
 ): void {
-	const version = useSyncExternalStore(requests?.subscribe ?? noSubscribe, () =>
-		requests ? requests : null,
-	);
 	useEffect(() => {
 		if (!requests) return;
 		const check = () => {
@@ -77,10 +75,8 @@ export function useRevealRequests(
 		};
 		check();
 		return requests.subscribe(check);
-	}, [chatId, ready, requests, version, viewport]);
+	}, [chatId, ready, requests, viewport]);
 }
-
-const noSubscribe = () => () => {};
 
 /**
  * Centres an element in the transcript at once. Not `scrollIntoView`: the

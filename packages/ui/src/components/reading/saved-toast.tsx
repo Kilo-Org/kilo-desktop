@@ -1,5 +1,7 @@
 import { CheckIcon } from "lucide-react";
-import { useEffect, useRef, useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
+
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 export interface SavedToastProps {
 	readonly message: string;
@@ -17,7 +19,12 @@ export interface SavedToastProps {
  * Shown at the bottom centre of the pane; it closes after five seconds,
  * waiting while the pointer or focus is on it, and after either action.
  */
-export const SavedToast: FC<SavedToastProps> = ({
+// A new message is a new toast: keying on it restarts the countdown.
+export const SavedToast: FC<SavedToastProps> = (props) => (
+	<SavedToastBody key={props.message} {...props} />
+);
+
+const SavedToastBody: FC<SavedToastProps> = ({
 	message,
 	onView,
 	onUndo,
@@ -26,13 +33,12 @@ export const SavedToast: FC<SavedToastProps> = ({
 	qaId = "saved-toast",
 }) => {
 	const [paused, setPaused] = useState(false);
-	const latest = useRef(onClose);
-	latest.current = onClose;
+	const latest = useLatestRef(onClose);
 	useEffect(() => {
 		if (paused) return;
 		const timer = setTimeout(() => latest.current(), durationMs);
 		return () => clearTimeout(timer);
-	}, [durationMs, paused, message]);
+	}, [durationMs, paused, latest]);
 	const action =
 		"text-foreground hover:bg-state-hover rounded-md px-2 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 	return (

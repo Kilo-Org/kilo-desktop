@@ -1,11 +1,8 @@
 import {
 	createContext,
 	use,
-	useCallback,
 	useEffect,
 	useLayoutEffect,
-	useMemo,
-	useRef,
 	useState,
 	useSyncExternalStore,
 	type FC,
@@ -33,6 +30,7 @@ import {
 } from "@kilo-desktop/plugin-shell/contracts";
 import { Panes, WorkSessionsWindow } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { FocusReader } from "@kilo-desktop/ui/components/reading/focus-reader";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import {
 	ReadingControl,
 	type ReadingSettingName,
@@ -271,10 +269,7 @@ export function FilesReadingProvider({
 	paneId: string;
 	children: ReactNode;
 }) {
-	const value = useMemo(
-		() => (reading ? { reading, workSessionId, paneId } : null),
-		[reading, workSessionId, paneId],
-	);
+	const value = reading ? { reading, workSessionId, paneId } : null;
 	return <FilesReadingContext value={value}>{children}</FilesReadingContext>;
 }
 
@@ -323,46 +318,41 @@ export function useFilesReadingPreferences(reading: FilesReading | undefined) {
 	const presetsHandle = useDomainObject(ReadingPresets);
 	const presetsState = useDomainObjectState(ReadingPresets, selectPresets);
 	const notifications = useDomainObject(Notifications);
-	const update = useCallback(
-		(patch: ReadingSettingsPatch, setting: ReadingSettingName, surface: "file" | "focus") => {
-			void handle?.methods.update(patch as ReadingPatch).catch(() => {});
-			reading?.noteSettingChanged();
-			reading?.track("reading-setting-changed", {
-				setting,
-				value: settingValue(patch, setting),
-				surface,
-			});
-		},
-		[handle, reading],
-	);
-	const reset = useCallback(
-		(surface: "file" | "focus") => {
-			const preset = resetsToPreset(presetsState);
-			const done =
-				preset && presetsHandle
-					? presetsHandle.methods.apply({ id: preset })
-					: handle?.methods.reset(undefined);
-			void done?.catch(() => {});
-			reading?.noteSettingChanged();
-			reading?.track("reading-setting-changed", { setting: "reset", value: null, surface });
-		},
-		[handle, presetsHandle, presetsState, reading],
-	);
-	const presets = useMemo(
-		() =>
-			presetsHandle && presetsState
-				? readingPresetsControl({
-						state: presetsState,
-						methods: presetsHandle.methods,
-						live: settings,
-						onSaved: (preset, isDefault) =>
-							void notifications?.methods
-								.toast({ level: "success", title: readingPresetSavedTitle(preset, isDefault) })
-								.catch(() => {}),
-					})
-				: undefined,
-		[notifications, presetsHandle, presetsState, settings],
-	);
+	const update = (
+		patch: ReadingSettingsPatch,
+		setting: ReadingSettingName,
+		surface: "file" | "focus",
+	) => {
+		void handle?.methods.update(patch as ReadingPatch).catch(() => {});
+		reading?.noteSettingChanged();
+		reading?.track("reading-setting-changed", {
+			setting,
+			value: settingValue(patch, setting),
+			surface,
+		});
+	};
+	const reset = (surface: "file" | "focus") => {
+		const preset = resetsToPreset(presetsState);
+		const done =
+			preset && presetsHandle
+				? presetsHandle.methods.apply({ id: preset })
+				: handle?.methods.reset(undefined);
+		void done?.catch(() => {});
+		reading?.noteSettingChanged();
+		reading?.track("reading-setting-changed", { setting: "reset", value: null, surface });
+	};
+	const presets =
+		presetsHandle && presetsState
+			? readingPresetsControl({
+					state: presetsState,
+					methods: presetsHandle.methods,
+					live: settings,
+					onSaved: (preset, isDefault) =>
+						void notifications?.methods
+							.toast({ level: "success", title: readingPresetSavedTitle(preset, isDefault) })
+							.catch(() => {}),
+				})
+			: undefined;
 	return {
 		settings,
 		appTheme: { themeId: theme?.themeId ?? "kilo", mode: theme?.mode ?? "dark" },
@@ -402,65 +392,66 @@ function settingValue(
  * by an empty take-over.
  */
 export function createFilesFocusTakeover(reading: FilesReading): FC<TakeoverProps> {
-	return function FilesFocusTakeover({ close }) {
-		const session = useFilesFocusSession(reading);
-		const preferences = useFilesReadingPreferences(reading);
-		const shortcut = useFocusShortcut();
-		const [container, setContainer] = useState<HTMLDivElement | null>(null);
-		const sessionId = session?.id ?? null;
-		const closeRef = useRef(close);
-		closeRef.current = close;
-		useLayoutEffect(() => {
-			reading.focus.setContainer(container);
-		}, [container]);
-		useEffect(() => {
-			if (sessionId === null) {
-				closeRef.current();
-				return;
+	return (props) => <FilesFocusTakeover {...props} reading={reading} />;
+}
+
+function FilesFocusTakeover({ close, reading }: TakeoverProps & { reading: FilesReading }) {
+	const session = useFilesFocusSession(reading);
+	const preferences = useFilesReadingPreferences(reading);
+	const shortcut = useFocusShortcut();
+	const [container, setContainer] = useState<HTMLDivElement | null>(null);
+	const sessionId = session?.id ?? null;
+	const closeRef = useLatestRef(close);
+	useLayoutEffect(() => {
+		reading.focus.setContainer(container);
+	}, [container, reading]);
+	useEffect(() => {
+		if (sessionId === null) {
+			closeRef.current();
+			return;
+		}
+		return reading.focus.hold(sessionId);
+	}, [closeRef, reading, sessionId]);
+	const { dimming, onDimmingInput } = useDimmingPreview(preferences.settings.focus.dimming);
+	if (!session) return null;
+	const resolved = resolveReadingTheme(preferences.settings, preferences.appTheme);
+	return (
+		<FocusReader
+			key={session.id}
+			theme={readingThemeStyle(resolved.themeId, resolved.mode)}
+			scheme={resolved.mode}
+			typography={readingTypography("focus", preferences.settings)}
+			dimming={dimming}
+			movesWith={preferences.settings.focus.movesWith}
+			initialBlock={session.target.block}
+			onExit={(request) => void reading.focus.exit(request)}
+			onFocusChange={(index) => reading.focus.focusedBlock(index)}
+			onCopy={(text) => rememberExcerpt(text, "file")}
+			onVisitEnd={(summary) => reading.visitEnded(summary)}
+			control={
+				<ReadingControl
+					settings={preferences.settings}
+					onChange={(patch, setting) => preferences.update(patch, setting, "focus")}
+					onDimmingInput={onDimmingInput}
+					onReset={() => preferences.reset("focus")}
+					appTheme={preferences.appTheme}
+					baseSize={16}
+					{...(preferences.presets ? { presets: preferences.presets } : {})}
+					inFocus
+					focusOn
+					onFocusChange={(on) => {
+						if (!on) void reading.focus.exit("reading-control");
+					}}
+					{...(shortcut ? { focusShortcut: shortcut } : {})}
+					footnote={FOCUS_FOOTNOTE}
+					onOpenChange={(open) => {
+						if (open) reading.track("reading-control-opened", { surface: "focus" });
+					}}
+					qaId="files-reading-focus"
+				/>
 			}
-			return reading.focus.hold(sessionId);
-		}, [sessionId]);
-		const { dimming, onDimmingInput } = useDimmingPreview(preferences.settings.focus.dimming);
-		if (!session) return null;
-		const resolved = resolveReadingTheme(preferences.settings, preferences.appTheme);
-		return (
-			<FocusReader
-				key={session.id}
-				theme={readingThemeStyle(resolved.themeId, resolved.mode)}
-				scheme={resolved.mode}
-				typography={readingTypography("focus", preferences.settings)}
-				dimming={dimming}
-				movesWith={preferences.settings.focus.movesWith}
-				initialBlock={session.target.block}
-				onExit={(request) => void reading.focus.exit(request)}
-				onFocusChange={(index) => reading.focus.focusedBlock(index)}
-				onCopy={(text) => rememberExcerpt(text, "file")}
-				onVisitEnd={(summary) => reading.visitEnded(summary)}
-				control={
-					<ReadingControl
-						settings={preferences.settings}
-						onChange={(patch, setting) => preferences.update(patch, setting, "focus")}
-						onDimmingInput={onDimmingInput}
-						onReset={() => preferences.reset("focus")}
-						appTheme={preferences.appTheme}
-						baseSize={16}
-						{...(preferences.presets ? { presets: preferences.presets } : {})}
-						inFocus
-						focusOn
-						onFocusChange={(on) => {
-							if (!on) void reading.focus.exit("reading-control");
-						}}
-						{...(shortcut ? { focusShortcut: shortcut } : {})}
-						footnote={FOCUS_FOOTNOTE}
-						onOpenChange={(open) => {
-							if (open) reading.track("reading-control-opened", { surface: "focus" });
-						}}
-						qaId="files-reading-focus"
-					/>
-				}
-			>
-				<div ref={setContainer} data-qa-id="files-focus-content" />
-			</FocusReader>
-		);
-	};
+		>
+			<div ref={setContainer} data-qa-id="files-focus-content" />
+		</FocusReader>
+	);
 }

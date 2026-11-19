@@ -3,7 +3,12 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RevealRequests } from "./reveal-requests";
-import { useRevealRequests } from "./use-reveal-requests";
+import { SETTLE_TRIES, useRevealRequests } from "./use-reveal-requests";
+
+const frames = async (count: number) => {
+	for (let index = 0; index < count; index += 1)
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+};
 
 /**
  * A transcript shaped like `Thread`: its viewport is found from a column
@@ -56,7 +61,8 @@ describe("useRevealRequests", () => {
 		const { rerender } = render(
 			<Transcript requests={requests} ready={false} hasMessage={false} />,
 		);
-		await new Promise((resolve) => setTimeout(resolve, 600));
+		// Longer than a search for a missing message lasts.
+		await frames(SETTLE_TRIES * 2);
 
 		rerender(<Transcript requests={requests} />);
 
@@ -92,7 +98,7 @@ describe("useRevealRequests", () => {
 
 		area.dispatchEvent(new WheelEvent("wheel", { deltaY: 400 }));
 		area.scrollTo({ top: area.scrollHeight, behavior: "instant" });
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await frames(6);
 
 		expect(area.scrollTop).toBe(area.scrollHeight - area.clientHeight);
 	});

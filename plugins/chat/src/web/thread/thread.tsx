@@ -7,7 +7,6 @@ import {
 } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
 import {
-	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -103,11 +102,8 @@ export const Thread: FC = () => {
 	const chatReading = useChatReading();
 	const secondary = useContextKey("kernel/secondaryWindow");
 	const [toast, setToast] = useState<ReactNode | null>(null);
-	const renderToast = useCallback((node: ReactNode | null) => setToast(node), []);
-	const viewport = useCallback(
-		() => column?.closest('[data-slot="aui_thread-viewport"]') ?? null,
-		[column],
-	);
+	const renderToast = (node: ReactNode | null) => setToast(node);
+	const viewport = () => column?.closest('[data-slot="aui_thread-viewport"]') ?? null;
 	const hasMessages = useAuiState(selectHasMessages);
 	const historyLoading = useOlderHistoryStatus() === "loading";
 	useRevealRequests(

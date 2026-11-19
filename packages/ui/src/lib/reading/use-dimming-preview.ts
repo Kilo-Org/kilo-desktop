@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 
 /**
  * The Dimming Focus shows: the slider's value while it is dragged, else the
@@ -11,9 +11,6 @@ export function useDimmingPreview(saved: number): {
 	onDimmingInput: (dimming: number) => void;
 } {
 	const [preview, setPreview] = useState<{ value: number; over: number } | null>(null);
-	const onDimmingInput = useCallback(
-		(value: number) => setPreview({ value, over: saved }),
-		[saved],
-	);
+	const onDimmingInput = (value: number) => setPreview({ value, over: saved });
 	return { dimming: preview?.over === saved ? preview.value : saved, onDimmingInput };
 }

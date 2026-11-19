@@ -103,7 +103,10 @@ describe("SavedToast", () => {
 		const toast = page.getByRole("status");
 
 		await toast.hover();
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await expect.element(toast).toBeVisible();
+		vi.useFakeTimers();
+		vi.advanceTimersByTime(300);
+		vi.useRealTimers();
 		expect(onClose).not.toHaveBeenCalled();
 		await page.elementLocator(document.body).hover({ position: { x: 1, y: 1 } });
 

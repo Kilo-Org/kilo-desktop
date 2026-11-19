@@ -1,14 +1,4 @@
-import {
-	createContext,
-	use,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	type FC,
-	type ReactNode,
-} from "react";
+import { createContext, use, useEffect, useState, type FC, type ReactNode } from "react";
 
 import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import {
@@ -16,6 +6,7 @@ import {
 	type SavedItem,
 	type SavedItemsState,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { SavedToast } from "@kilo-desktop/ui/components/reading/saved-toast";
 import { SelectionMenu } from "@kilo-desktop/ui/components/reading/selection-menu";
 import { rememberExcerpt } from "@kilo-desktop/ui/lib/reading/excerpts";
@@ -33,10 +24,7 @@ const MESSAGE = "[data-message-id]";
 /** The saved items of one chat, live. */
 export function useChatSavedItems(chatId: string | null): readonly SavedItem[] {
 	const items = useDomainObjectState(SavedItems, selectItems) ?? NO_ITEMS;
-	return useMemo(
-		() => (chatId ? items.filter((item) => item.ref.id === chatId) : NO_ITEMS),
-		[chatId, items],
-	);
+	return chatId ? items.filter((item) => item.ref.id === chatId) : NO_ITEMS;
 }
 
 interface ToastState {
@@ -82,37 +70,25 @@ export const SavedLayer: FC<{
 	const kernel = useKernel();
 	const items = useChatSavedItems(chatId);
 	const [toast, setToast] = useState<ToastState | null>(null);
-	const nextToast = useRef(1);
-	const showToast = useCallback(
-		(next: Omit<ToastState, "id">) => setToast({ ...next, id: nextToast.current++ }),
-		[],
-	);
-	const value = useMemo(
-		() => (saved && chatId ? { saved, workSessionId, chatId, showToast } : null),
-		[chatId, saved, showToast, workSessionId],
-	);
+	// Each toast gets a new id, so its countdown and Undo belong to it alone.
+	const showToast = (next: Omit<ToastState, "id">) =>
+		setToast((current) => ({ ...next, id: (current?.id ?? 0) + 1 }));
+	const value = saved && chatId ? { saved, workSessionId, chatId, showToast } : null;
 
 	useSavedPainter(root, items);
 	const { selection, showRemove } = useReplySelection(root, items);
 
-	const close = useCallback(
-		(id: number) => setToast((current) => (current?.id === id ? null : current)),
-		[],
-	);
-	const toastNode = useMemo(
-		() =>
-			toast ? (
-				<SavedToast
-					key={toast.id}
-					message={toast.message}
-					onClose={() => close(toast.id)}
-					{...(toast.onUndo ? { onUndo: toast.onUndo } : {})}
-					{...(toast.onView && canView ? { onView: toast.onView } : {})}
-					qaId="chat-saved-toast"
-				/>
-			) : null,
-		[canView, close, toast],
-	);
+	const close = (id: number) => setToast((current) => (current?.id === id ? null : current));
+	const toastNode = toast ? (
+		<SavedToast
+			key={toast.id}
+			message={toast.message}
+			onClose={() => close(toast.id)}
+			{...(toast.onUndo ? { onUndo: toast.onUndo } : {})}
+			{...(toast.onView && canView ? { onView: toast.onView } : {})}
+			qaId="chat-saved-toast"
+		/>
+	) : null;
 	useEffect(() => {
 		renderToast?.(toastNode);
 	}, [renderToast, toastNode]);
@@ -266,13 +242,9 @@ function useReplySelection(
 	showRemove: (item: SavedItem, rect: DOMRect) => void;
 } {
 	const [selection, setSelection] = useState<Selection | null>(null);
-	const latestItems = useRef(items);
-	latestItems.current = items;
-	const showRemove = useCallback(
-		(item: SavedItem, rect: DOMRect) =>
-			setSelection({ mode: "remove", rect, item, dismiss: () => setSelection(null) }),
-		[],
-	);
+	const latestItems = useLatestRef(items);
+	const showRemove = (item: SavedItem, rect: DOMRect) =>
+		setSelection({ mode: "remove", rect, item, dismiss: () => setSelection(null) });
 	const shown =
 		selection?.mode === "remove" && !items.some((item) => item.id === selection.item.id)
 			? null
@@ -325,7 +297,7 @@ function useReplySelection(
 			root.removeEventListener("keyup", onKeyUp);
 			root.removeEventListener("scroll", onScroll, { capture: true });
 		};
-	}, [root]);
+	}, [latestItems, root]);
 	return { selection: shown, showRemove };
 }
 

@@ -137,7 +137,8 @@ describe("reading preferences (main)", () => {
 
 		now += DAY / 2;
 		const sameDay = await boot({ storage, now: () => now });
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		// The decision is made at boot: a send would have moved this on.
+		expect(storage.saved.get("reading")).toMatchObject({ lastSnapshotAt: DAY * 10 });
 		expect(sameDay.sent()).toEqual([]);
 	});
 });

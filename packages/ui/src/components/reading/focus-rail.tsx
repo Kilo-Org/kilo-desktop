@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ScanLineIcon } from "lucide-react";
 
 import { Kbd } from "@kilo-desktop/ui/components/kbd";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import {
 	blockBox,
@@ -74,8 +75,7 @@ export function FocusRail({
 	qaId = "focus-rail",
 }: FocusRailProps) {
 	const [placement, setPlacement] = useState<Placement | null>(null);
-	const latest = useRef({ onFocusFrom, surfaceSelector, side });
-	latest.current = { onFocusFrom, surfaceSelector, side };
+	const latest = useLatestRef({ onFocusFrom, surfaceSelector, side });
 
 	useEffect(() => {
 		if (!host) return;
@@ -139,7 +139,7 @@ export function FocusRail({
 			host.removeEventListener("pointerleave", onLeave);
 			host.removeEventListener("scroll", onScroll, { capture: true });
 		};
-	}, [host]);
+	}, [host, latest]);
 
 	if (!placement) return null;
 	const railTop = placement.top + Math.min(placement.height, 28) / 2 - 14;

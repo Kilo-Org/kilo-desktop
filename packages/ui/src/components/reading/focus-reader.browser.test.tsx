@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { readingThemeStyle } from "@kilo-desktop/ui/lib/reading/reading-theme";
@@ -58,7 +58,10 @@ function Reader({
 
 const opacity = (text: string) => page.getByText(text).element() as HTMLElement;
 
-afterEach(cleanup);
+afterEach(() => {
+	vi.useRealTimers();
+	cleanup();
+});
 
 describe("FocusReader", () => {
 	it("shows the focused block at full colour and fades the rest by distance", async () => {
@@ -155,13 +158,16 @@ describe("FocusReader", () => {
 		view.unmount();
 		render(<Reader initialBlock={0} movesWith="scroll" />);
 		await expect.poll(() => opacity("Paragraph 1.").style.opacity).toBe("");
-		await new Promise((resolve) => setTimeout(resolve, 500));
+		// Scrolls right after the reader centres itself count as its own; move past that.
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(Date.now() + 1_000);
 		const scroller = page.getByTestId("focus-reader-scroller").element();
 		const target = page.getByText("Paragraph 6.").element().getBoundingClientRect();
 		const box = scroller.getBoundingClientRect();
 		scroller.scrollTop += (target.top + target.bottom) / 2 - (box.top + box.height / 2);
 
 		await expect.poll(() => opacity("Paragraph 6.").style.opacity).toBe("");
+		vi.useRealTimers();
 	});
 
 	it("sets only the reading column at the reading size, and opens its Aa menu in the app's theme and size", async () => {

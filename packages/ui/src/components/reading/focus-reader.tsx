@@ -1,8 +1,6 @@
 import {
-	useCallback,
 	useEffect,
 	useLayoutEffect,
-	useMemo,
 	useRef,
 	useState,
 	type CSSProperties,
@@ -16,6 +14,8 @@ import {
 	readingBlocks,
 	type ReadingBlock,
 } from "@kilo-desktop/ui/lib/reading/blocks";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
+import { useStableCallback } from "@kilo-desktop/ui/hooks/use-stable";
 import { blockOpacity } from "@kilo-desktop/ui/lib/reading/dimming";
 import type { ReadingThemeStyle } from "@kilo-desktop/ui/lib/reading/reading-theme";
 import type { FocusMovesWith } from "@kilo-desktop/ui/lib/reading/settings";
@@ -122,14 +122,14 @@ export function FocusReader({
 	const content = useRef<HTMLDivElement>(null);
 	const [blocks, setBlocks] = useState<readonly ReadingBlock[]>([]);
 	const [focused, setFocused] = useState(-1);
-	const focusedIndex = useRef(focused);
-	focusedIndex.current = focused;
+	// Mirrors of state for listeners, written where the state is set.
+	const focusedIndex = useRef(-1);
 	const focusedElement = useRef<HTMLElement | null>(null);
 	const layers = useRef(0);
 	const programmaticUntil = useRef(0);
 	const stats = useRef({
-		startedAt: Date.now(),
-		lastInteraction: Date.now(),
+		startedAt: 0,
+		lastInteraction: 0,
 		activeSeconds: 0,
 		visited: new Set<number>(),
 		maxIndex: 0,
@@ -140,28 +140,23 @@ export function FocusReader({
 		typing: 0,
 		find: 0,
 	});
-	const blocksRef = useRef(blocks);
-	blocksRef.current = blocks;
-	const latest = useRef({ onExit, onFocusChange, onCopy, onVisitEnd, initialBlock });
-	latest.current = { onExit, onFocusChange, onCopy, onVisitEnd, initialBlock };
+	const blocksRef = useRef<readonly ReadingBlock[]>([]);
+	const latest = useLatestRef({ onExit, onFocusChange, onCopy, onVisitEnd, initialBlock });
 
-	const context = useMemo<FocusReaderContextValue>(
-		() => ({
-			portalContainer: popupLayer,
-			openLayer: () => {
-				layers.current += 1;
-				let closed = false;
-				return () => {
-					if (closed) return;
-					closed = true;
-					layers.current -= 1;
-				};
-			},
-		}),
-		[popupLayer],
-	);
+	const context: FocusReaderContextValue = {
+		portalContainer: popupLayer,
+		openLayer: () => {
+			layers.current += 1;
+			let closed = false;
+			return () => {
+				if (closed) return;
+				closed = true;
+				layers.current -= 1;
+			};
+		},
+	};
 
-	const focusBlock = useCallback((index: number, source: FocusMoveSource | null) => {
+	const focusBlock = useStableCallback((index: number, source: FocusMoveSource | null) => {
 		const list = blocksRef.current;
 		if (index < 0 || index >= list.length) return;
 		const record = stats.current;
@@ -174,9 +169,9 @@ export function FocusReader({
 		record.visited.add(index);
 		record.maxIndex = Math.max(record.maxIndex, index);
 		latest.current.onFocusChange?.(index, list[index]);
-	}, []);
+	});
 
-	const centre = useCallback((index: number, smooth: boolean) => {
+	const centre = useStableCallback((index: number, smooth: boolean) => {
 		const area = scroller.current;
 		const block = blocksRef.current[index];
 		if (!area || !block) return;
@@ -189,7 +184,7 @@ export function FocusReader({
 			top: area.scrollTop + delta,
 			behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto",
 		});
-	}, []);
+	});
 
 	// Read blocks now and after every content change, keeping focus on the same block.
 	useLayoutEffect(() => {
@@ -214,8 +209,10 @@ export function FocusReader({
 				return;
 			}
 			const kept = focusedElement.current ? blockIndexOf(next, focusedElement.current) : -1;
-			if (kept >= 0) setFocused(kept);
-			else if (next.length > 0)
+			if (kept >= 0) {
+				focusedIndex.current = kept;
+				setFocused(kept);
+			} else if (next.length > 0)
 				focusBlock(Math.min(Math.max(0, focusedIndex.current), next.length - 1), null);
 		};
 		read();
@@ -227,7 +224,7 @@ export function FocusReader({
 			observer.disconnect();
 			if (frame) cancelAnimationFrame(frame);
 		};
-	}, [centre, focusBlock]);
+	}, [centre, focusBlock, latest]);
 
 	// Dim by distance: text opacity on each block's elements.
 	useLayoutEffect(() => {
@@ -271,7 +268,7 @@ export function FocusReader({
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [centre, focusBlock]);
+	}, [centre, focusBlock, latest]);
 
 	// Scrolling mode: the block at the column's vertical middle takes focus.
 	useEffect(() => {
@@ -312,6 +309,8 @@ export function FocusReader({
 	// Count active seconds; report the visit once on the way out.
 	useEffect(() => {
 		const record = stats.current;
+		record.startedAt = Date.now();
+		record.lastInteraction = record.startedAt;
 		const timer = setInterval(() => {
 			if (Date.now() - record.lastInteraction < ACTIVE_WINDOW_MS) record.activeSeconds += 1;
 		}, 1000);
@@ -332,7 +331,7 @@ export function FocusReader({
 				findAttempts: record.find,
 			});
 		};
-	}, []);
+	}, [latest]);
 
 	// Take keyboard focus so ↑ ↓ and Esc reach the reader.
 	useEffect(() => {

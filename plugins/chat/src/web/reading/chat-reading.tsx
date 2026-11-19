@@ -1,11 +1,4 @@
-import {
-	createContext,
-	use,
-	useCallback,
-	useMemo,
-	useSyncExternalStore,
-	type ReactNode,
-} from "react";
+import { createContext, use, useSyncExternalStore, type ReactNode } from "react";
 
 import { KernelCommand, type PluginSdk } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -319,10 +312,7 @@ export function ChatReadingProvider({
 	chatId?: string | null;
 	children: ReactNode;
 }) {
-	const value = useMemo(
-		() => (reading ? { reading, workSessionId, paneId, chatId } : null),
-		[reading, workSessionId, paneId, chatId],
-	);
+	const value = reading ? { reading, workSessionId, paneId, chatId } : null;
 	return <ChatReadingContext value={value}>{children}</ChatReadingContext>;
 }
 
@@ -376,46 +366,41 @@ export function useReadingPreferences(reading: ChatReading | undefined): Reading
 	const presetsHandle = useDomainObject(ReadingPresets);
 	const presetsState = useDomainObjectState(ReadingPresets, selectPresets);
 	const notifications = useDomainObject(Notifications);
-	const update = useCallback(
-		(patch: ReadingSettingsPatch, setting: ReadingSettingName, surface: ControlSurface) => {
-			void handle?.methods.update(patch as ReadingPatch).catch(() => {});
-			reading?.noteSettingChanged();
-			reading?.track("reading-setting-changed", {
-				setting,
-				value: settingValue(patch, setting),
-				surface,
-			});
-		},
-		[handle, reading],
-	);
-	const reset = useCallback(
-		(surface: ControlSurface) => {
-			const preset = resetsToPreset(presetsState);
-			const done =
-				preset && presetsHandle
-					? presetsHandle.methods.apply({ id: preset })
-					: handle?.methods.reset(undefined);
-			void done?.catch(() => {});
-			reading?.noteSettingChanged();
-			reading?.track("reading-setting-changed", { setting: "reset", value: null, surface });
-		},
-		[handle, presetsHandle, presetsState, reading],
-	);
-	const presets = useMemo(
-		() =>
-			presetsHandle && presetsState
-				? readingPresetsControl({
-						state: presetsState,
-						methods: presetsHandle.methods,
-						live: settings,
-						onSaved: (preset, isDefault) =>
-							void notifications?.methods
-								.toast({ level: "success", title: readingPresetSavedTitle(preset, isDefault) })
-								.catch(() => {}),
-					})
-				: undefined,
-		[notifications, presetsHandle, presetsState, settings],
-	);
+	const update = (
+		patch: ReadingSettingsPatch,
+		setting: ReadingSettingName,
+		surface: ControlSurface,
+	) => {
+		void handle?.methods.update(patch as ReadingPatch).catch(() => {});
+		reading?.noteSettingChanged();
+		reading?.track("reading-setting-changed", {
+			setting,
+			value: settingValue(patch, setting),
+			surface,
+		});
+	};
+	const reset = (surface: ControlSurface) => {
+		const preset = resetsToPreset(presetsState);
+		const done =
+			preset && presetsHandle
+				? presetsHandle.methods.apply({ id: preset })
+				: handle?.methods.reset(undefined);
+		void done?.catch(() => {});
+		reading?.noteSettingChanged();
+		reading?.track("reading-setting-changed", { setting: "reset", value: null, surface });
+	};
+	const presets =
+		presetsHandle && presetsState
+			? readingPresetsControl({
+					state: presetsState,
+					methods: presetsHandle.methods,
+					live: settings,
+					onSaved: (preset, isDefault) =>
+						void notifications?.methods
+							.toast({ level: "success", title: readingPresetSavedTitle(preset, isDefault) })
+							.catch(() => {}),
+				})
+			: undefined;
 	return {
 		settings,
 		appTheme: { themeId: theme?.themeId ?? "kilo", mode: theme?.mode ?? "dark" },

@@ -1,4 +1,7 @@
+import { defaultFilter } from "cmdk";
+
 import type { GitBranch } from "../../contracts";
+import { branchSearchValue } from "./branch-display-name";
 
 export interface BranchGroup {
 	readonly identifier: "default" | "recent" | "local" | "remote";
@@ -52,4 +55,26 @@ export function groupBranches(
 	}
 
 	return groups;
+}
+
+/**
+ * The search the branch picker runs itself, since it renders only the rows in
+ * view and cmdk can filter only rendered items. Uses cmdk's own fuzzy scoring on
+ * the same value each item carries, so matches and their order (best first
+ * within a group) are what the command menu showed before.
+ */
+export function filterBranchGroups(
+	groups: ReadonlyArray<BranchGroup>,
+	search: string,
+): ReadonlyArray<BranchGroup> {
+	const query = search.trim();
+	if (query === "") return groups;
+	return groups.flatMap((group) => {
+		const items = group.items
+			.map((branch) => ({ branch, score: defaultFilter(branchSearchValue(branch), query) }))
+			.filter(({ score }) => score > 0)
+			.sort((a, b) => b.score - a.score)
+			.map(({ branch }) => branch);
+		return items.length === 0 ? [] : [{ ...group, items }];
+	});
 }

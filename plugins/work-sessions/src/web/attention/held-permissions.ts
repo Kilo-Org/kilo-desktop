@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import type { PluginSdk } from "@kilo-desktop/kernel";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
@@ -174,5 +174,5 @@ export function useShownPermissions(): ReadonlySet<string> {
 /** The chats with held requests left out, following both. */
 export function useChatsWithoutHeld(chats: ChatsById): ChatsById {
 	const shown = useShownPermissions();
-	return useMemo(() => withoutHeldPermissions(chats, shown), [chats, shown]);
+	return withoutHeldPermissions(chats, shown);
 }

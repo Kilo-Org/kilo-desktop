@@ -44,14 +44,15 @@ describe("live session status", () => {
 	});
 
 	it("keeps a permission request another plugin answers for the person out of the status", async () => {
+		let resolveAskedAboutRead = () => {};
+		const askedAboutRead = new Promise<void>((resolve) => (resolveAskedAboutRead = resolve));
 		const autoApprover = paneKindPlugin("test.auto-approver", [], {
 			extensions: { "kilo.work-sessions/permission-auto-answer": [{ id: "auto" }] },
 			activate: (sdk) =>
-				sdk.extensions.implement(
-					PermissionAutoAnswer,
-					"auto",
-					(request) => request.permission === "external_directory",
-				),
+				sdk.extensions.implement(PermissionAutoAnswer, "auto", (request) => {
+					if (request.id === "read") resolveAskedAboutRead();
+					return request.permission === "external_directory";
+				}),
 		});
 		const { chats } = await renderWorkSessions({
 			workSessions: [workSession("s1", { title: "Fix login", chatIds: ["c1"] })],
@@ -77,9 +78,9 @@ describe("live session status", () => {
 		chats!.update(
 			chat("c1", { status: "busy", workingSince: NOW, pendingPermissionIds: ["read"] }),
 		);
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await askedAboutRead;
+		await expect.element(glyph("Fix login", "Working")).toBeVisible();
 		chats!.update(chat("c1", { status: "busy", workingSince: NOW }));
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		observer.disconnect();
 		expect(seen).toEqual([]);
 

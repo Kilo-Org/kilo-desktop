@@ -18,6 +18,7 @@ import {
 	KernelError,
 	KernelFlagSource,
 	KernelTelemetrySink,
+	type DomainObjectProvider,
 	type FlagValue,
 	type KernelLogger,
 	type PluginRegistration,
@@ -28,6 +29,12 @@ import {
 	createTestKernelPair,
 	testPlugin,
 } from "@kilo-desktop/kernel/testing";
+import anacondaManifest from "@kilo-desktop/plugin-anaconda/plugin.json";
+import {
+	ANACONDA_DEFINITIONS,
+	AnacondaAccount,
+	type AnacondaAccountState,
+} from "@kilo-desktop/plugin-anaconda/contracts";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
@@ -220,6 +227,41 @@ function shellStandIn(openSettings: (section: string | undefined) => void): Plug
 	};
 }
 
+/** kilo.anaconda with only its account, whose `changed` event the test fires. */
+function anacondaStandIn() {
+	let changed = () => {};
+	const done = { ok: true as const };
+	const registration: PluginRegistration = {
+		manifest: anacondaManifest,
+		definitions: ANACONDA_DEFINITIONS,
+		entry: definePlugin({
+			activate(sdk) {
+				const anonymous: AnacondaAccountState = {
+					session: { status: "anonymous" },
+					signingIn: false,
+				};
+				const account: DomainObjectProvider<typeof AnacondaAccount> = sdk.domainObjects.provide(
+					AnacondaAccount,
+					{
+						initialState: anonymous,
+						methods: {
+							session: () => account.state.session,
+							refresh: () => account.state.session,
+							signIn: () => done,
+							cancelSignIn: () => undefined,
+							signOut: () => done,
+							apiKey: () => null,
+							siteDomain: () => "anaconda.com",
+						},
+					},
+				);
+				changed = () => account.emit("changed", {});
+			},
+		}),
+	};
+	return { registration, changed: () => changed() };
+}
+
 export interface BootOptions {
 	/** The `environments-feature` flag (default on). */
 	readonly flag?: boolean;
@@ -235,6 +277,8 @@ export interface BootOptions {
 	readonly withoutShell?: boolean;
 	readonly withoutChat?: boolean;
 	readonly withoutLocalInference?: boolean;
+	/** Adds kilo.anaconda's account (absent by default, as kilo.anaconda is optional). */
+	readonly withAnaconda?: boolean;
 	readonly logger?: KernelLogger;
 }
 
@@ -246,6 +290,7 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 	let resolves = 0;
 	const flagValues = { [ENVIRONMENTS_FLAG]: options.flag ?? true };
 	const core = coreStandIn(flagValues);
+	const anaconda = anacondaStandIn();
 	const openSettings = vi.fn<(section: string | undefined) => void>();
 	const tracked: { event: string; data: Readonly<Record<string, unknown>> }[] = [];
 	const telemetrySink = testPlugin("test.telemetry-sink", {
@@ -278,6 +323,7 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 			...(options.withoutShell ? [] : [shellStandIn(openSettings)]),
 			...(options.withoutChat ? [] : [stub(chat)]),
 			...(options.withoutLocalInference ? [] : [stub(localInference)]),
+			...(options.withAnaconda ? [anaconda.registration] : []),
 			telemetrySink,
 			{
 				manifest,
@@ -305,6 +351,9 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 			...(options.withoutShell ? [] : [shell]),
 			...(options.withoutChat ? [] : [chat]),
 			...(options.withoutLocalInference ? [] : [localInference]),
+			...(options.withAnaconda
+				? [{ manifest: anacondaManifest, definitions: ANACONDA_DEFINITIONS }]
+				: []),
 			{
 				manifest,
 				definitions: ENVIRONMENTS_DEFINITIONS,
@@ -377,6 +426,8 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 		chatConfig,
 		llamaRuntime,
 		setFlag: (on: boolean) => core.set({ [ENVIRONMENTS_FLAG]: on }),
+		/** Fires kilo.anaconda's account `changed` event (with `withAnaconda`). */
+		anacondaAccountChanged: () => anaconda.changed(),
 		resolves: () => resolves,
 	};
 }

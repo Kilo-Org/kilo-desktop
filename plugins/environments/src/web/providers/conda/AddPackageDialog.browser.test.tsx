@@ -703,6 +703,20 @@ describe("AddPackageDialog", () => {
 		expect(install).not.toHaveBeenCalled();
 	});
 
+	it("searches again when the Anaconda account changes", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		const { baseElement, host } = await renderDialog({
+			find,
+			anaconda: { signIn: async () => ({ ok: true as const }) },
+		});
+		await waitForRows(baseElement, 1);
+		const searches = find.mock.calls.length;
+
+		await host.setAnacondaSession({ status: "authenticated", user: { userId: "user-2" } });
+
+		await vi.waitFor(() => expect(find.mock.calls.length).toBeGreaterThan(searches));
+	});
+
 	describe("package policy and Anaconda sign-in failures", () => {
 		const notSignedIn = () =>
 			new Error(

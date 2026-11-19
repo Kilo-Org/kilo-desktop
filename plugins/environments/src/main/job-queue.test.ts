@@ -908,6 +908,73 @@ describe("JobQueue read-cache invalidation isolation", () => {
 	});
 });
 
+describe("JobQueue.clearReadCache", () => {
+	it("drops one provider's cached reads and keeps the queue usable", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const condaRun = vi
+			.fn<() => Promise<string>>()
+			.mockResolvedValueOnce("conda-1")
+			.mockResolvedValueOnce("conda-2");
+		const uvRun = vi.fn<() => Promise<string>>().mockResolvedValue("uv-1");
+		const uv = "uv" as unknown as "conda";
+		await queue.read({ providerId: "conda", opName: "repodata.find", run: condaRun });
+		await queue.read({ providerId: uv, opName: "envs.list", run: uvRun });
+
+		queue.clearReadCache("conda");
+
+		await expect(
+			queue.read({ providerId: "conda", opName: "repodata.find", run: condaRun }),
+		).resolves.toBe("conda-2");
+		await expect(queue.read({ providerId: uv, opName: "envs.list", run: uvRun })).resolves.toBe(
+			"uv-1",
+		);
+		expect(uvRun).toHaveBeenCalledTimes(1);
+		await expect(
+			queue.enqueue({ providerId: "conda", kind: "envs.create", run: async () => "ok" }).result,
+		).resolves.toBe("ok");
+
+		queue.dispose();
+	});
+
+	it("drops every provider's cached reads when no provider is named", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const run = vi.fn<() => Promise<string>>().mockResolvedValue("value");
+		const uv = "uv" as unknown as "conda";
+		await queue.read({ providerId: "conda", opName: "envs.list", run });
+		await queue.read({ providerId: uv, opName: "envs.list", run });
+
+		queue.clearReadCache();
+		await queue.read({ providerId: "conda", opName: "envs.list", run });
+		await queue.read({ providerId: uv, opName: "envs.list", run });
+
+		expect(run).toHaveBeenCalledTimes(4);
+		queue.dispose();
+	});
+
+	it("neither caches nor shares a read that started before the clear", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const before = deferred<string>();
+		const run = vi
+			.fn<() => Promise<string>>()
+			.mockImplementationOnce(() => before.promise)
+			.mockResolvedValueOnce("after-clear");
+
+		const started = queue.read({ providerId: "conda", opName: "repodata.find", run });
+		queue.clearReadCache("conda");
+		const afterClear = queue.read({ providerId: "conda", opName: "repodata.find", run });
+		before.resolve("previous-account");
+
+		await expect(started).resolves.toBe("previous-account");
+		await expect(afterClear).resolves.toBe("after-clear");
+		await expect(queue.read({ providerId: "conda", opName: "repodata.find", run })).resolves.toBe(
+			"after-clear",
+		);
+		expect(run).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+	});
+});
+
 describe("JobQueue.dispose", () => {
 	it("cancels in-flight jobs and rejects new enqueue/read calls", async () => {
 		const emit = vi.fn<(event: JobProgressEvent) => void>();

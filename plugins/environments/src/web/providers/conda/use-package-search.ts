@@ -5,6 +5,7 @@ import type {
 	CondaRepodataPackage,
 } from "../../../contracts/providers/conda";
 import type { CondaClient } from "../../conda";
+import { useAnacondaAccountKey } from "./use-anaconda-account-key";
 
 /** First request size, and how much each scroll-triggered request adds. */
 export const PACKAGE_SEARCH_BATCH = 50;
@@ -71,7 +72,9 @@ export function usePackageSearch({
 	channels,
 }: UsePackageSearchOptions): PackageSearch {
 	const trimmed = query.trim();
-	const key = JSON.stringify([trimmed, channels ?? null]);
+	// The account is part of the key: repodata is filtered for it.
+	const account = useAnacondaAccountKey();
+	const key = JSON.stringify([trimmed, channels ?? null, account]);
 	const [requested, setRequested] = useState({ key, limit: PACKAGE_SEARCH_BATCH });
 	const [loaded, setLoaded] = useState<LoadedResults | null>(null);
 	const loadedKeyRef = useRef<string | null>(null);

@@ -72,6 +72,23 @@ describe("kilo.environments in main", () => {
 		);
 	});
 
+	it("forgets cached package lookups when the Anaconda account changes", async () => {
+		const { conda, bridges, anacondaAccountChanged } = await boot({
+			withAnaconda: true,
+			answers: { findRepodata: [] },
+		});
+		const lookups = () => bridges[0]!.calls.filter((call) => call.method === "findRepodata");
+
+		await conda().methods.findRepodata({ names: ["pillow"] });
+		await conda().methods.findRepodata({ names: ["pillow"] });
+		expect(lookups()).toHaveLength(1);
+
+		anacondaAccountChanged();
+		await conda().methods.findRepodata({ names: ["pillow"] });
+
+		expect(lookups()).toHaveLength(2);
+	});
+
 	it("emits each write's progress and returns its job id", async () => {
 		const { conda } = await boot({ answers: { remove: undefined } });
 		const statuses: string[] = [];

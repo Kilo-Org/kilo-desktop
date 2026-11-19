@@ -26,6 +26,7 @@ import {
 	ANACONDA_DEFINITIONS,
 	AnacondaAccount,
 	type AnacondaAccountResult,
+	type AnacondaAccountSession,
 	type AnacondaAccountState,
 } from "@kilo-desktop/plugin-anaconda/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
@@ -88,6 +89,12 @@ export const SIGNED_IN: AccountState = {
 };
 
 export const SIGNED_OUT: AccountState = { ...SIGNED_IN, signedIn: false };
+
+/** kilo.anaconda's session after a successful sign-in in the test host. */
+export const SIGNED_IN_TO_ANACONDA: AnacondaAccountSession = {
+	status: "authenticated",
+	user: { userId: "user-1", username: "ada" },
+};
 
 /** A telemetry event as a sink received it: its declared name and data. */
 export interface TrackedEvent {
@@ -186,6 +193,7 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 		},
 	});
 
+	let setAnacondaSession = (_session: AnacondaAccountSession) => {};
 	const anacondaMain = definePlugin({
 		activate(sdk) {
 			const anaconda = options.anaconda;
@@ -205,7 +213,9 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 						signIn: async () => {
 							account.update((state) => ({ ...state, signingIn: true }));
 							try {
-								return await anaconda.signIn();
+								const result = await anaconda.signIn();
+								if (result.ok) setAnacondaSession(SIGNED_IN_TO_ANACONDA);
+								return result;
 							} finally {
 								account.update((state) => ({ ...state, signingIn: false }));
 							}
@@ -217,6 +227,10 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 					},
 				},
 			);
+			setAnacondaSession = (session) => {
+				account.update((state) => ({ ...state, session }));
+				account.emit("changed", {});
+			};
 		},
 	});
 
@@ -328,6 +342,12 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 		setStatus: (status: CondaStatus) =>
 			act(async () => {
 				conda.setState({ status });
+				await main.flush();
+			}),
+		/** Changes kilo.anaconda's session and fires its `changed` (with `anaconda`). */
+		setAnacondaSession: (session: AnacondaAccountSession) =>
+			act(async () => {
+				setAnacondaSession(session);
 				await main.flush();
 			}),
 	};

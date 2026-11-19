@@ -140,6 +140,9 @@ interface InFlightRead {
  *   bucket is cleared and the provider's write generation advances: a read
  *   that started before the write is neither joined by later callers nor
  *   cached, so a mutation is never hidden by a stale result.
+ * - **Clearing** — `clearReadCache(provider?)` drops cached reads the same
+ *   way a successful write does, for state the queue cannot see change
+ *   (the Anaconda account that filters repodata).
  * - **Cancellation** — `cancel(jobId)` aborts the run signal (if
  *   running) or dequeues (if queued) and emits `cancelled`. Idempotent;
  *   returns whether the cancel took effect. Terminal jobs return `false`.
@@ -297,6 +300,25 @@ export class JobQueue {
 	}
 
 	/**
+	 * Forget the cached reads of `provider` (every provider when omitted),
+	 * e.g. when the account that filters them changed. Like a successful
+	 * write, it advances the write generation, so a read already running is
+	 * neither cached nor joined by later callers. Jobs are untouched and the
+	 * queue stays usable, unlike {@link dispose}.
+	 */
+	clearReadCache(provider?: Provider): void {
+		const providers = provider
+			? [provider]
+			: [...new Set([...this.#cache.keys(), ...this.#inFlightReads.keys()])];
+		for (const id of providers) this.#invalidateReads(id);
+	}
+
+	#invalidateReads(provider: Provider): void {
+		this.#cache.delete(provider);
+		this.#writeGenerations.set(provider, (this.#writeGenerations.get(provider) ?? 0) + 1);
+	}
+
+	/**
 	 * Drop the read cache and cancel every in-flight job. Subsequent
 	 * `enqueue` / `read` calls throw. Idempotent.
 	 */
@@ -356,11 +378,7 @@ export class JobQueue {
 			});
 			// A successful write invalidates every cached read for this
 			// provider — cross-provider entries stay untouched.
-			this.#cache.delete(record.providerId);
-			this.#writeGenerations.set(
-				record.providerId,
-				(this.#writeGenerations.get(record.providerId) ?? 0) + 1,
-			);
+			this.#invalidateReads(record.providerId);
 			return value;
 		} catch (error) {
 			if (record.state === "cancelled") {

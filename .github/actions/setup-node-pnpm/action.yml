@@ -21,6 +21,14 @@ inputs:
       the "Decide whether to save the pnpm store" step).
     required: false
     default: "true"
+  store-scope:
+    description: >
+      Name for the set of packages the caller installs. "full" (the default)
+      is `pnpm install` of the whole workspace. A filtered install passes its
+      own name so its smaller store never lands under the full key; it restores
+      the current full store first, and skips saving when that store exists.
+    required: false
+    default: "full"
 
 runs:
   using: composite
@@ -113,19 +121,9 @@ runs:
       env:
         DIR: ${{ steps.pnpm-cli.outputs.dir }}
         VERSION: ${{ steps.pnpm-cli.outputs.version }}
-      # PNPM_HOME keeps the value pnpm/action-setup gave it: pnpm puts its store
-      # under PNPM_HOME, and actions/cache only restores an entry saved from the
-      # same path (the path is part of the cache version, alongside the key), so
-      # moving it would cold-start every store cache saved before this change.
       run: |
         echo "$DIR" >> "$GITHUB_PATH"
-        pnpm_home="$HOME/setup-pnpm/node_modules/.bin"
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          DIR=$(cygpath -u "$DIR")
-          pnpm_home=$(cygpath -w "$pnpm_home")
-        fi
-        echo "PNPM_HOME=$pnpm_home" >> "$GITHUB_ENV"
-        export PNPM_HOME="$pnpm_home"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then DIR=$(cygpath -u "$DIR"); fi
         PATH="$DIR:$PATH"
         installed=$(pnpm --version)
         [[ "$installed" == "$VERSION" ]] || { echo "::error::pnpm --version is $installed, want $VERSION"; exit 1; }
@@ -134,7 +132,27 @@ runs:
       if: inputs.pnpm-cache == 'true'
       id: pnpm-store
       shell: bash
-      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      env:
+        SCOPE: ${{ inputs.store-scope }}
+        LOCK_HASH: ${{ hashFiles('pnpm-lock.yaml') }}
+      run: |
+        {
+          echo "path=$(pnpm store path --silent)"
+          echo "full-key=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
+          echo "key=pnpm-store-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
+          echo "prefix=pnpm-store-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-"
+        } >> "$GITHUB_OUTPUT"
+
+    # A filtered install restored from the current full store adds nothing
+    # worth saving a second, smaller copy of.
+    - name: Look up the full pnpm store
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && inputs.store-scope != 'full'
+      id: full-store
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.full-key }}
+        lookup-only: true
 
     # A pull request that leaves pnpm-lock.yaml alone gets its exact store from
     # main once warm-caches.yml finishes; a run that starts first (right after
@@ -148,8 +166,10 @@ runs:
       shell: bash
       env:
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        FULL_STORE_EXISTS: ${{ steps.full-store.outputs.cache-hit }}
       run: |
         save=true
+        if [[ "$FULL_STORE_EXISTS" == "true" ]]; then save=false; fi
         case "$GITHUB_EVENT_NAME" in
           merge_group) save=false ;;
           pull_request)
@@ -167,20 +187,27 @@ runs:
     # ~1,250 packages again. The prefix fallback restores the closest store and
     # pnpm fetches only what changed. Caches saved on a PR branch are invisible
     # to other PRs; .github/workflows/warm-caches.yml saves them on main.
+    # A filtered scope falls back to the full store, which holds every package,
+    # before an older store of its own. For the full scope the first and third
+    # restore keys are the same entry, which actions/cache tolerates.
     - name: Cache the pnpm store
       if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
-        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
-          pnpm-store-${{ runner.os }}-${{ runner.arch }}-
+          ${{ steps.pnpm-store.outputs.full-key }}
+          ${{ steps.pnpm-store.outputs.prefix }}
+          pnpm-store-full-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Restore the pnpm store
       if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
-        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
-          pnpm-store-${{ runner.os }}-${{ runner.arch }}-
+          ${{ steps.pnpm-store.outputs.full-key }}
+          ${{ steps.pnpm-store.outputs.prefix }}
+          pnpm-store-full-${{ runner.os }}-${{ runner.arch }}-

@@ -12,7 +12,9 @@ description: >
 
 inputs:
   runtime:
-    description: "Runtime to install: electron, or playwright (Chromium browser)."
+    description: >
+      Runtime to install: electron, or playwright (Chromium's headless shell
+      only, which is all the headless Vitest browser projects launch).
     required: true
   package-name:
     description: Workspace package that provides the installer.
@@ -62,7 +64,7 @@ runs:
           macOS-playwright) path="~/Library/Caches/ms-playwright" ;;
           Windows-playwright) path="~/AppData/Local/ms-playwright" ;;
         esac
-        name=$([[ "$RUNTIME" == electron ]] && echo electron || echo playwright-browsers)
+        name=$([[ "$RUNTIME" == electron ]] && echo electron || echo playwright-chromium-shell)
         echo "path=$path" >> "$GITHUB_OUTPUT"
         echo "key=$name-$RUNNER_OS-$RUNNER_ARCH-$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -90,7 +92,7 @@ runs:
       run: |
         case "$RUNTIME" in
           electron) command=(pnpm --filter "$PACKAGE_NAME" exec install-electron) ;;
-          playwright) command=(pnpm --filter "$PACKAGE_NAME" exec playwright install chromium) ;;
+          playwright) command=(pnpm --filter "$PACKAGE_NAME" exec playwright install --only-shell chromium) ;;
         esac
 
         for attempt in 1 2 3; do
@@ -115,7 +117,7 @@ runs:
       run: |
         case "$RUNTIME" in
           electron) binaries=("$(pnpm --filter "$PACKAGE_NAME" exec node -p 'require("electron")')") ;;
-          playwright) mapfile -t binaries < <(find "$HOME/.cache/ms-playwright" -type f \( -name chrome -o -name chrome-headless-shell \)) ;;
+          playwright) mapfile -t binaries < <(find "$HOME/.cache/ms-playwright" -type f -name chrome-headless-shell) ;;
         esac
         [[ ${#binaries[@]} -gt 0 && -n "${binaries[0]}" ]] || { echo "::error::No $RUNTIME binary found to check."; exit 1; }
 
@@ -125,4 +127,6 @@ runs:
           exit 0
         fi
         echo "::warning::Missing system libraries for $RUNTIME; installing Playwright's Chromium dependencies:"$'\n'"$missing"
-        pnpm exec playwright install-deps chromium
+        # Both installer packages (desktop for electron, web for playwright)
+        # depend on playwright; the workspace root does not.
+        pnpm --filter "$PACKAGE_NAME" exec playwright install-deps chromium

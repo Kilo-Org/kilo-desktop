@@ -29,8 +29,9 @@ env:
   GIT_CONFIG_VALUE_5: main
 
 # One job per runner type saves the pnpm store on a lockfile change: lint-format
-# on Linux and each `test` leg on Windows and macOS. Every other job passes
-# save-pnpm-store: "false" and only restores.
+# on Linux and each `test` leg on Windows and macOS (under its own "platform"
+# store scope, and only when main holds no full store for the lockfile yet).
+# Every other job passes save-pnpm-store: "false" and only restores.
 jobs:
   lint-format:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -197,11 +198,16 @@ jobs:
         run: |
           : > "$RUNNER_TEMP/kilo-test-gitconfig"
           echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/kilo-test-gitconfig" >> "$GITHUB_ENV"
+      # Depth 2 for --affected below (see typecheck).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          fetch-depth: 2
       # Only these packages and their dependencies (12 of 29 projects, ~900 of
       # ~1,400 packages): linking the whole workspace was most of this job's
       # time on Windows. The root project comes along, with turbo and vitest.
+      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          store-scope: platform
       - name: Install the platform-tested packages
         shell: bash
         run: |
@@ -213,13 +219,19 @@ jobs:
           vitest: "true"
       # Coverage, including browser projects, runs in test-linux. These legs
       # keep checks for real Git and filesystem behavior per platform, as
-      # Turbo-managed tasks: cached, and the packages run concurrently.
+      # Turbo-managed tasks: cached, and the packages run concurrently. PRs run
+      # only the packages the diff affects (--affected intersects the filters);
+      # the merge queue runs all of them.
       - name: Run platform compatibility tests
         shell: bash
         run: |
           filters=()
           for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package"); done
-          pnpm exec turbo run test:platform "${filters[@]}"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            TURBO_SCM_BASE=HEAD^1 pnpm exec turbo run test:platform --affected "${filters[@]}"
+          else
+            pnpm exec turbo run test:platform "${filters[@]}"
+          fi
 
   # Plans PR e2e before any runner packages the app: the specs the diff can
   # reach (e2e/scripts/select-pr-e2e.ts) and a shard count sized by their

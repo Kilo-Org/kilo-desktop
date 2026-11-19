@@ -82,7 +82,7 @@ function useRequiredStep(steps: readonly Step[]): Step | undefined {
  */
 export function OnboardingHost() {
 	const desktop = useContextKey("kernel/desktop");
-	const forced = useContextKey(FORCE_ONBOARDING_KEY) || true; // TEMP: always show onboarding for review
+	const forced = useContextKey(FORCE_ONBOARDING_KEY);
 	const onboarding = useDomainObject(Onboarding);
 	const state = useDomainObjectState(Onboarding, selectState);
 	const kernel = useKernel();

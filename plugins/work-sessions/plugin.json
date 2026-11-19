@@ -248,7 +248,10 @@
 				{
 					"id": "workspace",
 					"label": "Workspace",
-					"priority": 700
+					"priority": 700,
+					"showWhen": {
+						"none": ["kilo.work-sessions/hasWorkspaces"]
+					}
 				}
 			],
 			"kilo.shell/settings-section": [

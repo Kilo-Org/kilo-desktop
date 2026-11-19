@@ -2,6 +2,7 @@ import { ContextMenu } from "@base-ui/react/context-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	ArchiveIcon,
+	BookmarkIcon,
 	ChevronDownIcon,
 	EllipsisIcon,
 	FolderIcon,
@@ -34,6 +35,7 @@ import {
 	useDomainObjectState,
 	useDragSource,
 	useExtensions,
+	useSdk,
 } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Kbd } from "@kilo-desktop/ui/components/kbd";
@@ -55,6 +57,7 @@ import {
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import {
 	SidebarMenu,
+	SidebarMenuBadge,
 	SidebarMenuButton,
 	SidebarMenuItem,
 } from "@kilo-desktop/ui/components/sidebar";
@@ -72,6 +75,7 @@ import {
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
+	SavedItems,
 	UNSCOPED_WORKSPACE_FOCUS,
 	WorkSessionDecoration,
 	WorkSessionListAction,
@@ -81,11 +85,13 @@ import {
 	Workspaces,
 	type Workspace,
 	type WorkSession,
+	type SavedItemsState,
 	type WorkSessionsWindowState,
 } from "../../contracts";
 import { lastVisitedOf, useLastVisits, type LastVisited } from "../attention/last-visited";
 import { useSessionActivities } from "../attention/live-activity";
 import { startNewWorkSession } from "../home/new-session";
+import { SAVED_VIEW_KEY, showSavedPage } from "../saved";
 import { directoryBasename } from "../shared/directory";
 import {
 	useWorkSessionSearchOpen,
@@ -647,6 +653,9 @@ function SessionListContent() {
 								onSelectWorkspace={(id) => updateView({ focus: id })}
 							/>
 						</SidebarMenuItem>
+						<SidebarMenuItem>
+							<SavedButton active={navigator.view === SAVED_VIEW_KEY} />
+						</SidebarMenuItem>
 					</SidebarMenu>
 				</section>
 				<section aria-label="Sessions" className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -799,6 +808,32 @@ function NavigatorActions() {
 			{actions.map((action) => (
 				<RenderContribution key={action.key} contribution={action} />
 			))}
+		</>
+	);
+}
+
+const selectSavedCount = (state: SavedItemsState) => state.items.length;
+
+/** "Saved", below Search: opens the Saved page; shows how many items are saved. */
+function SavedButton({ active }: { active: boolean }) {
+	const sdk = useSdk();
+	const count = useDomainObjectState(SavedItems, selectSavedCount) ?? 0;
+	return (
+		<>
+			<SidebarMenuButton
+				className="gap-2 rounded-lg"
+				data-qa-id="session-list-saved"
+				isActive={active}
+				onClick={() => showSavedPage(sdk, "sidebar")}
+			>
+				<BookmarkIcon />
+				<span>Saved</span>
+			</SidebarMenuButton>
+			{count > 0 ? (
+				<SidebarMenuBadge data-qa-id="session-list-saved-count" aria-label={`${count} saved`}>
+					{count}
+				</SidebarMenuBadge>
+			) : null}
 		</>
 	);
 }

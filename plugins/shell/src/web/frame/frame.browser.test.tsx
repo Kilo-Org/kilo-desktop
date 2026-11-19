@@ -15,9 +15,11 @@ import {
 	RightSidebarPanel,
 	SidebarNotice,
 	StatusBarItem,
+	Takeover,
 	TopBarAction,
 	TopBarTitle,
 	type DialogProps,
+	type TakeoverProps,
 } from "../../contracts";
 import { contributor, renderShell } from "../../testing";
 
@@ -301,6 +303,109 @@ describe("dialogs", () => {
 
 		await expect.element(page.getByText("Renaming a")).toBeVisible();
 		expect(page.getByRole("dialog").elements()).toHaveLength(1);
+	});
+});
+
+function takeoverPlugin(onShortcut: () => void = () => {}) {
+	return contributor(
+		"acme.reader",
+		{
+			"kilo.shell/takeover": [
+				{ id: "reader", title: "Reader" },
+				{ id: "slides", title: "Slides" },
+			],
+			"kernel/command": [{ id: "ping", title: "Ping", keybinding: "Mod+Shift+Y" }],
+		},
+		(sdk) => {
+			sdk.extensions.implement(Takeover, "reader", ({ close, input }: TakeoverProps) => (
+				<div>
+					<p>Reading {String((input as { what: string }).what)}</p>
+					<button type="button" onClick={close}>
+						Exit
+					</button>
+				</div>
+			));
+			sdk.extensions.implement(Takeover, "slides", () => <p>Slides body</p>);
+			sdk.extensions.implement(KernelCommand, "ping", onShortcut);
+		},
+	);
+}
+
+describe("take-overs", () => {
+	const open = (renderer: RendererKernel, takeover: string, input?: unknown) =>
+		renderer
+			.sdkFor("acme.reader")
+			.domainObjects.get(Navigation)!
+			.methods.openTakeover({ takeover, ...(input === undefined ? {} : { input }) });
+
+	it("covers the whole window while shown, leaving the frame mounted but inert", async () => {
+		const { renderer } = await renderShell([product(), takeoverPlugin()]);
+		await expect.element(page.getByText("Home body")).toBeVisible();
+
+		await open(renderer, "acme.reader/reader", { what: "a reply" });
+
+		const layer = page.getByRole("region", { name: "Reader" });
+		await expect.element(layer.getByText("Reading a reply")).toBeVisible();
+		const box = layer.element().getBoundingClientRect();
+		expect(box.left).toBe(0);
+		expect(box.top).toBe(0);
+		expect(box.width).toBe(window.innerWidth);
+		expect(box.height).toBe(window.innerHeight);
+		expect(page.getByText("Home body").element().closest("[inert]")).not.toBeNull();
+		expect(page.getByText("Session list").element().closest("[inert]")).not.toBeNull();
+		expect(renderer.contextKeys.get("kilo.shell/takeoverShown")).toBe(true);
+
+		await layer.getByRole("button", { name: "Exit" }).click();
+
+		await expect.element(page.getByRole("region", { name: "Reader" })).not.toBeInTheDocument();
+		expect(page.getByText("Home body").element().closest("[inert]")).toBeNull();
+		expect(renderer.contextKeys.get("kilo.shell/takeoverShown")).toBe(false);
+	});
+
+	it("keeps the window's shortcuts working, unlike a dialog", async () => {
+		let pinged = 0;
+		const { renderer } = await renderShell([product(), takeoverPlugin(() => (pinged += 1))]);
+		await open(renderer, "acme.reader/reader", { what: "x" });
+		await expect.element(page.getByText("Reading x")).toBeVisible();
+
+		const [chord] = renderer.keyboard.resolution().byCommand["acme.reader/ping"] ?? [];
+		expect(await renderer.keyboard.dispatch(chord!)).toBe(true);
+
+		expect(pinged).toBe(1);
+		const active = renderer.commands.list().map((command) => command.key);
+		expect(active).not.toContain("kilo.shell/toggle-sidebar");
+	});
+
+	it("shows one take-over at a time and closes it when main asks", async () => {
+		const { renderer, main } = await renderShell([product(), takeoverPlugin()]);
+		await open(renderer, "acme.reader/reader", { what: "x" });
+		await expect.element(page.getByText("Reading x")).toBeVisible();
+
+		await open(renderer, "acme.reader/slides");
+
+		await expect.element(page.getByText("Slides body")).toBeVisible();
+		expect(page.getByTestId("shell-takeover").elements()).toHaveLength(1);
+		await main.kernelSdk.domainObjects.get(Navigation)!.methods.closeTakeover({});
+		await expect.element(page.getByTestId("shell-takeover")).not.toBeInTheDocument();
+	});
+
+	it("shows nothing for a take-over no plugin contributes", async () => {
+		const { renderer } = await renderShell([product(), takeoverPlugin()]);
+
+		await open(renderer, "acme.reader/missing");
+
+		await expect.element(page.getByText("Home body")).toBeVisible();
+		expect(page.getByTestId("shell-takeover").elements()).toHaveLength(0);
+	});
+
+	it("stacks above the frame's fixed controls and below popovers, dialogs and toasts (z-50)", async () => {
+		const { renderer } = await renderShell([product(), takeoverPlugin()]);
+		await open(renderer, "acme.reader/reader", { what: "x" });
+
+		await expect.element(page.getByText("Reading x")).toBeVisible();
+		const z = Number(getComputedStyle(page.getByTestId("shell-takeover").element()).zIndex);
+		expect(z).toBeGreaterThan(40);
+		expect(z).toBeLessThan(50);
 	});
 });
 

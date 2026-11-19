@@ -42,6 +42,7 @@ import {
 } from "./slash-commands/client-slash-commands";
 import { ChatPaneOpeners } from "./panes/chat-pane-openers";
 import { FollowPlanApproval } from "./plan/follow-plan-approval";
+import { ChatReadingProvider, type ChatReading } from "./reading/chat-reading";
 import { Thread } from "./thread/thread";
 import { TranscriptProviders, useTranscriptAui } from "./thread/transcript-scope";
 
@@ -58,6 +59,8 @@ export interface AgentPaneServices {
 	readonly focus: ComposerFocus;
 	/** The window's query cache: Kilo's agent, model and command catalogs. */
 	readonly queries: QueryClient;
+	/** The window's Reading Mode (Focus, the reading control, Saved). */
+	readonly reading?: ChatReading;
 }
 
 interface ChatContext {
@@ -233,7 +236,14 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 								}}
 								focusRoot={() => focusComposerIn(rootRef.current)}
 							>
-								<Thread />
+								<ChatReadingProvider
+									reading={services.reading}
+									workSessionId={workSessionId}
+									paneId={pane.id}
+									chatId={chatId}
+								>
+									<Thread />
+								</ChatReadingProvider>
 							</ChatThread>
 						</ChatConnectionProvider>
 					</QueryClientProvider>

@@ -18,7 +18,14 @@
 		"kilo.work-sessions/opener": "optional",
 		"kilo.chat/composer-mention": "optional",
 		"kilo.chat/markdown-extension": "optional",
-		"kilo.shell/theme": "optional"
+		"kilo.shell/theme": "optional",
+		"kilo.shell/takeover": "optional",
+		"kilo.shell/reading": "optional",
+		"kilo.shell/reading-presets": "optional",
+		"kilo.shell/reading-usage": "optional",
+		"kilo.shell/notifications": "optional",
+		"kilo.shell/appearance": "optional",
+		"kilo.shell/navigation": "optional"
 	},
 	"domainObjects": [
 		{
@@ -38,6 +45,20 @@
 					"keybinding": "Mod+Shift+E",
 					"when": {
 						"all": ["kilo.work-sessions/paneTargetActive"]
+					}
+				},
+				{
+					"id": "toggle-focus",
+					"title": "Focus",
+					"category": "Reading",
+					"order": 0,
+					"keybinding": {
+						"mac": "Mod+Shift+F",
+						"default": "Ctrl+Shift+F"
+					},
+					"when": {
+						"all": ["kilo.files/focusAvailable"],
+						"none": ["kernel/secondaryWindow"]
 					}
 				}
 			],
@@ -92,8 +113,41 @@
 				{
 					"id": "notebook-opened",
 					"name": "Notebook Opened"
+				},
+				{
+					"id": "focus-entered",
+					"name": "Focus Entered"
+				},
+				{
+					"id": "focus-exited",
+					"name": "Focus Exited"
+				},
+				{
+					"id": "focus-entry-failed",
+					"name": "Focus Entry Failed"
+				},
+				{
+					"id": "reading-control-opened",
+					"name": "Reading Control Opened"
+				},
+				{
+					"id": "reading-setting-changed",
+					"name": "Reading Setting Changed"
+				}
+			],
+			"kilo.shell/takeover": [
+				{
+					"id": "focus",
+					"title": "Focus"
 				}
 			]
 		}
-	}
+	},
+	"contextKeys": [
+		{
+			"id": "focusAvailable",
+			"scope": "window",
+			"description": "True while the active pane in this window shows rendered Markdown that can be read in Focus, or Focus is open."
+		}
+	]
 }

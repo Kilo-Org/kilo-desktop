@@ -57,6 +57,8 @@ export function fakeShellMain() {
 					openSettings: ({ section }) => calls.openSettings(section),
 					goHome: () => undefined,
 					openDialog: ({ dialog, input }) => calls.openDialog(dialog, input),
+					openTakeover: () => undefined,
+					closeTakeover: () => undefined,
 					reportLocation: () => undefined,
 				},
 			});

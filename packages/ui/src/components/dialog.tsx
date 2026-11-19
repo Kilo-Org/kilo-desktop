@@ -40,8 +40,11 @@ function DialogContent({
 	visualOverlayClassName,
 	children,
 	showCloseButton = true,
+	container,
 	...props
 }: DialogPrimitive.Popup.Props & {
+	// local: portal container, for dialogs opened inside a layered surface (not in stock).
+	container?: DialogPrimitive.Portal.Props["container"] | undefined;
 	// local: overlay props for nested dialogs (not in stock).
 	overlayClassName?: string | undefined;
 	/**
@@ -53,7 +56,7 @@ function DialogContent({
 	showCloseButton?: boolean | undefined;
 }) {
 	return (
-		<DialogPortal>
+		<DialogPortal container={container}>
 			<DialogOverlay className={overlayClassName} />
 			{visualOverlayClassName ? (
 				<div

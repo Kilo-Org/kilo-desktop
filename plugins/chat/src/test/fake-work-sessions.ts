@@ -19,12 +19,14 @@ import {
 	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
+	SavedItems,
 	WorkSessions,
 	WorkSessionsWindow,
 	Workspaces,
 	type Authorization,
 	type OpenPaneInput,
 	type Pane,
+	type SavedItem,
 	type WorkSession,
 	type WorkSessionPanes,
 	type Workspace,
@@ -323,11 +325,45 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 		});
 	}
 
+	let saved!: DomainObjectProvider<typeof SavedItems>;
+	function provideSaved(sdk: PluginSdk) {
+		let nextId = 1;
+		const write = (items: SavedItem[], addedTotal = saved.state.addedTotal) =>
+			saved.setState({ items, addedTotal });
+		saved = sdk.domainObjects.provide(SavedItems, {
+			initialState: { items: [], addedTotal: 0 },
+			methods: {
+				add: (input) => {
+					const same = saved.state.items.find(
+						(item) =>
+							item.source === input.source &&
+							item.ref.id === input.ref.id &&
+							item.anchor === input.anchor,
+					);
+					if (same) return same;
+					const item: SavedItem = { ...input, id: `saved_${nextId++}`, createdAt: Date.now() };
+					write([item, ...saved.state.items], saved.state.addedTotal + 1);
+					return item;
+				},
+				remove: ({ id }) => {
+					const item = saved.state.items.find((candidate) => candidate.id === id) ?? null;
+					if (item) write(saved.state.items.filter((candidate) => candidate.id !== id));
+					return { removed: item };
+				},
+				restore: ({ item }) => {
+					write([...saved.state.items, item].sort((a, b) => b.createdAt - a.createdAt));
+					return item;
+				},
+			},
+		});
+	}
+
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
 			provideWorkspaces(sdk);
 			provideWorkSessions(sdk);
 			providePanes(sdk);
+			provideSaved(sdk);
 		},
 	});
 
@@ -338,6 +374,8 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 		attachChat,
 		workSessions: () => workSessions,
 		panes: () => panes,
+		/** Saved items, as main holds them. */
+		saved: () => saved,
 		/** A work session's panes, as main holds them. */
 		panesOf: (workSessionId: string) => of(workSessionId),
 	};

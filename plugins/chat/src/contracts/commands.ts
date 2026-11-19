@@ -13,4 +13,10 @@ export const CHAT_COMMANDS = {
 	 * (`/compact`), given its `ClientSlashCommandContext`.
 	 */
 	compact: "kilo.chat/compact",
+	/** Enters Focus on the active reply or plan, or exits it (⌘⇧F). */
+	toggleFocus: "kilo.chat/toggle-focus",
+	/** Shown in keyboard help only: Focus handles Escape itself. */
+	exitFocus: "kilo.chat/exit-focus",
+	/** Shown in keyboard help only: Focus handles ↑ ↓ itself. */
+	focusMove: "kilo.chat/focus-move",
 } as const;

@@ -6,8 +6,18 @@ import {
 	type AssistantState,
 } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, type FC, type RefObject } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type FC,
+	type ReactNode,
+	type RefObject,
+} from "react";
 
+import { useContextKey } from "@kilo-desktop/kernel/web";
 import { useFindScopeOpen } from "@kilo-desktop/ui/components/find-bar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -15,6 +25,18 @@ import { ComposerHeader } from "../checkpoints/composer-header";
 import { Composer } from "../composer/composer";
 import { ComposerFooter } from "../composer/composer-footer";
 import { OpenCodeComposerInteraction } from "../interactions/opencode-composer-interaction";
+import {
+	ReplyFocusPortal,
+	TranscriptFocusRail,
+	TranscriptReadingControl,
+	useTranscriptReading,
+} from "../reading/reply-focus";
+import { useChatReading } from "../reading/chat-reading";
+import { useOlderHistoryStatus } from "../runtime/use-optional-opencode-runtime-extras";
+import { useExcerptPasteTelemetry } from "../reading/excerpt-paste";
+import { useReadingThemeScope } from "../reading/reading-ui";
+import { SavedLayer } from "../saved/saved-layer";
+import { useRevealRequests } from "../saved/use-reveal-requests";
 import { ManualDisclosureMemoryProvider } from "../tools/activity-group";
 import { ConversationMapRail } from "./conversation-map-rail";
 import { WindowedMessages } from "./message-window";
@@ -70,10 +92,35 @@ function useThreadHeightVariable(ref: RefObject<HTMLDivElement | null>) {
 	}, [ref]);
 }
 
+const selectHasMessages = (s: AssistantState) => s.thread.messages.length > 0;
+
 export const Thread: FC = () => {
 	const isDraft = useAuiState(isDraftView);
 	const rootRef = useRef<HTMLDivElement>(null);
 	useThreadHeightVariable(rootRef);
+	const [column, setColumn] = useState<HTMLDivElement | null>(null);
+	const reading = useTranscriptReading(column);
+	const chatReading = useChatReading();
+	const secondary = useContextKey("kernel/secondaryWindow");
+	const [toast, setToast] = useState<ReactNode | null>(null);
+	const renderToast = useCallback((node: ReactNode | null) => setToast(node), []);
+	const viewport = useCallback(
+		() => column?.closest('[data-slot="aui_thread-viewport"]') ?? null,
+		[column],
+	);
+	const hasMessages = useAuiState(selectHasMessages);
+	const historyLoading = useOlderHistoryStatus() === "loading";
+	useRevealRequests(
+		chatReading?.reading.saved?.reveals,
+		chatReading?.chatId ?? null,
+		viewport,
+		hasMessages && !historyLoading,
+	);
+	useAuiEvent("composer.send", () => {
+		if (chatReading) chatReading.reading.notePromptSent(chatReading.workSessionId);
+	});
+	useExcerptPasteTelemetry(rootRef, chatReading?.reading);
+	const { style: readingTheme, ...readingThemeAttributes } = useReadingThemeScope();
 
 	return (
 		<ThreadPrimitive.Root
@@ -83,7 +130,9 @@ export const Thread: FC = () => {
 				CHAT_TYPOGRAPHY_CLASS,
 				"[--composer-bg:var(--pane-raised)]",
 			)}
+			{...readingThemeAttributes}
 			style={{
+				...readingTheme,
 				["--thread-max-width" as string]: "48rem",
 				["--composer-radius" as string]: "1rem",
 				["--composer-padding" as string]: "8px",
@@ -107,12 +156,25 @@ export const Thread: FC = () => {
 				/>
 				{isDraft ? null : <ConversationMapRail />}
 				<div
+					ref={setColumn}
 					data-slot="aui_thread-column"
-					className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4"
+					className="relative mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4"
 				>
-					<div data-slot="aui_message-group" className={cn("mb-16", MESSAGE_GROUP_CLASS)}>
-						<TranscriptMessages />
-					</div>
+					{reading.available ? <TranscriptFocusRail column={column} enter={reading.enter} /> : null}
+					<ReplyFocusPortal />
+					<SavedLayer
+						saved={chatReading?.reading.saved}
+						workSessionId={chatReading?.workSessionId ?? ""}
+						chatId={chatReading?.chatId ?? null}
+						root={column}
+						surface="chat"
+						renderToast={renderToast}
+						canView={!secondary}
+					>
+						<div data-slot="aui_message-group" className={cn("mb-16", MESSAGE_GROUP_CLASS)}>
+							<TranscriptMessages />
+						</div>
+					</SavedLayer>
 					{/* Not ThreadPrimitive.ViewportFooter: autoscroll counts the footer's height as
 					    still at the bottom, so a reader scrolling up less than that is pulled back by
 					    the next streamed token, and its height includes this `mt-auto` margin as last
@@ -121,7 +183,21 @@ export const Thread: FC = () => {
 						/* Transparent so sticky glass can blur scrolled messages behind the shell. */
 						className="aui-thread-viewport-footer relative sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-1.5"
 					>
-						<ThreadScrollToBottom />
+						{toast ? (
+							<div
+								className="pointer-events-none absolute inset-x-0 -top-13 z-20 flex justify-center"
+								data-qa-id="chat-toast-slot"
+							>
+								{toast}
+							</div>
+						) : (
+							<ThreadScrollToBottom />
+						)}
+						{reading.available ? (
+							<div className="absolute -top-12 right-1 z-10">
+								<TranscriptReadingControl enter={reading.enter} />
+							</div>
+						) : null}
 						<div className="relative flex w-full flex-col">
 							<ComposerDockMask />
 							<ComposerHeader />

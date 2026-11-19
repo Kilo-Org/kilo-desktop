@@ -5,12 +5,14 @@ import { provideLegal, type LegalResources } from "./legal";
 import { provideNavigation } from "./navigation";
 import { provideNotifications, type NotificationsOptions } from "./notifications";
 import { provideOnboarding, type OnboardingOptions } from "./onboarding";
+import { provideReading, type ReadingOptions } from "./reading";
 import { originPath, shellTelemetry, trackOnboarding } from "./telemetry";
 
 export interface ShellMainOptions extends OnboardingOptions {
 	/** The legal documents shipped beside the app; none when omitted. */
 	readonly legalResources?: (sdk: PluginSdk) => LegalResources;
 	readonly notifications?: NotificationsOptions;
+	readonly reading?: ReadingOptions;
 }
 
 const NO_LEGAL_RESOURCES: LegalResources = { locate: () => null, read: async () => null };
@@ -21,6 +23,7 @@ export function createShellMainEntry(options: ShellMainOptions = {}): PluginEntr
 		activate(sdk) {
 			const track = shellTelemetry(sdk);
 			provideAppearance(sdk);
+			provideReading(sdk, track, options.reading);
 			provideOnboarding(sdk, options);
 			trackOnboarding(sdk, track);
 			provideNavigation(sdk, {

@@ -77,10 +77,10 @@ const windowTarget = { windowId: z.string().min(1).optional() };
 
 /**
  * Where each window is, and requests to move one: navigate, open a settings
- * section, go home, open a dialog. Callable from main or a window, so a main
- * process tool can "open my settings" without its own event. Windows apply
- * the request (`navigate-requested`, `dialog-requested`) and report where
- * they are.
+ * section, go home, open a dialog or a take-over. Callable from main or a
+ * window, so a main process tool can "open my settings" without its own
+ * event. Windows apply the request (`navigate-requested`, `dialog-requested`,
+ * `takeover-requested`) and report where they are.
  */
 export const Navigation = defineDomainObject({
 	id: "kilo.shell/navigation",
@@ -101,6 +101,16 @@ export const Navigation = defineDomainObject({
 			z.object({ dialog: z.string().min(1), input: z.unknown().optional(), ...windowTarget }),
 			nothing,
 		),
+		/**
+		 * Shows a `kilo.shell/takeover` contribution (its key) over the whole
+		 * window, with `input` for it, in place of any take-over already shown.
+		 */
+		openTakeover: method(
+			z.object({ takeover: z.string().min(1), input: z.unknown().optional(), ...windowTarget }),
+			nothing,
+		),
+		/** Closes the window's take-over, if one is shown. */
+		closeTakeover: method(z.object(windowTarget), nothing),
 		/** A window says where it is now; kilo.shell's own windows only. */
 		reportLocation: method(windowLocationSchema, nothing),
 	},
@@ -115,6 +125,12 @@ export const Navigation = defineDomainObject({
 			dialog: z.string(),
 			input: z.unknown().optional(),
 		}),
+		"takeover-requested": z.object({
+			windowId: z.string(),
+			takeover: z.string(),
+			input: z.unknown().optional(),
+		}),
+		"takeover-close-requested": z.object({ windowId: z.string() }),
 	},
 });
 

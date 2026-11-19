@@ -1455,6 +1455,33 @@ describe("FilesView", () => {
 		await vi.waitFor(() => expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull());
 	});
 
+	it("offers Reading Mode over rendered Markdown: the reading control and Focus with ⌘⇧F", async () => {
+		const markdownHandlers: DocumentMethods = {
+			...handlers(),
+			read: async () => ({
+				kind: "text",
+				contents: "# Read me\n\nFirst paragraph.\n\nSecond paragraph.",
+				byteLength: 48,
+				truncated: false,
+				revision: "a".repeat(64),
+			}),
+		};
+		const view = await renderView(markdownHandlers, filePane("docs/readme.md"));
+		await expect.element(page.getByTestId("files-markdown-toggle")).toBeVisible();
+		fireEvent.click(document.querySelector('[data-qa-id="files-markdown-toggle"]')!);
+		await expect.element(page.getByTestId("files-markdown-preview")).toBeVisible();
+
+		await expect.element(page.getByTestId("files-reading-trigger")).toBeVisible();
+		await expect.poll(() => view.renderer.contextKeys.get("kilo.files/focusAvailable")).toBe(true);
+		expect(
+			view.renderer.commands.list().some((command) => command.key === "kilo.files/toggle-focus"),
+		).toBe(true);
+
+		await page.getByTestId("files-reading-trigger").click();
+		await expect.element(page.getByTestId("files-reading-popover")).toBeVisible();
+		await expect.element(page.getByTestId("files-reading-size")).toHaveTextContent("13px");
+	});
+
 	it("renders relative Markdown links as file chips that open a new pane", async () => {
 		const markdownHandlers: DocumentMethods = {
 			...handlers(),

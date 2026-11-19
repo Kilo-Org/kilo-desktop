@@ -24,7 +24,14 @@
 		"kilo.work-sessions/permission-auto-answer": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/notifications": "optional",
-		"kilo.shell/theme": "optional"
+		"kilo.shell/theme": "optional",
+		"kilo.shell/takeover": "optional",
+		"kilo.shell/reading": "optional",
+		"kilo.shell/reading-presets": "optional",
+		"kilo.shell/reading-usage": "optional",
+		"kilo.shell/appearance": "optional",
+		"kilo.work-sessions/saved-items": "optional",
+		"kilo.work-sessions/saved-source": "optional"
 	},
 	"permissions": {
 		"host": ["clipboard", "os", "windows"],
@@ -35,6 +42,11 @@
 			"id": "composerFocused",
 			"scope": "window",
 			"description": "True while a chat composer in this window has keyboard focus."
+		},
+		{
+			"id": "focusAvailable",
+			"scope": "window",
+			"description": "True while the active pane in this window can be read in Focus (a reply or a plan), or Focus is open."
 		}
 	],
 	"domainObjects": [
@@ -234,6 +246,38 @@
 					"category": "Composer",
 					"order": 20,
 					"palette": false
+				},
+				{
+					"id": "toggle-focus",
+					"title": "Focus",
+					"category": "Reading",
+					"order": 0,
+					"keybinding": {
+						"mac": "Mod+Shift+F",
+						"default": "Ctrl+Shift+F"
+					},
+					"when": {
+						"all": ["kilo.chat/focusAvailable"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "exit-focus",
+					"title": "Exit Focus",
+					"category": "Reading",
+					"order": 1,
+					"keybinding": "Escape",
+					"handledLocally": true,
+					"palette": false
+				},
+				{
+					"id": "focus-move",
+					"title": "Move between paragraphs in Focus",
+					"category": "Reading",
+					"order": 2,
+					"keybinding": ["ArrowUp", "ArrowDown"],
+					"handledLocally": true,
+					"palette": false
 				}
 			],
 			"kilo.chat/composer-action": [
@@ -364,6 +408,76 @@
 					"tools": ["plan_exit"],
 					"standalone": true,
 					"category": "planning"
+				}
+			],
+			"kilo.shell/takeover": [
+				{
+					"id": "focus",
+					"title": "Focus"
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "focus-entered",
+					"name": "Focus Entered"
+				},
+				{
+					"id": "focus-exited",
+					"name": "Focus Exited"
+				},
+				{
+					"id": "focus-entry-failed",
+					"name": "Focus Entry Failed"
+				},
+				{
+					"id": "reading-control-opened",
+					"name": "Reading Control Opened"
+				},
+				{
+					"id": "reading-setting-changed",
+					"name": "Reading Setting Changed"
+				},
+				{
+					"id": "focus-round-trip",
+					"name": "Focus Round Trip"
+				},
+				{
+					"id": "focus-excerpt-used-in-prompt",
+					"name": "Focus Excerpt Used In Prompt"
+				},
+				{
+					"id": "saved-item-added",
+					"name": "Saved Item Added"
+				},
+				{
+					"id": "saved-item-removed",
+					"name": "Saved Item Removed"
+				},
+				{
+					"id": "saved-toast-action",
+					"name": "Saved Toast Action"
+				},
+				{
+					"id": "selection-menu-used",
+					"name": "Selection Menu Used"
+				},
+				{
+					"id": "saved-action-failed",
+					"name": "Saved Action Failed"
+				}
+			],
+			"kilo.work-sessions/saved-source": [
+				{
+					"id": "chat-text",
+					"label": "Saved text",
+					"presentation": "quote",
+					"filter": "text"
+				},
+				{
+					"id": "chat-bookmark",
+					"label": "Bookmarked chat",
+					"presentation": "bookmark",
+					"filter": "chats"
 				}
 			]
 		}

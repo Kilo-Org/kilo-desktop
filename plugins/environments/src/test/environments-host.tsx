@@ -193,6 +193,8 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 					openSettings: ({ section }) => void settingsOpened.push(section),
 					goHome: () => undefined,
 					openDialog: () => undefined,
+					openTakeover: () => undefined,
+					closeTakeover: () => undefined,
 					reportLocation: () => undefined,
 				},
 			});

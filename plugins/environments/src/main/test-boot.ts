@@ -161,6 +161,8 @@ function shellStandIn(openSettings: (section: string | undefined) => void): Plug
 						openSettings: ({ section }) => openSettings(section),
 						goHome: unused,
 						openDialog: unused,
+						openTakeover: unused,
+						closeTakeover: unused,
 						reportLocation: unused,
 					},
 				});

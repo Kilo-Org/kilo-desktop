@@ -16,7 +16,13 @@ export type WorkSessionsEvent =
 	| "layout-preset-applied"
 	| "layout-preset-saved"
 	| "layout-preset-removed"
-	| "layout-preset-default-changed";
+	| "layout-preset-default-changed"
+	| "saved-page-opened"
+	| "saved-item-opened"
+	| "saved-item-removed"
+	| "saved-page-searched"
+	| "saved-page-filtered"
+	| "saved-action-failed";
 
 export type Track = (event: WorkSessionsEvent, data?: Record<string, unknown>) => void;
 

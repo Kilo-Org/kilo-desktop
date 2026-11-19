@@ -21,6 +21,7 @@ const PREVIEW_STATE: UpdaterState | null =
 				enabled: true,
 				status: PREVIEW_MODE,
 				track: "preview",
+				installedTrack: "preview",
 				currentVersion: "0.1.0",
 				availableVersion: "0.2.0-preview-260918-12000",
 				downloadedVersion: PREVIEW_MODE === "downloaded" ? "0.2.0-preview-260918-12000" : null,

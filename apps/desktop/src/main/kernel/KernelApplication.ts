@@ -437,6 +437,7 @@ export class KernelApplication {
 			platform: process.platform,
 			arch: process.arch,
 			track: this.preferences.getReleaseTrack(RELEASE_TRACK),
+			installedTrack: RELEASE_TRACK,
 			currentVersion: this.#app.metadata.appVersion,
 			publishUrls: UPDATE_PUBLISH_URLS,
 			fetch: this.#http.fetch,

@@ -229,6 +229,9 @@ export function createMainPromptQueue(
 		}
 		const handover = handOver(message);
 		try {
+			// The guard reads `removed` after the await on purpose: the person can remove the item
+			// while its prompt is being prepared.
+			// react-doctor-disable-next-line react-doctor/async-defer-await
 			const prompt = await prepareQueuedPrompt(message, chatId, options.prompt());
 			if (handover.removed) return;
 			await queue.methods.enqueue({

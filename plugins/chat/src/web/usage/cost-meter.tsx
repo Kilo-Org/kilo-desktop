@@ -62,6 +62,9 @@ export function CostMeter({
 					const width = pct(line.share, 1);
 					if (announced(width) === 0) return null;
 					return (
+						// Each share is one segment of a stacked bar; a native <meter> draws its own full-width
+						// gauge and can't be one flex segment of a shared track.
+						// react-doctor-disable-next-line react-doctor/prefer-tag-over-role
 						<span
 							key={line.model}
 							role="meter"

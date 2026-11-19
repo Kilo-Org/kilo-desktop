@@ -150,7 +150,7 @@ function DriftingRow({
 	}, [index, reduceMotion]);
 
 	return (
-		<div ref={rowRef} className="flex w-max will-change-transform">
+		<div ref={rowRef} className="flex w-max">
 			{Array.from({ length: ROW_COPIES }, () => providers)
 				.flat()
 				.map(([provider, label], chip) => (

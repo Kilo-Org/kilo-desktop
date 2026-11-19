@@ -180,13 +180,14 @@ export function parseSessionListView(value: unknown): SessionListView {
 }
 
 export function isDefaultSessionListView(view: SessionListView): boolean {
+	const shown = new Set(view.show);
 	return (
 		view.grouping === DEFAULT_SESSION_LIST_VIEW.grouping &&
 		view.ordering === DEFAULT_SESSION_LIST_VIEW.ordering &&
 		view.status === DEFAULT_SESSION_LIST_VIEW.status &&
 		view.pullRequest === DEFAULT_SESSION_LIST_VIEW.pullRequest &&
 		view.show.length === DEFAULT_SESSION_LIST_VIEW.show.length &&
-		DEFAULT_SESSION_LIST_VIEW.show.every((field) => view.show.includes(field)) &&
+		DEFAULT_SESSION_LIST_VIEW.show.every((field) => shown.has(field)) &&
 		view.focus === DEFAULT_SESSION_LIST_VIEW.focus
 	);
 }

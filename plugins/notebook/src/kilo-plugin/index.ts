@@ -711,6 +711,8 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					if (context.abort.aborted) failAt(index, operation, "the edit was cancelled");
 					let result: Record<string, unknown> | null;
 					try {
+						// Edits apply in the caller's order and stop at the first failure.
+						// react-doctor-disable-next-line react-doctor/async-await-in-loop
 						result = await applyEditOperation(session, operation);
 					} catch (error) {
 						return failAt(index, operation, error instanceof Error ? error.message : String(error));

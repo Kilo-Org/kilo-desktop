@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { CodeViewItem } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
-import type { RefObject } from "react";
+import { useEffect, type RefObject } from "react";
 
 import { usePatchLoader } from "./use-patch-loader";
 import {
@@ -78,7 +78,9 @@ function PatchLoaderHarness({
 		unlimited: false,
 		viewerRef,
 	});
-	onItems?.(result.initialItems);
+	useEffect(() => {
+		onItems?.(result.initialItems);
+	}, [onItems, result.initialItems]);
 	return (
 		<div
 			data-file-count={String(result.diffStats?.fileCount ?? 0)}

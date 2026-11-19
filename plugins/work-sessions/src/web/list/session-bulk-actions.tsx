@@ -48,6 +48,8 @@ async function runEach<T, R>(items: readonly T[], act: (item: T) => Promise<R>) 
 	const failed: unknown[] = [];
 	for (const item of items) {
 		try {
+			// In turn: a delete drops a shared worktree only once no other session holds it, which concurrent deletes would race.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			results.push(await act(item));
 		} catch (error) {
 			failed.push(error);

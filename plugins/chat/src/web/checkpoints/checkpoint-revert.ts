@@ -109,6 +109,8 @@ export async function restoreToComposer(aui: AuiClient, prompt: ComposerPrompt):
 	for (const attachment of prompt.attachments) {
 		// A failed attachment must not block the revert.
 		if (attachment.id && currentIds.has(attachment.id)) continue;
+		// Serial on purpose: the composer appends attachments, so this keeps the original order.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		await composer.addAttachment(attachment).catch(() => undefined);
 	}
 }

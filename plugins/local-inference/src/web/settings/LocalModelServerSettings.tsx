@@ -205,7 +205,7 @@ function LocalModelServerSettingsContent() {
 	) => track(LOCAL_INFERENCE_TELEMETRY_EVENTS[event], data);
 	const catalogEnabled = useFlag(MODEL_CATALOG_FLAG);
 	const modelFileInput = useRef<HTMLInputElement>(null);
-	const modelSaveQueue = useRef(Promise.resolve());
+	const modelSaveQueue = useRef<Promise<void> | null>(null);
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
 	const catalogModelId = useCatalogModelId();
@@ -400,7 +400,7 @@ function LocalModelServerSettingsContent() {
 	};
 	const addModelError = modelFileError ?? addModel.error?.message;
 	const saveModelSettings = (id: string, settings: LocalModelSettings) => {
-		const save = modelSaveQueue.current.then(() =>
+		const save = (modelSaveQueue.current ?? Promise.resolve()).then(() =>
 			updateModel.mutateAsync({ id, settings }).then(() => undefined),
 		);
 		modelSaveQueue.current = save.catch(() => undefined);

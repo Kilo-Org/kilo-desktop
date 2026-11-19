@@ -88,6 +88,8 @@ export async function activateKeybindings(sdk: PluginSdk): Promise<void> {
 		for (const [legacy, command] of Object.entries(LEGACY_COMMAND_KEYS)) {
 			if (!(legacy in overrides)) continue;
 			if (!(command in overrides)) {
+				// Each move sets the new key before resetting the old one, and the first failure stops the run.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await keybindings.methods.setOverride({ command, chord: overrides[legacy] ?? null });
 			}
 			await keybindings.methods.reset({ command: legacy });

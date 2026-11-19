@@ -120,12 +120,14 @@ function mergeOriginSessions(
 		const target = workSession.chatIds[0] && originOf.get(workSession.chatIds[0]);
 		return target && workSession.chatIds.every((chatId) => originOf.get(chatId) === target);
 	});
-	const kept = current.filter((workSession) => !adopted.includes(workSession));
+	const adoptedSet = new Set(adopted);
+	const kept = current.filter((workSession) => !adoptedSet.has(workSession));
 	const held = new Set(kept.flatMap((workSession) => workSession.chatIds));
 	const added = fresh.flatMap((session): WorkSession[] => {
 		const chatIds = session.chatIds.filter((chatId) => !held.has(chatId));
 		if (session.chatIds.length > 0 && chatIds.length === 0) return [];
-		const folded = adopted.filter((candidate) => chatIds.includes(candidate.chatIds[0]!));
+		const ownChatIds = new Set(chatIds);
+		const folded = adopted.filter((candidate) => ownChatIds.has(candidate.chatIds[0]!));
 		// The work session holding origin's first chat leads, as that chat leads the title.
 		const lead = folded.find((candidate) => candidate.chatIds.includes(chatIds[0]!));
 		return [

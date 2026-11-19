@@ -45,12 +45,14 @@ export const CheckpointRestoreControls: FC = () => {
 	const rows = useRevertedUserRows();
 	const workspace = useRevertWorkspace();
 	const diffs = useRevertDiffs();
+	// Kilo reports a non-restored workspace whenever the reverted turns left no
+	// checkpoint, which includes turns that changed no files (an edit of a
+	// question, say). Only turns that recorded changes have anything to restore.
+	const revertedFileChanges = rows.some((row) => row.hasDiffs);
 	const workspaceNotice =
-		workspace === undefined
-			? WORKSPACE_NOT_RESTORED_COPY.legacy
-			: workspace === "restored"
-				? undefined
-				: WORKSPACE_NOT_RESTORED_COPY[workspace];
+		!revertedFileChanges || workspace === "restored"
+			? undefined
+			: WORKSPACE_NOT_RESTORED_COPY[workspace ?? "legacy"];
 
 	// `file` is optional in the wire type; entries without one cannot be listed.
 	const files = (diffs ?? []).filter((diff) => diff.file !== undefined);

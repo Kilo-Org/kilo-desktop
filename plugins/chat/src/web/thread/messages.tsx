@@ -51,6 +51,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useIsAfterPendingBoundary } from "../checkpoints/checkpoint-revert";
 import { retryFailedPrompt } from "../checkpoints/retry-failed-prompt";
 import { retryFailedTurn } from "../checkpoints/retry-failed-turn";
+import { EditMessageButton } from "../checkpoints/edit-message-button";
 import { useRevertPending } from "../checkpoints/revert-pending";
 import { RevertToHereButton } from "../checkpoints/revert-to-here-button";
 import { ForkFromHereButton } from "../fork/fork-from-here-button";
@@ -91,6 +92,7 @@ import {
 	openCodeTextIsStreaming,
 } from "./assistant-working-indicator-mode";
 import { UserMessageAttachments } from "./attachment";
+import { UserEditComposer } from "./user-edit-composer";
 import { displayChatError, isKiloSignInError, messageErrorText } from "./chat-error";
 import { MarkdownText } from "./markdown-text";
 import { Reasoning } from "./reasoning";
@@ -110,7 +112,9 @@ const useVirtualizeMessage = () =>
 
 export const ThreadMessage: FC = () => {
 	const role = useAuiState((s) => s.message.role);
-	return role === "user" ? <UserMessage /> : <AssistantMessage />;
+	const isEditing = useAuiState((s) => s.message.composer.isEditing);
+	if (role !== "user") return <AssistantMessage />;
+	return isEditing ? <UserEditComposer /> : <UserMessage />;
 };
 
 const MessageCopyButton: FC = () => {
@@ -639,9 +643,10 @@ const UserActionBar: FC = () => {
 				hidden ? "pointer-events-none opacity-0" : "opacity-100",
 			)}
 		>
+			<MessageCopyButton />
+			<EditMessageButton />
 			<RevertToHereButton />
 			<ForkFromHereButton />
-			<MessageCopyButton />
 		</ActionBarPrimitive.Root>
 	);
 };

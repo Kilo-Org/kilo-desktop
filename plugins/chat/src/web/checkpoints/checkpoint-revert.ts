@@ -12,6 +12,14 @@ export type AuiClient = ReturnType<typeof useAui>;
 export const useHasOpenCodeExtras = (): boolean =>
 	useAuiState((s) => selectOpenCodeExtras(s.thread.extras) != null);
 
+/**
+ * Whether this user message has been answered. Consecutive assistant messages
+ * are fused by the projection, so the immediate-next-message check is
+ * equivalent to the extension's `turn.assistant.length > 0` answered gating.
+ */
+export const useIsAnsweredPrompt = (): boolean =>
+	useAuiState((s) => s.thread.messages[s.message.index + 1]?.role === "assistant");
+
 export const useRevertBoundaryId = (): string | undefined =>
 	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.revert?.messageID);
 
@@ -90,30 +98,36 @@ export type ComposerPrompt = {
 	attachments: readonly CreateAttachment[];
 };
 
-export async function restoreToComposer(aui: AuiClient, prompt: ComposerPrompt): Promise<void> {
-	const composer = aui.thread.composer();
-	// Replace, not prepend: the reverted prompt becomes the new draft.
+/**
+ * The composer operations a restore needs; the thread's composer, a
+ * message's edit composer and a runtime's composer all have them.
+ */
+export interface RestorableComposer {
+	setText(text: string): void;
+	addAttachment(attachment: CreateAttachment): Promise<void>;
+	clearAttachments(): Promise<void>;
+}
+
+export async function restoreToComposer(
+	composer: RestorableComposer,
+	prompt: ComposerPrompt,
+): Promise<void> {
+	// Replace, not prepend: the restored prompt becomes the new draft.
 	composer.setText(prompt.text);
-
-	const restoredIds = new Set(prompt.attachments.map(({ id }) => id).filter(Boolean));
-
-	// Remove stale attachments whose id is absent from the restored prompt.
-	// `clearAttachments()` is safe here because we re-add the restored set below.
-	const hasStale = composer.getState().attachments.some(({ id }) => id && !restoredIds.has(id));
-	if (hasStale) {
-		// A failed clear must not block the revert.
-		await composer.clearAttachments().catch(() => undefined);
-	}
-
-	const currentIds = new Set(composer.getState().attachments.map(({ id }) => id));
+	// Cleared unconditionally and re-added, rather than diffed against
+	// `getState()`: an edit composer's state lags the composer it was just
+	// opened as, and adding a complete attachment twice duplicates it.
+	// A failed clear or attachment must not block the restore.
+	await composer.clearAttachments().catch(() => undefined);
 	for (const attachment of prompt.attachments) {
-		// A failed attachment must not block the revert.
-		if (attachment.id && currentIds.has(attachment.id)) continue;
 		await composer.addAttachment(attachment).catch(() => undefined);
 	}
 }
 
-export function messageToComposerPrompt(message: ThreadMessage): ComposerPrompt {
+/** A prompt shown in the thread (a `ThreadMessage`) or sent from a composer (an `AppendMessage`). */
+type PromptMessage = Pick<ThreadMessage, "content" | "attachments">;
+
+export function messageToComposerPrompt(message: PromptMessage): ComposerPrompt {
 	return {
 		text: userPromptText(message) ?? "",
 		attachments: (message.attachments ?? []).map((attachment) => ({
@@ -152,7 +166,7 @@ export async function restoreThroughUserMessage(aui: AuiClient, targetId: string
 	}
 	if (next) {
 		await extras.revert(next.id);
-		await restoreToComposer(aui, serverMessageToComposerPrompt(next));
+		await restoreToComposer(aui.thread.composer(), serverMessageToComposerPrompt(next));
 	} else {
 		await extras.unrevert();
 		// Full undo clears text only — attachments added by an earlier restore

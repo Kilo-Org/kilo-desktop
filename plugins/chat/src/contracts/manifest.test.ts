@@ -19,6 +19,7 @@ import {
 	HTML_RENDER_TOOL_ID,
 	HTML_RENDER_TOOL_NAME,
 	MEDIA_PANE_KIND,
+	SWARM_PANE_KIND,
 	PLAN_PANE_KIND,
 	SUBAGENT_PANE_KIND,
 } from "./index";
@@ -52,6 +53,7 @@ describe("kilo.chat manifest", () => {
 			PLAN_PANE_KIND,
 			SUBAGENT_PANE_KIND,
 			MEDIA_PANE_KIND,
+			SWARM_PANE_KIND,
 		]);
 		expect(keys("kernel/command")).toEqual(Object.values(CHAT_COMMANDS));
 		expect(contributions("kernel/telemetry-event").map((entry) => entry.id)).toEqual(

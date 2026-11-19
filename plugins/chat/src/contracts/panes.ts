@@ -80,3 +80,13 @@ export const subagentPaneChildChatId = (pane: Pick<Pane, "metadata" | "object">)
 /** The chat that delegated a subagent pane's child, when known. */
 export const subagentPaneParentChatId = (pane: Pick<Pane, "metadata">): string | null =>
 	pane.metadata[CHAT_ID_METADATA_KEY] || null;
+
+/** The Swarm Board pane kind: a root chat's Kilo Swarm (team, jobs and board), one pane per root chat. */
+export const SWARM_PANE_KIND = "kilo.chat/swarm";
+
+/** A Swarm Board pane's id: one pane per root chat. */
+export const swarmPaneId = (rootChatId: string): string => `swarm:${rootChatId}`;
+
+/** The root chat a Swarm Board pane shows (its `object`). */
+export const swarmPaneRootChatId = (pane: Pick<Pane, "metadata" | "object">): string | null =>
+	paneChatId(pane);

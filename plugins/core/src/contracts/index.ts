@@ -6,6 +6,7 @@ import { ExternalApps } from "./external-apps";
 import { Generation } from "./generation";
 import { AiProviderPoint, Model, Models } from "./models";
 import { KiloServer } from "./server";
+import { Swarm } from "./swarm";
 import { AgentExtension, McpServer, ServerEnv, Tool, ToolApproval } from "./tools";
 import { KiloWorkStyle } from "./work-style";
 
@@ -16,6 +17,7 @@ export * from "./external-apps";
 export * from "./generation";
 export * from "./models";
 export * from "./server";
+export * from "./swarm";
 export * from "./tools";
 export * from "./work-style";
 
@@ -43,6 +45,7 @@ export const CORE_DEFINITIONS: PluginDefinitions = {
 		KiloAccount,
 		KiloTerms,
 		Chats,
+		Swarm,
 		Generation,
 		Models,
 		ExternalApps,

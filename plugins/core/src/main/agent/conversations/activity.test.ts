@@ -9,6 +9,7 @@ import {
 	IDLE,
 	lineageOf,
 	publishChats,
+	readChatInfo,
 	resetActivity,
 	type ChatActivityState,
 	type ChatInfo,
@@ -390,5 +391,16 @@ describe("diffing published chats", () => {
 			{ name: "question-resolved", payload: { chatId: "a", questionId: "q" } },
 		]);
 		expect(diffChats({ a: idle }, { a: busy }, { activity: false })).toHaveLength(1);
+	});
+});
+
+describe("readChatInfo agent", () => {
+	it("takes the agent Kilo records, else the one a task's title names", () => {
+		const base = { id: "ses_1", time: { created: 1 } };
+		expect(readChatInfo({ ...base, title: "x", agent: "general" })?.agent).toBe("general");
+		expect(readChatInfo({ ...base, title: "Map bridge RPC (@explore subagent)" })?.agent).toBe(
+			"explore",
+		);
+		expect(readChatInfo({ ...base, title: "Plain chat" })?.agent).toBeUndefined();
 	});
 });

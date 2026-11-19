@@ -1,4 +1,11 @@
 import type { ChatInfo, KiloEvent } from "../../main/agent/conversations/activity";
+import {
+	BoardConflictError,
+	type KiloBackgroundJob,
+	type KiloBoard,
+	type KiloLastTurn,
+	type KiloTeam,
+} from "../../main/agent/conversations/kilo-chat-client";
 import type {
 	ChatCommandParams,
 	ChatPromptParams,
@@ -47,6 +54,16 @@ export class FakeKiloChats implements KiloChatClient {
 		readonly resolve: () => void;
 		readonly reject: (error: unknown) => void;
 	}[] = [];
+	/** Kilo's boards by owning root chat; a child's board is its root's (see `boardOwners`). */
+	boards: Record<string, KiloBoard> = {};
+	/** Child chat → root chat whose board it shares. */
+	boardOwners: Record<string, string> = {};
+	/** Background jobs by parent chat. */
+	jobs: Record<string, KiloBackgroundJob[]> = {};
+	/** Kilo's team rosters by root chat; a root not here answers like a server without the route. */
+	teams: Record<string, KiloTeam> = {};
+	/** What `experimental/capabilities` answers. */
+	capabilityFlags: Record<string, unknown> = {};
 	listCalls = 0;
 	subscriptions = 0;
 	#pending: (KiloEvent | "end")[] = [];
@@ -209,6 +226,57 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 
 	/** The server announces a change. */
+	async board(directory: string, id: string, page: { before?: string; limit?: number }) {
+		this.reads.push(`board ${id} ${page.before ?? "-"} ${page.limit ?? "-"}`);
+		const owner = this.boardOwners[id] ?? id;
+		const board = this.boards[owner];
+		if (!board) throw new Error("Board not found.");
+		void directory;
+		const end = page.before
+			? board.messages.findIndex((message) => message.id === page.before)
+			: board.messages.length;
+		const start = Math.max(0, end - (page.limit ?? 50));
+		return {
+			...board,
+			messages: board.messages.slice(start, end),
+			hasMore: start > 0,
+			...(start > 0 ? { cursor: board.messages[start]!.id } : {}),
+		};
+	}
+	async resetBoard(directory: string, id: string, revision: number) {
+		this.writes.push({ call: "resetBoard", directory, args: [id, revision] });
+		const owner = this.boardOwners[id] ?? id;
+		const board = this.boards[owner];
+		if (!board) throw new Error("Board not found.");
+		if (board.revision !== revision) throw new BoardConflictError("The board changed.");
+		this.boards[owner] = { ...board, messages: [], hasMore: false };
+		return this.boards[owner]!;
+	}
+	async backgroundJobs(directory: string, id: string) {
+		this.reads.push(`jobs ${id} ${directory}`);
+		return [...(this.jobs[id] ?? [])];
+	}
+	/** Each chat's newest message, for `lastTurn`. */
+	lastTurns: Record<string, KiloLastTurn> = {};
+	async childChats(directory: string, id: string) {
+		this.reads.push(`children ${id} ${directory}`);
+		return this.chats.filter((chat) => chat.parentId === id);
+	}
+	async lastTurn(directory: string, id: string) {
+		this.reads.push(`last ${id}`);
+		void directory;
+		return this.lastTurns[id] ?? null;
+	}
+	async team(directory: string, id: string) {
+		this.reads.push(`team ${id} ${directory}`);
+		return this.teams[id] ?? null;
+	}
+	async capabilities() {
+		return this.capabilityFlags;
+	}
+	async cancelBackgroundJob(directory: string, jobId: string) {
+		this.writes.push({ call: "cancelBackgroundJob", directory, args: [jobId] });
+	}
 	push(event: KiloEvent) {
 		this.#pending.push(event);
 		this.#wake?.();

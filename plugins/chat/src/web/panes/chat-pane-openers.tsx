@@ -18,6 +18,8 @@ import {
 	SUBAGENT_PANE_KIND,
 	subagentPaneId,
 	subagentPaneMetadata,
+	SWARM_PANE_KIND,
+	swarmPaneId,
 } from "../../contracts";
 import {
 	OpenMediaPaneContext,
@@ -30,6 +32,7 @@ import {
 	OpenSubagentPaneContext,
 	type OpenSubagentPane,
 } from "../subagents/use-open-subagent-pane";
+import { OpenSwarmBoardContext, type OpenSwarmBoard } from "../swarm/use-open-swarm-board";
 
 function reportOpenFailure(error: unknown): void {
 	toast.error("Could not open the pane", {
@@ -85,7 +88,8 @@ async function showInViewerPane(
 
 /**
  * Lets a transcript open its chat's plan (the work session's one Plan pane, on the
- * revision clicked), its subagents (one Subagent pane per child chat) and its
+ * revision clicked), its subagents (one Subagent pane per child chat), its
+ * Swarm Board (one per chat) and its
  * diagrams and images (the chat's one Viewer pane, on the item clicked)
  * through kilo.work-sessions' panes. `chatId` is the chat the transcript shows.
  */
@@ -116,7 +120,7 @@ export function ChatPaneOpeners({
 			: null;
 	const openSubagent: OpenSubagentPane | null =
 		panes && workSessionId
-			? (childSessionId, title) =>
+			? (childSessionId, title, parentChatId) =>
 					void panes.methods
 						.open({
 							workSessionId,
@@ -124,9 +128,25 @@ export function ChatPaneOpeners({
 							paneId: subagentPaneId(childSessionId),
 							title,
 							object: chatPaneObject(childSessionId),
-							metadata: subagentPaneMetadata(chatId),
+							metadata: subagentPaneMetadata(parentChatId ?? chatId),
 						})
 						.catch(reportOpenFailure)
+			: null;
+	const openSwarm: OpenSwarmBoard | null =
+		panes && workSessionId && chatId
+			? {
+					rootChatId: chatId,
+					open: () =>
+						void panes.methods
+							.open({
+								workSessionId,
+								kind: SWARM_PANE_KIND,
+								paneId: swarmPaneId(chatId),
+								title: "Swarm board",
+								object: chatPaneObject(chatId),
+							})
+							.catch(reportOpenFailure),
+				}
 			: null;
 	const openMedia: OpenMediaPane | null =
 		panes && viewers && workSessionId
@@ -136,7 +156,11 @@ export function ChatPaneOpeners({
 	return (
 		<OpenPlanPaneContext.Provider value={openPlan}>
 			<OpenSubagentPaneContext.Provider value={openSubagent}>
-				<OpenMediaPaneContext.Provider value={openMedia}>{children}</OpenMediaPaneContext.Provider>
+				<OpenSwarmBoardContext.Provider value={openSwarm}>
+					<OpenMediaPaneContext.Provider value={openMedia}>
+						{children}
+					</OpenMediaPaneContext.Provider>
+				</OpenSwarmBoardContext.Provider>
 			</OpenSubagentPaneContext.Provider>
 		</OpenPlanPaneContext.Provider>
 	);

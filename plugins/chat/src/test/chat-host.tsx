@@ -11,7 +11,14 @@ import { vi } from "vitest";
 import { KernelClipboard, type DomainObjectState, type PluginEntry } from "@kilo-desktop/kernel";
 import type { MainKernelHost } from "@kilo-desktop/kernel/main";
 import { KernelProvider, RenderContribution, useDomainObjectState } from "@kilo-desktop/kernel/web";
-import type { AccountState, ChatSummary, ModelsState } from "@kilo-desktop/plugin-core/contracts";
+import type {
+	AccountState,
+	BackgroundJob,
+	ChatSummary,
+	ModelsState,
+	SwarmBoard,
+	SwarmTeam,
+} from "@kilo-desktop/plugin-core/contracts";
 import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
@@ -41,6 +48,7 @@ import {
 	MEDIA_PANE_KIND,
 	PLAN_PANE_KIND,
 	SUBAGENT_PANE_KIND,
+	SWARM_PANE_KIND,
 } from "../contracts";
 import { fakeCore } from "./fake-core";
 import { FakeKiloServer } from "./fake-kilo-server";
@@ -121,6 +129,14 @@ export interface ChatHostOptions {
 		/** Holds each start until it settles, as a worktree still being made does. */
 		readonly holdStart?: Promise<unknown>;
 	};
+	/** Kilo Swarm boards by owning root chat. */
+	readonly boards?: Readonly<Record<string, SwarmBoard>>;
+	/** Background jobs by delegating chat. */
+	readonly jobs?: Readonly<Record<string, readonly BackgroundJob[]>>;
+	/** The server announces board changes. */
+	readonly boardEvents?: boolean;
+	/** Kilo's team rosters by root chat. */
+	readonly teams?: Readonly<Record<string, SwarmTeam>>;
 }
 
 const CHAT_PANE_KINDS: readonly string[] = [
@@ -128,6 +144,7 @@ const CHAT_PANE_KINDS: readonly string[] = [
 	PLAN_PANE_KIND,
 	SUBAGENT_PANE_KIND,
 	MEDIA_PANE_KIND,
+	SWARM_PANE_KIND,
 ];
 
 /**
@@ -185,6 +202,10 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		...(options.instructions ? { instructions: options.instructions } : {}),
 		...(options.createError ? { createError: options.createError } : {}),
 		...(options.declinedSignIns ? { declinedSignInTools: options.declinedSignIns } : {}),
+		...(options.boards ? { boards: options.boards } : {}),
+		...(options.jobs ? { jobs: options.jobs } : {}),
+		...(options.boardEvents ? { boardEvents: true } : {}),
+		...(options.teams ? { teams: options.teams } : {}),
 		onChatCreated: (chat) => workSessions.attachChat(chat),
 	});
 	const window = fakeWorkSessionsWindow(options.starter ? null : initialWorkSession.id);

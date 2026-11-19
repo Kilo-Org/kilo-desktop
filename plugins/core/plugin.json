@@ -53,6 +53,11 @@
 			"objectType": "kilo.core/chat"
 		},
 		{
+			"id": "swarm",
+			"home": "main",
+			"description": "Kilo Swarm: a root chat's shared agent board and its background subagent jobs."
+		},
+		{
 			"id": "generation",
 			"home": "main",
 			"description": "One-shot structured calls: commit messages, PR text, branch names."

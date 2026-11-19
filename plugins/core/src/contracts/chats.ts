@@ -59,6 +59,8 @@ export const chatSummarySchema = z.object({
 	createdAt: z.number(),
 	updatedAt: z.number(),
 	archivedAt: z.number().optional(),
+	/** The agent the chat runs (`explore`, `general`…), when Kilo records it; set for subagents. */
+	agent: z.string().optional(),
 	activity: chatActivitySchema,
 });
 export type ChatSummary = z.output<typeof chatSummarySchema>;

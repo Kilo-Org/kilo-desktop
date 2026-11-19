@@ -24,7 +24,8 @@
 		"kilo.work-sessions/permission-auto-answer": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/notifications": "optional",
-		"kilo.shell/theme": "optional"
+		"kilo.shell/theme": "optional",
+		"kilo.core/swarm": "optional"
 	},
 	"permissions": {
 		"host": ["clipboard", "os", "windows"],
@@ -157,6 +158,17 @@
 					},
 					"layoutKind": "document",
 					"order": 40
+				},
+				{
+					"id": "swarm",
+					"title": "Swarm board",
+					"keepAlive": true,
+					"description": "A chat's team of agents and the board they coordinate on, read-only.",
+					"launch": {
+						"newSession": false,
+						"inSession": false
+					},
+					"order": 35
 				}
 			],
 			"kilo.work-sessions/work-session-action": [
@@ -240,6 +252,22 @@
 				{
 					"id": "chat-forked",
 					"name": "Chat Forked"
+				},
+				{
+					"id": "swarm-board-opened",
+					"name": "Swarm Board Opened"
+				},
+				{
+					"id": "swarm-board-reset",
+					"name": "Swarm Board Reset"
+				},
+				{
+					"id": "swarm-agent-opened",
+					"name": "Swarm Agent Opened"
+				},
+				{
+					"id": "swarm-job-cancelled",
+					"name": "Swarm Job Cancelled"
 				}
 			],
 			"kilo.chat/composer-action": [

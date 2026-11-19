@@ -15,6 +15,7 @@ import {
 	usePendingInteractions,
 } from "../interactions/PendingInteractionsContext";
 import { ChatPaneOpeners } from "../panes/chat-pane-openers";
+import { SubagentPaneHeader } from "../swarm/SubagentPaneHeader";
 import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { ReadonlyThread } from "../thread/thread";
@@ -29,9 +30,11 @@ export const SubagentIcon: FC<{ className?: string }> = ({ className }) => (
 
 /**
  * The subagent pane: one child chat's transcript (the chat its `object`
- * names), read-only, with the prompt it is waiting on. It runs its own
- * runtime for the chat that delegated it (named in the pane, else kilo.core's
- * record of the child's parent, else the work session's first chat for
+ * names), read-only, with the prompt it is waiting on, headed in the worker's
+ * team color (as the Swarm Board shows it). The person messages workers from
+ * the Swarm Board. It runs its own
+ * runtime for the chat that delegated it (kilo.core's current record of the
+ * child's parent, else the pane's hint, else the work session's first chat for
  * origin's panes) and finds the child there.
  */
 export function createSubagentPane(services: ChatMirrorServices): FC<PaneProps> {
@@ -52,13 +55,14 @@ function SubagentPane({
 		(state: DomainObjectState<typeof WorkSessions>) =>
 			state.workSessions.find((candidate) => candidate.id === workSessionId)?.chatIds[0] ?? null,
 	);
-	const parentChatId = subagentPaneParentChatId(pane) ?? recordedParent ?? firstChat ?? null;
+	const parentChatId = recordedParent ?? subagentPaneParentChatId(pane) ?? firstChat ?? null;
 	const workspaceFolders = useDomainObjectState(Chats, (state: DomainObjectState<typeof Chats>) =>
 		parentChatId ? state.chats[parentChatId]?.workspaceFolders : undefined,
 	);
 
 	return (
 		<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-subagent-pane">
+			<SubagentPaneHeader childChatId={childChatId} parentHint={parentChatId} />
 			<ChatMirror services={services} workSessionId={workSessionId} chatId={parentChatId}>
 				<ChatPaneOpeners workSessionId={workSessionId} chatId={childChatId ?? null}>
 					<TranscriptProviders

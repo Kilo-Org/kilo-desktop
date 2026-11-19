@@ -19,4 +19,12 @@ export const CHAT_COMMANDS = {
 export const CHAT_TELEMETRY_EVENTS = {
 	/** A fork from a user message was attempted: `{ success, midTurn }`. */
 	chatForked: "chat-forked",
+	/** The composer's Board button opened a chat's Swarm Board: `{ running }`. */
+	swarmBoardOpened: "swarm-board-opened",
+	/** The person cleared a Swarm Board: `{ outcome }`. */
+	swarmBoardReset: "swarm-board-reset",
+	/** The Swarm Board opened a worker's transcript. */
+	swarmAgentOpened: "swarm-agent-opened",
+	/** The Swarm Board stopped a background job. */
+	swarmJobCancelled: "swarm-job-cancelled",
 } as const;

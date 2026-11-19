@@ -21,13 +21,14 @@ import { createPlanPane, PlanIcon } from "./plan/PlanPane";
 import { ChatServices } from "./runtime/chat-services";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
 import { createSubagentPane, SubagentIcon } from "./subagents/SubagentPane";
+import { createSwarmBoardPane, SwarmIcon } from "./swarm/SwarmBoardPane";
 import { BUILTIN_TOOL_RENDERERS } from "./tools/builtin-renderers";
 
 /** Commands the composer handles itself, while focused; registered so their shortcuts are listed. */
 const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as const;
 
 /**
- * kilo.chat in a window: the agent, plan, subagent and media pane kinds, the
+ * kilo.chat in a window: the agent, plan, subagent, media and Swarm Board pane kinds, the
  * New Session page's composer (`kilo.work-sessions/work-session-starter`), the
  * window's composer domain object, its own composer actions and transcript
  * renderers, the composer's commands (`compact`, placed in the `/` menu by its
@@ -67,6 +68,10 @@ export const chatWebEntry = definePlugin({
 			icon: SubagentIcon,
 		});
 		sdk.extensions.implement(PaneKind, "media", { component: MediaPane, icon: MediaIcon });
+		sdk.extensions.implement(PaneKind, "swarm", {
+			component: createSwarmBoardPane({ chat, queries }),
+			icon: SwarmIcon,
+		});
 		sdk.extensions.implement(WorkSessionAction, "agents", AgentsMenu);
 		sdk.extensions.implement(
 			WorkSessionStarter,

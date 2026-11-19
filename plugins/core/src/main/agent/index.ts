@@ -23,6 +23,7 @@ import { trackAiProviders, trackKiloExtensions, trackServerEnv } from "./contrib
 import { ContributedEnvManager } from "./ContributedEnvManager";
 import { provideConversations, type KiloChatClient } from "./conversations";
 import { provideGeneration } from "./conversations/generation";
+import { provideSwarm } from "./swarm";
 import { createUnscopedChatDirectory } from "./conversations/unscoped-directory";
 import { createInstanceDisposer, type InstanceDisposer } from "./dispose-instance";
 import { resolveGlobalConfigFile } from "./global-config-file";
@@ -206,6 +207,7 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 			: {}),
 	});
 	provideGeneration(sdk, conversations);
+	provideSwarm(sdk, conversations);
 	const gateway = createAgentToolGateway(sdk, {
 		signedIn,
 		declinedSignIns,

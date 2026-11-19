@@ -38,6 +38,74 @@ export interface ChatPromptParams {
 	readonly system?: string | undefined;
 }
 
+/** Kilo's board snapshot, as its server sends it. */
+export interface KiloBoard {
+	readonly ownerSessionID: string;
+	readonly revision: number;
+	readonly messages: readonly {
+		readonly id: string;
+		readonly timestamp: number;
+		readonly from: string;
+		readonly to: string;
+		readonly fromLabel?: string;
+		readonly toLabel?: string;
+		readonly type: string;
+		readonly body: string;
+		readonly reply_to?: string;
+	}[];
+	readonly cursor?: string;
+	readonly hasMore: boolean;
+}
+
+/** A background subagent job, as Kilo's server sends it. */
+export interface KiloBackgroundJob {
+	readonly id: string;
+	readonly type: string;
+	readonly title?: string;
+	readonly status: string;
+	readonly started_at: unknown;
+	readonly completed_at?: unknown;
+	readonly error?: string;
+	readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+/** Kilo's team roster, as its server sends it (`GET /kilocode/session/{id}/team`). */
+export interface KiloTeam {
+	readonly enabled: boolean;
+	readonly members: readonly {
+		readonly sessionID: string;
+		readonly parentID: string;
+		readonly agent: string;
+		readonly title: string;
+		readonly directory: string;
+		readonly background?: boolean;
+		readonly state: string;
+		readonly live: boolean;
+		readonly attention: readonly string[];
+		readonly model?: {
+			readonly providerID: string;
+			readonly modelID: string;
+			readonly variant?: string;
+		};
+		readonly timeStarted: number;
+		readonly timeCompleted?: number;
+		readonly error?: string;
+	}[];
+	readonly truncated: boolean;
+}
+
+/** A chat's newest message, as far as a roster needs it. */
+export interface KiloLastTurn {
+	readonly role: "user" | "assistant";
+	readonly completedAt?: number;
+	readonly errorName?: string;
+	readonly errorMessage?: string;
+	readonly model?: { readonly providerID: string; readonly modelID: string };
+}
+
+/** The board changed since the revision a reset named. */
+export class BoardConflictError extends Error {}
+
 export interface ChatCommandParams {
 	readonly command: string;
 	readonly arguments: string;
@@ -123,6 +191,23 @@ export interface KiloChatClient {
 	): Promise<void>;
 	replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void>;
 	rejectQuestion(directory: string, requestId: string): Promise<void>;
+	board(
+		directory: string,
+		id: string,
+		page: { readonly before?: string | undefined; readonly limit?: number | undefined },
+	): Promise<KiloBoard>;
+	/** Throws `BoardConflictError` when the board moved past `revision`. */
+	resetBoard(directory: string, id: string, revision: number): Promise<KiloBoard>;
+	backgroundJobs(directory: string, id: string): Promise<KiloBackgroundJob[]>;
+	cancelBackgroundJob(directory: string, jobId: string): Promise<void>;
+	/** A chat's direct subchats (the subagents it delegated to). */
+	childChats(directory: string, id: string): Promise<ChatInfo[]>;
+	/** How a chat's newest message stands: a finished, failed or open assistant turn, or none. */
+	lastTurn(directory: string, id: string): Promise<KiloLastTurn | null>;
+	/** The root chat's team roster; null when the server has no roster route. */
+	team(directory: string, id: string): Promise<KiloTeam | null>;
+	/** The server's experimental capabilities (`swarm.boardEvents`…); `{}` when it can't say. */
+	capabilities(): Promise<Readonly<Record<string, unknown>>>;
 }
 
 const at = (directory: string | undefined) => (directory ? { directory } : {});
@@ -134,14 +219,20 @@ const at = (directory: string | undefined) => (directory ? { directory } : {});
  */
 const SKIP_FORK_SYNC_HEADERS = { "x-kilo-sse-skip-fork-sync": "1" } as const;
 
+function errorMessage(error: unknown): string | undefined {
+	if (!error || typeof error !== "object") return undefined;
+	const message = (error as { message?: unknown; data?: { message?: unknown } }).message;
+	if (typeof message === "string" && message) return message;
+	const nested = (error as { data?: { message?: unknown } }).data?.message;
+	return typeof nested === "string" && nested ? nested : undefined;
+}
+
 /** A `KiloChatClient` over the Kilo SDK. The client carries no directory: with one, listing is scoped to that project. */
 export function createKiloChatClient(connection: ServerConnection): KiloChatClient {
-	const client = createKiloClient({
-		baseUrl: connection.baseUrl,
-		headers: {
-			Authorization: `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`,
-		},
-	});
+	const authorization = {
+		Authorization: `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`,
+	};
+	const client = createKiloClient({ baseUrl: connection.baseUrl, headers: authorization });
 	const options = { throwOnError: true } as const;
 	const toInfo = (value: unknown) => {
 		const info = readChatInfo(value);
@@ -349,6 +440,84 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		},
 		async rejectQuestion(directory, requestID) {
 			await client.question.reject({ requestID, directory }, options);
+		},
+		async board(directory, sessionID, page) {
+			const { data } = await client.kilocode.sessionBoard(
+				{
+					sessionID,
+					directory,
+					...(page.before ? { before: page.before } : {}),
+					...(page.limit ? { limit: page.limit } : {}),
+				},
+				options,
+			);
+			return data as KiloBoard;
+		},
+		async resetBoard(directory, sessionID, revision) {
+			const { data, error, response } = await client.kilocode.resetSessionBoard({
+				sessionID,
+				directory,
+				revision,
+			});
+			if (response?.status === 409) throw new BoardConflictError("The board changed.");
+			if (error || !data) throw new Error(errorMessage(error) ?? "Could not clear the board.");
+			return data as KiloBoard;
+		},
+		async backgroundJobs(directory, sessionID) {
+			const { data } = await client.kilocode.backgroundJobs({ sessionID, directory }, options);
+			return (data ?? []) as KiloBackgroundJob[];
+		},
+		async cancelBackgroundJob(directory, jobID) {
+			await client.kilocode.backgroundJob.cancel({ jobID, directory }, options);
+		},
+		async childChats(directory, sessionID) {
+			const { data } = await client.session.children({ sessionID, directory }, options);
+			return (data ?? []).flatMap((raw) => {
+				const info = readChatInfo(raw);
+				return info ? [info] : [];
+			});
+		},
+		async lastTurn(directory, sessionID) {
+			const { data } = await client.session.messages({ sessionID, directory, limit: 1 }, options);
+			const info = (data?.at(-1) as { info?: Record<string, unknown> } | undefined)?.info;
+			if (!info) return null;
+			const time = info.time as { completed?: unknown } | undefined;
+			const error = info.error as { name?: unknown; data?: { message?: unknown } } | undefined;
+			const text = (value: unknown) => (typeof value === "string" && value ? value : undefined);
+			const providerID = text(info.providerID);
+			const modelID = text(info.modelID);
+			const errorName = text(error?.name);
+			const errorMessage = text(error?.data?.message);
+			return {
+				role: info.role === "user" ? "user" : "assistant",
+				...(typeof time?.completed === "number" ? { completedAt: time.completed } : {}),
+				...(errorName ? { errorName } : {}),
+				...(errorMessage ? { errorMessage } : {}),
+				...(providerID && modelID ? { model: { providerID, modelID } } : {}),
+			};
+		},
+		async team(directory, sessionID) {
+			// The bundled SDK predates Kilo Swarm's roster, so the route is called directly.
+			const url = new URL(
+				`/kilocode/session/${encodeURIComponent(sessionID)}/team`,
+				connection.baseUrl,
+			);
+			url.searchParams.set("directory", directory);
+			const response = await fetch(url, { headers: authorization });
+			if (response.status === 404) {
+				const body = (await response.json().catch(() => null)) as { name?: unknown } | null;
+				// Kilo's own 404 names the missing chat; any other means the route is unknown.
+				if (body?.name === "NotFoundError") throw new Error("The chat isn't on the Kilo server.");
+				return null;
+			}
+			if (!response.ok) {
+				throw new Error(`The Kilo server answered ${response.status} for the team.`);
+			}
+			return (await response.json()) as KiloTeam;
+		},
+		async capabilities() {
+			const { data } = await client.experimental.capabilities.get(undefined, options);
+			return (data ?? {}) as Readonly<Record<string, unknown>>;
 		},
 	};
 }

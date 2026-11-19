@@ -75,6 +75,15 @@ export interface ConversationsService {
 	chatClient(
 		chatId: string,
 	): Promise<{ readonly client: KiloChatClient; readonly directory: string }>;
+	/** Every event of the Kilo server's stream, as it arrives; returns the unsubscribe. */
+	onEvent(listener: (event: KiloStreamEvent) => void): () => void;
+}
+
+/** One event of the Kilo server's global stream. */
+export interface KiloStreamEvent {
+	readonly type: string;
+	readonly properties: Readonly<Record<string, unknown>>;
+	readonly directory?: string | undefined;
 }
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
@@ -671,11 +680,19 @@ export function provideConversations(
 	}
 
 	const userMessages = new UserMessageTracker();
+	const eventListeners = new Set<(event: KiloStreamEvent) => void>();
 
 	async function consume(client: KiloChatClient, signal: AbortSignal) {
 		try {
 			for await (const event of client.events(signal)) {
 				if (signal.aborted) return;
+				for (const listener of eventListeners) {
+					try {
+						listener(event);
+					} catch (error) {
+						sdk.logger.warn("A Kilo event listener failed", error);
+					}
+				}
 				if (event.type === "server.connected" && activeStream?.signal === signal) {
 					activeStream.connected = true;
 					for (const id of drains.keys()) requestDrain(id);
@@ -829,6 +846,10 @@ export function provideConversations(
 		},
 		connected,
 		chatClient,
+		onEvent(listener) {
+			eventListeners.add(listener);
+			return () => eventListeners.delete(listener);
+		},
 	};
 }
 

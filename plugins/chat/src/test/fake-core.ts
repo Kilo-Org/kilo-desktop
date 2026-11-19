@@ -12,6 +12,7 @@ import {
 	KiloAccount,
 	KiloServer,
 	Models,
+	Swarm,
 	Tool,
 	modelKey,
 	toolWireName,
@@ -22,6 +23,9 @@ import {
 	type ModelsState,
 	type PermissionRequest,
 	type PromptChatInput,
+	type BackgroundJob,
+	type SwarmBoard,
+	type SwarmTeam,
 } from "@kilo-desktop/plugin-core/contracts";
 
 import { FakeKiloServer } from "./fake-kilo-server";
@@ -121,6 +125,14 @@ export interface FakeCoreOptions {
 	readonly declinedSignInTools?: readonly string[];
 	/** A chat was created (kilo.work-sessions' stand-in records it in its work session). */
 	readonly onChatCreated?: (chat: ChatSummary) => void;
+	/** Kilo Swarm boards by owning root chat; a chat not here has none (NOT_FOUND). */
+	readonly boards?: Readonly<Record<string, SwarmBoard>>;
+	/** Background jobs by delegating chat. */
+	readonly jobs?: Readonly<Record<string, readonly BackgroundJob[]>>;
+	/** The server announces board changes (Kilo Swarm's `board.updated`). */
+	readonly boardEvents?: boolean;
+	/** Kilo's team rosters by root chat; set, the server has the roster. */
+	readonly teams?: Readonly<Record<string, SwarmTeam>>;
 }
 
 const unavailable = () => {
@@ -150,6 +162,19 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		refreshModels: vi.fn(),
 		refreshGatewayCatalog: vi.fn(),
 		signIn: vi.fn(),
+		boardReads: vi.fn<(input: { chatId: string; before?: string | undefined }) => void>(),
+		resetBoard: vi.fn<(input: { chatId: string; revision: number }) => void>(),
+		cancelJob: vi.fn<(input: { chatId: string; jobId: string }) => void>(),
+	};
+	const boards: Record<string, SwarmBoard> = { ...options.boards };
+	let swarm: DomainObjectProvider<typeof Swarm> | undefined;
+	const jobs: Record<string, BackgroundJob[]> = Object.fromEntries(
+		Object.entries(options.jobs ?? {}).map(([id, list]) => [id, [...list]]),
+	);
+	/** The board a chat shares: its own, else its root's. */
+	const boardOf = (chatId: string): string => {
+		const parent = chats?.state.chats[chatId]?.parentId;
+		return boards[chatId] || !parent ? chatId : boardOf(parent);
 	};
 	let chats: DomainObjectProvider<typeof Chats> | undefined;
 	let models: DomainObjectProvider<typeof Models> | undefined;
@@ -446,6 +471,51 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		models = provider;
 	}
 
+	function provideSwarm(sdk: PluginSdk): void {
+		swarm = sdk.domainObjects.provide(Swarm, {
+			initialState: {
+				boardEvents: options.boardEvents ?? false,
+				team: options.teams !== undefined,
+			},
+			methods: {
+				board: ({ chatId, before, limit }) => {
+					calls.boardReads({ chatId, before });
+					const board = boards[boardOf(chatId)];
+					if (!board) throw new KernelError("UNAVAILABLE", "Could not read the board: not found");
+					const end = before
+						? board.messages.findIndex((message) => message.id === before)
+						: board.messages.length;
+					const start = Math.max(0, end - (limit ?? 50));
+					return {
+						...board,
+						messages: board.messages.slice(start, end),
+						hasMore: start > 0,
+						...(start > 0 ? { cursor: board.messages[start]!.id } : {}),
+					};
+				},
+				reset: ({ chatId, revision }) => {
+					calls.resetBoard({ chatId, revision });
+					const owner = boardOf(chatId);
+					const board = boards[owner];
+					if (!board) throw new KernelError("UNAVAILABLE", "Could not clear the board: not found");
+					if (board.revision !== revision) {
+						throw new KernelError(
+							"CONFLICT",
+							"The board changed. Read it again before clearing it.",
+						);
+					}
+					boards[owner] = { ...board, messages: [], hasMore: false };
+					return boards[owner]!;
+				},
+				team: ({ chatId }) => options.teams?.[chatId] ?? null,
+				jobs: ({ chatId }) => [...(jobs[chatId] ?? [])],
+				cancelJob: ({ chatId, jobId }) => {
+					calls.cancelJob({ chatId, jobId });
+				},
+			},
+		});
+	}
+
 	function provideAccount(sdk: PluginSdk, initial: AccountState): void {
 		sdk.context.set("signedIn", initial.signedIn === true);
 		account = sdk.domainObjects.provide(KiloAccount, {
@@ -470,7 +540,10 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		activate(sdk: PluginSdk): void {
 			sdkRef = sdk;
 			sdk.context.set("termsAccepted", true);
-			if (!options.withoutChats) provideChats(sdk);
+			if (!options.withoutChats) {
+				provideChats(sdk);
+				provideSwarm(sdk);
+			}
 			if (options.models !== null) provideModels(sdk, options.models ?? {});
 			if (options.account !== null) provideAccount(sdk, options.account ?? SIGNED_IN);
 		},
@@ -484,6 +557,22 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		},
 		/** A chat joined or changed, as kilo.core announces it. */
 		updateChat: (next: ChatSummary) => write(next),
+		/** Replaces a Kilo Swarm board (an agent posted, or another client cleared it). */
+		setBoard: (ownerChatId: string, board: SwarmBoard) => {
+			boards[ownerChatId] = board;
+		},
+		/** Kilo announces a board change, as `board.updated` relayed by kilo.core. */
+		announceBoard: (ownerChatId: string) => {
+			const board = boards[ownerChatId];
+			swarm?.emit("board-updated", {
+				chatId: ownerChatId,
+				revision: board?.revision ?? 0,
+				cleared: 0,
+			});
+		},
+		setJobs: (chatId: string, list: readonly BackgroundJob[]) => {
+			jobs[chatId] = [...list];
+		},
 	};
 }
 

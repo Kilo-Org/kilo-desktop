@@ -33,6 +33,7 @@ export interface ChatInfo {
 	readonly createdAt: number;
 	readonly updatedAt: number;
 	readonly archivedAt?: number;
+	readonly agent?: string;
 }
 
 export interface ChatRecord {
@@ -83,15 +84,19 @@ export function readChatInfo(value: unknown): ChatInfo | undefined {
 	const createdAt = asNumber(time?.created);
 	if (!raw || !id || createdAt === undefined) return undefined;
 	const archivedAt = asNumber(time?.archived);
+	const title = typeof raw.title === "string" ? raw.title : "";
+	// Kilo names a task's chat "… (@explore subagent)"; older sessions record no agent.
+	const agent = asString(raw.agent) ?? title.match(/\(@([\w-]+) subagent\)\s*$/)?.[1];
 	return {
 		id,
-		title: typeof raw.title === "string" ? raw.title : "",
+		title,
 		parentId: asString(raw.parentID) ?? null,
 		directory: asString(raw.directory) ?? null,
 		metadata: raw.metadata ?? null,
 		createdAt,
 		updatedAt: asNumber(time?.updated) ?? createdAt,
 		...(archivedAt !== undefined ? { archivedAt } : {}),
+		...(agent ? { agent } : {}),
 	};
 }
 
@@ -104,6 +109,7 @@ export function sameInfo(a: ChatInfo | undefined, b: ChatInfo): boolean {
 		a.createdAt === b.createdAt &&
 		a.updatedAt === b.updatedAt &&
 		a.archivedAt === b.archivedAt &&
+		a.agent === b.agent &&
 		JSON.stringify(a.metadata) === JSON.stringify(b.metadata)
 	);
 }
@@ -372,6 +378,7 @@ function summarize(record: ChatRecord, info: ChatInfo, root: ChatInfo): ChatSumm
 		createdAt: info.createdAt,
 		updatedAt: info.updatedAt,
 		...(info.archivedAt !== undefined ? { archivedAt: info.archivedAt } : {}),
+		...(info.agent ? { agent: info.agent } : {}),
 		activity: cleanActivity(record.activity),
 	};
 	summaries.set(record, { root, summary });

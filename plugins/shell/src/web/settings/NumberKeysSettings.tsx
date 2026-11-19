@@ -305,15 +305,12 @@ export function NumberKeysSettings() {
 		}
 		void keybindings?.methods.update({ set, reset });
 	};
+	const choices = optionsFor(platform).map((option) => option.value);
 	const toggle = (entry: NumberKeySeries, on: boolean) =>
 		apply(
 			on
-				? planTurnOn(
-						series,
-						entry.category,
-						optionsFor(platform).map((option) => option.value),
-					)
-				: planModifierChange(series, entry.category, "none"),
+				? planTurnOn(series, entry.category, choices)
+				: planModifierChange(series, entry.category, "none", choices),
 		);
 	const restoreDefaults = () =>
 		apply(
@@ -391,7 +388,7 @@ export function NumberKeysSettings() {
 									series={entry}
 									platform={platform}
 									onChange={(modifier) =>
-										apply(planModifierChange(series, entry.category, modifier))
+										apply(planModifierChange(series, entry.category, modifier, choices))
 									}
 								/>
 							</section>

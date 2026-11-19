@@ -20,6 +20,8 @@ export interface NumberKeySeries {
 	readonly commands: readonly string[];
 	readonly defaultModifier: SeriesModifier;
 	readonly current: SeriesModifier | "none" | "custom";
+	/** Modifiers its slots jump with now; a custom set can hold one on most slots. */
+	readonly held: ReadonlySet<SeriesModifier>;
 }
 
 /** Command key → a chord, `null` for off, or `undefined` to go back to the default. */
@@ -41,22 +43,26 @@ function digitChord(code: string, modifier: SeriesModifier): string {
 	});
 }
 
-function currentModifier(
+function slotState(
 	commands: readonly string[],
 	digits: ReadonlyMap<string, string>,
 	overrides: OverridePlan,
 	defaultModifier: SeriesModifier,
-): NumberKeySeries["current"] {
-	const modifiers = new Set(
-		commands.map((key) => {
-			const override = overrides[key];
-			if (override === undefined) return defaultModifier;
-			if (override === null) return "none";
-			const chord = parseChord(override);
-			return chord?.code === digits.get(key) ? (digitModifier(chord) ?? "custom") : "custom";
-		}),
-	);
-	return modifiers.size === 1 ? [...modifiers][0]! : "custom";
+): Pick<NumberKeySeries, "current" | "held"> {
+	const slots = commands.map((key) => {
+		const override = overrides[key];
+		if (override === undefined) return defaultModifier;
+		if (override === null) return "none";
+		const chord = parseChord(override);
+		return chord?.code === digits.get(key) ? (digitModifier(chord) ?? "custom") : "custom";
+	});
+	const distinct = new Set(slots);
+	return {
+		current: distinct.size === 1 ? [...distinct][0]! : "custom",
+		held: new Set(
+			slots.filter((slot): slot is SeriesModifier => slot !== "none" && slot !== "custom"),
+		),
+	};
 }
 
 export function collectNumberKeySeries(
@@ -85,7 +91,7 @@ export function collectNumberKeySeries(
 				digits,
 				commands: keys,
 				defaultModifier: modifier,
-				current: currentModifier(keys, digits, overrides, modifier),
+				...slotState(keys, digits, overrides, modifier),
 			};
 		});
 }
@@ -104,20 +110,34 @@ function overridesFor(series: NumberKeySeries, modifier: SeriesModifier | "none"
 }
 
 /**
- * Taking another series' modifier swaps the two. An off or customized series
- * has no modifier to hand over, so the other one keeps its own.
+ * Taking a modifier another set holds swaps the two. When the target has no
+ * modifier to hand over (it is off or custom), the holder moves to the first
+ * free choice instead, so two sets never share chords. Turning off takes
+ * nothing, so it never touches another set.
  */
 export function planModifierChange(
 	all: readonly NumberKeySeries[],
 	category: string,
 	modifier: SeriesModifier | "none",
+	choices: readonly SeriesModifier[],
 ): OverridePlan {
 	const target = all.find((series) => series.category === category);
 	if (!target) return {};
-	const plan = overridesFor(target, modifier);
-	const holder = all.find((series) => series.category !== category && series.current === modifier);
-	if (!holder || target.current === "none" || target.current === "custom") return plan;
-	return { ...plan, ...overridesFor(holder, target.current) };
+	const plan = { ...overridesFor(target, modifier) };
+	if (modifier === "none") return plan;
+	const others = all.filter((series) => series !== target);
+	for (const holder of others.filter((series) => series.held.has(modifier))) {
+		const taken = new Set([
+			modifier,
+			...others.filter((series) => series !== holder).flatMap((series) => [...series.held]),
+		]);
+		const handover =
+			target.current !== "none" && target.current !== "custom" && !taken.has(target.current)
+				? target.current
+				: choices.find((choice) => !taken.has(choice));
+		Object.assign(plan, overridesFor(holder, handover ?? "none"));
+	}
+	return plan;
 }
 
 /** The default modifier when free, else the first free choice. */
@@ -129,9 +149,10 @@ export function planTurnOn(
 	const target = all.find((series) => series.category === category);
 	if (!target) return {};
 	const taken = new Set(
-		all.filter((series) => series.category !== category).map((series) => series.current),
+		all.filter((series) => series !== target).flatMap((series) => [...series.held]),
 	);
-	const preferred = [target.defaultModifier, ...choices];
-	const modifier = preferred.find((candidate) => !taken.has(candidate)) ?? target.defaultModifier;
-	return planModifierChange(all, category, modifier);
+	const modifier =
+		[target.defaultModifier, ...choices].find((candidate) => !taken.has(candidate)) ??
+		target.defaultModifier;
+	return planModifierChange(all, category, modifier, choices);
 }

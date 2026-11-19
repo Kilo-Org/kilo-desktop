@@ -8,6 +8,8 @@ const slot = (prefix: string, category: string, digit: number, keybinding: unkno
 	metadata: { category, keybinding: keybinding as string },
 });
 
+const MAC = ["meta", "ctrl", "alt"] as const;
+
 const commands = [
 	...[1, 2, 9].map((digit) => slot("tab", "Tabs", digit, `Mod+${digit}`)),
 	...[1, 2, 9].map((digit) =>
@@ -45,32 +47,32 @@ describe("number-key series", () => {
 	it("moves every slot to the new modifier, resetting slots that land on their default", () => {
 		const series = collectNumberKeySeries(commands, {}, "mac");
 
-		expect(planModifierChange(series, "Tabs", "alt")).toEqual({
+		expect(planModifierChange(series, "Tabs", "alt", MAC)).toEqual({
 			"acme/tab-1": "Alt+Digit1",
 			"acme/tab-2": "Alt+Digit2",
 			"acme/tab-9": "Alt+Digit9",
 		});
-		expect(planModifierChange(series, "Tabs", "none")).toEqual({
+		expect(planModifierChange(series, "Tabs", "none", MAC)).toEqual({
 			"acme/tab-1": null,
 			"acme/tab-2": null,
 			"acme/tab-9": null,
 		});
 		const moved = collectNumberKeySeries(
 			commands,
-			planModifierChange(series, "Tabs", "alt"),
+			planModifierChange(series, "Tabs", "alt", MAC),
 			"mac",
 		);
-		expect(planModifierChange(moved, "Tabs", "meta")).toEqual({
+		expect(planModifierChange(moved, "Tabs", "meta", MAC)).toStrictEqual({
 			"acme/tab-1": undefined,
 			"acme/tab-2": undefined,
 			"acme/tab-9": undefined,
 		});
 	});
 
-	it("swaps with the series that holds the modifier, unless the target is off", () => {
+	it("swaps with the series that holds the modifier", () => {
 		const series = collectNumberKeySeries(commands, {}, "mac");
 
-		expect(planModifierChange(series, "Tabs", "ctrl")).toEqual({
+		expect(planModifierChange(series, "Tabs", "ctrl", MAC)).toStrictEqual({
 			"acme/tab-1": "Ctrl+Digit1",
 			"acme/tab-2": "Ctrl+Digit2",
 			"acme/tab-9": "Ctrl+Digit9",
@@ -78,39 +80,76 @@ describe("number-key series", () => {
 			"acme/session-2": "Meta+Digit2",
 			"acme/session-9": "Meta+Digit9",
 		});
+	});
+
+	it("moves the holder to a free modifier when the target has none to hand over", () => {
+		const series = collectNumberKeySeries(commands, {}, "mac");
 		const tabsOff = collectNumberKeySeries(
 			commands,
-			planModifierChange(series, "Tabs", "none"),
+			planModifierChange(series, "Tabs", "none", MAC),
 			"mac",
 		);
-		expect(Object.keys(planModifierChange(tabsOff, "Tabs", "ctrl"))).toEqual([
-			"acme/tab-1",
-			"acme/tab-2",
-			"acme/tab-9",
+		const tabsCustom = collectNumberKeySeries(commands, { "acme/tab-1": "Meta+KeyJ" }, "mac");
+
+		for (const all of [tabsOff, tabsCustom]) {
+			const plan = planModifierChange(all, "Tabs", "ctrl", MAC);
+			expect(plan["acme/session-1"]).toBe("Meta+Digit1");
+			expect(plan["acme/tab-1"]).toBe("Ctrl+Digit1");
+		}
+	});
+
+	it("turning a set off leaves another set that is already off alone", () => {
+		const series = collectNumberKeySeries(commands, {}, "mac");
+		const tabsOff = collectNumberKeySeries(
+			commands,
+			planModifierChange(series, "Tabs", "none", MAC),
+			"mac",
+		);
+
+		expect(Object.keys(planModifierChange(tabsOff, "Sessions", "none", MAC))).toEqual([
+			"acme/session-1",
+			"acme/session-2",
+			"acme/session-9",
 		]);
+	});
+
+	it("counts the modifier a custom set's slots still hold as taken", () => {
+		// Tabs on ⌃ except one hand-rebound slot; Sessions off.
+		const all = collectNumberKeySeries(
+			commands,
+			{
+				"acme/tab-1": "Meta+KeyJ",
+				"acme/tab-2": "Ctrl+Digit2",
+				"acme/tab-9": "Ctrl+Digit9",
+				"acme/session-1": null,
+				"acme/session-2": null,
+				"acme/session-9": null,
+			},
+			"mac",
+		);
+
+		expect(planTurnOn(all, "Sessions", MAC)["acme/session-1"]).toBe("Meta+Digit1");
 	});
 
 	it("turns a series back on with its default modifier, or the first free one", () => {
 		const series = collectNumberKeySeries(commands, {}, "mac");
 		const tabsOff = collectNumberKeySeries(
 			commands,
-			planModifierChange(series, "Tabs", "none"),
+			planModifierChange(series, "Tabs", "none", MAC),
 			"mac",
 		);
-		expect(planTurnOn(tabsOff, "Tabs", ["meta", "ctrl", "alt"])["acme/tab-1"]).toBeUndefined();
+		expect(planTurnOn(tabsOff, "Tabs", MAC)["acme/tab-1"]).toBeUndefined();
 
 		const sessionsOnMeta = collectNumberKeySeries(
 			commands,
 			{
-				...planModifierChange(series, "Tabs", "none"),
+				...planModifierChange(series, "Tabs", "none", MAC),
 				"acme/session-1": "Meta+Digit1",
 				"acme/session-2": "Meta+Digit2",
 				"acme/session-9": "Meta+Digit9",
 			},
 			"mac",
 		);
-		expect(planTurnOn(sessionsOnMeta, "Tabs", ["meta", "ctrl", "alt"])["acme/tab-1"]).toBe(
-			"Ctrl+Digit1",
-		);
+		expect(planTurnOn(sessionsOnMeta, "Tabs", MAC)["acme/tab-1"]).toBe("Ctrl+Digit1");
 	});
 });

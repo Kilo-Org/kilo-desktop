@@ -35,6 +35,8 @@ import {
 } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 
+const recordedChordOnly = (chord: KeyChord): readonly KeyChord[] => [chord];
+
 /**
  * The shortcut as one chip: clicking it records new keys, and hovering or
  * focusing it reveals × to turn the shortcut off. While recording, every
@@ -46,7 +48,7 @@ function ShortcutField({
 	labels,
 	platform,
 	prompt = "Type the new keys…",
-	expand = (chord) => [chord],
+	expand = recordedChordOnly,
 	onRecord,
 	onTurnOff,
 }: {

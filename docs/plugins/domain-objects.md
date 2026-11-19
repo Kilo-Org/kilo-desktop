@@ -208,7 +208,7 @@ only one collection resolves a type and that it declares a `lookup`. An
 extension point, a domain object, a context key and an object type of one
 plugin never share an id.
 
-Drag and drop uses references directly: `useDragSource([chatRef])` on the
+Drag and drop uses references directly: `dragSourceProps([chatRef])` on the
 source, `useDropTarget({ accepts: [Chat], onDrop: (refs) => … })` on the
 target (both from `@kilo-desktop/kernel/web`).
 

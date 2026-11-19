@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
 	CondaRepodataFindResult,
@@ -71,7 +71,7 @@ export function usePackageSearch({
 	channels,
 }: UsePackageSearchOptions): PackageSearch {
 	const trimmed = query.trim();
-	const key = useMemo(() => JSON.stringify([trimmed, channels ?? null]), [trimmed, channels]);
+	const key = JSON.stringify([trimmed, channels ?? null]);
 	const [requested, setRequested] = useState({ key, limit: PACKAGE_SEARCH_BATCH });
 	const [loaded, setLoaded] = useState<LoadedResults | null>(null);
 	const loadedKeyRef = useRef<string | null>(null);
@@ -123,14 +123,14 @@ export function usePackageSearch({
 	const hasMore = current !== null && current.truncated && current.limit < PACKAGE_SEARCH_CAP;
 	const atCap = current !== null && current.truncated && current.limit >= PACKAGE_SEARCH_CAP;
 
-	const loadMore = useCallback(() => {
+	const loadMore = () => {
 		if (!hasMore || loadingMore) return;
 		setRequested((prev) =>
 			prev.key === key
 				? { key, limit: Math.min(PACKAGE_SEARCH_CAP, prev.limit + PACKAGE_SEARCH_BATCH) }
 				: prev,
 		);
-	}, [hasMore, loadingMore, key]);
+	};
 
 	return {
 		packages: (current ?? loaded)?.packages ?? [],

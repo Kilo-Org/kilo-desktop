@@ -1378,10 +1378,10 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.shell      | `left-sidebar-account` | X              | Account entry at the left sidebar's foot                                                                                                                                                                            | kilo.account                                                                                                     |
 | kilo.shell      | `left-sidebar-notice`  | A              | Notice above the account entry                                                                                                                                                                                      | updates                                                                                                          |
 | kilo.shell      | `overlay`              | A              | Always-mounted component (app-wide dialogs opened by commands)                                                                                                                                                      | workspaces                                                                                                       |
-| kilo.shell      | `onboarding-step`      | A              | `{label, layout: card \| splash, required?: when}` + `useStep(controls)` → heading, body, aside, primary                                                                                                            | account                                                                                                          |
+| kilo.shell      | `onboarding-step`      | A              | `{label, layout: card \| splash, required?: when}` + `Step` → `children(view)`: heading, body, aside, primary                                                                                                       | account                                                                                                          |
 | kilo.shell      | `settings-category`    | A              | `{id, title, priority}`: a sidebar heading; categories ordered by priority, empty ones hidden; unknown category → General                                                                                           | shell                                                                                                            |
 | kilo.shell      | `settings-section`     | A              | `{id, title, category: <settings-category key>, priority, schema \| component, when}`; ordered within its category                                                                                                  | shell, telemetry, updates, account, agent, workbench, chat, notebook, environments, local-inference, marketplace |
-| kilo.shell      | `status-bar-item`      | A              | `{id, title, kind: view \| action \| popover, align: start \| end, command?, priority, when}` + `Component` \| `useTrigger` with `run` or `Content`; the bar hides while no item renders                            | local-inference                                                                                                  |
+| kilo.shell      | `status-bar-item`      | A              | `{id, title, kind: view \| action \| popover, align: start \| end, command?, priority, when}` + `Component` \| `Trigger` with `run` or `Content`; the bar hides while no item renders                               | local-inference                                                                                                  |
 | kilo.shell      | `deep-link`            | A              | `{host, to, params}`                                                                                                                                                                                                | local-inference, environments                                                                                    |
 | kilo.shell      | `about-section`        | A              | Component: a block of Settings → About, ordered by priority around the shell's Support (200)                                                                                                                        | shell, updates                                                                                                   |
 | kilo.shell      | `support-row`          | A              | Row component in About → Support                                                                                                                                                                                    | agent                                                                                                            |
@@ -1404,14 +1404,14 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.workbench  | `session-facet`        | A              | `{facet: pull-request}`; impl `{get() → {sessionId: open \| merged \| closed}, subscribe}` (9d)                                                                                                                     | git (9d)                                                                                                         |
 | kilo.workbench  | `navigator-action`     | A              | Component in the session list's header                                                                                                                                                                              | board (step 13)                                                                                                  |
 | kilo.workbench  | `sessions-view`        | A              | `{title, detachable}` + `{component, headerActions?, preferredWidth?}` given `{focus, openSession, detached}`; shown via `Workbench.showView` (13a)                                                                 |
-| kilo.chat       | `composer-action`      | A              | `{slot: toolbar \| toolbar-end \| footer \| draft-footer, kind: action \| menu \| popover \| view, title, command?, when}`; impl `useButton` / `run` · `useMenu` · `useTrigger` + `Content` (8d) · `Component` (9b) | chat (attach, agent, model, approval); git (step 9)                                                              |
+| kilo.chat       | `composer-action`      | A              | `{slot: toolbar \| toolbar-end \| footer \| draft-footer, kind: action \| menu \| popover \| view, title, command?, when}`; impl components `Button`/`run` · `Menu` · `Trigger` + `Content` (8d) · `Component` (9b) | chat (attach, agent, model, approval); git (step 9)                                                              |
 | kilo.chat       | `composer-mention`     | A              | `{trigger, title}`; impl `{search(query, ctx) → {id, label, detail?, icon?}[], resolve(item, ctx) → {text?, files?}, icon?}` (8d)                                                                                   | files (step 10)                                                                                                  |
 | kilo.chat       | `client-slash-command` | A              | `{command, name, description?, aliases?}`, no impl: places a `kernel/command` in the `/` menu, run with the composer context + the pane's agent / model / variant and `running`; hides a same-named server command  | chat (`/compact`)                                                                                                |
 | kilo.chat       | `tool-renderer`        | A              | `{tools, standalone?, category?}`; impl `{component}` given the tool-call props + `Original` (8e)                                                                                                                   | chat                                                                                                             |
 | kilo.chat       | `mcp-app`              | A              | `{tools, resourceUri, serverId}`; impl (optional) `{loadHtml}` (8e)                                                                                                                                                 | —                                                                                                                |
 | kilo.chat       | `markdown-extension`   | A              | impl `(ctx: {sessionId, workspaceFolders}) → {remarkPlugins?, decorateComponents?}` (8e)                                                                                                                            | files, browser                                                                                                   |
 | kilo.chat       | `interaction-renderer` | A              | `{permissions?}`; impl `{permissionTitle?, PermissionDetail?, allowAlways?, showPatterns?, optionWarning?}` (12a)                                                                                                   | environments                                                                                                     |
-| kilo.chat       | `model-source`         | A              | `{providerId, title, settingsSection?}`; impl `{useState() → {status, modelIds, pending}, start?, prepare?(modelId)}` (12c)                                                                                         | local-inference                                                                                                  |
+| kilo.chat       | `model-source`         | A              | `{providerId, title, settingsSection?}`; impl `{State → children({status, modelIds, pending}), start?, prepare?(modelId)}` (12c)                                                                                    | local-inference                                                                                                  |
 
 This catalog lists the points with contributors today. Candidate points for
 every plugin are in the extensibility map (§7). A generated table of every
@@ -1581,7 +1581,7 @@ would replace it if a kind ever needs something other than show-or-open.
 | kernel         | `service`             | A    | Now    | Supervised daemons and background tasks (§2.8)                          | flags, telemetry, agent, workspaces, sessions, notebook, environments, local-inference                            |
 | kernel         | `quit`                | D    | Next   | Proceed / ask / reject before quitting (fails open)                     | agent (a turn is running); notebook (unsaved notebook); terminal (processes running); updates (update installing) |
 | kernel         | `window-close`        | D    | Next   | Proceed / ask / reject before closing a main or pane window             | notebook (unsaved notebook in a pane window)                                                                      |
-| kilo.shell     | `onboarding-step`     | A    | Now    | `{label, layout, required?}` + `useStep(controls)`: first-run steps     | account (terms, sign in); environments (set up conda); local-inference (download a model)                         |
+| kilo.shell     | `onboarding-step`     | A    | Now    | `{label, layout, required?}` + `Step` component: first-run steps        | account (terms, sign in); environments (set up conda); local-inference (download a model)                         |
 | kilo.shell     | `theme`               | A    | Later  | Colour themes (semantic tokens, host expands)                           | _ext_ community themes                                                                                            |
 | kilo.shell     | `menu-item`           | A    | Now    | Commands in the native app menu, by menu and group (shell lays it out)  | shell (settings, palette, sidebar, shortcuts); workbench (new session, new tab, close tab); _later_ git, terminal |
 | kilo.shell     | `top-bar-title`       | X    | Now    | Names the main area in the top bar, in place of its title; by `when`    | work-sessions (open session's breadcrumb, shown view's title)                                                     |
@@ -2027,7 +2027,7 @@ Everything lands in a single PR once all plugins are built.
   (a radio submenu; `run(session, choiceId)`); items are evaluated when the
   menu opens, so `appliesTo` reads current state.
 - **Drag and drop:** session rows drag `kilo.sessions/work-session` refs
-  (`useDragSource`); board columns are `useDropTarget`s, which now report
+  (`dragSourceProps`); board columns are `useDropTarget`s, which now report
   the pointer (`onOver` / `onLeave`) for insertion previews. Column reorder
   stays board-private (its own MIME type); the drag ghost is the browser's.
 - **Board storage:** `kilo.workspace-board/board` (main) holds the columns of session
@@ -2091,8 +2091,9 @@ Everything lands in a single PR once all plugins are built.
   id, so chats keep their models) and the router's API key a
   `runtime-config` env var; kilo.agent writes the config and restarts.
 - **Chat seams — `kilo.chat/model-source`** (additive, renderer;
-  `{providerId, title, settingsSection?}`, impl `{useState, start?,
-  prepare?}`): the picker shows the source's rail before Kilo lists the
+  `{providerId, title, settingsSection?}`, impl `{State, start?,
+  prepare?}`; `State` is a component handing its live state to
+  `children`): the picker shows the source's rail before Kilo lists the
   provider (empty state opens `settingsSection`), choosing the rail starts
   it, a change in its installed models re-reads the catalog, and
   `PromptOptions.prepareModel(model)` loads a prompt's model first when a
@@ -2830,11 +2831,13 @@ Everything lands in a single PR once all plugins are built.
 - **`kilo.chat/composer-action`** (additive, renderer): metadata `{slot:
   toolbar | toolbar-end | footer | draft-footer, kind: action | menu |
   popover, title, command?}`, ordered by priority. Implementations are data
-  plus hooks the composer runs while it shows (so contributions read their own
-  state): `action` → `useButton(ctx)` (label, icon, colour, disabled, busy,
+  plus components the composer renders while it shows, which read their own
+  state with hooks and hand it back through `children` (hooks chosen at
+  runtime can't be compiled): `action` → `Button({context, children})`
+  (label, icon, colour, disabled, busy,
   hidden, `run`) or `run(ctx)` or just the manifest's `command`; `menu` →
-  `useMenu(ctx)` (items, value, select — the pick-one dropdown the agent and
-  approval pickers are); `popover` → `useTrigger(ctx)` + `Content({open,
+  `Menu` (items, value, select — the pick-one dropdown the agent and
+  approval pickers are); `popover` → `Trigger` + `Content({open,
   close, ...ctx})` rendered inside the composer's popover root (the model
   picker, its trigger label being the selected model + effort). `ctx` is
   `{sessionId, chatId | null, directory, workspaceId, workspaceFolders}`.
@@ -3100,7 +3103,8 @@ Everything lands in a single PR once all plugins are built.
 - **The canvas owns the layout's shape; kilo.sessions owns which panes
   exist.** kilo.workbench derives the layout from the saved one (panes opened
   since join as their own column, closed ones drop out, titles follow; a pane
-  opened with `placement: "tab"` is put in the active pane's group by main), shows
+  opened with `placement: "tab"` is put in the active pane's group, or the
+  `groupId` it names, by main in the same write), shows
   a change at once and saves it; another window's save replaces it.
 - **Origin's state is handed over once** by the main window (after origin's
   sessions import): its tab definitions map to the kinds of the plugins that
@@ -3246,7 +3250,8 @@ Everything lands in a single PR once all plugins are built.
   the server never starts — kilo.account is how the terms get accepted.
 - **Onboarding is a shell host with contributed steps.** Steps declare a
   label, a `card` or `splash` layout and an optional `required` condition,
-  and provide a `useStep` hook (run inside the step's own plugin context).
+  and provide a `Step` component (rendered inside the step's own plugin
+  context) that hands its view to `children`.
   A required step shows whenever its condition holds, even after onboarding
   is done, and can't be dismissed. The outcome lives in `kilo.shell/onboarding`.
 - **Domain events instead of telemetry calls** (decision 34): kilo.account
@@ -3579,7 +3584,7 @@ without the history of earlier sessions.
 | 30  | A plugin that hosts points may export a `./testing` fixture that boots it around guest plugins; tests (only) may import it                                                                                                                                                                                                                                                             |
 | 31  | Step 3 holds only the kilo.agent core; the tool gateway moves to step 7, the Chat Session model to step 8 and AI Providers to step 4, each next to the consumer it is designed against                                                                                                                                                                                                 |
 | 32  | Host services locate a plugin's shipped files (`assets.resolve`, a `resources/` folder) and `kernel/app` publishes renderer origins; plugin main code spawns processes with Node directly                                                                                                                                                                                              |
-| 33  | Onboarding is hosted by kilo.shell; plugins contribute steps with a `useStep` hook, and a `required` condition turns a step into a gate (terms)                                                                                                                                                                                                                                        |
+| 33  | Onboarding is hosted by kilo.shell; plugins contribute steps with a `Step` component, and a `required` condition turns a step into a gate (terms)                                                                                                                                                                                                                                      |
 | 34  | Plugins report analytics-worthy moments as domain events; kilo.telemetry subscribes and reports them, so no plugin depends on telemetry                                                                                                                                                                                                                                                |
 | 35  | UI shared by several plugins (brand, provider icons, wizard steps) moves to `@kilo-desktop/ui` rather than being copied                                                                                                                                                                                                                                                                |
 | 36  | Step 7 keeps origin's MCP tool gateway; agent tools move to Kilo CLI server plugins (OpenCode V2 style) only when Kilo adopts OpenCode V2                                                                                                                                                                                                                                              |

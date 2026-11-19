@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import {
 	formatChord,
@@ -6,7 +6,7 @@ import {
 	type KeyboardPlatform,
 	type KeyChord,
 } from "@kilo-desktop/kernel";
-import { useKernel } from "@kilo-desktop/kernel/web";
+import { useKernel, type RendererKeyboard } from "@kilo-desktop/kernel/web";
 
 import { WORK_SESSIONS_PLUGIN_ID } from "../../contracts";
 import { idAtShortcutSlot, NUMBERED_SLOTS } from "./numbered";
@@ -125,25 +125,23 @@ export function shortcutHints(
 
 const NO_HINTS: ReadonlyMap<string, string> = new Map();
 
+const effectiveBindings = (keyboard: RendererKeyboard) => ({
+	keyboard,
+	byCommand: keyboard.resolution().byCommand,
+});
+
 export function useShortcutHints(
 	series: NumberedSeries,
 	ids: readonly string[],
 ): ReadonlyMap<string, string> {
 	const { keyboard } = useKernel();
-	const [bindingsVersion, setBindingsVersion] = useState(0);
-	useEffect(
-		() => keyboard.subscribe(() => setBindingsVersion((version) => version + 1)),
-		[keyboard],
-	);
-	// Recomputed whenever the bindings change.
-	const effective = useMemo(() => keyboard.resolution().byCommand, [keyboard, bindingsVersion]);
+	const [bindings, setBindings] = useState(() => effectiveBindings(keyboard));
+	useEffect(() => keyboard.subscribe(() => setBindings(effectiveBindings(keyboard))), [keyboard]);
+	if (bindings.keyboard !== keyboard) setBindings(effectiveBindings(keyboard));
+	const effective = bindings.byCommand;
 	// Modifiers this surface has no chips for (Shift anywhere) never re-render it.
 	const modifiers = useSyncExternalStore(subscribe, () =>
 		held && shortcutHints(series, ids, effective, held, keyboard.platform).size > 0 ? held : null,
 	);
-	return useMemo(
-		() =>
-			modifiers ? shortcutHints(series, ids, effective, modifiers, keyboard.platform) : NO_HINTS,
-		[effective, ids, keyboard.platform, modifiers, series],
-	);
+	return modifiers ? shortcutHints(series, ids, effective, modifiers, keyboard.platform) : NO_HINTS;
 }

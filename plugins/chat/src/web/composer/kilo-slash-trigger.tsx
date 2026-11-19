@@ -1,5 +1,6 @@
 import {
-	unstable_useSlashCommandAdapter,
+	// React Compiler only treats `use*` names as hooks; an `unstable_` prefix would be memoized like a plain call.
+	unstable_useSlashCommandAdapter as useSlashCommandAdapter,
 	useAuiState,
 	type Unstable_DirectiveFormatter,
 	type Unstable_SlashCommand,
@@ -7,7 +8,7 @@ import {
 } from "@assistant-ui/react";
 import type { Unstable_TriggerAdapter } from "@assistant-ui/core";
 import { SlashIcon } from "lucide-react";
-import { useMemo, type FC } from "react";
+import type { FC } from "react";
 
 import { isLeadingSlashQuery } from "../slash-commands/kilo-slash-command";
 import { SLASH_CATEGORY_ICONS } from "../slash-commands/kilo-slash-icons";
@@ -36,39 +37,13 @@ export const KiloSlashTrigger: FC<{
 	const composerText = useAuiState((s) => s.composer.text);
 	const runClientCommand = useRunClientSlashCommand();
 
-	const executable = useMemo<Unstable_SlashCommand[]>(
-		() =>
-			commands.map((command) => {
-				const { clientKey } = command;
-				return {
-					id: command.id,
-					label: command.label,
-					...(command.description ? { description: command.description } : {}),
-					icon: command.category,
-					execute: clientKey ? () => runClientCommand(clientKey) : noop,
-				};
-			}),
-		[commands, runClientCommand],
-	);
-	const menu = unstable_useSlashCommandAdapter({
-		commands: executable,
+	const menu = useSlashCommandAdapter({
+		commands: executableSlashCommands(commands, runClientCommand),
 		iconMap: SLASH_CATEGORY_ICONS,
 		fallbackIcon: SlashIcon,
 	});
-
-	const adapter = useMemo<Unstable_TriggerAdapter>(() => {
-		const search = (query: string) => searchSlashCommands(query, commands).map(toTriggerItem);
-		const groups = groupSlashCommands(commands);
-		if (groups.length < 2) return { categories: () => [], categoryItems: () => [], search };
-		const itemsByCategory = new Map(
-			groups.map((group) => [group.id as string, group.items.map(toTriggerItem)] as const),
-		);
-		return {
-			categories: () => groups.map(({ id, label }) => ({ id, label })),
-			categoryItems: (categoryId) => itemsByCategory.get(categoryId) ?? [],
-			search,
-		};
-	}, [commands]);
+	// Computed past the adapter hook from `commands`, so it caches on its own inputs.
+	const adapter = slashMenuAdapter(commands);
 
 	return (
 		<ComposerTriggerPopover
@@ -82,6 +57,37 @@ export const KiloSlashTrigger: FC<{
 };
 
 function noop(): void {}
+
+function executableSlashCommands(
+	commands: readonly SlashMenuCommand[],
+	runClientCommand: (key: string) => void,
+): Unstable_SlashCommand[] {
+	return commands.map((command) => {
+		const { clientKey } = command;
+		return {
+			id: command.id,
+			label: command.label,
+			...(command.description ? { description: command.description } : {}),
+			icon: command.category,
+			execute: clientKey ? () => runClientCommand(clientKey) : noop,
+		};
+	});
+}
+
+/** Searches every command, browsable by category once there are several categories. */
+function slashMenuAdapter(commands: readonly SlashMenuCommand[]): Unstable_TriggerAdapter {
+	const search = (query: string) => searchSlashCommands(query, commands).map(toTriggerItem);
+	const groups = groupSlashCommands(commands);
+	if (groups.length < 2) return { categories: () => [], categoryItems: () => [], search };
+	const itemsByCategory = new Map(
+		groups.map((group) => [group.id as string, group.items.map(toTriggerItem)] as const),
+	);
+	return {
+		categories: () => groups.map(({ id, label }) => ({ id, label })),
+		categoryItems: (categoryId) => itemsByCategory.get(categoryId) ?? [],
+		search,
+	};
+}
 
 function toTriggerItem(command: SlashMenuCommand): Unstable_TriggerItem {
 	return {

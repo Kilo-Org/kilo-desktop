@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 
 import { KernelOs, KernelTelemetry } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -92,21 +92,19 @@ function showGithubSetupToast(
 function useWriter(): SourceControlWriter | null {
 	const generation = useDomainObject(Generation);
 	const models = useDomainObject(Models);
-	return useMemo(() => {
-		if (!generation) return null;
-		return createSourceControlWriter({
-			generate: (input) => generation.methods.generate(input),
-			model: () => {
-				const preferred = models?.getState().preferences.preferred;
-				if (!preferred) return undefined;
-				return {
-					aiProviderId: preferred.aiProviderId,
-					modelId: preferred.modelId,
-					...(preferred.variant ? { variant: preferred.variant } : {}),
-				};
-			},
-		});
-	}, [generation, models]);
+	if (!generation) return null;
+	return createSourceControlWriter({
+		generate: (input) => generation.methods.generate(input),
+		model: () => {
+			const preferred = models?.getState().preferences.preferred;
+			if (!preferred) return undefined;
+			return {
+				aiProviderId: preferred.aiProviderId,
+				modelId: preferred.modelId,
+				...(preferred.variant ? { variant: preferred.variant } : {}),
+			};
+		},
+	});
 }
 
 /** One subscription for the header control: repository reads, its pull request and runners. */
@@ -167,20 +165,22 @@ export function useRepositoryActions(
 		invalidateRepositoryQueries(queries, ["status", "branches", "originUrl", "workingTreeStats"]);
 
 	/** Remote refresh: main coalesces and throttles the fetch. */
-	function refreshRemote() {
-		if (!repository) return;
-		void repository.methods
-			.fetch({ directory })
+	const fetchRemote = (repo: NonNullable<typeof repository>, repoDirectory: string) => {
+		void repo.methods
+			.fetch({ directory: repoDirectory })
 			.catch(() => undefined)
 			.then(invalidate)
 			.catch(() => undefined);
 		refreshPullRequest();
+	};
+	function refreshRemote() {
+		if (repository) fetchRemote(repository, directory);
 	}
 
+	// Fetch once when this repository is shown, not on every status render.
+	const fetchRemoteOnShow = useEffectEvent(fetchRemote);
 	useEffect(() => {
-		refreshRemote();
-		// Fetch once when this repository is shown, not on every status render.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
+		if (repository) fetchRemoteOnShow(repository, directory);
 	}, [directory, repository]);
 
 	/**
@@ -197,16 +197,13 @@ export function useRepositoryActions(
 			progressStore.setLabel(directory, label);
 			failureLabel = failure;
 		};
-		try {
-			await operation(step);
-		} catch (error) {
-			if (!(error instanceof ActionAbandoned)) {
+		await operation(step)
+			.catch((error: unknown) => {
+				if (error instanceof ActionAbandoned) return;
 				if (failureLabel === "push") setPushError(errorText(error));
 				else toast.error(`Unable to ${failureLabel}`, { description: errorText(error) });
-			}
-		} finally {
-			progressStore.finish(directory);
-		}
+			})
+			.finally(() => progressStore.finish(directory));
 		await invalidate().catch(() => undefined);
 		refreshPullRequest(true);
 	}

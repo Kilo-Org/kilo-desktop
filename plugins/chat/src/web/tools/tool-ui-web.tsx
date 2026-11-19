@@ -1,10 +1,8 @@
-import { memo } from "react";
-
 import { SoloAwareExpandableRow, hostnameFromUrl } from "./tool-ui-activity-row";
 import { resultText, ToolOutputText, truncate } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
-export const WebSearchActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+export const WebSearchActivity: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const query =
 		typeof (args as Record<string, unknown> | undefined)?.query === "string"
 			? ((args as Record<string, unknown>).query as string)
@@ -24,10 +22,10 @@ export const WebSearchActivity: ToolCallComponent = memo(({ args, result, status
 			detail={<ToolOutputText text={output} />}
 		/>
 	);
-});
+};
 WebSearchActivity.displayName = "WebSearchActivity";
 
-export const WebFetchActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+export const WebFetchActivity: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const url =
 		typeof (args as Record<string, unknown> | undefined)?.url === "string"
 			? ((args as Record<string, unknown>).url as string)
@@ -48,5 +46,5 @@ export const WebFetchActivity: ToolCallComponent = memo(({ args, result, status,
 			detail={<ToolOutputText text={output} />}
 		/>
 	);
-});
+};
 WebFetchActivity.displayName = "WebFetchActivity";

@@ -2,7 +2,7 @@ import type { CodeViewItem } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
 import { useQuery } from "@tanstack/react-query";
 import { FileDiffIcon, FolderGitIcon, GitCompareIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocalStorage } from "react-use";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
@@ -135,19 +135,12 @@ function deserializeFilesWidth(raw: string): number | undefined {
 export function ChangesPane({ workSessionId, workspaceId, directory, pane }: PaneProps) {
 	const workspaceFolders = useDomainObjectState(
 		Workspaces,
-		useCallback(
-			(state: DomainObjectState<typeof Workspaces>) =>
-				state.workspaces.find((workspace) => workspace.id === workspaceId)?.folders,
-			[workspaceId],
-		),
+		(state: DomainObjectState<typeof Workspaces>) =>
+			state.workspaces.find((workspace) => workspace.id === workspaceId)?.folders,
 	);
-	const folders = useMemo(
-		() =>
-			workSessionFolders(
-				(workspaceFolders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
-				directory,
-			),
-		[workspaceFolders, directory],
+	const folders = workSessionFolders(
+		(workspaceFolders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
+		directory,
 	);
 	const workspaceDirectory = folders.find((folder) => folder.isPrimary)?.path ?? folders[0]?.path;
 
@@ -185,6 +178,13 @@ export function ChangesPane({ workSessionId, workspaceId, directory, pane }: Pan
 	);
 }
 
+// Module-level so its identity never changes: it is CodeView's per-item slot
+// memo key, so every input that changes reaches the headers through
+// FileHeaderActionsContext instead.
+function renderHeaderFilenameSuffix(item: CodeViewItem<undefined>) {
+	return item.type === "diff" ? <FileHeaderActions fileDiff={item.fileDiff} /> : null;
+}
+
 /**
  * Copy path and Open file for the file headers. Open goes through
  * kilo.work-sessions' openers (kilo.files, kilo.notebook…), so it shows only
@@ -206,26 +206,20 @@ function useFileHeaderActions(
 	const topLevel =
 		repositoryType?.kind === "regular" ? repositoryType.topLevelWorkingDirectory : null;
 	const writeText = useCopyText();
-	const openTarget = useCallback(
-		(repositoryPath: string) =>
-			panes && canOpenFiles && topLevel !== null
-				? fileOpenTarget(repositoryPath, topLevel, folders)
-				: null,
-		[panes, canOpenFiles, topLevel, folders],
-	);
-	const open = useCallback(
-		async (path: string) => {
-			if (!panes) throw new Error("Files can't be opened here.");
-			const pane = await panes.methods.openObject({
-				workSessionId,
-				ref: { type: FileObjectType.id, id: path },
-			});
-			if (pane === null) throw new Error("No pane here opens this kind of file.");
-			return pane;
-		},
-		[panes, workSessionId],
-	);
-	return useMemo(() => ({ writeText, openTarget, open }), [writeText, openTarget, open]);
+	const openTarget = (repositoryPath: string) =>
+		panes && canOpenFiles && topLevel !== null
+			? fileOpenTarget(repositoryPath, topLevel, folders)
+			: null;
+	const open = async (path: string) => {
+		if (!panes) throw new Error("Files can't be opened here.");
+		const pane = await panes.methods.openObject({
+			workSessionId,
+			ref: { type: FileObjectType.id, id: path },
+		});
+		if (pane === null) throw new Error("No pane here opens this kind of file.");
+		return pane;
+	};
+	return { writeText, openTarget, open };
 }
 
 function GitDiffTabContent({
@@ -336,78 +330,46 @@ function GitDiffTabContent({
 	});
 	const initRepository = useInitRepository();
 
-	// Load-bearing memo, not cosmetics: a fresh loadDiffFiles identity per
-	// render would make `options` new every render and churn CodeView's
-	// options revision across every virtualized item.
-	const loadDiffFiles = useMemo(
-		() =>
-			createDiffFilesLoader(
-				(input) =>
-					repository?.methods.getDiffContents(input) ??
-					Promise.reject(new Error("Git isn't available.")),
-				effectiveDirectory,
-			),
-		[repository, effectiveDirectory],
+	const loadDiffFiles = createDiffFilesLoader(
+		(input) =>
+			repository?.methods.getDiffContents(input) ??
+			Promise.reject(new Error("Git isn't available.")),
+		effectiveDirectory,
 	);
 
-	const options = useMemo(
-		() => ({
-			theme: shiki,
-			themeType,
-			diffIndicators,
-			diffStyle,
-			disableBackground: !showBackgrounds,
-			disableLineNumbers: !showLineNumbers,
-			stickyHeaders: true,
-			overflow: (wrapLines ? "wrap" : "scroll") as "wrap" | "scroll",
-			layout: DIFF_VIEW_LAYOUT,
-			itemMetrics: DIFF_VIEW_ITEM_METRICS,
-			unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
-			loadDiffFiles,
-		}),
-		[
-			diffIndicators,
-			diffStyle,
-			loadDiffFiles,
-			showBackgrounds,
-			showLineNumbers,
-			themeType,
-			wrapLines,
-			shiki,
-		],
-	);
+	const options = {
+		theme: shiki,
+		themeType,
+		diffIndicators,
+		diffStyle,
+		disableBackground: !showBackgrounds,
+		disableLineNumbers: !showLineNumbers,
+		stickyHeaders: true,
+		overflow: (wrapLines ? "wrap" : "scroll") as "wrap" | "scroll",
+		layout: DIFF_VIEW_LAYOUT,
+		itemMetrics: DIFF_VIEW_ITEM_METRICS,
+		unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
+		loadDiffFiles,
+	};
 
 	// `applyCollapseModeToLoaded` is a side effect, so it must not run inside
 	// a setState updater (StrictMode double-invokes updaters and they are
 	// expected to be pure); compute `next` from state and apply it after.
-	const toggleCollapseMode = useCallback(() => {
+	const toggleCollapseMode = () => {
 		const next = collapseMode === "expanded" ? "collapsed" : "expanded";
 		setCollapseMode(next);
 		applyCollapseModeToLoaded(next);
-	}, [collapseMode, applyCollapseModeToLoaded]);
+	};
 
-	// toggleItemCollapsed is useStableCallback-stable, so this stays identity-
-	// stable too and unrelated renders (theme, diff style, panel state) never
-	// re-render CodeView item children.
-	const renderHeaderPrefix = useCallback(
-		(item: CodeViewItem<undefined>) =>
-			item.type === "diff" ? (
-				<CollapseDiffButton
-					collapsed={item.collapsed === true}
-					disabled={item.fileDiff.splitLineCount === 0 && item.fileDiff.unifiedLineCount === 0}
-					onToggle={() => toggleItemCollapsed(item.id)}
-				/>
-			) : null,
-		[toggleItemCollapsed],
-	);
+	const renderHeaderPrefix = (item: CodeViewItem<undefined>) =>
+		item.type === "diff" ? (
+			<CollapseDiffButton
+				collapsed={item.collapsed === true}
+				disabled={item.fileDiff.splitLineCount === 0 && item.fileDiff.unifiedLineCount === 0}
+				onToggle={() => toggleItemCollapsed(item.id)}
+			/>
+		) : null;
 
-	// Identity-stable: it is CodeView's per-item slot memo key, so every input
-	// that changes reaches the headers through the context below instead.
-	const renderHeaderFilenameSuffix = useCallback(
-		(item: CodeViewItem<undefined>) =>
-			item.type === "diff" ? <FileHeaderActions fileDiff={item.fileDiff} /> : null,
-		[],
-	);
 	const headerActions = useFileHeaderActions(workSessionId, effectiveDirectory, folders);
 
 	// Native listener: the headers render inside CodeView's shadow roots, so
@@ -426,29 +388,26 @@ function GitDiffTabContent({
 	// full target width — the same delta-from-start pattern ChatPaneCanvas
 	// uses for column resizes. Keyboard presses go through React's latest
 	// closure, so they resize from the current width.
-	const handleFilesResize = useCallback(
-		(delta: number) => {
-			// The tree sits right of the divider, so positive travel (divider
-			// pushed right) shrinks it and negative travel grows it. When
-			// collapsed the edge handle is the panel's only visible affordance:
-			// growing from it reopens the panel, shrinking keeps it collapsed.
-			if (treeCollapsed) {
-				if (delta >= 0) return;
-				setTreeCollapsed(false);
-			}
-			const group = groupRef.current;
-			const maxWidth =
-				group && group.clientWidth > 0 ? group.clientWidth / 2 : Number.POSITIVE_INFINITY;
-			setStoredFilesWidth(
-				Math.min(maxWidth, Math.max(MIN_FILES_WIDTH, (treeCollapsed ? 0 : filesWidth) - delta)),
-			);
-		},
-		[filesWidth, setStoredFilesWidth, setTreeCollapsed, treeCollapsed],
-	);
+	const handleFilesResize = (delta: number) => {
+		// The tree sits right of the divider, so positive travel (divider
+		// pushed right) shrinks it and negative travel grows it. When
+		// collapsed the edge handle is the panel's only visible affordance:
+		// growing from it reopens the panel, shrinking keeps it collapsed.
+		if (treeCollapsed) {
+			if (delta >= 0) return;
+			setTreeCollapsed(false);
+		}
+		const group = groupRef.current;
+		const maxWidth =
+			group && group.clientWidth > 0 ? group.clientWidth / 2 : Number.POSITIVE_INFINITY;
+		setStoredFilesWidth(
+			Math.min(maxWidth, Math.max(MIN_FILES_WIDTH, (treeCollapsed ? 0 : filesWidth) - delta)),
+		);
+	};
 
-	const toggleTreeCollapsed = useCallback(() => {
+	const toggleTreeCollapsed = () => {
 		setTreeCollapsed(!treeCollapsed);
-	}, [setTreeCollapsed, treeCollapsed]);
+	};
 
 	const loading = loadState === "fetching" || loadState === "streaming";
 	// First-load `loading` and in-place `refreshing` share one busy flag for

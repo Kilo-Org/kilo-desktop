@@ -332,12 +332,20 @@ export class DomainObjectRegistry {
 					this.#options.onListenerError?.(error, `"${caller}" ${source}`);
 				}
 			};
+		// One function per method name: React (and its compiler) memoizes on
+		// `handle.methods.x`, so a fresh function per read would bust every memo.
+		const bound = new Map<string, (input: unknown) => Promise<unknown>>();
 		const methods = new Proxy(
 			{},
 			{
 				get: (_target, method) => {
 					if (typeof method !== "string") return undefined;
-					return (input: unknown) => this.#call(entry, method, input, caller);
+					let call = bound.get(method);
+					if (!call) {
+						call = (input: unknown) => this.#call(entry, method, input, caller);
+						bound.set(method, call);
+					}
+					return call;
 				},
 			},
 		) as DomainObjectMethods<TDomain>;

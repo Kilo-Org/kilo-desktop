@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import type { Contribution } from "@kilo-desktop/kernel";
 import { useExtensions } from "@kilo-desktop/kernel/web";
@@ -18,10 +18,7 @@ export function ChatMarkdownProvider({
 	workspaceFolders: readonly ComposerFolder[];
 	children: ReactNode;
 }) {
-	const value = useMemo(
-		() => ({ workSessionId, workspaceFolders }),
-		[workSessionId, workspaceFolders],
-	);
+	const value = { workSessionId, workspaceFolders };
 	return (
 		<ChatMarkdownContextValue.Provider value={value}>{children}</ChatMarkdownContextValue.Provider>
 	);
@@ -49,12 +46,8 @@ export function useChatMarkdownExtensions(
 	context: ChatMarkdownContext,
 ): readonly MarkdownRendererExtension[] {
 	const contributions = useExtensions(MarkdownExtension);
-	return useMemo(
-		() =>
-			contributions.flatMap((contribution) => {
-				const extension = createExtension(contribution, context);
-				return extension ? [extension] : [];
-			}),
-		[context, contributions],
-	);
+	return contributions.flatMap((contribution) => {
+		const extension = createExtension(contribution, context);
+		return extension ? [extension] : [];
+	});
 }

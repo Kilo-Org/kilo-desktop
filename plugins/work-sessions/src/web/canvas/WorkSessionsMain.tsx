@@ -1,4 +1,4 @@
-import { Activity, useRef } from "react";
+import { Activity, useState } from "react";
 
 import type { WorkSession } from "../../contracts";
 import { NewWorkSessionPage } from "../home/NewWorkSessionPage";
@@ -31,19 +31,35 @@ const KEPT_WORK_SESSIONS = 3;
  * changing to another session or a view keeps it.
  */
 function useRecentWorkSessionIds(openId: string | null, closed: boolean): readonly string[] {
-	const recent = useRef<readonly string[]>([]);
-	const last = useRef<string | null>(null);
-	if (openId !== null && recent.current[0] !== openId) {
-		recent.current = [openId, ...recent.current.filter((id) => id !== openId)].slice(
-			0,
-			KEPT_WORK_SESSIONS,
-		);
-	} else if (closed && last.current !== null) {
-		const closedId = last.current;
-		recent.current = recent.current.filter((id) => id !== closedId);
+	const [tracked, setTracked] = useState<RecentWorkSessions>(NO_RECENT_WORK_SESSIONS);
+	const next = advanceRecentWorkSessions(tracked, openId, closed);
+	if (next !== tracked) setTracked(next);
+	return next.recent;
+}
+
+interface RecentWorkSessions {
+	readonly recent: readonly string[];
+	/** The work session open at the previous render. */
+	readonly last: string | null;
+}
+
+const NO_RECENT_WORK_SESSIONS: RecentWorkSessions = { recent: [], last: null };
+
+/** `previous` after rendering with `openId`, or `previous` itself when nothing changed. */
+function advanceRecentWorkSessions(
+	previous: RecentWorkSessions,
+	openId: string | null,
+	closed: boolean,
+): RecentWorkSessions {
+	let recent = previous.recent;
+	if (openId !== null && recent[0] !== openId) {
+		recent = [openId, ...recent.filter((id) => id !== openId)].slice(0, KEPT_WORK_SESSIONS);
+	} else if (closed && previous.last !== null) {
+		const closedId = previous.last;
+		recent = recent.filter((id) => id !== closedId);
 	}
-	last.current = openId;
-	return recent.current;
+	if (recent === previous.recent && openId === previous.last) return previous;
+	return { recent, last: openId };
 }
 
 /**

@@ -72,9 +72,14 @@ export function BoardColumnHeader({
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const headerRef = useRef<HTMLElement>(null);
 
+	const [namingRequested, setNamingRequested] = useState(false);
+	if (namingRequested !== startNaming) {
+		setNamingRequested(startNaming);
+		if (startNaming) setRenaming(true);
+	}
+
 	useEffect(() => {
 		if (!startNaming) return;
-		setRenaming(true);
 		headerRef.current?.scrollIntoView?.({ block: "nearest" });
 		onNamingStarted();
 	}, [onNamingStarted, startNaming]);

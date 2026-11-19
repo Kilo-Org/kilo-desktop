@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { useState } from "react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
@@ -6,7 +6,7 @@ import { ComposerShelf, ComposerShelfToggle } from "../thread/composer-shelf";
 import { TaskList } from "./task-list";
 import { useTaskThreadProjection } from "./use-task-thread-projection";
 
-export const ComposerTaskList = memo(() => {
+export function ComposerTaskList() {
 	const projection = useTaskThreadProjection();
 	const [collapsed, setCollapsed] = useState(false);
 	if (!projection?.items?.some((item) => item.status === "pending" || item.status === "active")) {
@@ -48,6 +48,4 @@ export const ComposerTaskList = memo(() => {
 			) : null}
 		</ComposerShelf>
 	);
-});
-
-ComposerTaskList.displayName = "ComposerTaskList";
+}

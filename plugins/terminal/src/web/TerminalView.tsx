@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CircleAlertIcon, SquareTerminalIcon } from "lucide-react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
@@ -12,6 +12,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import type { TerminalPalette } from "@kilo-desktop/ui/themes/appearance-types";
 
 import { TERMINAL_PORT, TERMINAL_SESSION_METADATA_KEY, Terminals } from "../contracts";
@@ -95,11 +96,11 @@ export function TerminalView({ workSessionId, pane, workspaceId, directory }: Pa
 	const terminals = useDomainObject(Terminals);
 	const theme = useDomainObjectState(Theme, selectTheme);
 	const viewRef = useRef<HTMLDivElement>(null);
-	const frameRef = useRef<HTMLIFrameElement>(null);
+	// State, not a ref: the frame remounts when frameKey changes and effects follow the new element.
+	const [frame, setFrame] = useState<HTMLIFrameElement | null>(null);
 	const connectedIdentityRef = useRef<TerminalIdentity | null>(null);
 	const appearance: TerminalAppearance = theme ?? documentAppearance();
-	const appearanceRef = useRef(appearance);
-	appearanceRef.current = appearance;
+	const appearanceRef = useLatestRef(appearance);
 	const terminalId = pane.id;
 	const terminalSessionId = pane.metadata[TERMINAL_SESSION_METADATA_KEY] ?? workSessionId;
 	const defaultLabel = `Terminal ${String(pane.ordinal)}`;
@@ -111,32 +112,27 @@ export function TerminalView({ workSessionId, pane, workspaceId, directory }: Pa
 		appearance.mode,
 		appearance.terminal,
 	]);
-	const frameSrc = useMemo(
-		() =>
-			terminalFrameSrcFor(
-				window.location,
-				import.meta.env["VITE_TERMINAL_ORIGIN"] as string | undefined,
-			),
-		[],
+	const frameSrc = terminalFrameSrcFor(
+		window.location,
+		import.meta.env["VITE_TERMINAL_ORIGIN"] as string | undefined,
 	);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const available = terminals !== null && frameSrc !== undefined;
 
 	useEffect(() => {
-		const frame = frameRef.current;
 		if (!available || connectionError || !frame) return;
 		return followTerminalFocus(sdk, frame);
-	}, [available, connectionError, frameKey, sdk]);
+	}, [available, connectionError, frame, sdk]);
 
 	useEffect(() => {
-		if (!available || frameSrc === undefined) return;
+		if (!available || frameSrc === undefined || !frame) return;
 		const frameUrl = new URL(frameSrc);
 		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
 		let port: MessagePort | null = null;
 		let transferred = false;
 
 		const onMessage = (event: MessageEvent<unknown>) => {
-			const frameWindow = frameRef.current?.contentWindow;
+			const frameWindow = frame.contentWindow;
 			const message = trustedTerminalFrameMessageFrom(event, frameWindow ?? null, frameOrigin);
 			// Labels reach the pane title from main.
 			if (message?.type !== "terminal:ready" || !frameWindow || transferred) return;
@@ -177,7 +173,17 @@ export function TerminalView({ workSessionId, pane, workspaceId, directory }: Pa
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [available, cwd, defaultLabel, frameKey, frameSrc, sdk, terminalId, terminalSessionId]);
+	}, [
+		appearanceRef,
+		available,
+		cwd,
+		defaultLabel,
+		frame,
+		frameSrc,
+		sdk,
+		terminalId,
+		terminalSessionId,
+	]);
 
 	if (!terminals) {
 		return (
@@ -213,7 +219,7 @@ export function TerminalView({ workSessionId, pane, workspaceId, directory }: Pa
 		<div ref={viewRef} className="bg-pane flex min-h-0 flex-1" data-qa-id="terminal-view">
 			<iframe
 				key={frameKey}
-				ref={frameRef}
+				ref={setFrame}
 				src={frameSrc}
 				title="Terminal"
 				className="bg-pane min-h-0 flex-1 border-0"

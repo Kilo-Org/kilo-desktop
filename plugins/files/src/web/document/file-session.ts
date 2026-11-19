@@ -1,4 +1,6 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useReducer, useRef } from "react";
+
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import type { FileReadResult } from "../../contracts/models.js";
 import type { ReadFile, WriteFile } from "../documents.js";
@@ -222,46 +224,43 @@ export function useFileSession({
 	const [state, dispatch] = useReducer(fileDocumentReducer, initialFileDocument(initialRequest));
 	const openRequestRef = useRef(0); // open()/reset()-only generation counter
 	const refreshRequestRef = useRef(0); // refresh-only generation counter
-	const open = useCallback(
-		async ({
-			workspaceDirectory,
+	const open = async ({
+		workspaceDirectory,
+		relativePath,
+		revealLine,
+		revealColumn,
+		forceReload = false,
+	}: FileOpenRequest): Promise<FileOpenOutcome> => {
+		const request = ++openRequestRef.current;
+		dispatch({
+			type: "open-started",
 			relativePath,
-			revealLine,
-			revealColumn,
-			forceReload = false,
-		}: FileOpenRequest): Promise<FileOpenOutcome> => {
-			const request = ++openRequestRef.current;
+			...(revealLine !== undefined ? { line: revealLine } : {}),
+			...(revealColumn !== undefined ? { column: revealColumn } : {}),
+		});
+		try {
+			const file = await read({ workspaceDirectory, relativePath });
+			if (request !== openRequestRef.current) return "superseded";
 			dispatch({
-				type: "open-started",
-				relativePath,
-				...(revealLine !== undefined ? { line: revealLine } : {}),
-				...(revealColumn !== undefined ? { column: revealColumn } : {}),
+				type: "open-succeeded",
+				file,
+				workspaceDirectory,
+				reload: forceReload,
 			});
-			try {
-				const file = await read({ workspaceDirectory, relativePath });
-				if (request !== openRequestRef.current) return "superseded";
-				dispatch({
-					type: "open-succeeded",
-					file,
-					workspaceDirectory,
-					reload: forceReload,
-				});
-				return "opened";
-			} catch (error) {
-				if (request !== openRequestRef.current) return "superseded";
-				dispatch({ type: "open-failed", message: errorMessage(error) });
-				return "failed";
-			}
-		},
-		[read],
-	);
+			return "opened";
+		} catch (error) {
+			if (request !== openRequestRef.current) return "superseded";
+			dispatch({ type: "open-failed", message: errorMessage(error) });
+			return "failed";
+		}
+	};
 	const dirty =
 		state.file?.kind === "text" &&
 		Boolean(state.file.revision) &&
 		state.draft !== state.originalContents;
 	// Latest session snapshot via ref so refresh() stays referentially stable
 	// while always reading the current session state when it fires.
-	const sessionRef = useRef({
+	const sessionRef = useLatestRef({
 		selectedPath: state.selectedPath,
 		workspaceDirectory: state.workspaceDirectory,
 		revision: state.revision,
@@ -270,16 +269,7 @@ export function useFileSession({
 		loading: state.loading,
 		saving: state.saving,
 	});
-	sessionRef.current = {
-		selectedPath: state.selectedPath,
-		workspaceDirectory: state.workspaceDirectory,
-		revision: state.revision,
-		dirty,
-		file: state.file,
-		loading: state.loading,
-		saving: state.saving,
-	};
-	const refresh = useCallback(async (): Promise<void> => {
+	const refresh = async (): Promise<void> => {
 		const {
 			selectedPath,
 			workspaceDirectory,
@@ -325,58 +315,55 @@ export function useFileSession({
 		} catch {
 			// Silently swallow: the file may have been deleted before the read landed.
 		}
-	}, [read]);
-	const setDraft = useCallback((contents: string) => {
+	};
+	const setDraft = (contents: string) => {
 		dispatch({ type: "draft-changed", contents });
-	}, []);
-	const save = useCallback(
-		async (contents: string, force = false): Promise<boolean> => {
-			if (
-				!state.workspaceDirectory ||
-				!state.selectedPath ||
-				!state.revision ||
-				state.file?.kind !== "text"
-			) {
-				return true;
+	};
+	const save = async (contents: string, force = false): Promise<boolean> => {
+		if (
+			!state.workspaceDirectory ||
+			!state.selectedPath ||
+			!state.revision ||
+			state.file?.kind !== "text"
+		) {
+			return true;
+		}
+		const documentRequest = openRequestRef.current;
+		dispatch({ type: "save-started" });
+		try {
+			const result = await write({
+				workspaceDirectory: state.workspaceDirectory,
+				relativePath: state.selectedPath,
+				contents,
+				expectedRevision: state.revision,
+				...(force ? { force: true } : {}),
+			});
+			if (documentRequest !== openRequestRef.current) {
+				return result.status === "saved";
 			}
-			const documentRequest = openRequestRef.current;
-			dispatch({ type: "save-started" });
-			try {
-				const result = await write({
-					workspaceDirectory: state.workspaceDirectory,
-					relativePath: state.selectedPath,
-					contents,
-					expectedRevision: state.revision,
-					...(force ? { force: true } : {}),
-				});
-				if (documentRequest !== openRequestRef.current) {
-					return result.status === "saved";
-				}
-				if (result.status === "conflict") {
-					dispatch({ type: "conflict-changed", conflict: true });
-					return false;
-				}
-				dispatch({ type: "save-succeeded", contents, revision: result.revision });
-				return true;
-			} catch (error) {
-				if (documentRequest !== openRequestRef.current) return false;
-				dispatch({ type: "save-failed", message: errorMessage(error) });
+			if (result.status === "conflict") {
+				dispatch({ type: "conflict-changed", conflict: true });
 				return false;
 			}
-		},
-		[state.file?.kind, state.revision, state.selectedPath, state.workspaceDirectory, write],
-	);
-	const setConflict = useCallback((conflict: boolean) => {
+			dispatch({ type: "save-succeeded", contents, revision: result.revision });
+			return true;
+		} catch (error) {
+			if (documentRequest !== openRequestRef.current) return false;
+			dispatch({ type: "save-failed", message: errorMessage(error) });
+			return false;
+		}
+	};
+	const setConflict = (conflict: boolean) => {
 		dispatch({ type: "conflict-changed", conflict });
-	}, []);
-	const discard = useCallback(() => dispatch({ type: "discarded" }), []);
-	const setRenderMarkdown = useCallback((render: boolean) => {
+	};
+	const discard = () => dispatch({ type: "discarded" });
+	const setRenderMarkdown = (render: boolean) => {
 		dispatch({ type: "markdown-changed", render });
-	}, []);
-	const reset = useCallback(() => {
+	};
+	const reset = () => {
 		openRequestRef.current += 1;
 		dispatch({ type: "reset" });
-	}, []);
+	};
 
 	return {
 		...state,

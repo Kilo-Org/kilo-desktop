@@ -20,10 +20,12 @@
 	time the user changes any option. Legacy keys are left in place but never
 	read.
 */
-import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useLocalStorage } from "react-use";
 
 import type { DiffIndicators } from "@pierre/diffs";
+
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 export type DiffStyle = "split" | "unified";
 
@@ -87,28 +89,19 @@ const diffOptionsContext = createContext<DiffOptionsContextValue | null>(null);
 
 export function DiffConfigProvider({ children }: { children: ReactNode }) {
 	const [stored, setStored] = useLocalStorage(DIFF_OPTIONS_STORAGE_KEY, DEFAULT_DIFF_OPTIONS);
-	// Memoized so `opts` keeps one identity across renders; every context
-	// consumer re-renders on each write if a fresh object escapes here.
-	const opts = useMemo(() => sanitizeDiffOptions(stored), [stored]);
-	const optsRef = useRef(opts);
-	optsRef.current = opts;
-	const setOpts = useCallback(
-		(partial: Partial<DiffOptions>) => {
-			const next: DiffOptions = { ...optsRef.current, ...partial };
-			// Eager: a second setOpts in the same tick must merge over this
-			// write, not over the stale pre-setStored render snapshot.
-			optsRef.current = next;
-			setStored(next);
-		},
-		[setStored],
-	);
-	const setOpt = useCallback(
-		<K extends keyof DiffOptions>(key: K, value: DiffOptions[K]) => {
-			setOpts({ [key]: value } satisfies Partial<DiffOptions>);
-		},
-		[setOpts],
-	);
-	const value = useMemo(() => [opts, setOpt, setOpts] as const, [opts, setOpt, setOpts]);
+	const opts = sanitizeDiffOptions(stored);
+	const optsRef = useLatestRef(opts);
+	const setOpts = (partial: Partial<DiffOptions>) => {
+		const next: DiffOptions = { ...optsRef.current, ...partial };
+		// Eager: a second setOpts in the same tick must merge over this
+		// write, not over the stale pre-setStored render snapshot.
+		optsRef.current = next;
+		setStored(next);
+	};
+	const setOpt = <K extends keyof DiffOptions>(key: K, value: DiffOptions[K]) => {
+		setOpts({ [key]: value } satisfies Partial<DiffOptions>);
+	};
+	const value = [opts, setOpt, setOpts] as const;
 	return <diffOptionsContext.Provider value={value}>{children}</diffOptionsContext.Provider>;
 }
 

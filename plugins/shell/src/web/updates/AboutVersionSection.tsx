@@ -58,9 +58,8 @@ export function AboutVersionSection() {
 			toast.error("Could not check for updates", {
 				description: error instanceof Error ? error.message : "An unexpected error occurred.",
 			});
-		} finally {
-			setPending(false);
 		}
+		setPending(false);
 	};
 
 	const setTrack = async (track: string | null) => {
@@ -77,9 +76,8 @@ export function AboutVersionSection() {
 			toast.error("Could not change update track", {
 				description: error instanceof Error ? error.message : "An unexpected error occurred.",
 			});
-		} finally {
-			setPending(false);
 		}
+		setPending(false);
 	};
 
 	const install = async () => {

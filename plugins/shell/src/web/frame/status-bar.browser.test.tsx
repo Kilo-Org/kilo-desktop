@@ -89,7 +89,11 @@ describe("the status bar", () => {
 					{ id: "logs", title: "Open logs", kind: "action", command: "acme.status/open-logs" },
 				],
 				{
-					sync: { kind: "action", useTrigger: () => ({ label: "Sync", icon: CircleIcon }), run },
+					sync: {
+						kind: "action",
+						Trigger: ({ children }) => children({ label: "Sync", icon: CircleIcon }),
+						run,
+					},
 				},
 				{
 					extensions: { "kernel/command": [{ id: "open-logs", title: "Open logs" }] },
@@ -110,7 +114,7 @@ describe("the status bar", () => {
 			items([{ id: "activity", title: "Plugin activity", kind: "popover" }], {
 				activity: {
 					kind: "popover",
-					useTrigger: () => ({ label: "3 plugins", tone: "warning" }),
+					Trigger: ({ children }) => children({ label: "3 plugins", tone: "warning" }),
 					Content: ({ close }) => (
 						<div>
 							<p>kilo.agent failed</p>
@@ -143,7 +147,10 @@ describe("the status bar", () => {
 				],
 				{
 					quiet: { kind: "view", Component: () => (flag.use() ? <span>Busy</span> : null) },
-					alert: { kind: "action", useTrigger: () => ({ label: "!", hidden: !flag.use() }) },
+					alert: {
+						kind: "action",
+						Trigger: ({ children }) => children({ label: "!", hidden: !flag.use() }),
+					},
 				},
 			),
 		]);
@@ -162,7 +169,11 @@ describe("the status bar", () => {
 			items(
 				[{ id: "summary", title: "Summary", kind: "action" }],
 				{
-					summary: { kind: "action", useTrigger: () => ({ label: "21 plugins" }), run: () => {} },
+					summary: {
+						kind: "action",
+						Trigger: ({ children }) => children({ label: "21 plugins" }),
+						run: () => {},
+					},
 				},
 				{
 					// A titled home, so the top bar keeps its full height to mirror.

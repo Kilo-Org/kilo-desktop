@@ -1,4 +1,4 @@
-import { type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useDeferredValue, useEffect, useRef, useState } from "react";
 import {
 	BotIcon,
 	BriefcaseBusinessIcon,
@@ -34,6 +34,7 @@ import {
 	type MarketplaceItemRef,
 	type MarketplaceMcpStatus,
 	type MarketplaceMutationInput,
+	type MarketplaceSnapshot,
 	type MarketplaceTarget,
 	type MarketplaceType,
 	type McpMethod,
@@ -304,6 +305,124 @@ function hasInstallableLocation(
 		!installations.some((installation) => installation.scope === "global") ||
 		uninstalledTargets(installations, targets).length > 0
 	);
+}
+
+type MarketplaceRowsView = {
+	search: string;
+	browseCategories: ReadonlySet<string>;
+	excludedWorkspaceIds: ReadonlySet<string>;
+	mode: MarketplaceMode;
+	showBuiltIn: boolean;
+	showUser: boolean;
+};
+
+/** Catalog, configured-only and included items for the current mode and filters, by name. */
+function marketplaceRows(
+	items: readonly MarketplaceItem[],
+	installed: readonly MarketplaceInstalled[],
+	includedItems: readonly MarketplaceIncludedItem[],
+	{
+		search,
+		browseCategories,
+		excludedWorkspaceIds,
+		mode,
+		showBuiltIn,
+		showUser,
+	}: MarketplaceRowsView,
+): MarketplaceListRow[] {
+	const marketplace = filterMarketplaceItems(items, installed, {
+		search,
+		category: mode === "browse" ? [...browseCategories] : [],
+		status: mode === "installed" ? "installed" : "all",
+	});
+	const included =
+		mode === "installed" && showBuiltIn ? filterIncludedItems(includedItems, search) : [];
+	const marketplaceRows =
+		mode !== "installed" || showUser
+			? marketplace
+					.map((item) => ({
+						item,
+						installations: installedScopes(item, installed).filter(
+							(installation) =>
+								mode !== "installed" ||
+								installationMatchesWorkspaces(installation, excludedWorkspaceIds),
+						),
+						key: `${item.type}:${item.id}`,
+					}))
+					.filter((row) => mode !== "installed" || row.installations.length > 0)
+			: [];
+	const configuredByItem = new Map<
+		string,
+		{ item: ConfiguredItem; installations: MarketplaceInstalled[]; key: string }
+	>();
+	if (mode === "installed" && showUser) {
+		for (const installation of installed) {
+			if (!installationMatchesWorkspaces(installation, excludedWorkspaceIds)) continue;
+			if (items.some((item) => item.type === installation.type && item.id === installation.id)) {
+				continue;
+			}
+			const key = `${installation.type}:${installation.id}`;
+			const existing = configuredByItem.get(key);
+			if (existing) {
+				existing.installations.push(installation);
+				continue;
+			}
+			const item = configuredItem(installation);
+			if (!matchesSearch(search, [item.name, item.description, item.category])) {
+				continue;
+			}
+			configuredByItem.set(key, { item, installations: [installation], key });
+		}
+	}
+	const configuredRows = [...configuredByItem.values()];
+	const includedRows = included.map((item) => ({
+		item,
+		installations: [],
+		key: `included:${item.type}:${item.id}`,
+	}));
+	return [...marketplaceRows, ...configuredRows, ...includedRows].toSorted((left, right) => {
+		const byName = ITEM_NAME_COLLATOR.compare(left.item.name, right.item.name);
+		if (byName !== 0) return byName;
+		return left.key.localeCompare(right.key);
+	});
+}
+
+/**
+ * Rows matching the deferred search and current filters, with per-type counts.
+ * Filtering is the expensive part the deferral protects, so both live here.
+ */
+function useDeferredMarketplaceRows(
+	snapshot: MarketplaceSnapshot | undefined,
+	search: string,
+	view: Omit<MarketplaceRowsView, "search">,
+) {
+	const deferredSearch = useDeferredValue(search);
+	const filtered = marketplaceRows(
+		snapshot?.items ?? [],
+		snapshot?.installed ?? [],
+		snapshot?.included ?? [],
+		{ ...view, search: deferredSearch },
+	);
+	const typeCounts: Record<MarketplaceType, number> = { agent: 0, mcp: 0, skill: 0 };
+	for (const row of filtered) typeCounts[row.item.type] += 1;
+	return { searching: deferredSearch.trim().length > 0, filtered, typeCounts };
+}
+
+/** Rows grouped by category, sections ordered by display name. */
+function catalogSectionsOf(rows: readonly MarketplaceListRow[]) {
+	const rowsByCategory = new Map<string, MarketplaceListRow[]>();
+	for (const row of rows) {
+		const categoryRows = rowsByCategory.get(row.item.category) ?? [];
+		categoryRows.push(row);
+		rowsByCategory.set(row.item.category, categoryRows);
+	}
+	return [...rowsByCategory.entries()]
+		.map(([value, categoryRows]) => ({
+			value,
+			label: categoryDisplayName(value),
+			rows: categoryRows,
+		}))
+		.toSorted((left, right) => ITEM_NAME_COLLATOR.compare(left.label, right.label));
 }
 
 function includedLocationLabel(item: MarketplaceIncludedItem): string {
@@ -1296,22 +1415,20 @@ function InstallDialog({
 			: selectedTargets.length > 1
 				? `${selectedTargets.length} workspaces`
 				: "Select a location";
-	useEffect(() => {
-		const availableIds = new Set(availableTargets.map((target) => target.id));
-		const validWorkspaceIds = workspaceIds.filter((id) => availableIds.has(id));
-		if (globalSelected && globalInstalled) {
-			setGlobalSelected(false);
-			setWorkspaceIds(
-				validWorkspaceIds.length > 0
-					? validWorkspaceIds
-					: availableTargets[0]
-						? [availableTargets[0].id]
-						: [],
-			);
-			return;
-		}
-		if (validWorkspaceIds.length !== workspaceIds.length) setWorkspaceIds(validWorkspaceIds);
-	}, [availableTargets, globalInstalled, globalSelected, workspaceIds]);
+	const availableIds = new Set(availableTargets.map((target) => target.id));
+	const validWorkspaceIds = workspaceIds.filter((id) => availableIds.has(id));
+	if (globalSelected && globalInstalled) {
+		setGlobalSelected(false);
+		setWorkspaceIds(
+			validWorkspaceIds.length > 0
+				? validWorkspaceIds
+				: availableTargets[0]
+					? [availableTargets[0].id]
+					: [],
+		);
+	} else if (validWorkspaceIds.length !== workspaceIds.length) {
+		setWorkspaceIds(validWorkspaceIds);
+	}
 	const prerequisites =
 		method && item.type === "mcp"
 			? (methods.find((entry) => entry.name === method)?.prerequisites ?? item.prerequisites)
@@ -1620,8 +1737,6 @@ export function MarketplaceSettings() {
 	const openExternal = useOpenExternal();
 	const activeWorkspaceId = useActiveWorkspaceId();
 	const [search, setSearch] = useState("");
-	const deferredSearch = useDeferredValue(search);
-	const searching = deferredSearch.trim().length > 0;
 	const [mode, setMode] = useState<MarketplaceMode>("installed");
 	const [types, setTypes] = useState<Record<MarketplaceMode, ReadonlySet<MarketplaceType>>>({
 		installed: new Set(),
@@ -1656,103 +1771,25 @@ export function MarketplaceSettings() {
 	const remove = useMarketplaceMutation("remove", { invalidates: ["list"] });
 	const authenticateMcp = useMarketplaceMutation("authenticateMcp", { invalidates: ["list"] });
 	const snapshot = query.data;
-	const categoryOptions = useMemo(
-		() => [...new Set(snapshot?.items.map((item) => item.category))].toSorted(),
-		[snapshot?.items],
-	);
+	const categoryOptions = [...new Set(snapshot?.items.map((item) => item.category))].toSorted();
 	const typeOption =
 		selectedTypes.size === 1
 			? TYPE_OPTIONS.find((option) => option.value === [...selectedTypes][0])
 			: undefined;
 	const typeNoun = typeOption?.noun ?? "items";
-	const filtered = useMemo<MarketplaceListRow[]>(() => {
-		const marketplace = filterMarketplaceItems(snapshot?.items ?? [], snapshot?.installed ?? [], {
-			search: deferredSearch,
-			category: mode === "browse" ? [...browseCategories] : [],
-			status: mode === "installed" ? "installed" : "all",
-		});
-		const included =
-			mode === "installed" && showBuiltIn
-				? filterIncludedItems(snapshot?.included ?? [], deferredSearch)
-				: [];
-		const marketplaceRows =
-			mode !== "installed" || showUser
-				? marketplace
-						.map((item) => ({
-							item,
-							installations: installedScopes(item, snapshot?.installed ?? []).filter(
-								(installation) =>
-									mode !== "installed" ||
-									installationMatchesWorkspaces(installation, excludedWorkspaceIds),
-							),
-							key: `${item.type}:${item.id}`,
-						}))
-						.filter((row) => mode !== "installed" || row.installations.length > 0)
-				: [];
-		const configuredByItem = new Map<
-			string,
-			{ item: ConfiguredItem; installations: MarketplaceInstalled[]; key: string }
-		>();
-		if (mode === "installed" && showUser) {
-			for (const installation of snapshot?.installed ?? []) {
-				if (!installationMatchesWorkspaces(installation, excludedWorkspaceIds)) continue;
-				if (
-					(snapshot?.items ?? []).some(
-						(item) => item.type === installation.type && item.id === installation.id,
-					)
-				) {
-					continue;
-				}
-				const key = `${installation.type}:${installation.id}`;
-				const existing = configuredByItem.get(key);
-				if (existing) {
-					existing.installations.push(installation);
-					continue;
-				}
-				const item = configuredItem(installation);
-				if (!matchesSearch(deferredSearch, [item.name, item.description, item.category])) {
-					continue;
-				}
-				configuredByItem.set(key, { item, installations: [installation], key });
-			}
-		}
-		const configuredRows = [...configuredByItem.values()];
-		const includedRows = included.map((item) => ({
-			item,
-			installations: [],
-			key: `included:${item.type}:${item.id}`,
-		}));
-		return [...marketplaceRows, ...configuredRows, ...includedRows].toSorted((left, right) => {
-			const byName = ITEM_NAME_COLLATOR.compare(left.item.name, right.item.name);
-			if (byName !== 0) return byName;
-			return left.key.localeCompare(right.key);
-		});
-	}, [
-		snapshot?.included,
-		snapshot?.items,
-		snapshot?.installed,
-		deferredSearch,
+	const { searching, filtered, typeCounts } = useDeferredMarketplaceRows(snapshot, search, {
 		browseCategories,
 		excludedWorkspaceIds,
 		mode,
 		showBuiltIn,
 		showUser,
-	]);
-	const typeCounts = useMemo(() => {
-		const counts: Record<MarketplaceType, number> = { agent: 0, mcp: 0, skill: 0 };
-		for (const row of filtered) counts[row.item.type] += 1;
-		return counts;
-	}, [filtered]);
+	});
 	const visible =
 		selectedTypes.size === 0
 			? filtered
 			: filtered.filter((row) => selectedTypes.has(row.item.type));
-	const installedKeys = useMemo(
-		() => new Set(snapshot?.installed.map((entry) => `${entry.type}:${entry.id}`)),
-		[snapshot?.installed],
-	);
-	useEffect(() => {
-		if (!revealKey) return;
+	const installedKeys = new Set(snapshot?.installed.map((entry) => `${entry.type}:${entry.id}`));
+	if (revealKey) {
 		if (visible.some((row) => row.key === revealKey)) {
 			setOpenDetails((current) => new Set(current).add(revealKey));
 			setRevealKey(null);
@@ -1761,29 +1798,21 @@ export function MarketplaceSettings() {
 			// panel open later when the user changes filters for unrelated reasons.
 			setRevealKey(null);
 		}
-	}, [visible, revealKey, installedKeys]);
+	}
+	const visibleKeys = new Set(visible.map((row) => row.key));
+	if ([...openDetails].some((key) => !visibleKeys.has(key))) {
+		setOpenDetails((current) => new Set([...current].filter((key) => visibleKeys.has(key))));
+	}
+	const catalogOpen = mode === "browse";
 	useEffect(() => {
-		const visibleKeys = new Set(visible.map((row) => row.key));
-		setOpenDetails((current) => {
-			const next = [...current].filter((key) => visibleKeys.has(key));
-			return next.length === current.size ? current : new Set(next);
-		});
-	}, [visible]);
+		if (!catalogOpen) return;
+		track(MARKETPLACE_TELEMETRY_EVENTS.tabViewed);
+	}, [catalogOpen, track]);
 	const installedSections = TYPE_OPTIONS.map((option) => ({
 		...option,
 		rows: visible.filter((row) => row.item.type === option.value),
 	}));
-	const catalogSections = useMemo(() => {
-		const rowsByCategory = new Map<string, MarketplaceListRow[]>();
-		for (const row of visible) {
-			const rows = rowsByCategory.get(row.item.category) ?? [];
-			rows.push(row);
-			rowsByCategory.set(row.item.category, rows);
-		}
-		return [...rowsByCategory.entries()]
-			.map(([value, rows]) => ({ value, label: categoryDisplayName(value), rows }))
-			.toSorted((left, right) => ITEM_NAME_COLLATOR.compare(left.label, right.label));
-	}, [visible]);
+	const catalogSections = catalogSectionsOf(visible);
 	const installedFiltersCustomized =
 		mode === "installed" && (!showUser || showBuiltIn || excludedWorkspaceIds.size > 0);
 	const hasFilters =
@@ -1818,11 +1847,6 @@ export function MarketplaceSettings() {
 		if (next === "browse") setOpenDetails(new Set());
 		setMode(next);
 	};
-	const catalogOpen = mode === "browse";
-	useEffect(() => {
-		if (!catalogOpen) return;
-		track(MARKETPLACE_TELEMETRY_EVENTS.tabViewed);
-	}, [catalogOpen, track]);
 
 	const confirmRemove = () => {
 		if (!removing) return;

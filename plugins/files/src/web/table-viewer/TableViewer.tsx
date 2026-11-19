@@ -1,5 +1,5 @@
 import { CircleAlertIcon } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
@@ -72,24 +72,18 @@ export function TableViewer({ source, fileName, errorActions }: TableViewerProps
 	const current = report.source === source ? report : null;
 	const loadState = current?.loadState ?? "loading";
 	const tableError = current?.error ?? null;
-	const setLoadState = useCallback(
-		(next: SiftLoadState) =>
-			setReport((previous) => ({
-				source,
-				loadState: next,
-				error: previous.source === source ? previous.error : null,
-			})),
-		[source],
-	);
-	const setTableError = useCallback(
-		(message: string) =>
-			setReport((previous) => ({
-				source,
-				loadState: previous.source === source ? previous.loadState : "loading",
-				error: message,
-			})),
-		[source],
-	);
+	const setLoadState = (next: SiftLoadState) =>
+		setReport((previous) => ({
+			source,
+			loadState: next,
+			error: previous.source === source ? previous.error : null,
+		}));
+	const setTableError = (message: string) =>
+		setReport((previous) => ({
+			source,
+			loadState: previous.source === source ? previous.loadState : "loading",
+			error: message,
+		}));
 
 	useEffect(() => {
 		let mounted = true;

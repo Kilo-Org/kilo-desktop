@@ -2,9 +2,7 @@
 
 import {
 	memo,
-	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 	createContext,
@@ -116,13 +114,10 @@ function useControllableState<T>({
 	useEffect(() => {
 		onChangeRef.current = onChange;
 	});
-	const setValue = useCallback(
-		(next: T) => {
-			if (!isControlled) setInternal(next);
-			onChangeRef.current?.(next);
-		},
-		[isControlled],
-	);
+	const setValue = (next: T) => {
+		if (!isControlled) setInternal(next);
+		onChangeRef.current?.(next);
+	};
 	return [value, setValue] as const;
 }
 
@@ -214,19 +209,16 @@ function ModelSelectorRoot({
 	const selectedModel = models.find((m) => m.id === value);
 	const efforts = getModelEfforts(selectedModel);
 	const activeEffort = resolveEffort(efforts, effort);
-	const contextValue = useMemo(
-		() => ({
-			models,
-			value,
-			setValue,
-			selectedModel,
-			efforts,
-			effort: activeEffort,
-			setEffort,
-			setOpen,
-		}),
-		[models, value, setValue, selectedModel, efforts, activeEffort, setEffort, setOpen],
-	);
+	const contextValue = {
+		models,
+		value,
+		setValue,
+		selectedModel,
+		efforts,
+		effort: activeEffort,
+		setEffort,
+		setOpen,
+	};
 
 	return (
 		<ModelSelectorContext.Provider value={contextValue}>
@@ -409,7 +401,7 @@ function useLazyFlipSide(): {
 } {
 	const [side, setSide] = useState<ModelSelectorContentProps["side"]>();
 	const observerRef = useRef<MutationObserver | null>(null);
-	const popupRef = useCallback((node: HTMLDivElement | null) => {
+	const popupRef = (node: HTMLDivElement | null) => {
 		observerRef.current?.disconnect();
 		observerRef.current = null;
 		if (!node) {
@@ -427,7 +419,7 @@ function useLazyFlipSide(): {
 			attributeFilter: ["data-side"],
 		});
 		observerRef.current = observer;
-	}, []);
+	};
 	return { side, popupRef };
 }
 
@@ -464,22 +456,19 @@ function ModelSelectorContent({
 	const unfiltered = searchable === false || (!searchable && children === undefined);
 	const shouldFilter = shouldFilterProp ?? !unfiltered;
 
-	const setContentRef = useCallback(
-		(node: HTMLDivElement | null) => {
-			contentNodeRef.current = node;
-			popupRef(node);
-		},
-		[popupRef],
-	);
+	const setContentRef = (node: HTMLDivElement | null) => {
+		contentNodeRef.current = node;
+		popupRef(node);
+	};
 
 	// Prefer the cmdk input so ↑/↓ navigate the model list. Without this, Base UI
 	// focuses the first tabbable (often a provider-rail button) and list keys never fire.
-	const focusSearchInput = useCallback((openType: string) => {
+	const focusSearchInput = (openType: string) => {
 		if (openType === "touch") {
 			return true;
 		}
 		return contentNodeRef.current?.querySelector<HTMLElement>("[cmdk-input]") ?? true;
-	}, []);
+	};
 
 	return (
 		<PopoverContent

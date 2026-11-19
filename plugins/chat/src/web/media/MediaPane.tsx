@@ -1,5 +1,5 @@
 import { AppWindowIcon, ImageIcon, WorkflowIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FC } from "react";
+import { useEffect, useEffectEvent, useState, type FC } from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -22,7 +22,7 @@ import {
 } from "../../contracts";
 import { renderChatLightboxActions } from "../thread/lightbox/chat-lightbox";
 import { toLightboxItem } from "./lightbox-items";
-import { takeViewerItems } from "./viewer-handoff";
+import { peekViewerItems, takeViewerItems } from "./viewer-handoff";
 
 export const MediaIcon: FC<{ className?: string; iconKey?: string }> = ({ className, iconKey }) =>
 	iconKey === "image" ? (
@@ -47,24 +47,29 @@ function useViewerItems(
 	const viewers = useDomainObject(MediaViewers);
 	const revision = useDomainObjectState(
 		MediaViewers,
-		useCallback(
-			(state: DomainObjectState<typeof MediaViewers>) => state.viewers[key]?.revision,
-			[key],
-		),
+		(state: DomainObjectState<typeof MediaViewers>) => state.viewers[key]?.revision,
 	);
 	const [fetched, setFetched] = useState<{
 		key: string;
 		revision: number;
 		items: readonly MediaItem[] | null;
 	} | null>(null);
+	const showing = (atKey: string, atRevision: number) =>
+		fetched?.key === atKey && fetched.revision === atRevision;
+
+	// Items this window handed off are adopted while rendering, so they show
+	// without a round trip; the effect then releases the hand-off.
+	if (revision !== undefined && !showing(key, revision)) {
+		const handed = peekViewerItems(key, revision);
+		if (handed) setFetched({ key, revision, items: handed });
+	}
+	const isShowing = useEffectEvent(showing);
 
 	useEffect(() => {
 		if (revision === undefined) return;
+		// A hand-off that arrived after rendering wasn't adopted: fetch instead.
 		const handed = takeViewerItems(key, revision);
-		if (handed) {
-			setFetched({ key, revision, items: handed });
-			return;
-		}
+		if (handed && isShowing(key, revision)) return;
 		if (!viewers) return;
 		let current = true;
 		viewers.methods
@@ -93,8 +98,8 @@ function useViewerItems(
  */
 export function MediaPane({ workSessionId, pane }: PaneProps) {
 	const { items, loading } = useViewerItems(workSessionId, pane.id);
-	const viewed = useMemo(() => items?.map(toLightboxItem) ?? [], [items]);
 	const panes = useDomainObject(Panes);
+	const viewed = items?.map(toLightboxItem) ?? [];
 	const itemId = pane.metadata[MEDIA_ITEM_METADATA_KEY];
 
 	// Until the items for the item opened arrive, show nothing rather than a stale one.

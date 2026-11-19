@@ -1,5 +1,13 @@
 name: Turbo Cache
-description: Restore and save the Turborepo local file cache between CI runs.
+description: >
+  Restore the Turborepo local file cache (and optionally Vitest's transform
+  caches) between CI runs; save it only from pull requests.
+
+# Saves happen only on pull_request runs. A cache saved there is readable by the
+# PR's later pushes, so a second push reuses the first one's task results and
+# transforms. A cache saved in the merge queue is readable only by that queue
+# run's own temporary branch, so merge-queue jobs restore without paying to
+# compress and upload entries nothing can read.
 
 inputs:
   key-suffix:
@@ -8,14 +16,56 @@ inputs:
       shards), so each saves its own entry instead of the first one winning.
     required: false
     default: ""
+  vitest:
+    description: >
+      Also cache Vitest's module cache (node_modules/.vitest-cache) and each
+      package's Vite cache (.vitest/cache), so a test task Turbo re-runs skips
+      re-transforming and re-optimizing unchanged modules.
+    required: false
+    default: "false"
 
 runs:
   using: composite
   steps:
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - name: Resolve the cache
+      id: cache
+      shell: bash
+      env:
+        VITEST: ${{ inputs.vitest }}
+        SUFFIX: ${{ inputs.key-suffix }}
+      run: |
+        prefix="turbo-$RUNNER_OS-$RUNNER_ARCH"
+        [[ "$VITEST" == "true" ]] && prefix="$prefix-vitest"
+        {
+          echo "prefix=$prefix"
+          echo "suffix=${SUFFIX:+-$SUFFIX}"
+          echo "paths<<EOF"
+          echo ".turbo/cache"
+          if [[ "$VITEST" == "true" ]]; then
+            echo "node_modules/.vitest-cache"
+            echo "apps/*/.vitest/cache"
+            echo "packages/*/.vitest/cache"
+            echo "plugins/*/.vitest/cache"
+          fi
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Cache Turbo
+      if: github.event_name == 'pull_request'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .turbo/cache
-        key: turbo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-${{ github.sha }}${{ inputs.key-suffix && format('-{0}', inputs.key-suffix) || '' }}
+        path: ${{ steps.cache.outputs.paths }}
+        key: ${{ steps.cache.outputs.prefix }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-${{ github.sha }}${{ steps.cache.outputs.suffix }}
         restore-keys: |
-          turbo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-
-          turbo-${{ runner.os }}-${{ runner.arch }}-
+          ${{ steps.cache.outputs.prefix }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-
+          ${{ steps.cache.outputs.prefix }}-
+
+    - name: Restore Turbo
+      if: github.event_name != 'pull_request'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.cache.outputs.paths }}
+        key: ${{ steps.cache.outputs.prefix }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-${{ github.sha }}${{ steps.cache.outputs.suffix }}
+        restore-keys: |
+          ${{ steps.cache.outputs.prefix }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-
+          ${{ steps.cache.outputs.prefix }}-

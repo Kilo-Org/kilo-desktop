@@ -34,6 +34,7 @@ env:
 jobs:
   lint-format:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
@@ -64,21 +65,35 @@ jobs:
 
   typecheck:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
+      # Depth 2: a PR checks out its merge commit, whose first parent (HEAD^1)
+      # is the base it merges into. Without it turbo can't diff, and --affected
+      # fell back to checking all 28 packages on every PR.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/turbo-cache
-      # --affected: on depth-1 checkouts turbo can't resolve the merge base
-      # and safely falls back to running every package.
+      # PRs check the packages the diff affects and their dependents (global
+      # inputs such as the lockfile or tsconfig.base.json affect every package);
+      # the merge queue checks everything.
       # --concurrency=4: turbo's default of 10 parallel tsc runs exhausts the
       # 16 GB runner on a full (uncached) check; the kernel kills one (exit 137).
-      - run: pnpm exec turbo run check --affected --concurrency=4
+      - name: Typecheck
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            TURBO_SCM_BASE=HEAD^1 pnpm exec turbo run check --affected --concurrency=4
+          else
+            pnpm exec turbo run check --concurrency=4
+          fi
 
   # Linux runs every Vitest tier (unit, integration, browser) in three shards,
   # split by recorded per-package duration (scripts/test-durations/coverage.json).
@@ -91,6 +106,7 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 25
     concurrency:
       group: test-linux-${{ matrix.shard }}-${{ github.ref }}
       cancel-in-progress: true
@@ -116,6 +132,7 @@ jobs:
       - uses: ./.github/actions/turbo-cache
         with:
           key-suffix: linux-${{ matrix.shard }}
+          vitest: "true"
       - uses: ./.github/actions/install-test-runtime
         with:
           runtime: electron
@@ -138,6 +155,7 @@ jobs:
     if: always()
     needs: test-linux
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     steps:
       - name: Verify Linux test shards
         shell: bash
@@ -153,6 +171,7 @@ jobs:
       matrix:
         os: [blacksmith-8vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     concurrency:
       # Windows runners contend over native modules and SQLite files.
       group: test-${{ matrix.os }}-${{ github.ref }}
@@ -175,6 +194,8 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/turbo-cache
+        with:
+          vitest: "true"
       # Coverage, including browser projects, runs in test-linux. These legs
       # keep checks for real Git and filesystem behavior per platform, as
       # Turbo-managed tasks: cached, and the packages run concurrently.
@@ -195,6 +216,7 @@ jobs:
   e2e-plan:
     if: github.event_name == 'pull_request'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     outputs:
       grep: ${{ steps.plan.outputs.grep }}
       total: ${{ steps.plan.outputs.total }}
@@ -298,6 +320,7 @@ jobs:
     if: always() && github.event_name == 'merge_group'
     needs: e2e-merge
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
@@ -351,6 +374,7 @@ jobs:
     if: always()
     needs: [e2e-plan, e2e-pr, e2e-merge]
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     steps:
       - name: Verify required E2E jobs
         shell: bash
@@ -377,3 +401,37 @@ jobs:
 
           echo "E2E gate failed: event=$EVENT_NAME plan=$PLAN_RESULT/$PLAN_TOTAL pr=$PR_RESULT merge=$MERGE_RESULT"
           exit 1
+
+  # One check for branch protection to require, so splitting, renaming or
+  # resharding jobs needs no ruleset change. Add every new job to `needs`. A job
+  # may be skipped only for the reason this workflow skips it; any other skip
+  # fails. `always()`, not `!cancelled()`: a skipped check reports success to
+  # branch protection, so a cancelled run must still fail this one.
+  # The older per-job gates (test (blacksmith-4vcpu-ubuntu-2404), e2e-smoke)
+  # stay until the ruleset requires `Check` in their place.
+  check:
+    name: Check
+    if: always()
+    needs: [lint-format, plugin-isolation, typecheck, test-linux, test, e2e-plan, e2e-pr, e2e-merge]
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to pass
+        shell: bash
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          # e2e-merge-report is informational and deliberately not listed.
+          echo "$RESULTS" | jq -e --arg event "$EVENT_NAME" '
+            def allowed_skip:
+              if .key == "e2e-plan" then $event != "pull_request"
+              elif .key == "e2e-pr" then $event != "pull_request"
+                or (.plan.result == "success" and .plan.outputs.total == "0")
+              elif .key == "e2e-merge" then $event != "merge_group"
+              else false end;
+            .["e2e-plan"] as $plan
+            | all(to_entries[] | . + {plan: $plan};
+                .value.result == "success"
+                or (.value.result == "skipped" and allowed_skip))' > /dev/null

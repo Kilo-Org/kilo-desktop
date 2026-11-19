@@ -1,10 +1,14 @@
 name: Install test runtime
-description: Install Electron or Playwright with bounded retries for transient download failures.
+description: >
+  Install Electron or Playwright from cache, with bounded retries for transient
+  download failures, and install Linux system libraries only if one is missing.
 
-# No Playwright system dependencies (`install-deps`): the runner images already
-# carry every library Chromium and Electron load, xvfb included. It only ever
-# added CJK/Cyrillic fonts no spec renders, plus upgrades of installed libraries,
-# for ~15-22 s of apt downloads per job.
+# No unconditional `playwright install-deps`: the runner images already carry
+# every library Chromium and Electron load, xvfb included, and it only ever added
+# CJK/Cyrillic fonts no spec renders, for ~15-22 s of apt downloads per job. The
+# last step checks the installed binary with ldd and runs install-deps only when
+# a library is actually missing, so an image change degrades to a slower job
+# instead of a failing one.
 
 inputs:
   runtime:
@@ -17,26 +21,40 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Resolve the Playwright version
-      if: inputs.runtime == 'playwright'
-      id: playwright
+    - name: Resolve the ${{ inputs.runtime }} version
+      id: runtime
       shell: bash
       env:
+        RUNTIME: ${{ inputs.runtime }}
         PACKAGE_NAME: ${{ inputs.package-name }}
-      run: echo "version=$(pnpm --filter "$PACKAGE_NAME" exec playwright --version | sed -E 's/^Version //')" >> "$GITHUB_OUTPUT"
+      run: |
+        case "$RUNTIME" in
+          electron) version=$(pnpm --filter "$PACKAGE_NAME" exec node -p 'require("electron/package.json").version') ;;
+          playwright) version=$(pnpm --filter "$PACKAGE_NAME" exec playwright --version | sed -E 's/^Version //') ;;
+          *) echo "::error::Unsupported test runtime: $RUNTIME"; exit 2 ;;
+        esac
+        echo "version=$version" >> "$GITHUB_OUTPUT"
 
-    # The browsers come from cdn.playwright.dev; a Playwright version pins their
-    # builds, so the cache never goes stale. Saved on main by warm-caches.yml.
+    # Electron's installer (@electron/get) and electron-forge packaging read the
+    # download cache before fetching the release from GitHub. The Playwright
+    # browsers come from cdn.playwright.dev. A version pins each download, so
+    # neither cache goes stale. warm-caches.yml saves both on main.
+    - name: Cache Electron download
+      if: inputs.runtime == 'electron'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.os == 'Linux' && '~/.cache/electron' || runner.os == 'macOS' && '~/Library/Caches/electron' || '~/AppData/Local/electron/Cache' }}
+        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime.outputs.version }}
+
     - name: Cache Playwright browsers
       if: inputs.runtime == 'playwright'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.os == 'Linux' && '~/.cache/ms-playwright' || runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/AppData/Local/ms-playwright' }}
-        key: playwright-browsers-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+        key: playwright-browsers-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime.outputs.version }}
 
-    # On a cache hit `playwright install` finds the browsers and downloads nothing.
-    # A miss downloads with Playwright's own stall timeout
-    # (PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT, 30 s) inside these retries.
+    # On a cache hit neither installer downloads anything. A miss downloads with
+    # the installers' own stall timeouts inside these retries.
     - name: Install ${{ inputs.runtime }}
       shell: bash
       env:
@@ -44,16 +62,8 @@ runs:
         PACKAGE_NAME: ${{ inputs.package-name }}
       run: |
         case "$RUNTIME" in
-          electron)
-            command=(pnpm --filter "$PACKAGE_NAME" exec install-electron)
-            ;;
-          playwright)
-            command=(pnpm --filter "$PACKAGE_NAME" exec playwright install chromium)
-            ;;
-          *)
-            echo "Unsupported test runtime: $RUNTIME" >&2
-            exit 2
-            ;;
+          electron) command=(pnpm --filter "$PACKAGE_NAME" exec install-electron) ;;
+          playwright) command=(pnpm --filter "$PACKAGE_NAME" exec playwright install chromium) ;;
         esac
 
         for attempt in 1 2 3; do
@@ -68,3 +78,24 @@ runs:
           echo "Install attempt $attempt failed; retrying in ${delay}s."
           sleep "$delay"
         done
+
+    - name: Install missing system libraries
+      if: runner.os == 'Linux'
+      shell: bash
+      env:
+        RUNTIME: ${{ inputs.runtime }}
+        PACKAGE_NAME: ${{ inputs.package-name }}
+      run: |
+        case "$RUNTIME" in
+          electron) binaries=("$(pnpm --filter "$PACKAGE_NAME" exec node -p 'require("electron")')") ;;
+          playwright) mapfile -t binaries < <(find "$HOME/.cache/ms-playwright" -type f \( -name chrome -o -name chrome-headless-shell \)) ;;
+        esac
+        [[ ${#binaries[@]} -gt 0 && -n "${binaries[0]}" ]] || { echo "::error::No $RUNTIME binary found to check."; exit 1; }
+
+        missing=$(for binary in "${binaries[@]}"; do ldd "$binary"; done | grep '=> not found' | sort -u || true)
+        if [[ -z "$missing" ]]; then
+          echo "Every library ${binaries[*]} links against is installed."
+          exit 0
+        fi
+        echo "::warning::Missing system libraries for $RUNTIME; installing Playwright's Chromium dependencies:"$'\n'"$missing"
+        pnpm exec playwright install-deps chromium

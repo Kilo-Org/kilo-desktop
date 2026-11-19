@@ -38,11 +38,11 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@anaconda/desktop-bridge-payload-darwin-arm64": "npmjs:0.1.22",
-		"@anaconda/desktop-bridge-payload-linux-arm64": "npmjs:0.1.22",
-		"@anaconda/desktop-bridge-payload-linux-x64": "npmjs:0.1.22",
-		"@anaconda/desktop-bridge-payload-win32-arm64": "npmjs:0.1.22",
-		"@anaconda/desktop-bridge-payload-win32-x64": "npmjs:0.1.22"
+		"@anaconda/desktop-bridge-payload-darwin-arm64": "npmjs:0.1.23",
+		"@anaconda/desktop-bridge-payload-linux-arm64": "npmjs:0.1.23",
+		"@anaconda/desktop-bridge-payload-linux-x64": "npmjs:0.1.23",
+		"@anaconda/desktop-bridge-payload-win32-arm64": "npmjs:0.1.23",
+		"@anaconda/desktop-bridge-payload-win32-x64": "npmjs:0.1.23"
 	},
 	"devDependencies": {
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",

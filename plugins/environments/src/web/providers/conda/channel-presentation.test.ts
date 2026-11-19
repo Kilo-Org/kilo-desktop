@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import { getChannelPresentation, selectableChannels } from "./channel-presentation";
 
 describe("selectableChannels", () => {
-	it("offers conda-forge and Anaconda MAIN when none are configured", () => {
-		expect(selectableChannels([])).toEqual(["conda-forge", "defaults"]);
+	it("offers Anaconda MAIN ahead of conda-forge when none are configured", () => {
+		expect(selectableChannels([])).toEqual(["defaults", "conda-forge"]);
 	});
 
 	it("keeps custom channels without duplicating Anaconda aliases", () => {
 		expect(selectableChannels(["main", "conda-forge", "bioconda"])).toEqual([
-			"conda-forge",
 			"defaults",
+			"conda-forge",
 			"bioconda",
 		]);
 	});

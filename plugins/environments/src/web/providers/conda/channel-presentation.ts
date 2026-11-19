@@ -13,11 +13,12 @@ export const ANACONDA_MAIN_CHANNEL = "defaults";
 /**
  * Product channels are always offered, even when `conda info` reports no
  * configured channels. Keep custom configured channels after these defaults.
+ * Order is solver priority: Anaconda's vetted channel wins over conda-forge.
  */
 export function selectableChannels(configuredChannels: string[]): string[] {
 	return [
-		CONDA_FORGE_CHANNEL,
 		ANACONDA_MAIN_CHANNEL,
+		CONDA_FORGE_CHANNEL,
 		...configuredChannels.filter(
 			(channel) =>
 				channel !== CONDA_FORGE_CHANNEL &&

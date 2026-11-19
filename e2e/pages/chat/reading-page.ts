@@ -95,9 +95,17 @@ export class ReadingPage {
 		await click(this.aa("popover").getByRole("button", { name: "Larger text" }));
 	}
 
-	/** Saves the current settings from the header's Save… link. */
-	async savePreset(name: string): Promise<void> {
-		await click(this.aa("preset-save"));
+	/**
+	 * Saves the current settings as a new preset: from the header's Save… link
+	 * with no preset active, else from the menu (the header offers Update then).
+	 */
+	async savePreset(name: string, { fromMenu = false } = {}): Promise<void> {
+		if (fromMenu) {
+			await click(this.presetsTrigger());
+			await click(this.aa("preset-save-current"));
+		} else {
+			await click(this.aa("preset-save"));
+		}
 		await fill(this.aa("preset-name"), name);
 		await click(this.aa("preset-save-confirm"));
 		await expectElementToBeHidden(this.aa("preset-save-dialog"), {

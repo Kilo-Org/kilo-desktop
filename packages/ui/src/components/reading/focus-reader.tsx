@@ -333,9 +333,15 @@ export function FocusReader({
 		};
 	}, [latest]);
 
-	// Take keyboard focus so ↑ ↓ and Esc reach the reader.
+	// Take keyboard focus so ↑ ↓ and Esc reach the reader, and hand it back to
+	// whatever held it before Focus opened once the reader goes away (the frame
+	// under it is inert while open, so its own focus is gone on exit).
 	useEffect(() => {
+		const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		root?.focus({ preventScroll: true });
+		return () => {
+			if (restore?.isConnected) restore.focus({ preventScroll: true });
+		};
 	}, [root]);
 
 	const style = {

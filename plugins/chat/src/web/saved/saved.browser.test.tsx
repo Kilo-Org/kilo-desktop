@@ -102,6 +102,33 @@ describe("Save in the chat", () => {
 		await expect.element(page.getByTestId("chat-selection-menu")).not.toBeInTheDocument();
 	});
 
+	it("saves a paragraph selected by triple-click, whose selection runs past the reply's text", async () => {
+		const host = await showReply();
+		const paragraph = page
+			.getByText("We should keep the return URL in the session.")
+			.first()
+			.element();
+		const message = paragraph.closest<HTMLElement>("[data-message-id]")!;
+		// Chromium ends a triple-click selection at the start of whatever follows
+		// the paragraph: here, the reply's action row, outside its text.
+		let after: Element | null = message.querySelector('[data-reading-surface="reply"]');
+		while (after && !after.nextElementSibling) after = after.parentElement;
+		after = after?.nextElementSibling ?? null;
+		expect(after).not.toBeNull();
+		const range = document.createRange();
+		range.setStart(paragraph.firstChild!, 0);
+		range.setEnd(after!, 0);
+		getSelection()!.removeAllRanges();
+		getSelection()!.addRange(range);
+		paragraph.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+
+		await page.getByTestId("chat-selection-menu-save").click();
+
+		await expect
+			.poll(() => host.workSessions.saved().state.items.map(({ text }) => text))
+			.toEqual(["We should keep the return URL in the session."]);
+	});
+
 	it("turns Save into Remove once saved, which takes the text straight back out", async () => {
 		const host = await showReply();
 		await selectText("keep the return URL", "We should keep the return URL in the session.");

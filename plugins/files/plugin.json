@@ -58,7 +58,7 @@
 					},
 					"when": {
 						"all": ["kilo.files/focusAvailable"],
-						"none": ["kernel/secondaryWindow"]
+						"none": ["kernel/secondaryWindow", "kilo.chat/focusAvailable"]
 					}
 				}
 			],

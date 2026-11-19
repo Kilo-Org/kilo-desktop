@@ -63,7 +63,7 @@ test.describe("Reading Mode @smoke", () => {
 		await readingPage.pickReadingTheme("Gruvbox");
 		await readingPage.savePreset("Late night");
 		await readingPage.pickReadingTheme("Nord");
-		await readingPage.savePreset("Daytime");
+		await readingPage.savePreset("Daytime", { fromMenu: true });
 
 		await readingPage.applyPreset("Late night");
 		await readingPage.makeTextLarger();

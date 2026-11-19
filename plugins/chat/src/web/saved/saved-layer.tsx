@@ -234,6 +234,29 @@ type Selection =
  * as Remove in place (`showRemove`), until it leaves Saved (Undo) or the
  * menu is dismissed.
  */
+/**
+ * The part of `range` inside the reply's text. A triple-click selects a
+ * paragraph by running the range to the start of whatever follows it (the
+ * action row, the next message), so an end outside the text is pulled back to
+ * the end of the last surface it covers, and a start outside to the start of
+ * the first. Null when the range touches no surface or starts and ends outside.
+ */
+function trimToSurfaces(range: Range, surfaces: readonly HTMLElement[]): Range | null {
+	const inside = (node: Node) => surfaces.some((surface) => surface.contains(node));
+	const startInside = inside(range.startContainer);
+	const endInside = inside(range.endContainer);
+	if (startInside && endInside) return range;
+	if (!startInside && !endInside) return null;
+	const covered = surfaces.filter((surface) => range.intersectsNode(surface));
+	const first = covered[0];
+	const last = covered.at(-1);
+	if (!first || !last) return null;
+	const trimmed = range.cloneRange();
+	if (!startInside) trimmed.setStart(first, 0);
+	if (!endInside) trimmed.setEnd(last, last.childNodes.length);
+	return trimmed.collapsed ? null : trimmed;
+}
+
 function useReplySelection(
 	root: HTMLElement | null,
 	items: readonly SavedItem[],
@@ -272,13 +295,13 @@ function useReplySelection(
 				const box = rangeBoxOf(surfaces, item);
 				return setSelection(box ? { mode: "remove", rect: box, item, dismiss } : null);
 			}
-			const inside = (node: Node) => surfaces.some((surface) => surface.contains(node));
-			if (!inside(range.startContainer) || !inside(range.endContainer)) return setSelection(null);
-			const quote = quoteOf(surfaces, range);
+			const trimmed = trimToSurfaces(range, surfaces);
+			if (!trimmed) return setSelection(null);
+			const quote = quoteOf(surfaces, trimmed);
 			if (!quote) return setSelection(null);
 			setSelection({
 				mode: "save",
-				rect: range.getBoundingClientRect(),
+				rect: trimmed.getBoundingClientRect(),
 				messageId,
 				quote,
 				dismiss,

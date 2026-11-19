@@ -26,7 +26,12 @@ export class RevealRequests {
 	request(chatId: string, target: RevealTarget): Promise<SavedRevealResult> {
 		this.#pending?.resolve("unavailable");
 		return new Promise((resolve) => {
-			const timer = setTimeout(() => this.#settle(request, "unavailable"), WAIT_MS);
+			// Only a request nobody has taken times out: once `take()` hands it to a
+			// reveal in progress, that reveal settles it, so the deadline must not
+			// resolve it as unavailable underneath the running reveal.
+			const timer = setTimeout(() => {
+				if (this.#pending === request) this.#settle(request, "unavailable");
+			}, WAIT_MS);
 			const request: RevealRequest = {
 				chatId,
 				target,

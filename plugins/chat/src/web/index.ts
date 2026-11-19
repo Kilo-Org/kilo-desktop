@@ -1,4 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
+import { MessageSquareIcon } from "lucide-react";
 
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { Chats, KiloServer } from "@kilo-desktop/plugin-core/contracts";
@@ -7,6 +8,7 @@ import {
 	WorkSessionAction,
 	WorkSessionStarter,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 
 import { ComposerAction, paneChatId, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
@@ -19,6 +21,7 @@ import { MediaIcon, MediaPane } from "./media/MediaPane";
 import { AgentsMenu } from "./panes/AgentsMenu";
 import { createPlanPane, PlanIcon } from "./plan/PlanPane";
 import { ChatServices } from "./runtime/chat-services";
+import { ChatSettings } from "./settings/ChatSettings";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
 import { createSubagentPane, SubagentIcon } from "./subagents/SubagentPane";
 import { BUILTIN_TOOL_RENDERERS } from "./tools/builtin-renderers";
@@ -32,7 +35,8 @@ const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as 
  * window's composer domain object, its own composer actions and transcript
  * renderers, the composer's commands (`compact`, placed in the `/` menu by its
  * manifest), and which permission requests Auto approve answers
- * (`kilo.work-sessions/permission-auto-answer`). One `ChatServices` (the live
+ * (`kilo.work-sessions/permission-auto-answer`), and Settings → Chat (the
+ * composer's send key). One `ChatServices` (the live
  * connection to the Kilo server and its event stream) and one query cache are
  * shared by every pane in the window.
  */
@@ -68,6 +72,10 @@ export const chatWebEntry = definePlugin({
 		});
 		sdk.extensions.implement(PaneKind, "media", { component: MediaPane, icon: MediaIcon });
 		sdk.extensions.implement(WorkSessionAction, "agents", AgentsMenu);
+		sdk.extensions.implement(SettingsSection, "chat", {
+			component: ChatSettings,
+			icon: MessageSquareIcon,
+		});
 		sdk.extensions.implement(
 			WorkSessionStarter,
 			"composer",

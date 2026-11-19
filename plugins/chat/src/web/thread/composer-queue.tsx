@@ -13,12 +13,14 @@ import {
 import { Reorder, useDragControls, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type FC, type KeyboardEvent, type PointerEvent } from "react";
 
+import { useKernel } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Item, ItemActions, ItemContent } from "@kilo-desktop/ui/components/item";
 import { Textarea } from "@kilo-desktop/ui/components/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { isSendEnter, type SendKey } from "../composer/send-key";
 import { useMessageQueueControls } from "../runtime/use-message-queue-controls";
 import {
 	COMPOSER_SHELF_LIST_CLASS,
@@ -130,7 +132,10 @@ function moveId(ids: readonly string[], id: string, delta: number): string[] | u
 	return next;
 }
 
-export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) => {
+export const ComposerQueue: FC<{ steerOnEnter: boolean; sendKey: SendKey }> = ({
+	steerOnEnter,
+	sendKey,
+}) => {
 	const items = useAuiState((s) => s.composer.queue);
 	const controls = useMessageQueueControls();
 	const [collapsed, setCollapsed] = useState(false);
@@ -174,6 +179,7 @@ export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) =
 					queueItem={item}
 					isFirst={index === 0}
 					showEnterHint={steerOnEnter}
+					sendKey={sendKey}
 					controls={controls}
 					canReorder={canReorder}
 					reducedMotion={reducedMotion ?? false}
@@ -231,6 +237,7 @@ type QueueItemRowProps = {
 	queueItem: QueueItemState;
 	isFirst: boolean;
 	showEnterHint: boolean;
+	sendKey: SendKey;
 	controls: OpenCodeMessageQueueControls | undefined;
 	canReorder: boolean;
 	reducedMotion: boolean;
@@ -243,6 +250,7 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 	queueItem,
 	isFirst,
 	showEnterHint,
+	sendKey,
 	controls,
 	canReorder,
 	reducedMotion,
@@ -329,6 +337,7 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 				<QueueItemEditor
 					draft={draft}
 					canSaveEmpty={attachmentPreview !== undefined}
+					sendKey={sendKey}
 					onDraftChange={updateDraft}
 					onSave={() => finishEdit(true)}
 					onCancel={() => finishEdit(false)}
@@ -374,9 +383,7 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 								/>
 							}
 						>
-							{showEnterHint && isFirst ? (
-								<CornerDownLeftIcon aria-hidden className="size-3" />
-							) : null}
+							{showEnterHint && isFirst ? <SendKeyHint sendKey={sendKey} /> : null}
 							Send now
 						</QueueItemPrimitive.Steer>
 						{controls ? (
@@ -424,10 +431,22 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 	);
 };
 
+/** The send key on "Send now", which it triggers on an empty composer. */
+function SendKeyHint({ sendKey }: { sendKey: SendKey }) {
+	const { platform } = useKernel().keyboard;
+	return (
+		<span aria-hidden className="inline-flex items-center">
+			{sendKey === "ctrlEnter" ? (platform === "mac" ? "⌘" : "Ctrl+") : null}
+			<CornerDownLeftIcon className="size-3" />
+		</span>
+	);
+}
+
 type QueueItemEditorProps = {
 	draft: string;
 	/** Attachment-only messages may be saved without text. */
 	canSaveEmpty: boolean;
+	sendKey: SendKey;
 	onDraftChange: (draft: string) => void;
 	onSave: () => void;
 	onCancel: () => void;
@@ -436,6 +455,7 @@ type QueueItemEditorProps = {
 const QueueItemEditor: FC<QueueItemEditorProps> = ({
 	draft,
 	canSaveEmpty,
+	sendKey,
 	onDraftChange,
 	onSave,
 	onCancel,
@@ -458,7 +478,10 @@ const QueueItemEditor: FC<QueueItemEditorProps> = ({
 			onCancel();
 			return;
 		}
-		if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+		// Ctrl/Cmd+Enter always saves an edit, as it did before the send key was configurable.
+		const saves =
+			isSendEnter(event.nativeEvent, sendKey) || isSendEnter(event.nativeEvent, "ctrlEnter");
+		if (event.key === "Enter" && saves) {
 			event.preventDefault();
 			if (canSave) onSave();
 		}

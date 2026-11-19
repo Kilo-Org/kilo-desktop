@@ -574,6 +574,7 @@ ones, are gone. Names are today's.
 | 72  | Object types are first-class: declared by the owning plugin, resolved by exactly one collection with a `lookup`                                                                                                                                                               |
 | 73  | Contributions to Kilo itself are data: `kilo.core/agent-extension` and `kilo.core/mcp-server` carry agents, commands, skills, Kilo plugins and MCP servers in their metadata; `kilo.core/server-env` adds server environment variables                                        |
 | 74  | `kilo.local-inference` and `kilo.environments` stay their own plugins; Anaconda's model catalog and conda's llama.cpp runtime are contributions to `kilo.local-inference`'s `model-catalog` and `llama-runtime`                                                               |
+| 75  | A key the user picks for a `handledLocally` command (the composer's send key) is stored as that command's `kernel/keybindings` override, so shortcut lists and Reset all follow it; the owner reads the override instead of keeping its own preference                        |
 
 ---
 

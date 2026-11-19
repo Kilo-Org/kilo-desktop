@@ -24,7 +24,9 @@
 		"kilo.work-sessions/permission-auto-answer": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/notifications": "optional",
-		"kilo.shell/theme": "optional"
+		"kilo.shell/theme": "optional",
+		"kilo.shell/settings-section": "optional",
+		"kernel/keybindings": "optional"
 	},
 	"permissions": {
 		"host": ["clipboard", "os", "windows"],
@@ -113,6 +115,14 @@
 	],
 	"contributes": {
 		"extensions": {
+			"kilo.shell/settings-section": [
+				{
+					"id": "chat",
+					"title": "Chat",
+					"description": "How the composer works on this device.",
+					"priority": 80
+				}
+			],
 			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "agent",

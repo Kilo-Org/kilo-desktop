@@ -118,6 +118,16 @@ describe("the composer's queue", () => {
 		);
 	});
 
+	it("saves an edit on Ctrl/Cmd+Enter as well as Enter", async () => {
+		await queueBehindTurn(["First"]);
+
+		await items().first().getByTestId("kilo-composer-queue-edit").click();
+		await userEvent.fill(page.getByTestId("kilo-composer-queue-edit-input"), "First, edited");
+		await userEvent.keyboard("{Control>}{Enter}{/Control}");
+		await expect.element(itemText(0)).toHaveTextContent("First, edited");
+		await expect.element(page.getByTestId("kilo-composer-queue-editing")).not.toBeInTheDocument();
+	});
+
 	it("moves a queued prompt with the keyboard", async () => {
 		await queueBehindTurn(["First", "Second"]);
 

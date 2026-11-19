@@ -172,7 +172,7 @@ export function ShortcutsSettings() {
 					</FieldLegend>
 					<FieldDescription>
 						To change a shortcut, select it and press the new keys (Esc cancels). To turn one off,
-						hover it and select ×. Shortcuts you can’t change, like Enter to send, are in the{" "}
+						hover it and select ×. Shortcuts you can’t change here, like Send message, are in the{" "}
 						{/* Styled like FieldDescription's own links, which only targets <a>. */}
 						<button
 							type="button"

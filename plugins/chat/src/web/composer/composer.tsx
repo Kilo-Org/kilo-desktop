@@ -34,6 +34,7 @@ import { useComposerDragResize } from "./composer-height/use-composer-drag-resiz
 import { ComposerResizeHandle } from "./composer-resize-handle";
 import { KiloLexicalComposerInput } from "./kilo-lexical-composer-input";
 import { KiloSlashTrigger } from "./kilo-slash-trigger";
+import { isSendEnter, useSendKey } from "./send-key";
 import { combineFormatters, composerPlaceholder, createMentionFormatter } from "./mention-codec";
 import {
 	MentionIconsContext,
@@ -60,6 +61,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const inputHeight = useComposerDragResize(inputRef, !isDraft);
 	const plan = useApprovePlan();
 	const refining = plan.canReply;
+	const sendKey = useSendKey();
 
 	const slash = useSlashCommands(context.directory);
 	const runTypedClientCommand = useRunTypedClientSlashCommand(slash.commands);
@@ -106,7 +108,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 			if (next && next !== agent) setAgent(next);
 			return;
 		}
-		if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+		if (event.key !== "Enter" || !isSendEnter(event.nativeEvent, sendKey)) return;
 		if (event.defaultPrevented && hasMessageQueue) return;
 		// Queue only when a run was already in flight and Lexical skipped send.
 		if (aui.thread.getState().isRunning && hasMessageQueue && !isComposerEmpty) {
@@ -128,7 +130,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				>
 					<ComposerSubagentStrip />
 					<ComposerTaskList />
-					<ComposerQueue steerOnEnter={hasMessageQueue && isComposerEmpty} />
+					<ComposerQueue steerOnEnter={hasMessageQueue && isComposerEmpty} sendKey={sendKey} />
 					<ComposerPrimitive.AttachmentDropzone
 						render={
 							<div
@@ -152,12 +154,12 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 							ref={inputRef}
 							formatter={formatter}
 							placeholder={composerPlaceholder(sources)}
-							submitMode="enter"
+							sendKey={sendKey}
 							onKeyDown={handleInputKeyDown}
 							style={inputHeight.inputStyle}
 							onEnter={() => {
 								if (runTypedClientCommand({ fromEnter: true })) return true;
-								// The follow-up keeps the thread running: Enter refines instead of queueing.
+								// The follow-up keeps the thread running: the send key refines instead of queueing.
 								if (!refining) return false;
 								if (!aui.composer.getState().isEmpty) plan.refine();
 								return true;

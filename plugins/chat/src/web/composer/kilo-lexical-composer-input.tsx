@@ -23,6 +23,7 @@ import {
 } from "react";
 
 import { KiloDirectiveChip } from "./directive-chip";
+import { isSendEnter, type SendKey } from "./send-key";
 
 type KiloLexicalComposerInputProps = {
 	ref?: Ref<HTMLDivElement>;
@@ -31,9 +32,10 @@ type KiloLexicalComposerInputProps = {
 	placeholder?: string;
 	disabled?: boolean;
 	cancelOnEscape?: boolean;
-	submitMode?: "enter" | "ctrlEnter" | "none";
+	/** The Enter that sends, queues, steers, runs a typed `/` command and refines a plan. */
+	sendKey: SendKey;
 	onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
-	/** Takes a plain Enter before sending or queueing does, when it returns true. */
+	/** Takes the send Enter before sending or queueing does, when it returns true. */
 	onEnter?: () => boolean;
 	/** Inline sizing, e.g. a `maxHeight` replacing the default auto-grow cap. */
 	style?: CSSProperties | undefined;
@@ -41,8 +43,9 @@ type KiloLexicalComposerInputProps = {
 
 /**
  * The composer's rich input (Lexical): chips for slash commands and mentions,
- * Enter to send and Shift+Enter for a new line, pasted files as attachments,
- * and Enter on an empty composer to send the next queued prompt now.
+ * the send key (Enter or Ctrl/Cmd+Enter; the other Enter and Shift+Enter add a
+ * new line), pasted files as attachments, and the send key on an empty
+ * composer to send the next queued prompt now.
  */
 export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	ref,
@@ -50,7 +53,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	placeholder = "Send a message or / for commands…",
 	disabled = false,
 	cancelOnEscape,
-	submitMode,
+	sendKey,
 	onKeyDown,
 	onEnter,
 	style,
@@ -70,7 +73,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			directiveChip={KiloDirectiveChip}
 			placeholder={placeholder}
 			cancelOnEscape={cancelOnEscape}
-			submitMode={submitMode}
+			submitMode={sendKey}
 			aria-label="Message input"
 			onKeyDown={onKeyDown}
 			className={cn(
@@ -81,9 +84,9 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 		>
 			<LexicalInputAria label="Message input" />
 			<AttachmentPastePlugin />
-			<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
-			<QueueEnterWhileRunningPlugin />
-			{onEnter ? <EnterOverridePlugin onEnter={onEnter} /> : null}
+			<SteerQueueOnEnterPlugin disabled={disabled} sendKey={sendKey} />
+			<QueueEnterWhileRunningPlugin sendKey={sendKey} />
+			{onEnter ? <EnterOverridePlugin onEnter={onEnter} sendKey={sendKey} /> : null}
 		</LexicalComposerInput>
 	);
 };
@@ -169,17 +172,11 @@ function AttachmentPastePlugin() {
 	return null;
 }
 
-// With an empty composer and a non-empty queue, Enter steers the top queued
-// message (same as its "Send now" button). Must run at CRITICAL priority: the
-// built-in HIGH handler preventDefaults Enter on an empty composer when idle,
-// so a LOW-priority handler would never see the idle case.
-function SteerQueueOnEnterPlugin({
-	disabled,
-	submitMode,
-}: {
-	disabled: boolean;
-	submitMode?: "enter" | "ctrlEnter" | "none" | undefined;
-}) {
+// With an empty composer and a non-empty queue, the send key steers the top
+// queued message (same as its "Send now" button). Must run at CRITICAL
+// priority: the built-in HIGH handler preventDefaults Enter on an empty
+// composer when idle, so a LOW-priority handler would never see the idle case.
+function SteerQueueOnEnterPlugin({ disabled, sendKey }: { disabled: boolean; sendKey: SendKey }) {
 	const [editor] = useLexicalComposerContext();
 	const aui = useAui();
 	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
@@ -188,11 +185,7 @@ function SteerQueueOnEnterPlugin({
 		return editor.registerCommand(
 			KEY_ENTER_COMMAND,
 			(event) => {
-				if (disabled || submitMode !== "enter") return false;
-				if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-					return false;
-				}
-				if (!canQueue) return false;
+				if (disabled || !canQueue || !isSendEnter(event, sendKey)) return false;
 				const composer = aui.composer.getState();
 				if (!composer.isEmpty || composer.queue.length === 0) return false;
 				event.preventDefault();
@@ -201,12 +194,12 @@ function SteerQueueOnEnterPlugin({
 			},
 			COMMAND_PRIORITY_CRITICAL,
 		);
-	}, [aui, canQueue, disabled, editor, submitMode]);
+	}, [aui, canQueue, disabled, editor, sendKey]);
 
 	return null;
 }
 
-function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
+function EnterOverridePlugin({ onEnter, sendKey }: { onEnter: () => boolean; sendKey: SendKey }) {
 	const [editor] = useLexicalComposerContext();
 	const latest = useLatestRef(onEnter);
 	useEffect(
@@ -214,21 +207,18 @@ function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
 			editor.registerCommand(
 				KEY_ENTER_COMMAND,
 				(event) => {
-					if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-						return false;
-					}
-					if (!latest.current()) return false;
+					if (!isSendEnter(event, sendKey) || !latest.current()) return false;
 					event.preventDefault();
 					return true;
 				},
 				COMMAND_PRIORITY_CRITICAL,
 			),
-		[editor, latest],
+		[editor, latest, sendKey],
 	);
 	return null;
 }
 
-function QueueEnterWhileRunningPlugin() {
+function QueueEnterWhileRunningPlugin({ sendKey }: { sendKey: SendKey }) {
 	const [editor] = useLexicalComposerContext();
 	const aui = useAui();
 	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
@@ -237,9 +227,7 @@ function QueueEnterWhileRunningPlugin() {
 		return editor.registerCommand(
 			KEY_ENTER_COMMAND,
 			(event) => {
-				if (!event || event.shiftKey || event.isComposing || event.ctrlKey || event.metaKey) {
-					return false;
-				}
+				if (!isSendEnter(event, sendKey)) return false;
 				if (!canQueue || !aui.thread.getState().isRunning) return false;
 				if (aui.composer.getState().isEmpty) return false;
 				event.preventDefault();
@@ -248,7 +236,7 @@ function QueueEnterWhileRunningPlugin() {
 			},
 			COMMAND_PRIORITY_LOW,
 		);
-	}, [aui, canQueue, editor]);
+	}, [aui, canQueue, editor, sendKey]);
 
 	return null;
 }

@@ -278,9 +278,17 @@ export function BranchPickerPopover({
 	const scrollToRowRef = useRef<(index: number) => void>(() => {});
 
 	const trimmedSearch = search.trim();
-	const rows = toRows(
-		filterBranchGroups(groupBranches(branches, defaultBranch, recentBranches), search),
-	);
+	const rowsFor = (query: string) =>
+		toRows(filterBranchGroups(groupBranches(branches, defaultBranch, recentBranches), query));
+	const rows = rowsFor(search);
+
+	// Highlights the first match itself instead of relying on cmdk, whose
+	// controlled value would otherwise still name a row the search removed.
+	const changeSearch = (next: string) => {
+		setSearch(next);
+		const firstMatch = rowsFor(next).find((row) => row.kind === "branch");
+		setHighlighted(firstMatch?.kind === "branch" ? firstMatch.value : "");
+	};
 
 	const moveHighlight = (event: KeyboardEvent) => {
 		const move = listMoveFor(event);
@@ -367,14 +375,18 @@ export function BranchPickerPopover({
 						onValueChange={setHighlighted}
 						onKeyDown={moveHighlight}
 					>
-						<CommandInput placeholder="Search branches" value={search} onValueChange={setSearch} />
+						<CommandInput
+							placeholder="Search branches"
+							value={search}
+							onValueChange={changeSearch}
+						/>
 						{rows.length === 0 ? (
 							<div data-slot="command-empty" className="py-6 text-center text-sm">
 								{branches.length === 0 ? "No branches yet." : "No branches found."}
 							</div>
 						) : (
-							// Remounting per search puts the scroll back at the top, so cmdk's
-							// first-item highlight lands on the first match.
+							// Remounting per search puts the scroll back at the top, where the
+							// highlighted first match is.
 							<BranchList
 								key={trimmedSearch}
 								rows={rows}

@@ -81,7 +81,8 @@ describe("filterBranchGroups", () => {
 	const feature = local("feature-login");
 	const featureAuth = local("auth-feature");
 	const develop = remote("origin/develop");
-	const groups = groupBranches([main, feature, featureAuth, develop], "main", []);
+	// The weaker match comes first, so the test pins the best-first sort.
+	const groups = groupBranches([main, featureAuth, feature, develop], "main", []);
 
 	it("returns every group unchanged for an empty search", () => {
 		expect(filterBranchGroups(groups, "")).toEqual(groups);
@@ -96,7 +97,7 @@ describe("filterBranchGroups", () => {
 	it("matches fuzzily like the command menu and puts the best match first", () => {
 		const [localGroup] = filterBranchGroups(groups, "feat");
 		expect(localGroup?.items).toEqual([feature, featureAuth]);
-		expect(filterBranchGroups(groups, "ftlg")[0]?.items).toEqual([feature]);
+		expect(filterBranchGroups(groups, "flg")[0]?.items).toEqual([feature]);
 	});
 
 	it("matches a remote branch by its remote prefix", () => {

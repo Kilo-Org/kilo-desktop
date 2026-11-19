@@ -410,6 +410,26 @@ describe("the New Session page's branch picker", () => {
 			}, WAIT);
 		});
 
+		it("picks the first match with Enter right after typing", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			await renderSelector({ branches: () => manyRemotes, checkout });
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByRole("combobox", { name: "Search branches" }).fill("topic-2999");
+			await expect
+				.element(page.getByTestId("git-branch-item-topic-2999"))
+				.toHaveAttribute("data-selected", "true");
+			await userEvent.keyboard("{Enter}");
+
+			await vi.waitFor(() => {
+				expect(checkout).toHaveBeenCalledWith({
+					directory: "/workspace/project",
+					branch: "origin/topic-2999",
+					kind: "remote",
+				});
+			}, WAIT);
+		});
+
 		it("moves the highlight past the rendered rows with the keyboard", async () => {
 			const checkout = vi.fn(() => Promise.resolve());
 			await renderSelector({ branches: () => manyRemotes, checkout });

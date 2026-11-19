@@ -1006,8 +1006,8 @@ importers:
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@lobehub/icons':
-        specifier: ^6.16.0
-        version: 6.16.0(lucide-react@1.75.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ^6.18.0
+        version: 6.18.0(lucide-react@1.75.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@lottiefiles/dotlottie-react':
         specifier: 0.22.3
         version: 0.22.3(react@19.3.1)
@@ -1963,8 +1963,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@lobehub/icons':
-        specifier: ^6.16.0
-        version: 6.16.0(lucide-react@1.75.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ^6.18.0
+        version: 6.18.0(lucide-react@1.75.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-query':
         specifier: ^5.108.0
         version: 5.108.0(@types/react@19.2.17)(react@19.3.1)
@@ -3807,8 +3807,8 @@ packages:
       typescript:
         optional: true
 
-  '@lobehub/icons@6.16.0':
-    resolution: {integrity: sha512-ldUV870k8z4rc9/T2ckSOGD6xZlcwrTgkApZdqLOCNVxGtLxyn/Q0SSnuUDoXfVsqjFpaUfqjvNArHaGC3yRjA==}
+  '@lobehub/icons@6.18.0':
+    resolution: {integrity: sha512-naIh0E+AFGeOpQqOV4cQGQtgsikq08v0sDxbgOKf2amrax0qNdDX/uX/WRGlBQfVIudPszK5u7GF0Pn5aOJb5Q==}
     peerDependencies:
       '@lobehub/ui': ^6.0.0
       lucide-react: ^0.469.0 || ^1.0.0
@@ -12535,7 +12535,7 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
 
-  '@lobehub/icons@6.16.0(lucide-react@1.75.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@lobehub/icons@6.18.0(lucide-react@1.75.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       es-toolkit: 1.52.0
       lucide-react: 1.75.0(@types/react@19.2.17)(react@19.3.1)

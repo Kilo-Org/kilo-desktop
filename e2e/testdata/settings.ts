@@ -18,6 +18,13 @@ export const SETTINGS_GROUPS = [
 	{ id: "developer", label: "Developer" },
 ] as const;
 
+export const CONDA_ENVIRONMENTS_SECTION: SettingsSection = {
+	id: "environments",
+	title: "Conda Environments",
+	signInGated: true,
+	contentTestId: "environments-page",
+};
+
 /**
  * Every bundled settings section (`kilo.shell/settings-section`), as origin
  * listed them. Diagnostics (kilo.developer) and External AI apps (kilo.core's
@@ -33,12 +40,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	// Behind the LaunchDarkly `environments-feature` flag, which package:e2e does not force on,
 	// so whether the section renders depends on LaunchDarkly. Uncomment once package:e2e
 	// adds the flag to VITE_FEATURE_FLAG_OVERRIDES.
-	// {
-	// 	id: "environments",
-	// 	title: "Conda Environments",
-	// 	signInGated: true,
-	// 	contentTestId: "environments-page",
-	// },
+	// CONDA_ENVIRONMENTS_SECTION,
 	{
 		id: "notebooks",
 		title: "Notebooks",

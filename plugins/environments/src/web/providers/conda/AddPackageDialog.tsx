@@ -17,6 +17,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import type { CondaEnv, CondaPackagesPreviewResult } from "../../../contracts/providers/conda";
 import { useConda, useCondaMutation, useCondaQuery } from "../../conda";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
+import { ChannelPolicyHint } from "./ChannelPolicyHint";
 import {
 	ChangeFilterMenu,
 	DependencyChangeList,
@@ -330,6 +331,10 @@ export function AddPackageDialog({
 									onToggle={channels.toggle}
 								/>
 							</div>
+							<ChannelPolicyHint
+								channels={channels.channelsArg}
+								qaId="environments-conda-add-pkg-policy-hint"
+							/>
 							{channels.status === "failed" ? (
 								<ChannelListFailure
 									reason={channels.error}

@@ -49,6 +49,13 @@ import {
 const REPODATA_FIND_CACHE_TTL_MS = 8 * 60_000;
 
 /**
+ * Read-cache TTL for `channelPolicies`, as long as `findRepodata`'s: policy
+ * assignments change rarely (the bridge caches them for 10 min), and a
+ * write or an Anaconda account change still clears it.
+ */
+const CHANNEL_POLICIES_CACHE_TTL_MS = REPODATA_FIND_CACHE_TTL_MS;
+
+/**
  * Merge the bridge's own `envs_dirs` with dirs derived from discovered conda
  * distributions. The bridge sidecar is its own PyInstaller-bundled
  * installation, so its `envs_dirs` only includes its own payload dir and
@@ -181,6 +188,17 @@ export function createCondaService(options: CondaServiceOptions): CondaService {
 				opName: "channels.resolve",
 				args: { channel },
 				run: (ctx) => backend.resolveChannel(channel, { signal: ctx.signal }),
+			}),
+
+		// Can take seconds (platform lookups): callers never wait on it to show
+		// anything else.
+		channelPolicies: ({ channels }) =>
+			queue.read({
+				providerId: "conda",
+				opName: "channels.policies",
+				args: { channels: channels ?? null },
+				ttlMs: CHANNEL_POLICIES_CACHE_TTL_MS,
+				run: (ctx) => backend.channelPolicies(channels, { signal: ctx.signal }),
 			}),
 
 		prefixOptions: () =>

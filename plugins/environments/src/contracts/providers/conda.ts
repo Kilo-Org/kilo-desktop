@@ -649,6 +649,44 @@ export const condaChannelsResolveResultSchema = z.object({
 });
 export type CondaChannelsResolveResult = z.infer<typeof condaChannelsResolveResultSchema>;
 
+/** Input to `channelPolicies`: the channels to report on; omitted means the configured ones. */
+export const condaChannelPoliciesInputSchema = z.object({
+	channels: z.array(channelSchema).min(1).optional(),
+});
+export type CondaChannelPoliciesInput = z.infer<typeof condaChannelPoliciesInputSchema>;
+
+/**
+ * One repo.anaconda.cloud channel behind a channel, and the organization
+ * package policy assigned to it there. `org` is the organization whose
+ * policy applies (null when it cannot be known, e.g. a shared channel while
+ * signed out); `policyId`/`policyName` are null without a policy;
+ * `lookupFailed` means the organization's policies could not be read, which
+ * says nothing either way.
+ */
+export const condaChannelPolicyEntrySchema = z.object({
+	baseUrl: z.string(),
+	org: z.string().nullable(),
+	policyId: z.string().nullable(),
+	policyName: z.string().nullable(),
+	lookupFailed: z.boolean(),
+});
+export type CondaChannelPolicyEntry = z.infer<typeof condaChannelPolicyEntrySchema>;
+
+/**
+ * Result of `channelPolicies`: per requested (or configured) channel, its
+ * repo.anaconda.cloud channels; `entries` is empty for channels elsewhere.
+ * `channels` is empty when the conda bridge cannot report policies.
+ */
+export const condaChannelPoliciesResultSchema = z.object({
+	channels: z.array(
+		z.object({
+			channel: z.string(),
+			entries: z.array(condaChannelPolicyEntrySchema),
+		}),
+	),
+});
+export type CondaChannelPoliciesResult = z.infer<typeof condaChannelPoliciesResultSchema>;
+
 /* --------------------------------------------------------------------- */
 /* Method I/O — repodata                                                 */
 /* --------------------------------------------------------------------- */

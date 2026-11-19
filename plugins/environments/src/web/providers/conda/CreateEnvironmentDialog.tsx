@@ -37,6 +37,7 @@ import {
 import { useTrack } from "../../app";
 import type { CondaEnv, CondaRepodataFindResult } from "../../../contracts/providers/conda";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
+import { ChannelPolicyHint } from "./ChannelPolicyHint";
 import { configuredChannelsOf, useChannelSelection } from "./use-channel-selection";
 import { validateEnvironmentName } from "./environment-display";
 import { friendlyEnvironmentsError } from "./environments-error-message";
@@ -410,6 +411,10 @@ export function CreateEnvironmentDialog({
 									onToggle={channels.toggle}
 								/>
 							</div>
+							<ChannelPolicyHint
+								channels={channels.channelsArg}
+								qaId="environments-create-policy-hint"
+							/>
 
 							{channels.status === "failed" ? (
 								<ChannelListFailure

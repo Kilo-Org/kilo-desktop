@@ -1,5 +1,6 @@
 import type {
 	Channel,
+	CondaChannelPoliciesResult,
 	CondaChannelsAddInput,
 	CondaChannelsListResult,
 	CondaChannelsResolveResult,
@@ -140,6 +141,15 @@ export interface CondaBackend {
 	removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	/** Resolves a channel with conda's channel model and whether configured channels provide it. */
 	resolveChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsResolveResult>;
+	/**
+	 * The organization package policy each channel (default: the configured
+	 * ones) gets on repo.anaconda.cloud. Bridges without the method report no
+	 * channels.
+	 */
+	channelPolicies(
+		channels: readonly Channel[] | undefined,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelPoliciesResult>;
 
 	/**
 	 * Aggregate available packages from the channel repodata index.

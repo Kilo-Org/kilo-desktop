@@ -70,6 +70,7 @@ const ORIGIN_KEYS: Readonly<Record<string, string>> = {
 	addChannel: "conda.channels.add",
 	removeChannel: "conda.channels.remove",
 	resolveChannel: "conda.channels.resolve",
+	channelPolicies: "conda.channels.policies",
 	findRepodata: "conda.repodata.find",
 	cancelJob: "conda.jobs.cancel",
 };

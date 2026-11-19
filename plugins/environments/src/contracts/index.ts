@@ -5,6 +5,8 @@ import { defineDomainObject, method, type PluginDefinitions } from "@kilo-deskto
 import { cancelInputSchema, cancelResultSchema, jobProgressEventSchema } from "./common";
 import {
 	channelSchema,
+	condaChannelPoliciesInputSchema,
+	condaChannelPoliciesResultSchema,
 	condaChannelsAddInputSchema,
 	condaChannelsListResultSchema,
 	condaChannelsRemoveInputSchema,
@@ -194,6 +196,12 @@ export const Conda = defineDomainObject({
 		removeChannel: method(condaChannelsRemoveInputSchema, condaChannelsListResultSchema),
 		/** Whether the configured channels already provide a channel. Not an agent tool. */
 		resolveChannel: method(condaChannelsResolveInputSchema, condaChannelsResolveResultSchema),
+		/**
+		 * Which organization package policy each channel gets on
+		 * repo.anaconda.cloud, for a "may hide packages" hint; empty from conda
+		 * bridges without it. Never a block claim. Not an agent tool.
+		 */
+		channelPolicies: method(condaChannelPoliciesInputSchema, condaChannelPoliciesResultSchema),
 		findRepodata: method(condaRepodataFindInputSchema, condaRepodataFindResultSchema),
 		cancelJob: method(cancelInputSchema, cancelResultSchema),
 	},

@@ -906,7 +906,7 @@ describe("conda.envs.checkPrefix schemas", () => {
 });
 
 describe("the conda domain object", () => {
-	it("offers every method origin's conda contract had, plus resolveChannel for install links", () => {
+	it("offers every method origin's conda contract had, plus resolveChannel and channelPolicies", () => {
 		expect(new Set(Object.keys(Conda.methods))).toEqual(
 			new Set([
 				"listEnvironments",
@@ -929,6 +929,7 @@ describe("the conda domain object", () => {
 				"addChannel",
 				"removeChannel",
 				"resolveChannel",
+				"channelPolicies",
 				"findRepodata",
 				"cancelJob",
 			]),

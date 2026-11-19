@@ -94,6 +94,7 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 		addChannel: overrides.addChannel ?? notImpl,
 		removeChannel: overrides.removeChannel ?? notImpl,
 		resolveChannel: overrides.resolveChannel ?? notImpl,
+		channelPolicies: overrides.channelPolicies ?? notImpl,
 		findRepodata: overrides.findRepodata ?? notImpl,
 	};
 }
@@ -634,6 +635,49 @@ describe("conda service through the domain object", () => {
 		// Second call within TTL should hit cache
 		await client.listChannels(undefined);
 		expect(listChannels).toHaveBeenCalledOnce();
+
+		queue.dispose();
+		service.dispose();
+	});
+
+	it("reports channel policies, cached per channel set until a write", async () => {
+		const service = await createServiceHost();
+		const queue = new JobQueue({ emit: () => {} });
+		const channelPolicies = vi.fn(async (channels: readonly string[] | undefined) => ({
+			channels: (channels ?? ["defaults"]).map((channel) => ({
+				channel,
+				entries: [
+					{
+						baseUrl: "https://repo.anaconda.cloud/repo/main",
+						org: "acme",
+						policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+						policyName: "No critical CVEs",
+						lookupFailed: false,
+					},
+				],
+			})),
+		}));
+		const addChannel = vi.fn().mockResolvedValue(["defaults", "bioconda"]);
+		await service.register(makeBackend({ channelPolicies, addChannel }), queue);
+		const client = service.client();
+
+		expect(await client.channelPolicies({ channels: ["defaults"] })).toMatchObject({
+			channels: [
+				{ channel: "defaults", entries: [{ org: "acme", policyName: "No critical CVEs" }] },
+			],
+		});
+		await client.channelPolicies({ channels: ["defaults"] });
+		expect(channelPolicies).toHaveBeenCalledOnce();
+
+		await client.channelPolicies({});
+		expect(channelPolicies.mock.calls.map(([channels]) => channels)).toEqual([
+			["defaults"],
+			undefined,
+		]);
+
+		await client.addChannel({ channel: "bioconda" });
+		await client.channelPolicies({ channels: ["defaults"] });
+		expect(channelPolicies).toHaveBeenCalledTimes(3);
 
 		queue.dispose();
 		service.dispose();

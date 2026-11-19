@@ -6,6 +6,8 @@ import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
 import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
+	type CondaChannelPoliciesInput,
+	type CondaChannelPoliciesResult,
 	type CondaEnv,
 	type CondaPackage,
 	type CondaPackagesInstallInput,
@@ -61,6 +63,7 @@ async function renderDialog(
 		onClose?: () => void;
 		anaconda?: EnvironmentsHostOptions["anaconda"];
 		toaster?: boolean;
+		channelPolicies?: (input: CondaChannelPoliciesInput) => Promise<CondaChannelPoliciesResult>;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["2.1.0", "2.0.0"]), pkg("pandas")]);
@@ -84,6 +87,7 @@ async function renderDialog(
 			}),
 			"conda.packages.install": install,
 			"conda.packages.previewInstall": previewInstall,
+			...(options.channelPolicies ? { "conda.channels.policies": options.channelPolicies } : {}),
 		},
 		...(options.anaconda ? { anaconda: options.anaconda } : {}),
 	};
@@ -717,6 +721,77 @@ describe("AddPackageDialog", () => {
 		await host.setAnacondaSession({ status: "authenticated", user: { userId: "user-2" } });
 
 		await vi.waitFor(() => expect(find.mock.calls.length).toBeGreaterThan(searches));
+	});
+
+	describe("the organization package policy hint", () => {
+		const withPolicy = (channel: string) => ({
+			channel,
+			entries: [
+				{
+					baseUrl: "https://repo.anaconda.cloud/repo/main",
+					org: "acme",
+					policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+					policyName: "No critical CVEs",
+					lookupFailed: false,
+				},
+			],
+		});
+
+		it("says a policy may hide packages on the selected channels that have one", async () => {
+			const channelPolicies = vi.fn(async (_input: CondaChannelPoliciesInput) => ({
+				channels: [withPolicy("defaults"), { channel: "conda-forge", entries: [] }],
+			}));
+			const { baseElement } = await renderDialog({ channelPolicies });
+			const screen = page.elementLocator(baseElement);
+
+			await expect
+				.element(screen.getByTestId("environments-conda-add-pkg-policy-hint"))
+				.toHaveTextContent(
+					"Your organization's package policy may hide some packages on Anaconda Main.",
+				);
+			expect(channelPolicies).toHaveBeenCalledWith({ channels: ["defaults", "conda-forge"] });
+			expect(page.getByTestId("environments-channel-chooser").query()).toBeNull();
+		});
+
+		it("never holds the results, and says nothing when no policy could be read", async () => {
+			const pending: ((result: CondaChannelPoliciesResult) => void)[] = [];
+			const channelPolicies = vi.fn(
+				() =>
+					new Promise<CondaChannelPoliciesResult>((resolve) => {
+						pending.push(resolve);
+					}),
+			);
+			const { baseElement, host } = await renderDialog({ channelPolicies });
+			const screen = page.elementLocator(baseElement);
+			const policyLookups = () =>
+				host.queryClient.getQueryCache().findAll({ queryKey: ["environments", "channelPolicies"] });
+
+			await waitForRows(baseElement, 2);
+			await vi.waitFor(() => expect(channelPolicies).toHaveBeenCalled());
+			const unread = {
+				channels: [
+					{
+						channel: "defaults",
+						entries: [
+							{
+								baseUrl: "https://repo.anaconda.cloud/repo/main",
+								org: null,
+								policyId: null,
+								policyName: null,
+								lookupFailed: true,
+							},
+						],
+					},
+				],
+			};
+			for (const resolve of pending) resolve(unread);
+
+			await vi.waitFor(() =>
+				expect(policyLookups().some((query) => query.state.status === "success")).toBe(true),
+			);
+			await waitForRows(baseElement, 2);
+			expect(screen.getByTestId("environments-conda-add-pkg-policy-hint").query()).toBeNull();
+		});
 	});
 
 	describe("package policy and Anaconda sign-in failures", () => {

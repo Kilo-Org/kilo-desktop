@@ -15,6 +15,7 @@ import {
 	type RecordedRequest,
 } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
+import { sendWithCtrlEnter } from "../../test/send-key";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -133,6 +134,41 @@ describe("Enter while the agent works", () => {
 		server.emit("session.idle", { sessionID: "ses_a" });
 		const [prompt] = await promptsTo(server, "ses_a");
 		expect(textOf(prompt!)).toBe("Queued by Enter");
+	});
+});
+
+describe("Ctrl/Cmd+Enter while the agent works, when it sends", () => {
+	it("adds a new line on Enter, queues on Ctrl+Enter, and on an empty composer sends the next queued prompt now", async () => {
+		const server = serverWithChat();
+		const host = await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
+		await sendWithCtrlEnter(host);
+		await expect.element(page.getByText("Done.")).toBeVisible();
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+
+		await input().click();
+		await userEvent.keyboard("Queued{Enter}by Ctrl+Enter");
+		await expect.element(page.getByTestId("kilo-composer-queue-toggle")).not.toBeInTheDocument();
+
+		await userEvent.keyboard("{Control>}{Enter}{/Control}");
+		await expect
+			.poll(() => page.getByTestId("kilo-composer-queue-toggle").element().textContent)
+			.toContain("1 queued");
+
+		await userEvent.keyboard("{Enter}");
+		expect(server.requestsTo("POST", "/session/ses_a/abort")).toHaveLength(0);
+		await userEvent.keyboard("{Backspace}{Control>}{Enter}{/Control}");
+		await vi.waitFor(() =>
+			expect(server.requestsTo("POST", "/session/ses_a/abort")).toHaveLength(1),
+		);
+		server.emit("session.idle", { sessionID: "ses_a" });
+		const [prompt] = await promptsTo(server, "ses_a");
+		expect(textOf(prompt!)).toBe("Queued\nby Ctrl+Enter");
 	});
 });
 

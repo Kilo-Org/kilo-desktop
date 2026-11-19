@@ -25,6 +25,7 @@ import {
 import { agentPane, chatSummary, workSession } from "../../test/chat-host";
 import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
+import { sendWithCtrlEnter } from "../../test/send-key";
 
 // The shell the test host renders sits over the pane (its sidebar rail over
 // the left edge where popups open, its status bar over the footer).
@@ -279,6 +280,18 @@ describe("client slash commands", () => {
 		await userEvent.keyboard("/smol");
 		await userEvent.keyboard("{Enter}");
 		await expect.poll(() => summarizeCalls(host).length).toBe(2);
+	});
+
+	it("compacts for /compact followed by Ctrl+Enter when that sends, and not on Enter", async () => {
+		const host = await renderOnChat();
+		await sendWithCtrlEnter(host);
+		await input().click();
+		await userEvent.keyboard("/compact now");
+		await userEvent.keyboard("{Enter}x");
+		await expect.poll(() => (input().element() as HTMLElement).innerText).toBe("/compact now\nx");
+		expect(summarizeCalls(host)).toEqual([]);
+		await userEvent.keyboard("{Backspace}{Backspace}{Control>}{Enter}{/Control}");
+		await expectOneCompaction(host);
 	});
 
 	it("compacts, sending nothing, when /compact is sent with arguments or the Send button", async () => {

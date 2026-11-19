@@ -687,9 +687,10 @@ export const WAIT = { timeout: 15_000 };
 
 export async function waitForTreePath(relativePath: string): Promise<void> {
 	await vi.waitFor(() => {
+		// Not .not.toBeNull(): the chain is undefined until the shadow root mounts.
 		expect(
 			treeHost()?.shadowRoot?.querySelector(`[data-item-path="${relativePath}"]`),
-		).not.toBeNull();
+		).toBeTruthy();
 	}, WAIT);
 }
 

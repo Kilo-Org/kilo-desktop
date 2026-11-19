@@ -140,12 +140,14 @@ export function implementPaneCommands(sdk: PluginSdk): void {
 
 /**
  * Shows the work session's last pane of `kind` — its window when popped out —
- * or, when it has none, opens one as if picked from "+".
+ * or, when it has none, opens one as a tab of the active group (as from ⌘T)
+ * or in a new group beside it (as from the header "+").
  */
 export async function openOrShowPane(
 	sdk: PluginSdk,
 	workSessionId: string,
 	kind: string,
+	placement: "tab" | "group" = "tab",
 ): Promise<void> {
 	const panes = sdk.domainObjects.get(Panes);
 	if (!panes) return;
@@ -153,7 +155,13 @@ export async function openOrShowPane(
 		(pane) => pane.kind === kind,
 	);
 	if (!existing) {
-		await launchPane(panes, workSessionId, kind, (paneKind) => layoutKindOf(sdk, paneKind));
+		await launchPane(
+			panes,
+			workSessionId,
+			kind,
+			(paneKind) => layoutKindOf(sdk, paneKind),
+			placement === "group" ? { beside: "after" } : undefined,
+		);
 		return;
 	}
 	const windows = sdk.domainObjects.get(KernelWindows);

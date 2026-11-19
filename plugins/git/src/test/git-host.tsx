@@ -156,7 +156,7 @@ export interface GitHostOptions {
 	readonly vcs?: boolean;
 	readonly activeWorkSessionId?: string | null;
 	/** What `WorkSessionsWindow.openPane` does; by default it opens the pane in the open work session. */
-	readonly openPane?: (input: { kind: string }) => void;
+	readonly openPane?: (input: { kind: string; placement?: "tab" | "group" | undefined }) => void;
 	readonly theme?: ThemeState;
 	/** kilo.git's pull requests in main; its methods are recorded. */
 	readonly pullRequests?: Partial<PullRequestsState>;

@@ -16,6 +16,7 @@
 		"kilo.shell/dialog": "optional",
 		"kilo.shell/onboarding-step": "optional",
 		"kilo.shell/settings-section": "optional",
+		"kilo.shell/shortcuts-panel": "optional",
 		"kilo.shell/menu-item": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/notifications": "optional",
@@ -248,6 +249,32 @@
 					"title": "Notifications",
 					"description": "A sound, plus a system notification while Kilo is in the background. “When I'm not looking” skips the session you have open.",
 					"priority": 72
+				}
+			],
+			"kilo.shell/shortcuts-panel": [
+				{
+					"id": "app-navigation",
+					"title": "App Navigation",
+					"commands": [
+						"kilo.work-sessions/pane-1",
+						"kilo.work-sessions/pane-2",
+						"kilo.work-sessions/pane-3",
+						"kilo.work-sessions/pane-4",
+						"kilo.work-sessions/pane-5",
+						"kilo.work-sessions/pane-6",
+						"kilo.work-sessions/pane-7",
+						"kilo.work-sessions/pane-8",
+						"kilo.work-sessions/pane-last",
+						"kilo.work-sessions/work-session-1",
+						"kilo.work-sessions/work-session-2",
+						"kilo.work-sessions/work-session-3",
+						"kilo.work-sessions/work-session-4",
+						"kilo.work-sessions/work-session-5",
+						"kilo.work-sessions/work-session-6",
+						"kilo.work-sessions/work-session-7",
+						"kilo.work-sessions/work-session-8",
+						"kilo.work-sessions/work-session-last"
+					]
 				}
 			],
 			"kilo.shell/menu-item": [

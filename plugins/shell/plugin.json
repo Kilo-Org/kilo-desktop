@@ -74,6 +74,11 @@
 			"description": "An AI provider's panel in Settings → AI Providers."
 		},
 		{
+			"id": "shortcuts-panel",
+			"kind": "additive",
+			"description": "A panel of shortcuts in Settings → Shortcuts."
+		},
+		{
 			"id": "account-panel",
 			"kind": "additive",
 			"description": "An account in Settings → Account."

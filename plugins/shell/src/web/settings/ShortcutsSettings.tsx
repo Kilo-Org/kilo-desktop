@@ -11,23 +11,16 @@ import {
 } from "@kilo-desktop/kernel";
 import { useKernel } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
-import {
-	FieldContent,
-	FieldDescription,
-	FieldLegend,
-	FieldSet,
-} from "@kilo-desktop/ui/components/field";
+import { FieldContent, FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
+import { SHORTCUT_CHIP, ShortcutLabels } from "@kilo-desktop/ui/components/shortcut-chip";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
-import {
-	chordLabels,
-	keysLabel,
-	SHORTCUT_CHIP,
-	ShortcutLabels,
-} from "../shared/shortcuts/ShortcutKeys";
+import { ShortcutsPanels } from "./ShortcutsPanels";
+import { useClaimedCommands } from "../shared/shortcuts/shortcuts-panels";
+import { chordLabels, keysLabel } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 
 /**
@@ -136,7 +129,6 @@ function ShortcutField({
 
 /** Settings → Shortcuts: every command with a shortcut, grouped, each one changeable. */
 export function ShortcutsSettings() {
-	const kernel = useKernel();
 	const { commands, overrides, resolution, keybindings, platform } = useShortcuts();
 	const titles = new Map<string, string>(
 		commands.map((command) => [command.key, command.metadata.title]),
@@ -146,7 +138,8 @@ export function ShortcutsSettings() {
 		const [winner, ...losers] = contenders;
 		for (const loser of losers) takenBy.set(loser, titles.get(winner!) ?? winner!);
 	}
-	const groups = groupShortcutCommands(commands);
+	const claimed = useClaimedCommands();
+	const groups = groupShortcutCommands(commands.filter((command) => !claimed.has(command.key)));
 	const hasOverrides = Object.keys(overrides).length > 0;
 
 	return (
@@ -165,117 +158,96 @@ export function ShortcutsSettings() {
 					</Button>
 				}
 			/>
-			<FieldSet className="min-w-0" aria-labelledby="all-shortcuts-heading">
-				<FieldContent>
-					<FieldLegend id="all-shortcuts-heading" variant="label" className="mb-0">
-						All shortcuts
-					</FieldLegend>
-					<FieldDescription>
-						To change a shortcut, select it and press the new keys (Esc cancels). To turn one off,
-						hover it and select ×. Shortcuts you can’t change, like Enter to send, are in the{" "}
-						{/* Styled like FieldDescription's own links, which only targets <a>. */}
-						<button
-							type="button"
-							className="hover:text-primary-ink underline underline-offset-4"
-							data-qa-id="keyboard-shortcuts-show-all"
-							onClick={() => void kernel.commands.execute("kilo.shell/show-shortcuts")}
-						>
-							full list
-						</button>
-						.
-					</FieldDescription>
-				</FieldContent>
-				<div className="flex min-w-0 flex-col gap-6">
-					{groups.map((group) => (
-						<FieldSet
-							key={group.name}
-							aria-labelledby={`shortcut-group-${group.name}`}
-							className="min-w-0"
-						>
-							<FieldContent>
-								<FieldLegend id={`shortcut-group-${group.name}`} variant="label" className="mb-0">
-									{group.name}
-								</FieldLegend>
-							</FieldContent>
-							<ul className="border-border bg-card divide-border divide-y overflow-hidden rounded-lg border">
-								{group.commands.map((command) => {
-									const overridden = command.key in overrides;
-									const enabled = overrides[command.key] !== null;
-									const chords = resolution.byCommand[command.key] ?? [];
-									const conflict = takenBy.get(command.key);
-									const label = command.metadata.title;
-									return (
-										// The row sets border-0, so the li carries the list's divider.
-										<li key={command.key} data-qa-id={`shortcut-row-${command.key}`}>
-											<SummaryCard.Row>
-												<SummaryCard.Content>
-													<SummaryCard.Title
-														className={cn("truncate", !enabled && "text-muted-foreground")}
+			<ShortcutsPanels />
+			<div className="flex min-w-0 flex-col gap-6">
+				{groups.map((group) => (
+					<FieldSet
+						key={group.name}
+						aria-labelledby={`shortcut-group-${group.name}`}
+						className="min-w-0"
+					>
+						<FieldContent>
+							<FieldLegend id={`shortcut-group-${group.name}`} variant="label" className="mb-0">
+								{group.name}
+							</FieldLegend>
+						</FieldContent>
+						<ul className="border-border bg-card divide-border divide-y overflow-hidden rounded-lg border">
+							{group.commands.map((command) => {
+								const overridden = command.key in overrides;
+								const enabled = overrides[command.key] !== null;
+								const chords = resolution.byCommand[command.key] ?? [];
+								const conflict = takenBy.get(command.key);
+								const label = command.metadata.title;
+								return (
+									// The row sets border-0, so the li carries the list's divider.
+									<li key={command.key} data-qa-id={`shortcut-row-${command.key}`}>
+										<SummaryCard.Row>
+											<SummaryCard.Content>
+												<SummaryCard.Title
+													className={cn("truncate", !enabled && "text-muted-foreground")}
+												>
+													{label}
+												</SummaryCard.Title>
+												{conflict && enabled ? (
+													<SummaryCard.Description
+														className="text-warning"
+														data-qa-id={`shortcut-conflict-${command.key}`}
 													>
-														{label}
-													</SummaryCard.Title>
-													{conflict && enabled ? (
-														<SummaryCard.Description
-															className="text-warning"
-															data-qa-id={`shortcut-conflict-${command.key}`}
-														>
-															Its shortcut is used by “{conflict}”.
-														</SummaryCard.Description>
-													) : null}
-												</SummaryCard.Content>
-												<SummaryCard.Actions className="gap-1">
-													{command.metadata.handledLocally ? (
-														<span
-															className={cn(SHORTCUT_CHIP, "px-2.5")}
-															data-qa-id={`shortcut-fixed-${command.key}`}
-														>
-															<ShortcutLabels labels={chordLabels(chords, platform)} />
-														</span>
-													) : (
-														<ShortcutField
-															commandKey={command.key}
-															label={label}
-															chords={enabled ? chords : []}
-															platform={platform}
-															onRecord={(chord) =>
-																void keybindings?.methods.setOverride({
-																	command: command.key,
-																	chord,
-																})
-															}
-															onTurnOff={() =>
-																void keybindings?.methods.setOverride({
-																	command: command.key,
-																	chord: null,
-																})
-															}
-														/>
-													)}
-													<span className="flex size-6 shrink-0 items-center justify-center">
-														{overridden ? (
-															<Button
-																variant="ghost"
-																size="icon-xs"
-																aria-label={`Reset ${label}`}
-																data-qa-id={`shortcut-reset-${command.key}`}
-																onClick={() =>
-																	void keybindings?.methods.reset({ command: command.key })
-																}
-															>
-																<RotateCcwIcon aria-hidden />
-															</Button>
-														) : null}
+														Its shortcut is used by “{conflict}”.
+													</SummaryCard.Description>
+												) : null}
+											</SummaryCard.Content>
+											<SummaryCard.Actions className="gap-1">
+												{/* Before the chip, so every chip lines up at the row's edge. */}
+												{overridden ? (
+													<Button
+														variant="ghost"
+														size="icon-xs"
+														aria-label={`Reset ${label}`}
+														data-qa-id={`shortcut-reset-${command.key}`}
+														onClick={() =>
+															void keybindings?.methods.reset({ command: command.key })
+														}
+													>
+														<RotateCcwIcon aria-hidden />
+													</Button>
+												) : null}
+												{command.metadata.handledLocally ? (
+													<span
+														className={cn(SHORTCUT_CHIP, "px-2.5")}
+														data-qa-id={`shortcut-fixed-${command.key}`}
+													>
+														<ShortcutLabels labels={chordLabels(chords, platform)} />
 													</span>
-												</SummaryCard.Actions>
-											</SummaryCard.Row>
-										</li>
-									);
-								})}
-							</ul>
-						</FieldSet>
-					))}
-				</div>
-			</FieldSet>
+												) : (
+													<ShortcutField
+														commandKey={command.key}
+														label={label}
+														chords={enabled ? chords : []}
+														platform={platform}
+														onRecord={(chord) =>
+															void keybindings?.methods.setOverride({
+																command: command.key,
+																chord,
+															})
+														}
+														onTurnOff={() =>
+															void keybindings?.methods.setOverride({
+																command: command.key,
+																chord: null,
+															})
+														}
+													/>
+												)}
+											</SummaryCard.Actions>
+										</SummaryCard.Row>
+									</li>
+								);
+							})}
+						</ul>
+					</FieldSet>
+				))}
+			</div>
 		</div>
 	);
 }

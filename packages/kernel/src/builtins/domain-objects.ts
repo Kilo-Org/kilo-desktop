@@ -257,6 +257,14 @@ export const KernelKeybindings = defineDomainObject({
 	methods: {
 		setOverride: method(z.object({ command: z.string(), chord: z.string().nullable() }), nothing),
 		reset: method(z.object({ command: z.string() }), nothing),
+		/** Several overrides set and reset as one change, so no half-applied state is ever seen. */
+		update: method(
+			z.object({
+				set: z.record(z.string(), z.string().nullable()),
+				reset: z.array(z.string()),
+			}),
+			nothing,
+		),
 		resetAll: method(nothing, nothing),
 	},
 });

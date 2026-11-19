@@ -63,6 +63,10 @@ work session, its focus — kilo.work-sessions' `next-work-session`,
   shares the chord and wins while its condition holds — that is how a
   focused pane gets ⌘K without fighting the app.
 - Shortcuts work in every window, including pop-outs.
+- Shortcuts you edit as a group (kilo.work-sessions' ⌘1–9 tab numbers) get
+  a `kilo.shell/shortcuts-panel`: list the commands it claims in its
+  metadata, draw the panel, and return its rows for the ⌘/ list from
+  `listRows`. Settings then leaves those commands out of its list.
 
 ## `when`
 

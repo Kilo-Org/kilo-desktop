@@ -185,7 +185,18 @@ function BootFailure({
 
 /** Main captures keys on every WebContents (including webviews) and reports matches. */
 function routeShortcutsFromMain(kernel: RendererKernel, bridge: KernelBridge): void {
-	const sync = () => bridge.send(KEYBOARD_SYNC_CHANNEL, { chords: kernel.keyboard.chords() });
+	let last = "";
+	// Context keys change on every focus move; send only when the table did.
+	const sync = () => {
+		const payload = {
+			bindings: kernel.keyboard.bindings(),
+			recording: kernel.keyboard.isRecording(),
+		};
+		const serialized = JSON.stringify(payload);
+		if (serialized === last) return;
+		last = serialized;
+		bridge.send(KEYBOARD_SYNC_CHANNEL, payload);
+	};
 	sync();
 	kernel.keyboard.subscribe(sync);
 	bridge.onShortcut((chord) => dispatchUnlessModal(kernel, chord));
@@ -198,8 +209,10 @@ function routeShortcutsFromWindow(kernel: RendererKernel): void {
 			const chord = chordFromKeyboardEvent(event);
 			if (!chord) return;
 			const serialized = serializeChord(chord);
-			if (!kernel.keyboard.chords().includes(serialized)) return;
+			const binding = kernel.keyboard.bindings().find((entry) => entry.chord === serialized);
+			if (!binding) return;
 			event.preventDefault();
+			if (event.repeat && !binding.repeatable) return;
 			dispatchUnlessModal(kernel, serialized);
 		},
 		{ capture: true },

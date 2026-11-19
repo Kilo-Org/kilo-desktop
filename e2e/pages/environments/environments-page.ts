@@ -34,10 +34,15 @@ export class EnvironmentsPage {
 	private readonly emptyList = () => getLocatorByTestId("environments-conda-empty");
 	private readonly loadError = () => getLocatorByTestId("environments-conda-error");
 	private readonly rows = () => this.list().getByTestId("environments-conda-row");
-	private readonly row = (name: string) =>
-		this.rows().filter({ has: getLocatorByText(name, { exact: true }) });
-	private readonly rowPrefix = (name: string) =>
-		this.row(name).getByTestId("environments-conda-prefix");
+	// Rows are found by prefix: a host environment may share the seeded name, never its sandbox path.
+	private readonly rowAt = (prefix: string) =>
+		this.rows().filter({
+			has: getLocatorByTestId("environments-conda-prefix").and(
+				getLocatorByText(prefix, { exact: true }),
+			),
+		});
+	private readonly rowName = (prefix: string) =>
+		this.rowAt(prefix).getByTestId("environments-conda-name");
 	private readonly searchInput = () => getLocatorByTestId("environments-search-input");
 	private readonly sortMenu = () => getLocatorByTestId("environments-sort-menu");
 	private readonly newMenu = () => getLocatorByTestId("environments-new-menu");
@@ -107,9 +112,13 @@ export class EnvironmentsPage {
 	}
 
 	async verifyEnvironmentListed(name: string): Promise<void> {
-		await expectElementToBeVisible(this.row(name), `"${name}" should be listed`);
-		await expectElementToHaveText(this.rowPrefix(name), path.join(this.sandbox.envsDir, name), {
-			message: `"${name}" should show its location under the sandbox's envs directory`,
+		const prefix = path.join(this.sandbox.envsDir, name);
+		await expectElementToBeVisible(
+			this.rowAt(prefix),
+			`The sandbox environment at "${prefix}" should be listed`,
+		);
+		await expectElementToHaveText(this.rowName(prefix), name, {
+			message: `The environment at "${prefix}" should be named "${name}"`,
 		});
 	}
 }

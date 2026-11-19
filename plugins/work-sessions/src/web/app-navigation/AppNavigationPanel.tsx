@@ -1,25 +1,26 @@
 import { useState, type ReactNode } from "react";
 
-import type { KeyboardPlatform } from "@kilo-desktop/kernel";
+import { KernelKeybindings, type KeyboardPlatform } from "@kilo-desktop/kernel";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
+import { ShortcutChip } from "@kilo-desktop/ui/components/shortcut-chip";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { keysLabel, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
-import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 import {
+	keysLabel,
 	modifierKeys,
 	planModifierChange,
 	planTurnOn,
+	seriesRangeLabel,
 	type NumberKeySeries,
 	type OverridePlan,
-	seriesRangeLabel,
 	type SeriesModifier,
-	useNumberKeySeries,
-} from "./number-keys";
+} from "./number-sets";
+import { useNumberKeySeries } from "./use-number-sets";
 
 interface ModifierOption {
 	readonly value: SeriesModifier;
@@ -48,10 +49,6 @@ function keyPrefix(modifier: NumberKeySeries["current"], platform: KeyboardPlatf
 }
 
 type PreviewKind = "tabs" | "sessions";
-
-function previewKind(category: string): PreviewKind {
-	return category === "Sessions" ? "sessions" : "tabs";
-}
 
 const ACTIVE_ITEM = "bg-foreground/[0.06]";
 const PLACEHOLDER_TEXT = "bg-muted-foreground/25 h-1.5 rounded-full";
@@ -190,7 +187,7 @@ function NumberKeysPreview({
 	);
 }
 
-const qaId = (series: NumberKeySeries) => series.category.toLowerCase();
+const qaId = (series: NumberKeySeries) => series.definition.id;
 
 function SeriesSummary({
 	series,
@@ -203,7 +200,7 @@ function SeriesSummary({
 	const label = seriesRangeLabel(series, platform);
 	return (
 		<li className="flex items-center gap-2" data-qa-id={`number-keys-summary-${qaId(series)}`}>
-			<span className="text-muted-foreground text-sm">{series.category}</span>
+			<span className="text-muted-foreground text-sm">{series.definition.title}</span>
 			{label ? (
 				<ShortcutChip labels={[label]} />
 			) : (
@@ -229,7 +226,7 @@ function ModifierSegments({
 	const picked = value === "none" || value === "custom" ? [] : [value];
 	return (
 		<ToggleGroup
-			aria-label={`Modifier for ${series.category} 1–9`}
+			aria-label={`Modifier for ${series.definition.title} 1–9`}
 			value={picked}
 			disabled={value === "none"}
 			// A single-select group still lets the pressed item unpress; a series always has a modifier.
@@ -260,10 +257,10 @@ function ModifierSegments({
  * (⌘ for tabs, ⌃ for sessions). A pick rewrites the series' per-slot
  * overrides, so the chips, the list below and the ⌘/ list follow it.
  */
-export function NumberKeysSettings() {
-	const { overrides, keybindings, platform } = useShortcuts();
+export function AppNavigationPanel() {
+	const keybindings = useDomainObject(KernelKeybindings);
 	const [expanded, setExpanded] = useState(false);
-	const series = useNumberKeySeries();
+	const { series, overrides, platform } = useNumberKeySeries();
 	if (series.length === 0) return null;
 	const customized = series.some((entry) =>
 		[...entry.digits.keys()].some((key) => key in overrides),
@@ -283,8 +280,8 @@ export function NumberKeysSettings() {
 	const toggle = (entry: NumberKeySeries, on: boolean) =>
 		apply(
 			on
-				? planTurnOn(series, entry.category, choices)
-				: planModifierChange(series, entry.category, "none", choices),
+				? planTurnOn(series, entry.definition.id, choices)
+				: planModifierChange(series, entry.definition.id, "none", choices),
 		);
 	const restoreDefaults = () =>
 		apply(
@@ -322,7 +319,7 @@ export function NumberKeysSettings() {
 					) : (
 						<ul className="flex items-center gap-4" data-qa-id="number-keys-summary">
 							{series.map((entry) => (
-								<SeriesSummary key={entry.category} series={entry} platform={platform} />
+								<SeriesSummary key={entry.definition.id} series={entry} platform={platform} />
 							))}
 						</ul>
 					)}
@@ -339,24 +336,24 @@ export function NumberKeysSettings() {
 						const titleId = `number-keys-${qaId(entry)}-title`;
 						return (
 							<section
-								key={entry.category}
+								key={entry.definition.id}
 								aria-labelledby={titleId}
 								className="bg-muted/40 flex min-w-0 flex-col gap-3 rounded-lg p-3"
 								data-qa-id={`number-keys-card-${qaId(entry)}`}
 							>
 								<label className="-m-1 flex cursor-pointer items-center justify-between gap-3 p-1">
 									<span id={titleId} className="text-sm font-medium">
-										{entry.category}
+										{entry.definition.title}
 									</span>
 									<Switch
 										checked={entry.current !== "none"}
 										onCheckedChange={(on) => toggle(entry, on)}
-										aria-label={`Enable ${entry.category} 1–9`}
+										aria-label={`Enable ${entry.definition.title} 1–9`}
 										data-qa-id={`number-keys-toggle-${qaId(entry)}`}
 									/>
 								</label>
 								<NumberKeysPreview
-									kind={previewKind(entry.category)}
+									kind={entry.definition.id === "sessions" ? "sessions" : "tabs"}
 									prefix={keyPrefix(entry.current, platform)}
 									sizes={SIZES[platform === "mac" ? "mac" : "pc"]}
 								/>
@@ -364,7 +361,7 @@ export function NumberKeysSettings() {
 									series={entry}
 									platform={platform}
 									onChange={(modifier) =>
-										apply(planModifierChange(series, entry.category, modifier, choices))
+										apply(planModifierChange(series, entry.definition.id, modifier, choices))
 									}
 								/>
 							</section>

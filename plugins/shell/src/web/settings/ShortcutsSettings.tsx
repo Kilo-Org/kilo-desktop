@@ -13,18 +13,14 @@ import { useKernel } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { FieldContent, FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
+import { SHORTCUT_CHIP, ShortcutLabels } from "@kilo-desktop/ui/components/shortcut-chip";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
-import { NumberKeysSettings } from "./NumberKeysSettings";
-import { useNumberKeySeries } from "./number-keys";
-import {
-	chordLabels,
-	keysLabel,
-	SHORTCUT_CHIP,
-	ShortcutLabels,
-} from "../shared/shortcuts/ShortcutKeys";
+import { ShortcutsPanels } from "./ShortcutsPanels";
+import { useClaimedCommands } from "../shared/shortcuts/shortcuts-panels";
+import { chordLabels, keysLabel } from "../shared/shortcuts/ShortcutKeys";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 
 /**
@@ -142,9 +138,8 @@ export function ShortcutsSettings() {
 		const [winner, ...losers] = contenders;
 		for (const loser of losers) takenBy.set(loser, titles.get(winner!) ?? winner!);
 	}
-	// App Navigation edits the 1–9 series as a whole, so their slots aren't listed one by one.
-	const inSeries = new Set(useNumberKeySeries().flatMap((series) => [...series.digits.keys()]));
-	const groups = groupShortcutCommands(commands.filter((command) => !inSeries.has(command.key)));
+	const claimed = useClaimedCommands();
+	const groups = groupShortcutCommands(commands.filter((command) => !claimed.has(command.key)));
 	const hasOverrides = Object.keys(overrides).length > 0;
 
 	return (
@@ -163,7 +158,7 @@ export function ShortcutsSettings() {
 					</Button>
 				}
 			/>
-			<NumberKeysSettings />
+			<ShortcutsPanels />
 			<div className="flex min-w-0 flex-col gap-6">
 				{groups.map((group) => (
 					<FieldSet

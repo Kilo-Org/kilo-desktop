@@ -1,6 +1,3 @@
-import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
-import { keysLabel } from "../shared/shortcuts/ShortcutKeys";
-import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
 import {
 	defaultChords,
 	formatChord,
@@ -10,16 +7,41 @@ import {
 	type KeyboardPlatform,
 	type KeyChord,
 } from "@kilo-desktop/kernel";
+import type { ShortcutsListRow } from "@kilo-desktop/plugin-shell/contracts";
+
+import { WORK_SESSIONS_PLUGIN_ID } from "../../contracts";
+import { NUMBERED_SLOTS } from "../shared/numbered";
 
 export type SeriesModifier = "meta" | "ctrl" | "alt";
 
-/**
- * A category's "go to item 1–9" commands, whose defaults share one modifier
- * (⌘1–9 for tabs). `current` is "custom" once a slot was rebound by hand.
- */
+/** A "go to item 1–9" set App Navigation edits as one: its commands in slot order. */
+export interface NumberSetDefinition {
+	readonly id: string;
+	readonly title: string;
+	/** The set's one row in the ⌘/ list. */
+	readonly listTitle: string;
+	readonly commands: readonly string[];
+}
+
+const slotCommands = (series: "pane" | "work-session") =>
+	NUMBERED_SLOTS.map(
+		(slot) => `${WORK_SESSIONS_PLUGIN_ID}/${series}-${slot === 9 ? "last" : slot}`,
+	);
+
+export const NUMBER_SETS: readonly NumberSetDefinition[] = [
+	{ id: "tabs", title: "Tabs", listTitle: "Go to tab 1–9", commands: slotCommands("pane") },
+	{
+		id: "sessions",
+		title: "Sessions",
+		listTitle: "Go to session 1–9",
+		commands: slotCommands("work-session"),
+	},
+];
+
+/** A set as the user has it now. `current` is "custom" once a slot was rebound by hand. */
 export interface NumberKeySeries {
-	readonly category: string;
-	/** Command key → the digit key it jumps with (`Digit1`…`Digit9`). */
+	readonly definition: NumberSetDefinition;
+	/** Command key → the digit key it jumps with by default (`Digit1`…`Digit9`). */
 	readonly digits: ReadonlyMap<string, string>;
 	readonly defaultModifier: SeriesModifier;
 	readonly current: SeriesModifier | "none" | "custom";
@@ -67,31 +89,37 @@ function slotState(
 	};
 }
 
+/**
+ * Each set's state on this platform. A slot whose default isn't one modifier
+ * plus a digit has no key to keep, so it takes no part; a set left with
+ * fewer than two slots, or whose slots disagree on the default modifier, is
+ * dropped.
+ */
 export function collectNumberKeySeries(
+	sets: readonly NumberSetDefinition[],
 	commands: readonly KeybindingCommand[],
 	overrides: OverridePlan,
 	platform: KeyboardPlatform,
 ): NumberKeySeries[] {
-	const found = new Map<string, { modifier: SeriesModifier; digits: Map<string, string> }>();
-	for (const command of commands) {
-		const category = (command.metadata as { category?: string }).category;
-		const chords = defaultChords(command, platform);
-		const chord = chords.length === 1 ? parseChord(chords[0]!) : null;
-		const modifier = digitModifier(chord);
-		if (!category || !modifier || !chord) continue;
-		const series = found.get(category) ?? { modifier, digits: new Map() };
-		if (series.modifier !== modifier) continue;
-		series.digits.set(command.key, chord.code);
-		found.set(category, series);
-	}
-	return [...found]
-		.filter(([, { digits }]) => digits.size > 1)
-		.map(([category, { modifier, digits }]) => ({
-			category,
-			digits,
-			defaultModifier: modifier,
-			...slotState(digits, overrides, modifier),
-		}));
+	const byKey = new Map(commands.map((command) => [command.key, command]));
+	return sets.flatMap((definition) => {
+		const digits = new Map<string, string>();
+		const modifiers = new Set<SeriesModifier>();
+		for (const key of definition.commands) {
+			const command = byKey.get(key);
+			const chords = command ? defaultChords(command, platform) : [];
+			const chord = chords.length === 1 ? parseChord(chords[0]!) : null;
+			const modifier = digitModifier(chord);
+			if (!modifier || !chord) continue;
+			modifiers.add(modifier);
+			digits.set(key, chord.code);
+		}
+		if (digits.size < 2 || modifiers.size !== 1) return [];
+		const defaultModifier = [...modifiers][0]!;
+		return [
+			{ definition, digits, defaultModifier, ...slotState(digits, overrides, defaultModifier) },
+		];
+	});
 }
 
 function overridesFor(series: NumberKeySeries, modifier: SeriesModifier | "none"): OverridePlan {
@@ -115,11 +143,11 @@ function overridesFor(series: NumberKeySeries, modifier: SeriesModifier | "none"
  */
 export function planModifierChange(
 	all: readonly NumberKeySeries[],
-	category: string,
+	setId: string,
 	modifier: SeriesModifier | "none",
 	choices: readonly SeriesModifier[],
 ): OverridePlan {
-	const target = all.find((series) => series.category === category);
+	const target = all.find((series) => series.definition.id === setId);
 	if (!target) return {};
 	const plan = { ...overridesFor(target, modifier) };
 	if (modifier === "none") return plan;
@@ -141,10 +169,10 @@ export function planModifierChange(
 /** The default modifier when free, else the first free choice. */
 export function planTurnOn(
 	all: readonly NumberKeySeries[],
-	category: string,
+	setId: string,
 	choices: readonly SeriesModifier[],
 ): OverridePlan {
-	const target = all.find((series) => series.category === category);
+	const target = all.find((series) => series.definition.id === setId);
 	if (!target) return {};
 	const taken = new Set(
 		all.filter((series) => series !== target).flatMap((series) => [...series.held]),
@@ -152,7 +180,12 @@ export function planTurnOn(
 	const modifier =
 		[target.defaultModifier, ...choices].find((candidate) => !taken.has(candidate)) ??
 		target.defaultModifier;
-	return planModifierChange(all, category, modifier, choices);
+	return planModifierChange(all, setId, modifier, choices);
+}
+
+/** Keys written as one label: "⌘1" on macOS, "Ctrl+1" elsewhere. */
+export function keysLabel(keys: readonly string[], platform: KeyboardPlatform): string {
+	return keys.join(platform === "mac" ? "" : "+");
 }
 
 /** A modifier's keys as shown ("⌘", or "Ctrl" elsewhere). */
@@ -170,18 +203,26 @@ export function seriesRangeLabel(
 	return `${keysLabel([...modifierKeys(modifier, platform), "1"], platform)}–9`;
 }
 
-/** The 1–9 series, in the list's group order so Tabs comes before Sessions. */
-export function useNumberKeySeries(): NumberKeySeries[] {
-	const { commands, overrides, platform } = useShortcuts();
-	return collectNumberKeySeries(
-		groupShortcutCommands(commands)
-			.flatMap((group) => group.commands)
-			.map((command) => ({
-				key: command.key,
-				scoped: command.when !== undefined,
-				metadata: command.metadata,
-			})),
-		overrides,
-		platform,
-	);
+/**
+ * The ⌘/ list's rows: one per set on one modifier. An off set lists nothing
+ * and a custom one gets no row, so the list shows its slots one by one.
+ */
+export function listRows(
+	series: readonly NumberKeySeries[],
+	titles: ReadonlyMap<string, string>,
+	platform: KeyboardPlatform,
+): ShortcutsListRow[] {
+	return series.flatMap((entry) => {
+		const label = seriesRangeLabel(entry, platform);
+		if (!label) return [];
+		const commands = [...entry.digits.keys()];
+		return [
+			{
+				title: entry.definition.listTitle,
+				labels: [label],
+				commands,
+				searchText: commands.map((key) => titles.get(key) ?? "").join(" "),
+			},
+		];
+	});
 }

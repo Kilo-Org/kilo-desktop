@@ -3,6 +3,7 @@ import { useRef, useState, type Ref } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { Button } from "@kilo-desktop/ui/components/button";
+import { ShortcutChip } from "@kilo-desktop/ui/components/shortcut-chip";
 import {
 	Dialog,
 	DialogContent,
@@ -19,9 +20,9 @@ import {
 
 import { useShortcutsOpen } from "./ui-state";
 import { groupShortcutCommands } from "../shared/shortcuts/shortcut-groups";
-import { chordLabels, ShortcutChip } from "../shared/shortcuts/ShortcutKeys";
+import { chordLabels } from "../shared/shortcuts/ShortcutKeys";
+import { usePanelListRows } from "../shared/shortcuts/shortcuts-panels";
 import { useShortcuts } from "../shared/shortcuts/use-shortcuts";
-import { seriesRangeLabel, useNumberKeySeries } from "../settings/number-keys";
 
 /** The keyboard cheat sheet (⌘/): every bound shortcut, searchable. */
 export function KeyboardShortcutsDialog() {
@@ -60,47 +61,39 @@ export function KeyboardShortcutsDialog() {
 	);
 }
 
+interface ListRow {
+	readonly key: string;
+	readonly title: string;
+	readonly searchText: string;
+	readonly labels: readonly string[];
+}
+
 /** Mounted only while the dialog is open, so the search starts empty however it was closed. */
 function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInputElement> }) {
 	const [query, setQuery] = useState("");
-	const { commands, resolution, platform } = useShortcuts();
-	// A 1–9 set on one modifier reads as one row ("Go to tab 1–9"); a custom set keeps its rows.
-	const series = useNumberKeySeries().filter((entry) => entry.current !== "custom");
-	const seriesByFirst = new Map(series.map((entry) => [[...entry.digits.keys()][0], entry]));
-	const inSeries = new Set(series.flatMap((entry) => [...entry.digits.keys()]));
-	const titles = new Map<string, string>(
-		commands.map((command) => [command.key, command.metadata.title]),
-	);
+	const { commands, overrides, resolution, platform } = useShortcuts();
+	// A panel's row (App Navigation's "Go to tab 1–9") stands in for the commands it covers.
+	const panelRows = usePanelListRows(overrides);
 	const groups = groupShortcutCommands(commands)
 		.map((group) => ({
 			name: group.name,
-			rows: group.commands.flatMap((command) => {
-				const entry = seriesByFirst.get(command.key);
-				if (entry) {
-					const label = seriesRangeLabel(entry, platform);
-					const members = [...entry.digits.keys()].map((key) => titles.get(key) ?? "");
-					return label
+			rows: group.commands.flatMap((command): ListRow[] => {
+				const panelRow = panelRows.get(command.key);
+				if (panelRow) {
+					return panelRow.commands[0] === command.key
 						? [
 								{
 									key: command.key,
-									title: command.metadata.title.replace(/ 1$/, " 1–9"),
-									searchText: members.join(" "),
-									labels: [label],
+									title: panelRow.title,
+									searchText: panelRow.searchText ?? "",
+									labels: panelRow.labels,
 								},
 							]
 						: [];
 				}
-				if (inSeries.has(command.key)) return [];
 				const labels = chordLabels(resolution.byCommand[command.key] ?? [], platform);
 				return labels.length > 0
-					? [
-							{
-								key: command.key,
-								title: command.metadata.title,
-								searchText: command.metadata.title,
-								labels,
-							},
-						]
+					? [{ key: command.key, title: command.metadata.title, searchText: "", labels }]
 					: [];
 			}),
 		}))

@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { KernelCommand } from "@kilo-desktop/kernel";
 
+import { ShortcutsPanel, type ShortcutsListRow } from "../../contracts";
 import { contributor, renderShell } from "../../testing";
 
 function commandPlugin(run = vi.fn()) {
@@ -58,33 +59,50 @@ describe("command palette toggling", () => {
 });
 
 describe("keyboard shortcuts list", () => {
-	it("lists each 1–9 set as one row with its key range", async () => {
-		const numbered = contributor(
-			"acme.nav",
+	it("shows a shortcuts panel's rows for its commands, and one row each for the rest", async () => {
+		const ids = ["one", "two", "three"];
+		const rows = vi.fn((): ShortcutsListRow[] => [
 			{
-				"kernel/command": [1, 2, 9].map((digit) => ({
-					id: `tab-${digit}`,
-					title: digit === 9 ? "Go to last tab" : `Go to tab ${digit}`,
-					category: "Tabs",
-					order: digit,
-					keybinding: `Mod+${digit}`,
+				title: "Jump to one or two",
+				labels: ["⌥J"],
+				commands: ["acme.panel/one", "acme.panel/two"],
+				searchText: "second",
+			},
+		]);
+		const panel = contributor(
+			"acme.panel",
+			{
+				"kernel/command": ids.map((id, index) => ({
+					id,
+					title: `Jump ${id}`,
+					category: "Jumps",
+					order: index,
+					keybinding: `Mod+Alt+${index + 1}`,
 				})),
+				"kilo.shell/shortcuts-panel": [
+					{ id: "jumps", title: "Jumps", commands: ids.map((id) => `acme.panel/${id}`) },
+				],
 			},
 			(sdk) => {
-				for (const digit of [1, 2, 9])
-					sdk.extensions.implement(KernelCommand, `tab-${digit}`, () => {});
+				for (const id of ids) sdk.extensions.implement(KernelCommand, id, () => {});
+				sdk.extensions.implement(ShortcutsPanel, "jumps", {
+					component: () => null,
+					listRows: rows,
+				});
 			},
 		);
-		const { renderer } = await renderShell([numbered]);
+		const { renderer } = await renderShell([panel]);
 		void renderer.commands.execute("kilo.shell/show-shortcuts");
 
-		const row = page.getByTestId("keyboard-shortcut-acme.nav/tab-1");
-		await expect.element(row.getByText("Go to tab 1–9")).toBeVisible();
-		await expect.element(row.getByText("⌘1–9")).toBeVisible();
+		const row = page.getByTestId("keyboard-shortcut-acme.panel/one");
+		await expect.element(row.getByText("Jump to one or two")).toBeVisible();
+		await expect.element(row.getByText("⌥J")).toBeVisible();
 		await expect
-			.element(page.getByTestId("keyboard-shortcut-acme.nav/tab-2"))
+			.element(page.getByTestId("keyboard-shortcut-acme.panel/two"))
 			.not.toBeInTheDocument();
-		await page.getByTestId("keyboard-shortcuts-search").fill("last tab");
+		await expect.element(page.getByTestId("keyboard-shortcut-acme.panel/three")).toBeVisible();
+		expect(rows).toHaveBeenCalledWith({ platform: "mac", overrides: {} });
+		await page.getByTestId("keyboard-shortcuts-search").fill("second");
 		await expect.element(row).toBeVisible();
 	});
 

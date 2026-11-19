@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { KernelCommand, KernelKeybindings } from "@kilo-desktop/kernel";
 
+import { ShortcutsPanel } from "../../contracts";
 import { contributor, renderShell } from "../../testing";
 
 function commandPlugin(run = vi.fn()) {
@@ -86,46 +87,30 @@ describe("shortcuts settings", () => {
 		await expect.poll(() => overridesOf(main)).toEqual({});
 	});
 
-	it("swaps the 1–9 modifiers of tabs and sessions in App Navigation, then restores them", async () => {
-		const slots = (prefix: string, category: string, modifier: string) =>
-			[1, 2].map((digit) => ({
-				id: `${prefix}-${digit}`,
-				title: `Go to ${prefix} ${digit}`,
-				category,
-				keybinding: `${modifier}+${digit}`,
-			}));
-		const numbered = contributor(
-			"acme.nav",
+	it("shows contributed shortcuts panels above the list and leaves out the commands they claim", async () => {
+		const panel = contributor(
+			"acme.panel",
 			{
-				"kernel/command": [...slots("tab", "Tabs", "Mod"), ...slots("session", "Sessions", "Ctrl")],
+				"kernel/command": [
+					{ id: "jump", title: "Jump", category: "Release", keybinding: "Mod+Alt+J" },
+				],
+				"kilo.shell/shortcuts-panel": [
+					{ id: "jumps", title: "Jumps", commands: ["acme.panel/jump"] },
+				],
 			},
 			(sdk) => {
-				for (const id of ["tab-1", "tab-2", "session-1", "session-2"])
-					sdk.extensions.implement(KernelCommand, id, () => {});
+				sdk.extensions.implement(KernelCommand, "jump", () => {});
+				sdk.extensions.implement(ShortcutsPanel, "jumps", {
+					component: () => <p>Jump keys</p>,
+				});
 			},
 		);
-		const { main } = await openShortcuts([numbered]);
-		await expect.element(page.getByTestId("shortcut-row-acme.nav/tab-1")).not.toBeInTheDocument();
+		await openShortcuts([commandPlugin().plugin, panel]);
 
-		await page.getByTestId("number-keys-customize").click();
-		await page.getByTestId("number-keys-tabs-ctrl").click();
-		await expect
-			.poll(() => overridesOf(main))
-			.toEqual({
-				"acme.nav/tab-1": "Ctrl+Digit1",
-				"acme.nav/tab-2": "Ctrl+Digit2",
-				"acme.nav/session-1": "Meta+Digit1",
-				"acme.nav/session-2": "Meta+Digit2",
-			});
-		await expect
-			.element(page.getByTestId("number-keys-sessions-meta"))
-			.toHaveAttribute("aria-pressed", "true");
-
-		await page.getByTestId("number-keys-toggle-sessions").click();
-		await expect.poll(() => overridesOf(main)["acme.nav/session-1"]).toBeNull();
-
-		await page.getByTestId("number-keys-restore-defaults").click();
-		await expect.poll(() => overridesOf(main)).toEqual({});
+		const section = page.getByRole("region", { name: "Jumps" });
+		await expect.element(section.getByText("Jump keys")).toBeVisible();
+		await expect.element(page.getByTestId("shortcut-row-acme.cmds/deploy")).toBeVisible();
+		await expect.element(page.getByTestId("shortcut-row-acme.panel/jump")).not.toBeInTheDocument();
 	});
 
 	it("explains which command kept a shortcut two commands want", async () => {

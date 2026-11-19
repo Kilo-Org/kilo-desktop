@@ -136,7 +136,7 @@ async function resetMixedNumberSeries(sdk: PluginSdk): Promise<void> {
 			overrides: keybindings.getState().overrides,
 			platform,
 		});
-		for (const command of mixed) await keybindings.methods.reset({ command });
+		await keybindings.methods.update({ reset: mixed });
 		if (mixed.length > 0) {
 			sdk.logger.info(`Reset number shortcuts changed one at a time: ${mixed.join(", ")}`);
 		}

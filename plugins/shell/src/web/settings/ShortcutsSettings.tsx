@@ -191,15 +191,14 @@ function ShortcutRowItem({
 	const enabled = (row.series ? memberKeys : keys).some((key) => overrides[key] !== null);
 	const labels = enabled ? rowChordLabels(row, resolution.byCommand, platform) : [];
 	const setAll = (chords: readonly (KeyChord | null)[], targets: readonly string[]) =>
-		void Promise.all(
-			targets.map((command, index) => {
-				const chord = chords[index];
-				return keybindings?.methods.setOverride({
-					command,
-					chord: chord ? serializeChord(chord) : null,
-				});
-			}),
-		);
+		void keybindings?.methods.update({
+			set: Object.fromEntries(
+				targets.map((command, index) => {
+					const chord = chords[index];
+					return [command, chord ? serializeChord(chord) : null];
+				}),
+			),
+		});
 
 	return (
 		// The row sets border-0, so the li carries the list's divider.
@@ -251,13 +250,7 @@ function ShortcutRowItem({
 								size="icon-xs"
 								aria-label={`Reset ${row.title}`}
 								data-qa-id={`shortcut-reset-${row.key}`}
-								onClick={() =>
-									void Promise.all(
-										keys
-											.filter((command) => command in overrides)
-											.map((command) => keybindings?.methods.reset({ command })),
-									)
-								}
+								onClick={() => void keybindings?.methods.update({ reset: keys })}
 							>
 								<RotateCcwIcon aria-hidden />
 							</Button>

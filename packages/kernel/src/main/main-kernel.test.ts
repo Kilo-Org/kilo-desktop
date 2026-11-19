@@ -414,6 +414,32 @@ describe("main kernel — keybinding overrides", () => {
 			[{}],
 		]);
 	});
+
+	it("applies several changes with one save, and saves nothing when nothing changes", async () => {
+		const save = vi.fn();
+		const kernel = boot(
+			[],
+			fakeHost({
+				keybindings: { load: () => ({ "acme.a/one": "Alt+KeyO", "acme.a/two": null }), save },
+			}),
+		);
+		await kernel.start();
+		const keybindings = kernel.kernelSdk.domainObjects.get(KernelKeybindings)!;
+
+		await keybindings.methods.update({
+			set: { "acme.a/three": "Alt+KeyT", "acme.a/four": null },
+			reset: ["acme.a/one"],
+		});
+		await keybindings.methods.update({ reset: ["acme.a/missing"] });
+		await keybindings.methods.update({});
+
+		const merged = { "acme.a/two": null, "acme.a/three": "Alt+KeyT", "acme.a/four": null };
+		expect(keybindings.getState().overrides).toEqual(merged);
+		expect(save.mock.calls).toEqual([[merged]]);
+		await expect(
+			keybindings.methods.update({ set: { "acme.a/two": "Alt+KeyW" }, reset: ["acme.a/two"] }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+	});
 });
 
 describe("main kernel — disabled plugins", () => {

@@ -258,6 +258,21 @@ export const KernelKeybindings = defineDomainObject({
 		setOverride: method(z.object({ command: z.string(), chord: z.string().nullable() }), nothing),
 		reset: method(z.object({ command: z.string() }), nothing),
 		resetAll: method(nothing, nothing),
+		/**
+		 * Several changes saved at once: `set` gives commands a chord (`null`
+		 * turns it off), `reset` returns commands to their defaults.
+		 */
+		update: method(
+			z
+				.object({
+					set: z.record(z.string(), z.string().nullable()).default({}),
+					reset: z.array(z.string()).default([]),
+				})
+				.refine(({ set, reset }) => !reset.some((command) => command in set), {
+					message: "A command can't be both set and reset.",
+				}),
+			nothing,
+		),
 	},
 });
 

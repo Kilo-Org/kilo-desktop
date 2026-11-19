@@ -556,6 +556,18 @@ function provideKeybindings(core: Kernel, host: MainKernelHost): void {
 					save(rest);
 				},
 				resetAll: () => save({}),
+				update: ({ set, reset }) => {
+					const current = provider.state.overrides;
+					const next = Object.fromEntries(
+						Object.entries({ ...current, ...set }).filter(([command]) => !reset.includes(command)),
+					);
+					const unchanged =
+						Object.keys(next).length === Object.keys(current).length &&
+						Object.entries(next).every(
+							([command, chord]) => command in current && current[command] === chord,
+						);
+					if (!unchanged) save(next);
+				},
 			},
 		});
 }

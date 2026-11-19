@@ -92,8 +92,10 @@ One domain action is usually exposed three ways, all calling the same code: a
 **method** on a domain object for other plugins' code, a **command** for
 people, and an agent **tool** (`kilo.core/tool`) for the agent.
 
-The generated [schema](./plugins/schema.md) lists every instance of each
-block. How to use each one: [extension points](./plugins/extension-points.md),
+The generated [schema](./plugins/schema.md) lists every plugin, extension
+point (with its contributing plugins), domain object, object type and context
+key. Commands, services, flags and telemetry events are contributions: find
+them in each plugin's `plugin.json`. How to use each one: [extension points](./plugins/extension-points.md),
 [domain objects](./plugins/domain-objects.md), [commands and
 keys](./plugins/commands-and-keys.md), [panes and
 openers](./plugins/panes-and-openers.md), [chat and agent

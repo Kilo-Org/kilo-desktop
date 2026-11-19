@@ -28,10 +28,13 @@ const failed = (result: unknown) => ({ isError: true, result });
 describe("condaPolicyFailure", () => {
 	it("recognises a package-policy block, keeping the bridge's summary and the blocked packages", () => {
 		expect(condaPolicyFailure(failed(blockedMessage))).toEqual({
-			code: "POLICY_BLOCKED",
-			message: "pillow 8.4.0 is blocked by organization_policy in acme: Known vulnerabilities",
-			detail: "solver output",
-			policy: BLOCKED,
+			failure: {
+				code: "POLICY_BLOCKED",
+				message: "pillow 8.4.0 is blocked by organization_policy in acme: Known vulnerabilities",
+				detail: "solver output",
+				policy: BLOCKED,
+			},
+			content: expect.objectContaining({ kind: "blocked" }),
 		});
 	});
 
@@ -39,19 +42,22 @@ describe("condaPolicyFailure", () => {
 		const note = formatEnvironmentsErrorMessage("SOLVE_FAILED", "nothing provides holoviews", {
 			policyNote: true,
 		});
-		expect(condaPolicyFailure(failed(note))?.code).toBe("SOLVE_FAILED");
-		expect(condaPolicyFailure(failed("NOT_SIGNED_IN"))?.code).toBe("NOT_SIGNED_IN");
+		expect(condaPolicyFailure(failed(note))?.content.kind).toBe("policy-note");
+		expect(condaPolicyFailure(failed("NOT_SIGNED_IN"))?.failure.code).toBe("NOT_SIGNED_IN");
 		const refused = formatEnvironmentsErrorMessage("CHANNEL_ACCESS_DENIED", "403", {
 			refused: { org: "acme", channel: "acme/main" },
 		});
-		expect(condaPolicyFailure(failed(refused))?.message).toContain("acme/main");
+		expect(condaPolicyFailure(failed(refused))?.failure.message).toContain("acme/main");
 	});
 
 	it("reads the message from an MCP result and past an error-name prefix", () => {
 		expect(
-			condaPolicyFailure(failed({ content: [{ type: "text", text: blockedMessage }] }))?.code,
+			condaPolicyFailure(failed({ content: [{ type: "text", text: blockedMessage }] }))?.failure
+				.code,
 		).toBe("POLICY_BLOCKED");
-		expect(condaPolicyFailure(failed(`Error: ${blockedMessage}\n`))?.code).toBe("POLICY_BLOCKED");
+		expect(condaPolicyFailure(failed(`Error: ${blockedMessage}\n`))?.failure.code).toBe(
+			"POLICY_BLOCKED",
+		);
 	});
 
 	it("leaves successes, other failures and unrelated text to the default renderer", () => {

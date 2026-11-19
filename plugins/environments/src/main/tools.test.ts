@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { KernelError } from "@kilo-desktop/kernel";
 import type { ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 
 import manifest from "../../plugin.json";
+import { formatEnvironmentsErrorMessage } from "../contracts/common";
 import type { CondaMethods } from "./conda-service";
 import { condaTools } from "./tools";
 
@@ -175,8 +177,116 @@ describe("Anaconda channel preference", () => {
 				.all()
 				.find((candidate) => candidate.name === name);
 			expect(tool?.description).toMatch(/prefer Anaconda's channels/i);
+			expect(tool?.description).toMatch(/blocked by .*policy is not unavailable/i);
 		},
 	);
+});
+
+describe("package policy and Anaconda sign-in guidance", () => {
+	it.each([
+		"conda.envs.create",
+		"conda.envs.clone",
+		"conda.packages.install",
+		"conda.packages.update",
+		"conda.repodata.find",
+	])("%s tells the agent to report a block verbatim and never route around it", (name) => {
+		const description = registry()
+			.all()
+			.find((candidate) => candidate.name === name)?.description;
+		expect(description).toMatch(/POLICY_BLOCKED/);
+		expect(description).toMatch(/\[policy\]/);
+		expect(description).toMatch(/verbatim/i);
+		expect(description).toMatch(/do not retry from another channel, pip or a URL/i);
+		expect(description).toMatch(/administrator/i);
+		expect(description).toMatch(/NOT_SIGNED_IN/);
+		expect(description).toMatch(/CHANNEL_ACCESS_DENIED/);
+		expect(description).toMatch(/sign in to Anaconda \(not Kilo\)/i);
+		expect(description).toMatch(/never ask .* for a token/i);
+	});
+});
+
+const BLOCKED = {
+	package: "pillow",
+	version: "8.4.0",
+	channel: "https://repo.anaconda.cloud/repo/acme/main",
+	org: "acme",
+	policy: "No critical CVEs",
+	policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+	reason: "CVE-2022-22817 (critical)",
+};
+
+function failingTools(error: unknown) {
+	const tracked: { event: string; data: Record<string, unknown> }[] = [];
+	const conda = new Proxy({} as CondaMethods, {
+		get: () => () => Promise.reject(error),
+	});
+	const tools = condaTools({
+		conda: () => conda,
+		openSettings: () => undefined,
+		track: (event, data) => void tracked.push({ event, data }),
+	});
+	const run = (name: string, args: unknown) => {
+		const tool = tools[name]!;
+		return Promise.resolve().then(() => tool.run(tool.input.parse(args), CONTEXT));
+	};
+	return { run, tracked };
+}
+
+describe("a tool that fails on a package policy", () => {
+	const blockedError = new KernelError(
+		"BUSINESS",
+		formatEnvironmentsErrorMessage(
+			"POLICY_BLOCKED",
+			"pillow 8.4.0 is blocked by your organization's policy 'No critical CVEs'",
+			{ blocked: [BLOCKED] },
+		),
+	);
+
+	it("rejects with the error unchanged, so the policy line reaches the agent", async () => {
+		const { run } = failingTools(blockedError);
+
+		const rejection = await run("conda.packages.install", {
+			name: "dev",
+			packages: ["pillow=8.4.0"],
+		}).catch((error: unknown) => error);
+
+		expect(rejection).toBe(blockedError);
+		expect((rejection as Error).message.split("\n").at(-1)).toBe(
+			`[policy] ${JSON.stringify({ blocked: [BLOCKED] })}`,
+		);
+	});
+
+	it("sends the policy-blocked event with counts and policy ids only", async () => {
+		const { run, tracked } = failingTools(blockedError);
+
+		await run("conda.packages.install", { name: "dev", packages: ["pillow=8.4.0"] }).catch(
+			() => undefined,
+		);
+
+		expect(tracked).toEqual([
+			{
+				event: "environment-policy-blocked",
+				data: {
+					surface: "agent_tool",
+					errorCode: "POLICY_BLOCKED",
+					blockedCount: 1,
+					policyNote: false,
+					policyIds: [BLOCKED.policyId],
+				},
+			},
+		]);
+	});
+
+	it("sends nothing for other failures", async () => {
+		const { run, tracked } = failingTools(
+			new KernelError("BUSINESS", formatEnvironmentsErrorMessage("SOLVE_FAILED", "conflict")),
+		);
+
+		await expect(run("conda.packages.install", { name: "dev", packages: ["x"] })).rejects.toThrow(
+			"SOLVE_FAILED: conflict",
+		);
+		expect(tracked).toEqual([]);
+	});
 });
 
 describe("no-channels ask flow", () => {
@@ -186,7 +296,7 @@ describe("no-channels ask flow", () => {
 			const tool = registry()
 				.all()
 				.find((candidate) => candidate.name === name);
-			expect(tool?.description).toMatch(/no_channels_configured/);
+			expect(tool?.description).toMatch(/NO_CHANNELS_CONFIGURED/);
 			expect(tool?.description).toMatch(/do not pick or propose a channel yourself/i);
 			expect(tool?.description).toMatch(/do not offer or name any other channel/i);
 			expect(tool?.description).toMatch(/Shall I use `defaults`\?/);

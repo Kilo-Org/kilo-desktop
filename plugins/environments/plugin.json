@@ -279,6 +279,10 @@
 				{
 					"id": "package-install-link-rejected",
 					"name": "Package Install Link Rejected"
+				},
+				{
+					"id": "environment-policy-blocked",
+					"name": "Environment Policy Blocked"
 				}
 			]
 		}

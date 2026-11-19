@@ -5,7 +5,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { KernelServices } from "@kilo-desktop/kernel";
 
 import { BRIDGE_SERVICE_KEY, ENVIRONMENTS_SETTINGS_SECTION } from "../contracts/index";
-import { bootEnvironmentsMain, recordingLogger, stopEnvironmentsMains } from "./test-boot";
+import {
+	BLOCKED_POLICY_ID,
+	blockedByPolicy,
+	bootEnvironmentsMain,
+	notSignedIn,
+	recordingLogger,
+	stopEnvironmentsMains,
+} from "./test-boot";
 
 const boot = bootEnvironmentsMain;
 
@@ -141,6 +148,50 @@ describe("kilo.environments in main", () => {
 			external: true,
 			signInPrompt: { toolsLabel: "Desktop's Python environment tools" },
 		});
+	});
+
+	it("hands the agent a policy block unchanged and reports it without names", async () => {
+		const failure = blockedByPolicy();
+		const { callTool, tracked } = await boot({
+			answers: { install: () => Promise.reject(failure) },
+		});
+
+		await expect(
+			callTool("conda.packages.install", { name: "dev", packages: ["pillow=8.4.0"] }),
+		).rejects.toThrow(failure.message);
+
+		await expect
+			.poll(() => tracked)
+			.toEqual([
+				{
+					event: "Environment Policy Blocked",
+					data: {
+						surface: "agent_tool",
+						errorCode: "POLICY_BLOCKED",
+						blockedCount: 1,
+						policyNote: false,
+						policyIds: [BLOCKED_POLICY_ID],
+					},
+				},
+			]);
+	});
+
+	it("reports an Anaconda sign-in refusal from a tool, and tracks nothing for the window's own calls", async () => {
+		const failure = notSignedIn();
+		const { callTool, conda, tracked } = await boot({
+			answers: { findRepodata: () => Promise.reject(failure) },
+		});
+
+		await expect(conda().methods.findRepodata({ names: ["pillow"] })).rejects.toThrow(
+			/^NOT_SIGNED_IN/,
+		);
+		await expect(callTool("conda.repodata.find", { names: ["pillow"] })).rejects.toThrow(
+			failure.message,
+		);
+
+		await expect
+			.poll(() => tracked.map(({ data }) => data["errorCode"]))
+			.toEqual(["NOT_SIGNED_IN"]);
 	});
 
 	it("opens Conda Environments settings for the setup tool", async () => {

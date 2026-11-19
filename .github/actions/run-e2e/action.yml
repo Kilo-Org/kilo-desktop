@@ -51,14 +51,8 @@ runs:
         package-name: "@kilo-desktop/desktop"
 
     # Specs drive the packaged app through `_electron.launch` and never open a
-    # Playwright browser, so no Chromium download. Linux still needs the
-    # system libraries Electron loads under xvfb, which the same installer
-    # provides. (On Windows, --with-deps would run a slow DISM install.)
-    - if: runner.os == 'Linux'
-      uses: ./.github/actions/install-test-runtime
-      with:
-        runtime: playwright-deps
-        package-name: "@kilo-desktop/e2e"
+    # Playwright browser, so no Chromium download. The runner images already
+    # carry xvfb and the libraries Electron loads (see install-test-runtime).
 
     - uses: ./plugins/notebook/actions/setup-native
 

@@ -75,10 +75,12 @@ runs:
         gh release download "v$VERSION" --repo pnpm/pnpm --pattern "$ASSET" --dir "$download"
 
         archive="$download/$ASSET"
+        # Hash stdin: given a path with backslashes (Windows), sha256sum
+        # escapes the line and prefixes the hash with "\".
         if command -v sha256sum > /dev/null; then
-          actual=$(sha256sum "$archive" | cut -d' ' -f1)
+          actual=$(sha256sum < "$archive" | cut -d' ' -f1)
         else
-          actual=$(shasum -a 256 "$archive" | cut -d' ' -f1)
+          actual=$(shasum -a 256 < "$archive" | cut -d' ' -f1)
         fi
         [[ "sha256:$actual" == "$expected" ]] || { echo "::error::$ASSET digest mismatch: got sha256:$actual, want $expected"; exit 1; }
 

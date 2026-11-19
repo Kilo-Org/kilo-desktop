@@ -55,6 +55,7 @@ import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 import manifest from "../../plugin.json";
 import {
 	CHANGES_PANE_KIND,
+	Clone,
 	GIT_DEFINITIONS,
 	GithubRepositories,
 	PullRequests,
@@ -188,6 +189,8 @@ export interface GitHostOptions {
 	readonly newFolderLocation?: string | null;
 	/** Fakes for `kilo.git/github-repositories`, by method name; absent leaves it unprovided. */
 	readonly githubRepositories?: GithubRepositoriesFake;
+	/** `kilo.git/clone`'s `cloneWorkspace`, recorded as `cloneWorkspace`; absent leaves it unprovided. */
+	readonly cloneWorkspace?: (input: never) => unknown;
 }
 
 /**
@@ -309,6 +312,18 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 					},
 				}) as never,
 			});
+			const cloneFake = options.cloneWorkspace;
+			if (cloneFake) {
+				sdk.domainObjects.provide(Clone, {
+					initialState: {},
+					methods: {
+						cloneWorkspace: (input) => {
+							record("cloneWorkspace", input);
+							return cloneFake(input as never) as never;
+						},
+					},
+				});
+			}
 			const githubFake = options.githubRepositories;
 			if (githubFake) {
 				githubRepositories = sdk.domainObjects.provide(GithubRepositories, {

@@ -5,7 +5,7 @@ import { Input } from "@kilo-desktop/ui/components/input";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { DEFAULT_WORKSPACE_IDENTITY_COLOR, type NewFolderFormProps } from "../../contracts";
-import { FILLED_INPUT_CLASS, FILLED_SWATCH_CLASS } from "./filled-styles";
+import { FILLED_INPUT_CLASS, FILLED_SWATCH_CLASS } from "@kilo-desktop/ui/lib/filled-styles";
 import { joinFolderPath } from "./folder-path";
 import { LocationPicker } from "./LocationPicker";
 import { useNewFolderServices } from "./new-folder-context";

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type FormEvent,
+	type ReactNode,
+} from "react";
 
 import { MotionConfig, motion } from "motion/react";
 
@@ -156,14 +163,18 @@ export function useScreenState() {
 
 type ScreenReport = ReturnType<typeof useScreenState>["report"];
 
-/** Hands the host a screen's frame parts once it has rendered, and only when they change. */
+/**
+ * Hands the host a screen's frame parts as it renders, only when they change
+ * (so reporting never loops), and before paint, so the frame never shows the
+ * previous screen's action.
+ */
 function ReportScreen({ view, report }: { view: WorkspaceSourceView; report: ScreenReport }) {
 	const description = view.description ?? null;
 	const label = view.primary?.label ?? null;
 	const disabled = view.primary?.disabled === true;
 	const busy = view.busy === true;
 	const { onScreen, onAction } = report;
-	useEffect(() => {
+	useLayoutEffect(() => {
 		onScreen({
 			description,
 			primary: label === null ? null : { label, disabled },
@@ -171,7 +182,7 @@ function ReportScreen({ view, report }: { view: WorkspaceSourceView; report: Scr
 		});
 	}, [onScreen, description, label, disabled, busy]);
 	const run = view.primary?.onClick ?? null;
-	useEffect(() => {
+	useLayoutEffect(() => {
 		onAction(run);
 	});
 	return null;

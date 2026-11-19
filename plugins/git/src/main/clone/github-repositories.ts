@@ -4,7 +4,7 @@ import { KernelError, type KvStore } from "@kilo-desktop/kernel";
 
 import { githubRepositoryUrl } from "../../contracts/github-remote";
 import type { GithubRepository, GithubRepositoryListing } from "../../contracts/models";
-import { ghErrorToKernelError } from "../repository/git-service";
+import { ghErrorToKernelError } from "../shared/git-errors";
 import {
 	COMMON_CLONE_FAILURES,
 	describeCloneFailure,

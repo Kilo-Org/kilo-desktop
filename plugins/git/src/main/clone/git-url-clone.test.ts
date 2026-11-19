@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { GitError, GitNotDetectedError } from "@kilo-desktop/git-client";
 
-import { GIT_NOT_FOUND_MESSAGE } from "../repository/worktree-manager";
+import { GIT_NOT_FOUND_MESSAGE } from "../shared/git-errors";
 import { cloneGitUrl, parseGitUrl } from "./git-url-clone";
 
 /** A `GitError` as `client.exec` throws it for a failed `git clone`. */

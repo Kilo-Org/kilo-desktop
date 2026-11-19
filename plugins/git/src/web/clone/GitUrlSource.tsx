@@ -10,14 +10,14 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@kilo-desktop/u
 import { Input } from "@kilo-desktop/ui/components/input";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { Repository } from "../../contracts";
+import { Clone } from "../../contracts";
 import { gitUnavailable } from "./clone-errors";
-import { FILLED_INPUT_CLASS } from "./filled-styles";
+import { FILLED_INPUT_CLASS } from "@kilo-desktop/ui/lib/filled-styles";
 import { isGitUrl, repositoryNameFromGitUrl } from "./git-url";
 
 /** Clones any Git remote: the URL first, then the usual name, colour and location. */
 function GitUrlSource({ NewFolderForm, appearance }: WorkspaceSourceProps) {
-	const repository = useDomainObject(Repository);
+	const clone = useDomainObject(Clone);
 	const urlId = useId();
 	const [url, setUrl] = useState("");
 	const [touched, setTouched] = useState(false);
@@ -54,7 +54,7 @@ function GitUrlSource({ NewFolderForm, appearance }: WorkspaceSourceProps) {
 			pendingLabel="Cloning…"
 			errorTitle="Couldn't clone the repository"
 			create={async (details) =>
-				(repository ?? gitUnavailable()).methods.cloneWorkspace({
+				(clone ?? gitUnavailable()).methods.cloneWorkspace({
 					...details,
 					source: { kind: "url", url: url.trim() },
 				})

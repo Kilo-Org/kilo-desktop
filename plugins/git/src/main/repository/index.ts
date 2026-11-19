@@ -13,10 +13,10 @@ import {
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { GIT_PROTOCOL_SCHEME, Repository } from "../../contracts";
-import type { CloneArea } from "../clone";
 import type { PullRequestSource } from "../shared/pull-request-source";
 import { createGitProtocolHandler } from "./git-protocol";
-import { GitService, type GitClientSlice, type WorkspaceAccess } from "./git-service";
+import type { GitClientSlice } from "../shared/git-client";
+import { GitService, type WorkspaceAccess } from "./git-service";
 import { isManagedBranch } from "./worktree-manager";
 
 export interface RepositoryOptions {
@@ -55,7 +55,6 @@ function workspaceAccess(sdk: PluginSdk): WorkspaceAccess {
 function provideRepository(
 	sdk: PluginSdk,
 	service: GitService,
-	clone: CloneArea,
 ): DomainObjectProvider<typeof Repository> {
 	return sdk.domainObjects.provide(Repository, {
 		initialState: {},
@@ -94,7 +93,6 @@ function provideRepository(
 			pullRequestContext: ({ directory, baseBranch }) =>
 				service.pullRequestContext(directory, baseBranch),
 			workingTreeStats: ({ directory }) => service.workingTreeStats(directory),
-			cloneWorkspace: (input) => clone.cloneWorkspace(input),
 		},
 	});
 }
@@ -166,26 +164,18 @@ function vcsOf(
  * managed worktrees under `.kilo/worktrees` pass) on every renderer-reachable
  * path, failing closed while workspaces are absent; `vcs` callers are
  * main-process plugins. A successful copy branch rename is announced as
- * `worktree-branch-renamed` and toasted in the main window. `cloneWorkspace`
- * comes from the clone area `connectClone` activates with this service's git
- * client (for URL clones), the one directory not checked against workspaces
- * because it becomes a new one. Patch files still
+ * `worktree-branch-renamed` and toasted in the main window. Patch files still
  * in flight are swept on deactivate; normally the protocol stream releases
  * each one when it closes.
  */
-export function activateRepository(
-	sdk: PluginSdk,
-	options: RepositoryOptions,
-	connectClone: (cloneGitUrl: (url: string, destination: string) => Promise<void>) => CloneArea,
-): RepositoryArea {
+export function activateRepository(sdk: PluginSdk, options: RepositoryOptions): RepositoryArea {
 	const service = new GitService({
 		logger: sdk.logger,
 		environmentReady: () => environmentReady(sdk),
 		workspaces: workspaceAccess(sdk),
 		...(options.createClient === undefined ? {} : { createClient: options.createClient }),
 	});
-	const clone = connectClone((url, destination) => service.cloneUrl(url, destination));
-	const repository = provideRepository(sdk, service, clone);
+	const repository = provideRepository(sdk, service);
 	const vcs = vcsOf(sdk, service, repository);
 	sdk.extensions.implement(Vcs, "git", vcs);
 

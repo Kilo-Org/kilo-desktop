@@ -55,6 +55,11 @@
 			"objectType": "kilo.git/pull-request"
 		},
 		{
+			"id": "clone",
+			"home": "main",
+			"description": "Cloning a repository into a new workspace."
+		},
+		{
 			"id": "github-repositories",
 			"home": "main",
 			"description": "Repositories the signed-in GitHub CLI user can reach, for cloning."

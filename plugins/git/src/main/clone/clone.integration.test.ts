@@ -68,7 +68,7 @@ describe("cloning a repository into a new workspace", () => {
 		const parent = createTempDir();
 		const booted = await bootGit();
 
-		const workspace = await booted.repository.methods.cloneWorkspace({
+		const workspace = await booted.clone.methods.cloneWorkspace({
 			source: { kind: "url", url: REMOTE_URL },
 			name: "app",
 			parentPath: parent,
@@ -88,7 +88,7 @@ describe("cloning a repository into a new workspace", () => {
 		const booted = await bootGit();
 
 		await expect(
-			booted.repository.methods.cloneWorkspace({
+			booted.clone.methods.cloneWorkspace({
 				source: { kind: "url", url: remote },
 				name: "app",
 				parentPath: parent,
@@ -106,7 +106,7 @@ describe("cloning a repository into a new workspace", () => {
 		const booted = await bootGit();
 
 		await expect(
-			booted.repository.methods.cloneWorkspace({
+			booted.clone.methods.cloneWorkspace({
 				source: { kind: "url", url: REMOTE_URL },
 				name: "app",
 				parentPath: parent,
@@ -121,7 +121,7 @@ describe("cloning a repository into a new workspace", () => {
 		const booted = await bootGit({ workSessions: false });
 
 		await expect(
-			booted.repository.methods.cloneWorkspace({
+			booted.clone.methods.cloneWorkspace({
 				source: { kind: "url", url: REMOTE_URL },
 				name: "app",
 				parentPath: parent,

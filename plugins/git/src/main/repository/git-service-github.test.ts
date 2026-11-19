@@ -7,7 +7,8 @@ import { UnsupportedGitVersionError } from "@kilo-desktop/git-client";
 import type { GitClient } from "@kilo-desktop/git-client";
 
 import { folders } from "./test-workspace-access";
-import { ghErrorToKernelError, GitService } from "./git-service";
+import { ghErrorToKernelError } from "../shared/git-errors";
+import { GitService } from "./git-service";
 
 const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 

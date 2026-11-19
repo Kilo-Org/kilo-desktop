@@ -73,10 +73,9 @@ export type WorktreeBranchRenamed = z.output<typeof worktreeBranchRenamedSchema>
 
 /**
  * Git in the workspace folders, for git's own UI: status, branches, diffs,
- * commits, pushes and pull requests, and cloning a repository into a new
- * workspace. Every directory must be inside a workspace folder (VALIDATION
- * otherwise), except `cloneWorkspace`'s new folder. Absent where git can't
- * run (the browser).
+ * commits, pushes and pull requests. Every directory must be inside a
+ * workspace folder (VALIDATION otherwise). Absent where git can't run (the
+ * browser).
  */
 export const Repository = defineDomainObject({
 	id: "kilo.git/repository",
@@ -160,12 +159,29 @@ export const Repository = defineDomainObject({
 				deletions: z.number().int().nonnegative(),
 			}),
 		),
+	},
+	events: {
+		/** A managed worktree's branch got a new name. */
+		"worktree-branch-renamed": worktreeBranchRenamedSchema,
+	},
+});
+
+/**
+ * Cloning a repository into a new workspace. Unlike `kilo.git/repository`,
+ * its directory is outside every workspace: it makes the workspace. Absent
+ * where git can't run (the browser).
+ */
+export const Clone = defineDomainObject({
+	id: "kilo.git/clone",
+	home: "main",
+	description: "Cloning a repository into a new workspace.",
+	state: z.object({}),
+	methods: {
 		/**
 		 * Clones `source` into a new folder `<parentPath>/<name>` (which must not
 		 * exist yet) and creates a workspace of it, named `name`, through
-		 * kilo.work-sessions. The one method whose directory is outside every
-		 * workspace: it makes the workspace. The clone is removed again when
-		 * the workspace can't be created. BUSINESS while workspaces are absent.
+		 * kilo.work-sessions. The clone is removed again when the workspace
+		 * can't be created. BUSINESS while workspaces are absent.
 		 */
 		cloneWorkspace: method(
 			z.object({
@@ -176,10 +192,6 @@ export const Repository = defineDomainObject({
 			}),
 			workspaceSchema,
 		),
-	},
-	events: {
-		/** A managed worktree's branch got a new name. */
-		"worktree-branch-renamed": worktreeBranchRenamedSchema,
 	},
 });
 
@@ -271,6 +283,6 @@ export const PullRequests = defineDomainObject({
 });
 
 export const GIT_DEFINITIONS: PluginDefinitions = {
-	domainObjects: [Repository, PullRequests, GithubRepositories],
+	domainObjects: [Repository, PullRequests, Clone, GithubRepositories],
 	objectTypes: [PullRequestObjectType],
 };

@@ -28,13 +28,14 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
+	Clone,
 	GithubRepositories,
 	Repository,
 	type GithubCliStatus,
 	type GithubRepository,
 } from "../../contracts";
 import { CloneErrorAlert, errorMessage, gitUnavailable } from "./clone-errors";
-import { FILLED_INPUT_GROUP_CLASS, FILLED_PANEL_CLASS } from "./filled-styles";
+import { FILLED_INPUT_GROUP_CLASS, FILLED_PANEL_CLASS } from "@kilo-desktop/ui/lib/filled-styles";
 import { GithubMark } from "./github-mark";
 import { listEntries, RepositoryList, TYPED_REPOSITORY_VALUE } from "./RepositoryList";
 import {
@@ -67,7 +68,7 @@ function selection(repository: GithubRepository): SelectedRepository {
 
 /** Clones a GitHub repository with the GitHub CLI: pick one, then name and place it. */
 function GithubRepositorySource({ NewFolderForm, appearance, children }: WorkspaceSourceProps) {
-	const repository = useDomainObject(Repository);
+	const clone = useDomainObject(Clone);
 	const [selected, setSelected] = useState<SelectedRepository | null>(null);
 	if (!selected) {
 		return <RepositoryPicker appearance={appearance} present={children} onSelect={setSelected} />;
@@ -86,7 +87,7 @@ function GithubRepositorySource({ NewFolderForm, appearance, children }: Workspa
 			pendingLabel="Cloning…"
 			errorTitle="Couldn't clone the repository"
 			create={async (details) =>
-				(repository ?? gitUnavailable()).methods.cloneWorkspace({
+				(clone ?? gitUnavailable()).methods.cloneWorkspace({
 					...details,
 					source: { kind: "github", repository: selected.repository },
 				})

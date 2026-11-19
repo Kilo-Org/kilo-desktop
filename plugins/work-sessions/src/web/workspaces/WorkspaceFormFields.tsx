@@ -17,7 +17,7 @@ import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { FILLED_INPUT_CLASS, FILLED_SWATCH_CLASS } from "./filled-styles";
+import { FILLED_INPUT_CLASS, FILLED_SWATCH_CLASS } from "@kilo-desktop/ui/lib/filled-styles";
 import { LocationPicker } from "./LocationPicker";
 import type { useWorkspaceForm } from "./useWorkspaceForm";
 import { WorkspaceIdentityColorPicker } from "./WorkspaceIdentityColorPicker";

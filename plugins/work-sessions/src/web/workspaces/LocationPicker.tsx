@@ -5,7 +5,7 @@ import { FieldDescription } from "@kilo-desktop/ui/components/field";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { FILLED_PANEL_CLASS } from "./filled-styles";
+import { FILLED_PANEL_CLASS } from "@kilo-desktop/ui/lib/filled-styles";
 import { joinFolderPath } from "./folder-path";
 
 /**

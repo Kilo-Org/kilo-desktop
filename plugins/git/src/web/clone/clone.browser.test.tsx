@@ -113,11 +113,17 @@ function SourceHost({
 
 async function renderSource(
 	sourceKey: "kilo.git/github-repository" | "kilo.git/git-url",
-	options: { repository?: RepositoryFake; github?: GithubRepositoriesFake; desktop?: boolean } = {},
+	options: {
+		repository?: RepositoryFake;
+		github?: GithubRepositoriesFake;
+		cloneWorkspace?: () => unknown;
+		desktop?: boolean;
+	} = {},
 ) {
 	const host: GitHost = await bootGitHost({
 		desktop: options.desktop ?? true,
-		repository: { cloneWorkspace: () => CLONED, ...options.repository },
+		cloneWorkspace: options.cloneWorkspace ?? (() => CLONED),
+		...(options.repository ? { repository: options.repository } : {}),
 		...(options.github ? { githubRepositories: options.github } : {}),
 	});
 	const onCreated = vi.fn();
@@ -174,7 +180,7 @@ describe("Git URL source", () => {
 describe("GitHub repository source", () => {
 	it("lists repositories by owner and clones the chosen one", async () => {
 		const { host, onCreated } = await renderSource("kilo.git/github-repository", {
-			repository: { githubCliStatus: () => ({ status: "ready" }), cloneWorkspace: () => CLONED },
+			repository: { githubCliStatus: () => ({ status: "ready" }) },
 			github: {
 				list: () => ({
 					repositories: [repo("acme/app", { isPrivate: true }), repo("me/dots"), repo("acme/api")],

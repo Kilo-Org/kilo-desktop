@@ -8,8 +8,7 @@ import {
 	type GitClient,
 } from "@kilo-desktop/git-client";
 
-import { unsupportedGitVersionToKernelError } from "../repository/unsupported-git-version";
-import { GIT_NOT_FOUND_MESSAGE } from "../repository/worktree-manager";
+import { GIT_NOT_FOUND_MESSAGE, unsupportedGitVersionToKernelError } from "../shared/git-errors";
 import {
 	COMMON_CLONE_FAILURES,
 	describeCloneFailure,

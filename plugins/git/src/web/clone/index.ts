@@ -12,7 +12,7 @@ import { githubRepositorySource } from "./GithubRepositorySource";
  * Starting a workspace from a clone: the GitHub repository and Git URL
  * sources of kilo.work-sessions' New workspace dialog. Both name and place
  * the new folder with the dialog's own form and clone through
- * `Repository.cloneWorkspace`. Opening the dialog warms the GitHub list into
+ * `Clone.cloneWorkspace`. Opening the dialog warms the GitHub list into
  * this window's cache, once the GitHub CLI is signed in.
  */
 export function activateClone(sdk: PluginSdk, { queries }: GitWindow): void {

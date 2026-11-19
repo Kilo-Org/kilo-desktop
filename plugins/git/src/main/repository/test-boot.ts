@@ -28,6 +28,7 @@ import {
 import manifest from "../../../plugin.json";
 import {
 	GIT_DEFINITIONS,
+	Clone,
 	GIT_PROTOCOL_SCHEME,
 	GithubRepositories,
 	Repository,
@@ -165,6 +166,7 @@ export interface BootOptions {
 export interface BootedGit {
 	readonly kernel: MainKernel;
 	readonly repository: DomainObjectHandle<typeof Repository>;
+	readonly clone: DomainObjectHandle<typeof Clone>;
 	/** kilo.git's GitHub repositories, absent if not provided. */
 	readonly githubRepositories: DomainObjectHandle<typeof GithubRepositories> | null;
 	/** Workspaces kilo.work-sessions' `create` was asked for, and the locations offered as the next default. */
@@ -227,6 +229,7 @@ export async function bootGit(options: BootOptions = {}): Promise<BootedGit> {
 	return {
 		kernel,
 		repository: kernel.kernelSdk.domainObjects.get(Repository)!,
+		clone: kernel.kernelSdk.domainObjects.get(Clone)!,
 		githubRepositories: kernel.kernelSdk.domainObjects.get(GithubRepositories),
 		created: workSessions.created,
 		rememberedLocations: workSessions.rememberedLocations,

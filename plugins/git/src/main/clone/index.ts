@@ -1,54 +1,55 @@
 import { environmentReady, mainHost, type PluginSdk } from "@kilo-desktop/kernel";
-import { Workspaces, type Workspace } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { GithubRepositories } from "../../contracts";
-import { cloneWorkspace, type CloneWorkspaceInput } from "./clone-workspace";
+import { Clone, GithubRepositories } from "../../contracts";
+import { afterEnvironment, type GitClientSlice } from "../shared/git-client";
+import { cloneWorkspace } from "./clone-workspace";
+import { cloneGitUrl } from "./git-url-clone";
 import { GithubRepositoryService, type PersistedRepositoryListing } from "./github-repositories";
 
 export interface CloneAreaDeps {
-	/** `git clone`s any remote URL into `destination` (the repository area's git client). */
-	readonly cloneGitUrl: (url: string, destination: string) => Promise<void>;
-}
-
-export interface CloneArea {
-	/** `kilo.git/repository`'s `cloneWorkspace`. */
-	readonly cloneWorkspace: (input: CloneWorkspaceInput) => Promise<Workspace>;
+	/** kilo.git's shared git client, for URL clones. */
+	readonly client: Pick<GitClientSlice, "exec">;
 }
 
 /**
- * The clone area: `kilo.git/github-repositories` (the GitHub CLI user's
+ * The clone area: `kilo.git/clone` (cloning a repository into a new
+ * workspace) and `kilo.git/github-repositories` (the GitHub CLI user's
  * repositories, persisted under kv namespace `github-repositories` and
- * announced as `refreshed` after a background refresh) and the
- * `cloneWorkspace` the repository area binds into `kilo.git/repository`.
- * A GitHub source clones with `gh`, a URL with git; kilo.work-sessions'
- * workspaces are looked up per call. Activation spawns nothing.
+ * announced as `refreshed` after a background refresh). A GitHub source
+ * clones with `gh`, a URL with git; kilo.work-sessions' workspaces are looked
+ * up per call. Activation spawns nothing.
  */
-export function activateClone(sdk: PluginSdk, deps: CloneAreaDeps): CloneArea {
+export function activateClone(sdk: PluginSdk, deps: CloneAreaDeps): void {
+	const ready = () => environmentReady(sdk);
+	const client = afterEnvironment(deps.client, ready);
 	const store = mainHost(sdk).storage.kv<PersistedRepositoryListing>({
 		namespace: "github-repositories",
 		defaults: { repositories: [], fetchedAt: 0 },
 	});
 	const github = new GithubRepositoryService({
 		store,
-		environmentReady: () => environmentReady(sdk),
-		onRefreshed: () => provider.emit("refreshed", {}),
+		environmentReady: ready,
+		onRefreshed: () => repositories.emit("refreshed", {}),
 	});
-	const provider = sdk.domainObjects.provide(GithubRepositories, {
+	const repositories = sdk.domainObjects.provide(GithubRepositories, {
 		initialState: {},
 		methods: {
 			list: ({ refresh }) => github.list(refresh === undefined ? {} : { refresh }),
 			resolve: ({ repository }) => github.resolve(repository),
 		},
 	});
-
-	return {
-		cloneWorkspace: (input) =>
-			cloneWorkspace(input, {
-				workspaces: sdk.domainObjects.get(Workspaces)?.methods ?? null,
-				clone: (source, destination) =>
-					source.kind === "github"
-						? github.clone({ repository: source.repository, destination })
-						: deps.cloneGitUrl(source.url, destination),
-			}),
-	};
+	sdk.domainObjects.provide(Clone, {
+		initialState: {},
+		methods: {
+			cloneWorkspace: (input) =>
+				cloneWorkspace(input, {
+					workspaces: sdk.domainObjects.get(Workspaces)?.methods ?? null,
+					clone: (source, destination) =>
+						source.kind === "github"
+							? github.clone({ repository: source.repository, destination })
+							: cloneGitUrl(client, { url: source.url, destination }),
+				}),
+		},
+	});
 }

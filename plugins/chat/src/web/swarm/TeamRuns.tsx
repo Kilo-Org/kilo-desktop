@@ -19,7 +19,7 @@ const time = (timestamp: number) =>
 /**
  * Inferred activity periods, with the latest open and earlier periods folded.
  * These are quiet-gap groupings of loaded history, not recorded agent turns
- * (the Timeline tab's Key says so).
+ * (each chart's ⓘ says so).
  */
 export function TeamRuns({
 	runs,

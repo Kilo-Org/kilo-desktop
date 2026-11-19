@@ -203,15 +203,9 @@ describe("Swarm timeline design", () => {
 		const periods = page.getByTestId("swarm-run-toggle");
 		await expect.poll(() => periods.all().length).toBe(2);
 		expect(periods.first().element().textContent).toContain("Activity period 1");
-		await page.getByTestId("swarm-timeline-key-button").click();
 		await expect
-			.element(
-				page
-					.getByTestId("swarm-timeline-key-popover")
-					.getByText(/split at quiet gaps of at least 2 minutes, not recorded agent turns/),
-			)
-			.toBeVisible();
-		await userEvent.keyboard("{Escape}");
+			.element(page.getByTestId("swarm-timeline-about").first())
+			.toHaveAccessibleName(/split at quiet gaps of at least 2 minutes, not recorded agent turns/);
 		await expect.element(periods.first()).toHaveAttribute("aria-expanded", "false");
 		(periods.first().element() as HTMLElement).focus();
 		await userEvent.keyboard("{Enter}");

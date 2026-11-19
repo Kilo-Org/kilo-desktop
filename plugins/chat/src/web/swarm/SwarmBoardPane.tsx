@@ -93,7 +93,6 @@ import { participantName } from "./swarm-team";
 import { useNow } from "./swarm-time";
 import { TeamRow } from "./team-section";
 import { TeamRuns } from "./TeamRuns";
-import { TimelineKeyButton } from "./timeline-key";
 import { teamRuns } from "./team-timeline";
 import { useSwarmBoard } from "./use-swarm-board";
 
@@ -923,15 +922,10 @@ function SwarmBoard({
 						/>
 					</TabsContent>
 					<TabsContent value="timeline" className="min-h-0 overflow-y-auto py-3">
-						<div className="mb-4 flex items-start justify-between gap-2">
-							<div className="flex min-w-0 flex-col gap-1">
-								<h3 className="text-sm font-medium">Coordination over time</h3>
-								<p className="text-muted-foreground text-xs">
-									Inspect a post, then open its source in Activity.
-								</p>
-							</div>
-							<TimelineKeyButton />
-						</div>
+						<h3 className="text-sm font-medium">Coordination over time</h3>
+						<p className="text-muted-foreground mt-1 mb-4 text-xs">
+							Inspect a post, then open its source in Activity.
+						</p>
 						<TeamRuns
 							runs={runs}
 							messages={messages}

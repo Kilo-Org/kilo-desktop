@@ -1,13 +1,6 @@
-import { InfoIcon, KeyRoundIcon } from "lucide-react";
+import { InfoIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverDescription,
-	PopoverTitle,
-	PopoverTrigger,
-} from "@kilo-desktop/ui/components/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { SequenceArrow } from "./team-sequence";
@@ -28,7 +21,7 @@ export function strokeOf(type: SequenceArrow["type"]): { dash?: string; width: n
 
 type Mark = "span" | "unknown" | "post" | "info" | "hold" | "everyone" | "reply";
 
-/** Each mark the chart draws: a short name for the strip, a fuller one for the key. */
+/** Each mark the chart draws: a short name for the strip, a fuller one on hover. */
 const MARKS: readonly { readonly mark: Mark; readonly short: string; readonly long: string }[] = [
 	{ mark: "span", short: "Active", long: "When an agent was active" },
 	{ mark: "unknown", short: "End unknown", long: "Active, but when it stopped isn't known" },
@@ -100,7 +93,8 @@ function Glyph({ mark }: { readonly mark: Mark }) {
 	);
 }
 
-/** What the chart can't show, said once in the key and behind each chart's ⓘ. */
+/** What the chart can't show, said behind each chart's ⓘ. */
+const PERIOD_CAVEAT = `Activity periods are split at quiet gaps of at least ${RUN_GAP_MS / 60_000} minutes, not recorded agent turns.`;
 const SPAN_CAVEAT =
 	"Activity uses recorded starts, ends and last known activity, not continuous execution.";
 const LANE_CAVEAT = "Only senders with a team lane are plotted.";
@@ -121,6 +115,7 @@ export function TimelineKeyStrip({
 		`${plotted === 1 ? "1 post" : `${plotted} posts`} plotted from loaded history${more ? "; older posts aren't loaded" : ""}.`,
 		LANE_CAVEAT,
 		SPAN_CAVEAT,
+		PERIOD_CAVEAT,
 	].join(" ");
 	return (
 		<div
@@ -128,8 +123,8 @@ export function TimelineKeyStrip({
 			data-qa-id="swarm-timeline-key"
 		>
 			<ul className="flex flex-wrap items-center gap-x-3.5 gap-y-1" aria-label="Timeline key">
-				{MARKS.map(({ mark, short }) => (
-					<li key={mark} className="flex items-center gap-1.5 whitespace-nowrap">
+				{MARKS.map(({ mark, short, long }) => (
+					<li key={mark} className="flex items-center gap-1.5 whitespace-nowrap" title={long}>
 						<Glyph mark={mark} />
 						{short}
 					</li>
@@ -153,43 +148,5 @@ export function TimelineKeyStrip({
 				<TooltipContent className="max-w-64">{about}</TooltipContent>
 			</Tooltip>
 		</div>
-	);
-}
-
-/** The timeline's full key, on demand: every mark spelled out, and how periods are found. */
-export function TimelineKeyButton() {
-	return (
-		<Popover>
-			<PopoverTrigger
-				render={
-					<Button
-						variant="ghost"
-						size="xs"
-						className="text-muted-foreground"
-						data-qa-id="swarm-timeline-key-button"
-					/>
-				}
-			>
-				<KeyRoundIcon aria-hidden /> Key
-			</PopoverTrigger>
-			<PopoverContent align="end" className="w-80" data-qa-id="swarm-timeline-key-popover">
-				<PopoverTitle>Reading the timeline</PopoverTitle>
-				<dl className="grid grid-cols-[20px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 text-xs">
-					{MARKS.map(({ mark, short, long }) => (
-						<div key={mark} className="contents">
-							<dt className="text-muted-foreground flex">
-								<Glyph mark={mark} />
-								<span className="sr-only">{short}</span>
-							</dt>
-							<dd>{long}</dd>
-						</div>
-					))}
-				</dl>
-				<PopoverDescription className="border-t pt-2 text-xs">
-					Activity periods are split at quiet gaps of at least {RUN_GAP_MS / 60_000} minutes, not
-					recorded agent turns. {SPAN_CAVEAT} {LANE_CAVEAT}
-				</PopoverDescription>
-			</PopoverContent>
-		</Popover>
 	);
 }

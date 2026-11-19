@@ -390,14 +390,9 @@ describe("Swarm Board reading aids", () => {
 		await expect
 			.element(key.getByTestId("swarm-timeline-about"))
 			.toHaveAccessibleName(/5 posts plotted from loaded history/);
-		await pane().getByTestId("swarm-timeline-key-button").click();
 		await expect
-			.element(
-				page
-					.getByTestId("swarm-timeline-key-popover")
-					.getByText("A HOLD or VETO: it blocks someone"),
-			)
-			.toBeVisible();
+			.element(key.getByText("Hold / veto"))
+			.toHaveAttribute("title", "A HOLD or VETO: it blocks someone");
 	});
 
 	it("shows an agent's details through an explicit keyboard-accessible control", async () => {

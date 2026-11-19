@@ -121,10 +121,12 @@ export function EnvironmentsErrorState({
 				</EmptyMedia>
 				<EmptyTitle>Could not load environments</EmptyTitle>
 				<EmptyDescription>
-					{friendlyEnvironmentsError(
-						error,
-						"Something went wrong while loading your environments.",
-					)}
+					{
+						friendlyEnvironmentsError(
+							error,
+							"Something went wrong while loading your environments.",
+						).message
+					}
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>

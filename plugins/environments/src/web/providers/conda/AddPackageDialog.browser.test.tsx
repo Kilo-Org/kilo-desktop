@@ -2,6 +2,9 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { Toaster } from "@kilo-desktop/ui/components/sonner";
+
+import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
 	type CondaEnv,
 	type CondaPackage,
@@ -56,6 +59,8 @@ async function renderDialog(
 		installed?: CondaPackage[];
 		channels?: string[];
 		onClose?: () => void;
+		anaconda?: EnvironmentsHostOptions["anaconda"];
+		toaster?: boolean;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["2.1.0", "2.0.0"]), pkg("pandas")]);
@@ -80,10 +85,12 @@ async function renderDialog(
 			"conda.packages.install": install,
 			"conda.packages.previewInstall": previewInstall,
 		},
+		...(options.anaconda ? { anaconda: options.anaconda } : {}),
 	};
 
 	return renderWithConda(
 		<>
+			{options.toaster ? <Toaster /> : null}
 			<AddPackageDialog env={ENV} open onClose={onClose} />
 		</>,
 		hostOptions,
@@ -653,5 +660,146 @@ describe("AddPackageDialog", () => {
 			force: true,
 		});
 		expect(install).not.toHaveBeenCalled();
+	});
+
+	describe("package policy and Anaconda sign-in failures", () => {
+		const notSignedIn = () =>
+			new Error(
+				formatEnvironmentsErrorMessage("NOT_SIGNED_IN", "Sign in to use acme/main", {
+					refused: { org: "acme", channel: "acme/main" },
+				}),
+			);
+
+		it("asks to sign in to Anaconda, and re-runs the preview once signed in", async () => {
+			let signedIn = false;
+			const signIn = vi.fn(async () => {
+				signedIn = true;
+				return { ok: true as const };
+			});
+			const previewInstall = vi.fn(async () => {
+				if (!signedIn) throw notSignedIn();
+				return solvedPreview();
+			});
+			const { baseElement, host } = await renderDialog({ previewInstall, anaconda: { signIn } });
+			const screen = page.elementLocator(baseElement);
+			await waitForRows(baseElement, 2);
+
+			await userEvent.click(screen.getByText("pandas", { exact: true }));
+			const card = screen.getByTestId("environments-conda-add-pkg-preview-error");
+			await expect.element(card, { timeout: 5_000 }).toBeVisible();
+			await expect
+				.element(card.getByText("Sign in to Anaconda", { exact: true }).first())
+				.toBeVisible();
+			await expect
+				.element(
+					card.getByText(
+						"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+					),
+				)
+				.toBeVisible();
+			await userEvent.click(card.getByTestId("environments-anaconda-sign-in"));
+
+			await vi.waitFor(() => expect(signIn).toHaveBeenCalledTimes(1));
+			await vi.waitFor(() => expect(previewInstall).toHaveBeenCalledTimes(2));
+			await expect.element(screen.getByText("No other packages change.")).toBeVisible();
+			await waitForInstallEnabled(baseElement);
+			await vi.waitFor(() =>
+				expect(host.tracked).toContainEqual({
+					event: "Environment Policy Blocked",
+					data: {
+						surface: "ui",
+						errorCode: "NOT_SIGNED_IN",
+						blockedCount: 0,
+						policyNote: false,
+						policyIds: [],
+					},
+				}),
+			);
+		});
+
+		it("keeps the sign-in prompt and says why when the sign-in fails", async () => {
+			const signIn = vi.fn(async () => ({ ok: false as const, reason: "Port 8000 is in use." }));
+			const previewInstall = vi.fn(async (): Promise<CondaPackagesPreviewResult> => {
+				throw notSignedIn();
+			});
+			const { baseElement } = await renderDialog({ previewInstall, anaconda: { signIn } });
+			const screen = page.elementLocator(baseElement);
+			await waitForRows(baseElement, 2);
+
+			await userEvent.click(screen.getByText("pandas", { exact: true }));
+			const card = screen.getByTestId("environments-conda-add-pkg-preview-error");
+			await expect.element(card, { timeout: 5_000 }).toBeVisible();
+			await userEvent.click(card.getByTestId("environments-anaconda-sign-in"));
+
+			await expect
+				.element(card.getByTestId("environments-anaconda-sign-in-error"))
+				.toHaveTextContent("Could not sign in to Anaconda: Port 8000 is in use.");
+			expect(previewInstall).toHaveBeenCalledTimes(1);
+		});
+
+		it("hides the sign-in action without kilo.anaconda", async () => {
+			const previewInstall = vi.fn(async (): Promise<CondaPackagesPreviewResult> => {
+				throw notSignedIn();
+			});
+			const { baseElement } = await renderDialog({ previewInstall });
+			const screen = page.elementLocator(baseElement);
+			await waitForRows(baseElement, 2);
+
+			await userEvent.click(screen.getByText("pandas", { exact: true }));
+			const card = screen.getByTestId("environments-conda-add-pkg-preview-error");
+			await expect
+				.element(card.getByText("Sign in to Anaconda", { exact: true }).first(), {
+					timeout: 5_000,
+				})
+				.toBeVisible();
+			expect(card.getByTestId("environments-anaconda-sign-in").query()).toBeNull();
+		});
+
+		it("explains an install the policy blocks in its failure toast", async () => {
+			const install = vi.fn(async (): Promise<CondaPackagesInstallResult> => {
+				throw new Error(
+					formatEnvironmentsErrorMessage("POLICY_BLOCKED", "pandas 1.0.0 is blocked", {
+						blocked: [
+							{
+								package: "pandas",
+								version: "1.0.0",
+								channel: "acme/main",
+								org: "acme",
+								policy: "No critical CVEs",
+								policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+								reason: "CVE-2099-0001 (critical)",
+							},
+						],
+					}),
+				);
+			});
+			const { baseElement, host } = await renderDialog({ install, toaster: true });
+			const screen = page.elementLocator(baseElement);
+			await waitForRows(baseElement, 2);
+
+			await userEvent.click(screen.getByText("pandas", { exact: true }));
+			await waitForInstallEnabled(baseElement);
+			await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
+
+			const toast = screen.getByTestId("environments-job-error-policy");
+			await expect.element(toast).toBeVisible();
+			await expect.element(toast.getByText("pandas 1.0.0 is blocked")).toBeVisible();
+			await expect
+				.element(toast.getByText("Blocked by the policy “No critical CVEs” in acme"))
+				.toBeVisible();
+			await expect.element(toast.getByText("Reason: CVE-2099-0001 (critical)")).toBeVisible();
+			await vi.waitFor(() =>
+				expect(host.tracked).toContainEqual({
+					event: "Environment Policy Blocked",
+					data: {
+						surface: "ui",
+						errorCode: "POLICY_BLOCKED",
+						blockedCount: 1,
+						policyNote: false,
+						policyIds: ["0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10"],
+					},
+				}),
+			);
+		});
 	});
 });

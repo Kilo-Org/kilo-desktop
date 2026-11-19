@@ -1,6 +1,13 @@
+import { useEffect, useRef } from "react";
+
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { friendlyEnvironmentsError } from "./environments-error-message";
+import {
+	friendlyEnvironmentsError,
+	type FriendlyEnvironmentsError,
+} from "./environments-error-message";
+import { PolicyErrorDetails } from "./PolicyErrorDetails";
+import { useTrackPolicyFailure } from "./use-track-policy-failure";
 
 /**
  * Wording for one long-running environments job. Every job reports through
@@ -31,11 +38,48 @@ export function jobToastOptions(copy: JobToastCopy, id?: string | number) {
 }
 
 function jobErrorToast(copy: JobToastCopy, reason: unknown) {
+	const error = friendlyEnvironmentsError(reason, copy.errorFallback);
 	return {
 		message: copy.errorTitle,
-		description: friendlyEnvironmentsError(reason, copy.errorFallback),
+		description: hasPolicyDetails(error) ? (
+			<PolicyFailureDescription error={error} reason={reason} />
+		) : (
+			error.message
+		),
 		duration: Infinity,
 	};
+}
+
+function hasPolicyDetails({ code, policy }: FriendlyEnvironmentsError): boolean {
+	return (
+		code === "NOT_SIGNED_IN" ||
+		code === "CHANNEL_ACCESS_DENIED" ||
+		(policy?.blocked?.length ?? 0) > 0 ||
+		policy?.policyNote === true
+	);
+}
+
+/** A job's policy or Anaconda sign-in failure: the summary, then {@link PolicyErrorDetails}. Reported once when shown. */
+function PolicyFailureDescription({
+	error,
+	reason,
+}: {
+	error: FriendlyEnvironmentsError;
+	reason: unknown;
+}) {
+	const trackPolicyFailure = useTrackPolicyFailure();
+	const reported = useRef(false);
+	useEffect(() => {
+		if (reported.current) return;
+		reported.current = true;
+		trackPolicyFailure(reason);
+	}, [reason, trackPolicyFailure]);
+	return (
+		<div className="flex flex-col gap-2" data-qa-id="environments-job-error-policy">
+			<span className="whitespace-pre-line">{error.message}</span>
+			<PolicyErrorDetails code={error.code} policy={error.policy} />
+		</div>
+	);
 }
 
 /** Report a job that finished while its dialog was still open. */

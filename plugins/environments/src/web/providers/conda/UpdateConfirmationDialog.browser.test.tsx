@@ -2,6 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
 	type CondaEnv,
 	type CondaEnvsCloneInput,
@@ -175,6 +176,65 @@ describe("UpdateConfirmationDialog", () => {
 		await expect
 			.element(screen.getByTestId("environments-conda-update-confirm-btn"))
 			.toBeDisabled();
+	});
+
+	it("explains a policy block: the package, its policy, org and reason, not a conflict", async () => {
+		const summary =
+			"numpy 2.1.0 is blocked by your organization's policy 'No critical CVEs': CVE-2099-0001 (critical)";
+		const { baseElement, host } = await renderDialog({
+			preview: async () => {
+				throw new Error(
+					formatEnvironmentsErrorMessage("POLICY_BLOCKED", `${summary}\n\nCould not solve`, {
+						blocked: [
+							{
+								package: "numpy",
+								version: "2.1.0",
+								channel: "https://repo.anaconda.cloud/repo/acme/main",
+								org: "acme",
+								policy: "No critical CVEs",
+								policyId: null,
+								reason: "CVE-2099-0001 (critical)",
+							},
+						],
+					}),
+				);
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		const card = screen.getByTestId("environments-conda-update-confirm-error");
+		await expect.element(card.getByText("Blocked by your organization's policy")).toBeVisible();
+		await expect.element(card.getByText(summary)).toBeVisible();
+		const blocked = card.getByTestId("environments-policy-blocked-package");
+		await expect.element(blocked.getByText("numpy 2.1.0")).toBeVisible();
+		await expect
+			.element(blocked.getByText("Blocked by the policy “No critical CVEs” in acme"))
+			.toBeVisible();
+		await expect.element(blocked.getByText("Reason: CVE-2099-0001 (critical)")).toBeVisible();
+		expect(card.getByText("Dependency conflict", { exact: true }).query()).toBeNull();
+		await expect
+			.element(screen.getByTestId("environments-conda-update-confirm-btn"))
+			.toBeDisabled();
+		await vi.waitFor(() =>
+			expect(host.tracked.map(({ data }) => data["errorCode"])).toContain("POLICY_BLOCKED"),
+		);
+	});
+
+	it("says the policy may be involved in a conflict the bridge flagged", async () => {
+		const { baseElement } = await renderDialog({
+			preview: async () => {
+				throw new Error(
+					formatEnvironmentsErrorMessage("SOLVE_FAILED", "Could not solve", { policyNote: true }),
+				);
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		const card = screen.getByTestId("environments-conda-update-confirm-error");
+		await expect
+			.element(card.getByText("Dependency conflict under your organization's policy"))
+			.toBeVisible();
+		await expect.element(card.getByTestId("environments-policy-note")).toBeVisible();
 	});
 
 	it("clears the solver error card when the user unchecks all packages", async () => {

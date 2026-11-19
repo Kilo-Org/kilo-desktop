@@ -89,7 +89,10 @@ export function BulkRemoveConfirmation({
 						role="alert"
 						data-qa-id="environments-conda-bulk-remove-error"
 					>
-						{friendlyEnvironmentsError(remove.error, "Could not remove the selected packages.")}
+						{
+							friendlyEnvironmentsError(remove.error, "Could not remove the selected packages.")
+								.message
+						}
 					</p>
 				)}
 

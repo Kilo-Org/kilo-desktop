@@ -2,8 +2,9 @@
 // memory, with `kilo.environments/conda` answered by the test's handlers
 // (main's real entry needs the bridge), and stand-ins under their real
 // manifests and definitions for kilo.shell (its points and navigation) and,
-// when `identity` is given, kilo.core (its account and `signedIn` key); the
-// kernel's flags (`flags`) and a telemetry sink with consent.
+// when `identity` is given, kilo.core (its account and `signedIn` key), and
+// when `anaconda` is given, kilo.anaconda (its account); the kernel's flags
+// (`flags`) and a telemetry sink with consent.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -20,6 +21,13 @@ import {
 } from "@kilo-desktop/kernel";
 import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 import { KernelProvider } from "@kilo-desktop/kernel/web";
+import anacondaManifest from "@kilo-desktop/plugin-anaconda/plugin.json";
+import {
+	ANACONDA_DEFINITIONS,
+	AnacondaAccount,
+	type AnacondaAccountResult,
+	type AnacondaAccountState,
+} from "@kilo-desktop/plugin-anaconda/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import {
 	CORE_DEFINITIONS,
@@ -93,6 +101,10 @@ export interface EnvironmentsHostOptions {
 	readonly status?: CondaStatus;
 	/** kilo.core's account; without it there is no kilo.core. */
 	readonly identity?: AccountState;
+	/** kilo.anaconda's account sign-in; without it there is no kilo.anaconda. */
+	readonly anaconda?: {
+		readonly signIn: () => AnacondaAccountResult | Promise<AnacondaAccountResult>;
+	};
 	/** Flag overrides (`environments-feature` is off unless set). */
 	readonly flags?: Readonly<Record<string, boolean | string | number>>;
 	/** The window's route search (`{ env }`, or an install link's `{ packageAction, package, … }`). */
@@ -174,6 +186,40 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 		},
 	});
 
+	const anacondaMain = definePlugin({
+		activate(sdk) {
+			const anaconda = options.anaconda;
+			if (!anaconda) return;
+			const done = { ok: true as const };
+			const anonymous: AnacondaAccountState = {
+				session: { status: "anonymous" },
+				signingIn: false,
+			};
+			const account: DomainObjectProvider<typeof AnacondaAccount> = sdk.domainObjects.provide(
+				AnacondaAccount,
+				{
+					initialState: anonymous,
+					methods: {
+						session: () => account.state.session,
+						refresh: () => account.state.session,
+						signIn: async () => {
+							account.update((state) => ({ ...state, signingIn: true }));
+							try {
+								return await anaconda.signIn();
+							} finally {
+								account.update((state) => ({ ...state, signingIn: false }));
+							}
+						},
+						cancelSignIn: () => undefined,
+						signOut: () => done,
+						apiKey: () => null,
+						siteDomain: () => "anaconda.com",
+					},
+				},
+			);
+		},
+	});
+
 	const shellMain = definePlugin({
 		activate(sdk) {
 			const navigation = sdk.domainObjects.provide(Navigation, {
@@ -217,12 +263,17 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 
 	const shell: PluginRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
 	const core: PluginRegistration = { manifest: coreManifest, definitions: CORE_DEFINITIONS };
+	const anaconda: PluginRegistration = {
+		manifest: anacondaManifest,
+		definitions: ANACONDA_DEFINITIONS,
+	};
 	const plugins = options.plugins ?? [];
 	const { main, renderer } = await createTestKernelPair({
 		host: createTestHost({ flagOverrides: { ...options.flags } }),
 		main: [
 			{ ...shell, entry: shellMain },
 			...(options.identity ? [{ ...core, entry: coreMain }] : []),
+			...(options.anaconda ? [{ ...anaconda, entry: anacondaMain }] : []),
 			telemetrySink,
 			...plugins,
 			{ manifest, definitions: ENVIRONMENTS_DEFINITIONS, entry: environmentsMain },
@@ -230,6 +281,7 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 		renderer: [
 			shell,
 			...(options.identity ? [core] : []),
+			...(options.anaconda ? [anaconda] : []),
 			...plugins.map(({ entry: _entry, ...registration }) => registration),
 			{
 				manifest,

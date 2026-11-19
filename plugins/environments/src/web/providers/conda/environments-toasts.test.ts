@@ -8,7 +8,10 @@ vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 }));
 
 vi.mock("./environments-error-message", () => ({
-	friendlyEnvironmentsError: vi.fn((_reason: unknown, fallback: string) => fallback),
+	friendlyEnvironmentsError: vi.fn((_reason: unknown, fallback: string) => ({
+		code: null,
+		message: fallback,
+	})),
 }));
 
 import { toast } from "@kilo-desktop/ui/components/sonner";

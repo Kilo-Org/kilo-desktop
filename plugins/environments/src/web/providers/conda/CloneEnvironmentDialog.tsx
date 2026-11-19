@@ -60,7 +60,7 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 			{
 				onSuccess: () => onClose(),
 				onError: (reason) =>
-					setServerError(friendlyEnvironmentsError(reason, "Could not clone environment.")),
+					setServerError(friendlyEnvironmentsError(reason, "Could not clone environment.").message),
 			},
 		);
 	}

@@ -1604,6 +1604,9 @@ importers:
       '@kilo-desktop/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@kilo-desktop/plugin-anaconda':
+        specifier: workspace:*
+        version: link:../anaconda
       '@kilo-desktop/plugin-chat':
         specifier: workspace:*
         version: link:../chat

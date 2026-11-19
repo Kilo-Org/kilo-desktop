@@ -72,7 +72,7 @@ interface ListRow {
 function SearchableShortcutList({ searchRef }: { readonly searchRef: Ref<HTMLInputElement> }) {
 	const [query, setQuery] = useState("");
 	const { commands, overrides, resolution, platform } = useShortcuts();
-	// A panel's row (App Navigation's "Go to tab 1–9") stands in for the commands it covers.
+	// A shortcuts panel's row stands in for the commands it covers.
 	const panelRows = usePanelListRows(overrides);
 	const groups = groupShortcutCommands(commands)
 		.map((group) => ({

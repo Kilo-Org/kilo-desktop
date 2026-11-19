@@ -266,7 +266,7 @@ export const AiProviderPanel = defineExtensionPoint({
 /** One row of the ⌘/ shortcuts list that a shortcuts panel draws for some of its commands. */
 export interface ShortcutsListRow {
 	readonly title: string;
-	/** Shortcut labels as shown, e.g. `["⌘1–9"]`. */
+	/** Shortcut labels as shown, e.g. `["⇧⌘E"]`. */
 	readonly labels: readonly string[];
 	/** Command keys the row stands for; it takes the place of the first one. */
 	readonly commands: readonly string[];
@@ -290,7 +290,7 @@ export interface ShortcutsPanelImplementation {
 
 /**
  * A panel in Settings → Shortcuts for shortcuts a plugin edits in its own
- * way (App Navigation's tab and session numbers), ordered by `priority`.
+ * way (several commands changed together), ordered by `priority`.
  * Settings leaves the `commands` it claims (qualified command keys) out of
  * its list; the ⌘/ list shows the panel's `listRows` for them.
  */

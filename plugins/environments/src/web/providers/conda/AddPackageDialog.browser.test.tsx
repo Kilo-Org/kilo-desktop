@@ -2,8 +2,6 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { Toaster } from "@kilo-desktop/ui/components/sonner";
-
 import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
 	type CondaEnv,
@@ -15,7 +13,11 @@ import {
 	type CondaRepodataFindInput,
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import {
+	renderWithConda,
+	ShellHostedToaster,
+	type EnvironmentsHostOptions,
+} from "../../../test/environments-host";
 import { AddPackageDialog, PREVIEW_DEBOUNCE_MS } from "./AddPackageDialog";
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
@@ -90,7 +92,7 @@ async function renderDialog(
 
 	return renderWithConda(
 		<>
-			{options.toaster ? <Toaster /> : null}
+			{options.toaster ? <ShellHostedToaster /> : null}
 			<AddPackageDialog env={ENV} open onClose={onClose} />
 		</>,
 		hostOptions,

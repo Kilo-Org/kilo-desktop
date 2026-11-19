@@ -20,7 +20,7 @@ import {
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
 import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
-import { KernelProvider } from "@kilo-desktop/kernel/web";
+import { KernelProvider, useKernel } from "@kilo-desktop/kernel/web";
 import anacondaManifest from "@kilo-desktop/plugin-anaconda/plugin.json";
 import {
 	ANACONDA_DEFINITIONS,
@@ -37,6 +37,7 @@ import {
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { Navigation, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
+import { Toaster } from "@kilo-desktop/ui/components/sonner";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
@@ -334,6 +335,20 @@ export async function bootEnvironmentsHost(options: EnvironmentsHostOptions = {}
 }
 
 export type EnvironmentsHost = Awaited<ReturnType<typeof bootEnvironmentsHost>>;
+
+/**
+ * Sonner's `<Toaster>` rendered with kilo.shell's identity, as the shell's
+ * frame hosts it in the app: a toast's content renders in the shell's sdk
+ * context, so anything it sends through the kernel is attributed to
+ * kilo.shell, not to the plugin that raised the toast.
+ */
+export function ShellHostedToaster() {
+	return (
+		<KernelProvider kernel={useKernel()} as={shellManifest.id}>
+			<Toaster />
+		</KernelProvider>
+	);
+}
 
 /** Boots a host and renders `element` in it. */
 export async function renderWithConda(element: ReactNode, options: EnvironmentsHostOptions = {}) {

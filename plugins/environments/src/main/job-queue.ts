@@ -435,15 +435,19 @@ function stableStringify(value: unknown): string {
 /**
  * Translate any thrown value into the {@link JobError} shape carried by
  * `failed` progress events. KernelErrors whose message follows the
- * plugin's `CODE: detail` convention keep their granular code; anything
- * else buckets under `PROVIDER_NOT_READY` so the schema validator on
- * the receiving side never rejects an event.
+ * plugin's `CODE: detail` convention keep their granular code and policy
+ * notice; anything else buckets under `PROVIDER_NOT_READY` so the schema
+ * validator on the receiving side never rejects an event.
  */
 function toJobError(error: unknown): JobError {
 	if (error instanceof KernelError) {
 		const parsed = parseEnvironmentsErrorMessage(error.message);
 		if (parsed) {
-			return { code: parsed.code, message: parsed.detail ?? parsed.code };
+			return {
+				code: parsed.code,
+				message: parsed.detail ?? parsed.code,
+				...(parsed.policy ? { policy: parsed.policy } : {}),
+			};
 		}
 		return { code: "PROVIDER_NOT_READY", message: error.message || "PROVIDER_NOT_READY" };
 	}

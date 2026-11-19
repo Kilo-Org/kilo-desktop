@@ -238,6 +238,45 @@ describe("JobQueue.enqueue — progress event emission", () => {
 		queue.dispose();
 	});
 
+	it("carries a failure's policy notice on the failed event, out of its message", async () => {
+		const emit = vi.fn<(event: JobProgressEvent) => void>();
+		const queue = new JobQueue({ emit });
+		const policy = {
+			blocked: [
+				{
+					package: "pillow",
+					version: "8.4.0",
+					channel: "acme/main",
+					org: "acme",
+					policy: "No critical CVEs",
+					policyId: null,
+					reason: "critical CVE",
+				},
+			],
+		};
+
+		const { result } = queue.enqueue({
+			providerId: "conda",
+			kind: "packages.install",
+			run: async () => {
+				throw new KernelError(
+					"BUSINESS",
+					formatEnvironmentsErrorMessage("POLICY_BLOCKED", "pillow 8.4.0 is blocked", policy),
+				);
+			},
+		});
+		await expect(result).rejects.toBeInstanceOf(KernelError);
+
+		const failed = emit.mock.calls.map(([evt]) => evt).at(-1)!;
+		expect((failed as Extract<JobProgressEvent, { status: "failed" }>).error).toEqual({
+			code: "POLICY_BLOCKED",
+			message: "pillow 8.4.0 is blocked",
+			policy,
+		});
+
+		queue.dispose();
+	});
+
 	it("buckets non-KernelError failures under PROVIDER_NOT_READY", async () => {
 		const emit = vi.fn<(event: JobProgressEvent) => void>();
 		const queue = new JobQueue({ emit });

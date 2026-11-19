@@ -40,6 +40,11 @@ const FRIENDLY_MESSAGE: Record<EnvironmentsErrorCode, string> = {
 	JOB_NOT_FOUND: "That operation is no longer running.",
 	JOB_CANCELLED: "The operation was cancelled.",
 	PROVIDER_NOT_READY: "The conda backend is not ready. Please try again in a moment.",
+	POLICY_BLOCKED:
+		"One or more selected packages are blocked by your organization's package policy. Choose a different version or package, or ask your organization's administrator.",
+	NOT_SIGNED_IN: "This channel needs an Anaconda account. Sign in to Anaconda, then try again.",
+	CHANNEL_ACCESS_DENIED:
+		"Anaconda refused access to this channel. Your sign-in may have expired, or your account may not have access to it. Sign in to Anaconda again, or ask your organization's administrator.",
 };
 
 /**

@@ -21,7 +21,8 @@ Declare it in `plugin.json` and define it in `src/contracts`:
 ```
 
 ```ts
-import { defineDomainObject, method } from "@kilo-desktop/kernel";
+import { z } from "zod";
+import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
 export const Greetings = defineDomainObject({
 	id: "example.hello/greetings",
@@ -141,7 +142,7 @@ other listeners, the broadcast to windows or the provider's `emit`. Events
 from a `main`-home object reach every window, so filter in the listener
 rather than expecting only the events you care about.
 
-Add the domain to `requires` in your manifest (`"optional"` in nearly all
+Add the domain object to `requires` in your manifest (`"optional"` in nearly all
 cases) so activation is ordered after its owner, and import its definition
 from the owner's `./contracts`.
 
@@ -168,7 +169,7 @@ export function GreetingCount() {
 
 - Keep selectors stable (module level or `useCallback`) and return
   primitives or existing objects, so components re-render only on change.
-- Always render something sensible when the domain is unavailable: the
+- Always render something sensible when the domain object is unavailable: the
   providing plugin may be removed.
 - Don't use React context to share data with other plugins; share it
   through a domain object.

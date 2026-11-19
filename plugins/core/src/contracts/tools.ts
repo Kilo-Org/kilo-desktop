@@ -71,7 +71,7 @@ export const Tool = defineExtensionPoint({
 
 /**
  * The name Kilo knows a tool by: `desktop_<plugin>_<id>`, with the `kilo.`
- * publisher dropped (`kilo.terminal/open_terminal` → `desktop_terminal_open_terminal`).
+ * publisher dropped (`kilo.terminal/open` → `desktop_terminal_open`).
  */
 export function toolWireName(contributionKey: string): string {
 	const slash = contributionKey.indexOf("/");

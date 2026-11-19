@@ -22,7 +22,7 @@ const selectComponent = (implementation: ToolRendererImplementation) => implemen
 
 /**
  * The name Kilo calls a `tools` entry by: a desktop tool's `kilo.core/tool`
- * contribution key (`kilo.terminal/open_terminal`) by its wire name, one of
+ * contribution key (`kilo.terminal/open`) by its wire name, one of
  * Kilo's own tools (`bash`) as it is.
  */
 export const toolNameOf = (tool: string): string =>

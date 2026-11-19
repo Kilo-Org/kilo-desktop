@@ -233,7 +233,7 @@ export const paneKindMetadataSchema = z.object({
 	availableWhen: whenSchema.optional(),
 	/** Why it can't be started while `availableWhen` doesn't hold. */
 	unavailableHint: z.string().optional(),
-	/** The command that opens it (`kilo.terminal/open-terminal`); its shortcut is shown where the kind is offered. */
+	/** The command that opens it (`kilo.terminal/open`); its shortcut is shown where the kind is offered. */
 	openCommand: z.string().optional(),
 });
 export type PaneKindMetadata = z.output<typeof paneKindMetadataSchema>;

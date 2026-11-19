@@ -78,3 +78,42 @@ describe("moving keyboard shortcuts", () => {
 		});
 	});
 });
+
+describe("number shortcuts changed one at a time", () => {
+	const pane = (slot: string) => `kilo.work-sessions/pane-${slot}`;
+
+	it("resets a series changed one number at a time, keeping other overrides", async () => {
+		const { saved } = await boot({
+			[pane("3")]: "Ctrl+Alt+KeyK",
+			"kilo.shell/toggle-sidebar": "Mod+B",
+		});
+
+		expect(saved()).toEqual({ "kilo.shell/toggle-sidebar": "Mod+B" });
+	});
+
+	it("checks numbers moved from the old command keys too", async () => {
+		const { saved } = await boot({ "kilo.workbench/session-2": null });
+
+		expect(saved()).toEqual({});
+	});
+
+	it("keeps a series moved to new modifiers as a whole", async () => {
+		const uniform = Object.fromEntries(
+			["1", "2", "3", "4", "5", "6", "7", "8"]
+				.map((slot) => [pane(slot), `Ctrl+Alt+Digit${slot}`])
+				.concat([[pane("last"), "Ctrl+Alt+Digit9"]]),
+		);
+		const { saved } = await boot(uniform);
+
+		expect(saved()).toEqual(uniform);
+	});
+
+	it("resets them once, so later changes to a series keep the overrides", async () => {
+		const storage = createMemoryStorage("/data/kilo.work-sessions");
+		await boot({}, storage);
+
+		const { saved } = await boot({ [pane("3")]: "Ctrl+Alt+KeyK" }, storage);
+
+		expect(saved()).toEqual({ [pane("3")]: "Ctrl+Alt+KeyK" });
+	});
+});

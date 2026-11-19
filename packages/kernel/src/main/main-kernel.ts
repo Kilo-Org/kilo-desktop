@@ -2,7 +2,6 @@ import {
 	KERNEL_CONTEXT_KEYS,
 	KERNEL_DEFINITIONS,
 	KernelApp,
-	KernelCommand,
 	KernelDomainObjects,
 	KernelExtensions,
 	KernelKeybindings,
@@ -16,7 +15,7 @@ import {
 	type AppPhase,
 	type FlagValue,
 } from "../builtins";
-import { CommandService, mixedSeriesOverrides } from "../commands";
+import { CommandService } from "../commands";
 import { windowOrigin } from "../extension-registry";
 import type { DomainObjectState } from "../domain-object";
 import type { DomainObjectProvider } from "../domain-object-registry";
@@ -187,7 +186,7 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 	provideDomainObjectsAndExtensions(core);
 	const windows = provideWindows(core, host);
 	const system = provideSystem(core, host);
-	const keybindings = provideKeybindings(core, host);
+	provideKeybindings(core, host);
 	provideIdentity(core);
 	provideFlags(core, host.flagOverrides);
 	provideTelemetry(core);
@@ -227,8 +226,6 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 		commands,
 		async start(startOptions) {
 			await core.activate();
-			// After activation: plugins may move overrides to renamed commands while activating.
-			keybindings.resetMixedSeries();
 			if (!startOptions?.environmentReady) {
 				services.markActivated();
 				return;
@@ -543,16 +540,7 @@ function provideSystem(core: Kernel, host: MainKernelHost): MainKernel["systemEv
 	};
 }
 
-/**
- * `kernel/keybindings`: the user's overrides, loaded from and saved to the
- * host. A series of commands is changed as one, so at launch any series
- * whose overrides were set one command at a time (before the series
- * existed) is reset to its defaults; settings can't produce one afterwards.
- */
-function provideKeybindings(
-	core: Kernel,
-	host: MainKernelHost,
-): { readonly resetMixedSeries: () => void } {
+function provideKeybindings(core: Kernel, host: MainKernelHost): void {
 	const save = (overrides: Record<string, string | null>): void => {
 		provider.setState({ overrides });
 		host.keybindings?.save(overrides);
@@ -570,22 +558,4 @@ function provideKeybindings(
 				resetAll: () => save({}),
 			},
 		});
-	return {
-		resetMixedSeries() {
-			const mixed = mixedSeriesOverrides({
-				commands: core.extensions.all(KernelCommand),
-				overrides: provider.state.overrides,
-				platform: host.platform,
-			});
-			if (mixed.length === 0) return;
-			core.kernelSdk.logger.info(
-				`Reset shortcuts changed one at a time in a series: ${mixed.join(", ")}`,
-			);
-			save(
-				Object.fromEntries(
-					Object.entries(provider.state.overrides).filter(([command]) => !mixed.includes(command)),
-				),
-			);
-		},
-	};
 }

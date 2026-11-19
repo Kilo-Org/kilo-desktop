@@ -44,6 +44,8 @@ export interface PersistedAdoption extends Record<string, unknown> {
 	adopted: string[];
 	/** Keybinding overrides saved under the predecessors' command keys were moved. */
 	keybindingsMoved: boolean;
+	/** Tab and session number overrides changed one number at a time were reset. */
+	numberSeriesReset: boolean;
 }
 
 export const WORKSPACES_NAMESPACE = "workspaces";
@@ -93,6 +95,6 @@ export function layoutPresetsStore(sdk: PluginSdk): KvStore<PersistedLayoutPrese
 export function adoptionStore(sdk: PluginSdk): KvStore<PersistedAdoption> {
 	return mainHost(sdk).storage.kv<PersistedAdoption>({
 		namespace: ADOPTION_NAMESPACE,
-		defaults: { adopted: [], keybindingsMoved: false },
+		defaults: { adopted: [], keybindingsMoved: false, numberSeriesReset: false },
 	});
 }

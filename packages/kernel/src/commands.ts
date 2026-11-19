@@ -279,9 +279,11 @@ function isUniformSeries(
 }
 
 /**
- * Overridden commands of series that were changed one command at a time
- * (saved before series existed, or hand-edited): resetting them restores a
- * series that can be shown and changed as one row.
+ * Overridden commands of series that were changed one command at a time,
+ * e.g. saved before the commands formed a series: resetting them restores a
+ * series that can be shown and changed as one row. For a plugin's one-time
+ * migration; run on every launch it would also reset series whose members
+ * or defaults changed since the user set them.
  */
 export function mixedSeriesOverrides(input: {
 	readonly commands: readonly SeriesCommand[];

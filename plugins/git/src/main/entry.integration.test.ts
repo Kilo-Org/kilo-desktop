@@ -907,6 +907,20 @@ describe("kilo.git repository checkout", () => {
 		expect(mainTip).not.toBe(featureTip);
 	});
 
+	it("reports why creating an invalid branch name failed", async () => {
+		const repoDir = initRepo();
+		const { repository, addWorkspaceFolder } = await boot();
+		addWorkspaceFolder(repoDir);
+
+		await expect(
+			repository.methods.checkout({ directory: repoDir, branch: "invalid..name", create: true }),
+		).rejects.toMatchObject({
+			name: "KernelError",
+			code: "BUSINESS",
+			message: expect.stringContaining("invalid..name"),
+		});
+	});
+
 	it("rejects with a BUSINESS KernelError when creating an existing branch name", async () => {
 		const repoDir = initRepo();
 		const { repository, addWorkspaceFolder } = await boot();

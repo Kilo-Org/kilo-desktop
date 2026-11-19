@@ -323,15 +323,11 @@ async function jumpToOldest(turns: number) {
 
 describe("chat performance", () => {
 	for (const turns of SIZES) {
-		it(
-			`opens, streams into and scrolls a ${turns}-turn session`,
-			{ timeout: 240_000 },
-			async () => {
-				const { server } = await openLongSession(turns);
-				await streamReply(server, turns);
-				await scrollToTop(turns);
-				await jumpToOldest(turns);
-			},
-		);
+		it(`opens, streams into and scrolls a ${turns}-turn session`, async () => {
+			const { server } = await openLongSession(turns);
+			await streamReply(server, turns);
+			await scrollToTop(turns);
+			await jumpToOldest(turns);
+		});
 	}
 });

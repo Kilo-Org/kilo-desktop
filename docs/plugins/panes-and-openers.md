@@ -20,7 +20,8 @@ in main) and draws them. A plugin adds a **pane kind** and, optionally,
 				"description": "Run commands in an interactive shell.",
 				"launch": { "newSession": true, "inSession": true },
 				"keepAlive": true,
-				"openCommand": "kilo.terminal/open-terminal"
+				"order": 30,
+				"openCommand": "kilo.terminal/open"
 			}
 		]
 	}
@@ -53,13 +54,13 @@ The kind's id is its contribution key (`kilo.terminal/terminal`).
 
 `PaneProps`:
 
-| Prop            | Meaning                                                                      |
-| --------------- | ---------------------------------------------------------------------------- |
-| `workSessionId` | The work session                                                             |
-| `pane`          | `{ id, kind, title, iconKey?, object?, metadata, ordinal, status? }`         |
-| `workspaceId`   | The work session's workspace, or null                                        |
-| `directory`     | Where the work session works (its copy, else the workspace's primary folder) |
-| `visible`       | True while the pane is the one shown in its group                            |
+| Prop            | Meaning                                                                               |
+| --------------- | ------------------------------------------------------------------------------------- |
+| `workSessionId` | The work session                                                                      |
+| `pane`          | `{ id, kind, title, iconKey?, object?, metadata, ordinal, status? }`                  |
+| `workspaceId`   | The work session's workspace, or null                                                 |
+| `directory`     | Where the work session works (its copy, else the workspace's primary folder), or null |
+| `visible`       | True while the pane is the one shown in its group                                     |
 
 The implementation is `{ component, icon?, canClose?, prefetch? }`. A pane of a kind
 whose plugin is missing stays listed and renders as "unavailable", so
@@ -85,7 +86,8 @@ await panes?.methods.close({ workSessionId, paneId });
   zoom level). It is saved with the work session and handed back in
   `pane.metadata`. Keep large or live state in your own domain object, keyed
   by pane id.
-- `status` (`busy` or `attention`) badges the pane's tab; `null` clears it.
+- `status` (`busy`, `attention` or `unread`) badges the pane's tab; `null`
+  clears it.
 - Each pane is also an object, `kilo.work-sessions/pane`, keyed
   `<workSessionId>/<paneId>` (`paneKey`).
 - Listen to `Panes` `opened` / `closed` (in main) to create or clean up
@@ -154,8 +156,10 @@ An opener says "objects of this type open in this pane kind":
 
 ```jsonc
 "kilo.work-sessions/opener": [
+	// kilo.notebook
 	{ "id": "ipynb-file", "match": { "type": "kilo.work-sessions/file", "pattern": "*.ipynb" }, "pane": "kilo.notebook/notebook" },
-	{ "id": "any-file", "priority": -100, "match": { "type": "kilo.work-sessions/file" }, "pane": "kilo.files/files" }
+	// kilo.files
+	{ "id": "file", "priority": -100, "match": { "type": "kilo.work-sessions/file" }, "pane": "kilo.files/files" }
 ]
 ```
 

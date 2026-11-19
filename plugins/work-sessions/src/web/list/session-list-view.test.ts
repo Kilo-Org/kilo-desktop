@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEmptySessionActivity, type SessionActivity } from "./session-activity";
+import { type SessionActivity } from "./session-activity";
 import {
 	DEFAULT_SESSION_LIST_VIEW,
 	UNSCOPED_WORKSPACE_FOCUS,
@@ -10,9 +10,16 @@ import {
 	resolveSessionListGrouping,
 	visibleShowFields,
 	writeSessionListView,
+	type SessionListContributedGrouping,
+	type SessionListSection,
 	type SessionListView,
 	type SessionListViewEntry,
 } from "./session-list-view";
+
+const emptyActivity = (): SessionActivity => ({
+	pendingPermissionIds: [],
+	pendingQuestionIds: [],
+});
 
 const workspaces = [
 	{ id: "ws-1", name: "Acme App" },
@@ -29,7 +36,7 @@ function entry(
 }
 
 function activity(patch: Partial<SessionActivity> = {}): SessionActivity {
-	return { ...createEmptySessionActivity(), ...patch };
+	return { ...emptyActivity(), ...patch };
 }
 
 const defaultView: SessionListView = { ...DEFAULT_SESSION_LIST_VIEW };
@@ -708,5 +715,136 @@ describe("buildSessionListSections", () => {
 			"local-ses-1",
 			"local-ses-3",
 		]);
+	});
+});
+
+describe("contributed groupings", () => {
+	const board: SessionListContributedGrouping = {
+		id: "test.board/board",
+		title: "Board",
+		groups: [
+			{ id: "todo", label: "To do", workSessionIds: ["ses-2", "ses-1"] },
+			{ id: "empty", label: "Empty", workSessionIds: [] },
+			{ id: "done", label: "Done", workSessionIds: ["ses-3", "ses-archived", "ses-unknown"] },
+		],
+	};
+	const boardView: SessionListView = { ...defaultView, grouping: "test.board/board" };
+	const boardEntries = [
+		entry("ses-1", 0),
+		entry("ses-2", 1),
+		entry("ses-3", 2),
+		entry("ses-off-board", 3),
+		entry("ses-archived", 4, true),
+	];
+	const ids = (sections: readonly SessionListSection[]) =>
+		sections.map((section) => [section.key, section.rows.map((row) => row.id)]);
+
+	it("shows only sessions in a category, a shelf per category in the grouping's order, empty ones included", () => {
+		const sections = buildSessionListSections({
+			entries: boardEntries,
+			activityBySessionId: {},
+			workspaces,
+			view: boardView,
+			groupings: [board],
+		});
+
+		expect(ids(sections)).toEqual([
+			["group:todo", ["local-ses-2", "local-ses-1"]],
+			["group:empty", []],
+			["group:done", ["local-ses-3"]],
+			["archived", ["local-ses-archived"]],
+		]);
+		expect(sections[0]).toMatchObject({ label: "To do", tone: "group" });
+	});
+
+	it("keeps pinned and attention sessions in their category", () => {
+		const sections = buildSessionListSections({
+			entries: boardEntries,
+			activityBySessionId: { "ses-1": activity({ pendingPermissionIds: ["perm-1"] }) },
+			workspaces,
+			view: boardView,
+			pinnedIds: new Set(["ses-1", "ses-off-board"]),
+			groupings: [board],
+		});
+
+		expect(ids(sections)).toEqual([
+			["group:todo", ["local-ses-2", "local-ses-1"]],
+			["group:empty", []],
+			["group:done", ["local-ses-3"]],
+			["archived", ["local-ses-archived"]],
+		]);
+	});
+
+	it("shows a session in more than one category only in the first", () => {
+		const sections = buildSessionListSections({
+			entries: boardEntries,
+			activityBySessionId: {},
+			workspaces,
+			view: boardView,
+			groupings: [
+				{
+					...board,
+					groups: [
+						{ id: "a", label: "A", workSessionIds: ["ses-1"] },
+						{ id: "b", label: "B", workSessionIds: ["ses-1", "ses-2"] },
+					],
+				},
+			],
+		});
+
+		expect(ids(sections)).toEqual([
+			["group:a", ["local-ses-1"]],
+			["group:b", ["local-ses-2"]],
+		]);
+	});
+
+	it("still applies the status and workspace filters", () => {
+		const sections = buildSessionListSections({
+			entries: boardEntries,
+			activityBySessionId: {
+				"ses-1": activity({ workspaceId: "ws-1" }),
+				"ses-2": activity({ workspaceId: "ws-2" }),
+			},
+			workspaces,
+			view: { ...boardView, focus: "ws-1" },
+			groupings: [board],
+		});
+
+		expect(ids(sections)).toEqual([
+			["group:todo", ["local-ses-1"]],
+			["group:empty", []],
+			["group:done", []],
+		]);
+	});
+
+	it("falls back to status grouping while the chosen grouping is not contributed", () => {
+		expect(resolveSessionListGrouping(boardView, [])).toBe("lifecycle");
+		expect(resolveSessionListGrouping(boardView, [board])).toBe("test.board/board");
+		expect(
+			buildSessionListSections({
+				entries: boardEntries,
+				activityBySessionId: {},
+				workspaces,
+				view: boardView,
+			}).map((section) => section.key),
+		).toEqual(["active", "archived"]);
+	});
+
+	it("shows only the Archived shelf when filtering archived sessions", () => {
+		const sections = buildSessionListSections({
+			entries: boardEntries,
+			activityBySessionId: {},
+			workspaces,
+			view: { ...boardView, status: "archived" },
+			groupings: [board],
+		});
+
+		expect(ids(sections)).toEqual([["archived", ["local-ses-archived"]]]);
+	});
+
+	it("keeps a stored contributed grouping id", () => {
+		expect(parseSessionListView({ grouping: "test.board/board" }).grouping).toBe(
+			"test.board/board",
+		);
 	});
 });

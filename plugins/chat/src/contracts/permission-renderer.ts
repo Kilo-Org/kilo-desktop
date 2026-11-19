@@ -10,7 +10,7 @@ export interface PermissionInteraction {
 	 * desktop tool's wire name, or a permission (`external_directory`).
 	 */
 	readonly permission: string;
-	/** The `kilo.core/tool` contribution key, when a desktop tool asks (`kilo.terminal/open_terminal`). */
+	/** The `kilo.core/tool` contribution key, when a desktop tool asks (`kilo.terminal/open`). */
 	readonly toolKey?: string;
 	/** The request's patterns (a `bash` request's command), without the bare `*` wildcard. */
 	readonly patterns: readonly string[];

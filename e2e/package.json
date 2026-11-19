@@ -26,11 +26,11 @@
 	},
 	"lint-staged": {
 		"{fixtures,pages,scripts,specs,utils}/**/*.ts": [
-			"oxlint --fix",
+			"oxlint --fix --deny-warnings",
 			"oxfmt"
 		],
 		"{global-setup,index,playwright.config}.ts": [
-			"oxlint --fix",
+			"oxlint --fix --deny-warnings",
 			"oxfmt"
 		]
 	},

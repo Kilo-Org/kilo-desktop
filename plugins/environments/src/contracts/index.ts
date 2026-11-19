@@ -8,6 +8,8 @@ import {
 	condaChannelsAddInputSchema,
 	condaChannelsListResultSchema,
 	condaChannelsRemoveInputSchema,
+	condaChannelsResolveInputSchema,
+	condaChannelsResolveResultSchema,
 	condaEnvSchema,
 	condaEnvsCheckPrefixInputSchema,
 	condaEnvsCheckPrefixResultSchema,
@@ -113,6 +115,20 @@ export const PERMISSION_RENDERERS = {
 export const ENVIRONMENTS_TELEMETRY_EVENTS = {
 	environmentCreated: "environment-created",
 	environmentRemoved: "environment-removed",
+	packageInstallLinkReceived: "package-install-link-received",
+	packageInstallLinkRejected: "package-install-link-rejected",
+} as const;
+
+/**
+ * Its `kilo.shell/deep-link` contribution: anaconda.org's "Install via Desktop"
+ * (`kilo-desktop://packages/install?package=<name>[&version=…][&channel=…]`),
+ * opened on the settings page with the action as `packageAction`.
+ */
+export const PACKAGE_INSTALL_DEEP_LINK = {
+	id: "package-install",
+	host: "packages",
+	pathParam: "packageAction",
+	query: ["package", "version", "channel", "source"],
 } as const;
 
 const nothing = z.undefined();
@@ -170,6 +186,8 @@ export const Conda = defineDomainObject({
 		listChannels: method(nothing, condaChannelsListResultSchema),
 		addChannel: method(condaChannelsAddInputSchema, condaChannelsListResultSchema),
 		removeChannel: method(condaChannelsRemoveInputSchema, condaChannelsListResultSchema),
+		/** Whether the configured channels already provide a channel. Not an agent tool. */
+		resolveChannel: method(condaChannelsResolveInputSchema, condaChannelsResolveResultSchema),
 		findRepodata: method(condaRepodataFindInputSchema, condaRepodataFindResultSchema),
 		cancelJob: method(cancelInputSchema, cancelResultSchema),
 	},

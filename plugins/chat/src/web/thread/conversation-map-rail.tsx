@@ -1,6 +1,8 @@
 import { useAuiState, useThreadViewport, type ThreadMessage } from "@assistant-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useOlderHistoryStatus } from "../runtime/use-optional-opencode-runtime-extras";
@@ -159,16 +161,19 @@ const describeTurnOnce = (turn: Turn): ConversationMapEntry => {
 	return entry;
 };
 
-/** `next`, or `previous` while it holds the same entries. */
-const keepEntries = (
-	previous: readonly ConversationMapEntry[] | undefined,
+const sameEntries = (
+	previous: readonly ConversationMapEntry[],
 	next: readonly ConversationMapEntry[],
-) =>
-	previous &&
-	previous.length === next.length &&
-	previous.every((entry, index) => entry === next[index])
-		? previous
-		: next;
+) => previous.length === next.length && previous.every((entry, index) => entry === next[index]);
+
+/** Which turn each message belongs to, so a message in view marks its turn. */
+function turnOwners(turns: ReturnType<typeof groupIntoTurns>): ReadonlyMap<string, string> {
+	const owners = new Map<string, string>();
+	for (const turn of turns) {
+		for (const member of turn.members) owners.set(member.id, turn.head.id);
+	}
+	return owners;
+}
 
 /**
  * The conversation map docked to the thread viewport's edge: one tick per user
@@ -191,28 +196,12 @@ export function ConversationMapRail({
 	const [gutter, setGutter] = useState<Gutter>(NO_GUTTER);
 	const scheduleRef = useRef<(() => void) | undefined>(undefined);
 
-	const turns = useMemo(() => groupIntoTurns(messages), [messages]);
-	const entriesRef = useRef<readonly ConversationMapEntry[] | undefined>(undefined);
-	const entries = useMemo(
-		() => (entriesRef.current = keepEntries(entriesRef.current, turns.map(describeTurnOnce))),
-		[turns],
-	);
-
-	/** Which turn each message belongs to, so a message in view marks its turn. */
-	const turnOf = useMemo(() => {
-		const owners = new Map<string, string>();
-		for (const turn of turns) {
-			for (const member of turn.members) owners.set(member.id, turn.head.id);
-		}
-		return owners;
-	}, [turns]);
-
-	const turnOfRef = useRef(turnOf);
+	const turns = groupIntoTurns(messages);
+	const describedEntries = turns.map(describeTurnOnce);
 	const turnKey = turns.map((turn) => turn.head.id).join(" ");
-
-	useEffect(() => {
-		turnOfRef.current = turnOf;
-	});
+	const turnOf = turnOwners(turns);
+	const entries = useStableValue(describedEntries, sameEntries);
+	const turnOfRef = useLatestRef(turnOf);
 
 	useEffect(() => {
 		if (!viewport) return undefined;
@@ -276,11 +265,11 @@ export function ConversationMapRail({
 			viewport.removeEventListener("scroll", schedule);
 			observer.disconnect();
 		};
-	}, [viewport]);
+	}, [viewport, turnOfRef]);
 
-	useEffect(() => {
-		scheduleRef.current?.();
-	}, [turnKey]);
+	// New or removed turns move the reading line's turn without a scroll or resize.
+	const remeasureTurns = useEffectEvent((_turnKey: string) => scheduleRef.current?.());
+	useEffect(() => remeasureTurns(turnKey), [turnKey]);
 
 	// Switching between overlay and classic scrollbars resizes the content box,
 	// so the observer also catches a gutter that appears or disappears.
@@ -300,23 +289,20 @@ export function ConversationMapRail({
 	// A map of part of the session would misplace every tick once the rest lands.
 	const historyComplete = useOlderHistoryStatus() === "complete";
 
-	const select = useCallback(
-		(id: string) => {
-			if (!viewport) return;
-			const element = [...viewport.querySelectorAll<HTMLElement>("[data-message-id]")].find(
-				(candidate) => candidate.dataset["messageId"] === id,
-			);
-			if (!element) return;
+	const select = (id: string) => {
+		if (!viewport) return;
+		const element = [...viewport.querySelectorAll<HTMLElement>("[data-message-id]")].find(
+			(candidate) => candidate.dataset["messageId"] === id,
+		);
+		if (!element) return;
 
-			// `scrollIntoView` aligns every scrollable ancestor, which drags the
-			// page a thread is embedded in; only this viewport should move.
-			viewport.scrollTo({
-				top: viewport.scrollTop + offsetOf(element, viewport),
-				behavior: "smooth",
-			});
-		},
-		[viewport],
-	);
+		// `scrollIntoView` aligns every scrollable ancestor, which drags the
+		// page a thread is embedded in; only this viewport should move.
+		viewport.scrollTo({
+			top: viewport.scrollTop + offsetOf(element, viewport),
+			behavior: "smooth",
+		});
+	};
 
 	if (turns.length < 2 || !historyComplete) return null;
 

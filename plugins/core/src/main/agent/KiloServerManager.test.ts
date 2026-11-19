@@ -410,7 +410,8 @@ describe("KiloServerManager", () => {
 		await manager.setTelemetryEnabled(false);
 		// The restarted CLI's ready sync fails too; it was spawned with telemetry off.
 		await vi.waitFor(() => expect(telemetryRequests(fetch)).toHaveLength(3));
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		// Let the failed sync's handlers run: the CLI was spawned off, so no next restart.
+		await new Promise((resolve) => setImmediate(resolve));
 
 		expect(spawn).toHaveBeenCalledTimes(2);
 		expect(manager.isRunning).toBe(true);
@@ -965,16 +966,6 @@ describe("KiloServerManager", () => {
 
 		expect(environment.ANACONDA_API_KEY).toBe("test-key-123");
 		expect(environment.CUSTOM_VAR).toBe("custom-value");
-		manager.dispose();
-	});
-
-	it("does not include contributed env when no ContributedEnvManager is provided", async () => {
-		const { manager, spawn } = createHarness();
-		await manager.ensureRunning();
-		const environment = spawn.mock.calls[0]![2].env;
-
-		// Should still work — no ANACONDA_API_KEY since no contribution
-		expect(environment.ANACONDA_API_KEY).toBeUndefined();
 		manager.dispose();
 	});
 

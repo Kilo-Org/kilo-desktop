@@ -1,7 +1,15 @@
 import { AssistantRuntimeProvider, useAui, useAuiEvent, useAuiState } from "@assistant-ui/react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { BotIcon, BotMessageSquareIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
+import {
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+	type FC,
+	type ReactNode,
+} from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -15,11 +23,15 @@ import {
 	type WorkspacesState,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { FindScope } from "@kilo-desktop/ui/components/find-bar";
+import { ProgressOverlay } from "@kilo-desktop/ui/components/progress-overlay";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 import {
 	paneChatId,
 	chatPaneObject,
+	CHAT_TELEMETRY_EVENTS,
 	type ComposerContext,
 	type PromptPart as MentionPart,
 } from "../contracts";
@@ -27,6 +39,8 @@ import { ComposerContextContext, useComposerContext } from "./composer/composer-
 import { resolveMentionParts, type MentionSource } from "./composer/mention-codec";
 import { useMentionSources } from "./composer/mention-triggers";
 import { focusComposerIn, SESSION_ATTRIBUTE, type ComposerFocus } from "./composer-focus";
+import { forkChat, type ForkPhase } from "./fork/fork-chat";
+import { ForkProvider, type ForkRequest, type ForkValue } from "./fork/fork-context";
 import type { CreatedChat } from "./runtime/chat-backend";
 import { ChatConnectionProvider } from "./runtime/chat-connection";
 import type { ChatServices } from "./runtime/chat-services";
@@ -42,6 +56,7 @@ import {
 } from "./slash-commands/client-slash-commands";
 import { ChatPaneOpeners } from "./panes/chat-pane-openers";
 import { FollowPlanApproval } from "./plan/follow-plan-approval";
+import { useTracker } from "./shared/telemetry";
 import { Thread } from "./thread/thread";
 import { TranscriptProviders, useTranscriptAui } from "./thread/transcript-scope";
 
@@ -88,159 +103,258 @@ function reportStartFailure(error: unknown): void {
  * session can hold several, each its own chat.
  */
 export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
-	return function AgentPane({ workSessionId, pane, workspaceId, directory }) {
-		const workSession = useDomainObjectState(
-			WorkSessions,
-			useCallback(
-				(state: DomainObjectState<typeof WorkSessions>) =>
-					state.workSessions.find((candidate) => candidate.id === workSessionId),
-				[workSessionId],
-			),
-		);
-		const workspace = useDomainObjectState(
-			Workspaces,
-			useCallback(
-				(state: WorkspacesState) =>
-					state.workspaces.find((candidate) => candidate.id === workspaceId),
-				[workspaceId],
-			),
-		);
-		const chats = useDomainObject(Chats);
-		const workSessions = useDomainObject(WorkSessions);
-		const panes = useDomainObject(Panes);
-		const rootRef = useRef<HTMLDivElement>(null);
+	return (props) => <AgentPane {...props} services={services} />;
+}
 
-		const chatId = paneChatId(pane);
-		const context: ChatContext = {
-			workSessionId,
-			paneId: pane.id,
-			workspaceId,
+function AgentPane({
+	workSessionId,
+	pane,
+	workspaceId,
+	directory,
+	services,
+}: PaneProps & { services: AgentPaneServices }) {
+	const workSession = useDomainObjectState(
+		WorkSessions,
+		(state: DomainObjectState<typeof WorkSessions>) =>
+			state.workSessions.find((candidate) => candidate.id === workSessionId),
+	);
+	const workspace = useDomainObjectState(Workspaces, (state: WorkspacesState) =>
+		state.workspaces.find((candidate) => candidate.id === workspaceId),
+	);
+	const chats = useDomainObject(Chats);
+	const workSessions = useDomainObject(WorkSessions);
+	const panes = useDomainObject(Panes);
+	const rootRef = useRef<HTMLDivElement>(null);
+
+	const chatId = paneChatId(pane);
+	const context: ChatContext = {
+		workSessionId,
+		paneId: pane.id,
+		workspaceId,
+		directory,
+		folders: sessionFolders(
+			(workspace?.folders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
 			directory,
-			folders: sessionFolders(
-				(workspace?.folders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
-				directory,
-			),
-			workSessionDirectory: workSession?.directory ?? null,
-			workSessionChatIds: workSession?.chatIds ?? [],
-		};
-		const latest = useRef(context);
-		latest.current = context;
-
-		// The chat the mounted runtime shows. While a draft creates its chat the
-		// work session may list it before the pane records it; neither may remount the
-		// thread that is sending the first message.
-		const shownChatId = useRef(chatId);
-		const creating = useRef(false);
-		const [mounted, setMounted] = useState({ generation: 0, chatId });
-		if (!creating.current && chatId !== mounted.chatId && chatId !== shownChatId.current) {
-			shownChatId.current = chatId;
-			setMounted({ generation: mounted.generation + 1, chatId });
-		}
-
-		const createChat = useCallback(async (): Promise<CreatedChat> => {
-			if (!workSessions) throw new Error("Kilo chats aren't available.");
-			const current = latest.current;
-			creating.current = true;
-			const chat = await workSessions.methods
-				.createChat({ id: current.workSessionId })
-				.finally(() => {
-					creating.current = false;
-				});
-			shownChatId.current = chat.id;
-			// kilo.work-sessions lists the chat in the work session on its own
-			// (it is stamped with it), so a failed update only loses the pane's
-			// pointer.
-			await panes?.methods
-				.update({
-					workSessionId: current.workSessionId,
-					paneId: current.paneId,
-					object: chatPaneObject(chat.id),
-				})
-				.catch(() => undefined);
-			return { id: chat.id, directory: chat.directory };
-		}, [workSessions, panes]);
-
-		const directoryOf = useCallback(
-			(id: string) => {
-				const known = chats?.getState().chats[id]?.directory;
-				if (known) return known;
-				const current = latest.current;
-				return current.workSessionChatIds.includes(id) ? current.workSessionDirectory : null;
-			},
-			[chats],
-		);
-
-		const getSystem = useCallback(
-			async (id: string) => {
-				const current = latest.current;
-				const folders = chats?.getState().chats[id]?.workspaceFolders ?? current.folders;
-				const config = await chats?.methods
-					.chatConfig({
-						chatId: id,
-						workSessionId: current.workSessionId,
-						workspaceId: current.workspaceId,
-						directory: current.directory,
-					})
-					.catch(() => undefined);
-				return chatSystemPrompt(folders, config?.instructions ?? []);
-			},
-			[chats],
-		);
-
-		const folderKey = JSON.stringify(
-			workspace?.folders.map(({ path, isPrimary }) => [path, isPrimary]),
-		);
-		const composer: ComposerContext = useMemo(
-			() => ({
-				workSessionId,
-				chatId: mounted.chatId,
-				directory,
-				workspaceId,
-				workspaceFolders: (JSON.parse(folderKey ?? "[]") as [string, boolean][]).map(
-					([path, isPrimary]) => ({ path, isPrimary }),
-				),
-			}),
-			[workSessionId, mounted.chatId, directory, workspaceId, folderKey],
-		);
-
-		return (
-			<div
-				ref={rootRef}
-				className="flex h-full min-h-0 flex-col"
-				data-qa-id="kilo-agent-pane"
-				{...{ [SESSION_ATTRIBUTE]: workSessionId }}
-			>
-				<FindScope
-					className="flex min-h-0 flex-1 flex-col"
-					searchRootSelector='[data-slot="aui_message-group"]'
-					qaPrefix="chat-find"
-					placeholder="Find in transcript"
-				>
-					<QueryClientProvider client={services.queries}>
-						<ChatConnectionProvider services={services.chat}>
-							<ChatThread
-								key={mounted.generation}
-								chatId={mounted.chatId}
-								services={services.chat}
-								focus={services.focus}
-								paneId={pane.id}
-								composer={composer}
-								createChat={createChat}
-								directoryOf={directoryOf}
-								getSystem={getSystem}
-								onChatId={(id) => {
-									if (id) shownChatId.current = id;
-								}}
-								focusRoot={() => focusComposerIn(rootRef.current)}
-							>
-								<Thread />
-							</ChatThread>
-						</ChatConnectionProvider>
-					</QueryClientProvider>
-				</FindScope>
-			</div>
-		);
+		),
+		workSessionDirectory: workSession?.directory ?? null,
+		workSessionChatIds: workSession?.chatIds ?? [],
 	};
+	const latest = useLatestRef(context);
+	const { mounted, thread } = useMountedChat(chatId);
+	// Keyed on the folders' content, not the array, so a re-published
+	// workspace with the same folders keeps the composer context.
+	const workspaceFolders = useStableValue(
+		(workspace?.folders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
+		sameFolders,
+	);
+
+	const createChat = async (): Promise<CreatedChat> => {
+		if (!workSessions) throw new Error("Kilo chats aren't available.");
+		const current = latest.current;
+		thread.startCreating();
+		let chat;
+		try {
+			chat = await workSessions.methods.createChat({ id: current.workSessionId });
+		} catch (error) {
+			thread.stopCreating();
+			throw error;
+		}
+		thread.created(chat.id);
+		// kilo.work-sessions lists the chat in the work session on its own
+		// (it is stamped with it), so a failed update only loses the pane's
+		// pointer.
+		await panes?.methods
+			.update({
+				workSessionId: current.workSessionId,
+				paneId: current.paneId,
+				object: chatPaneObject(chat.id),
+			})
+			.catch(() => undefined);
+		return { id: chat.id, directory: chat.directory };
+	};
+
+	const directoryOf = (id: string) => {
+		const known = chats?.getState().chats[id]?.directory;
+		if (known) return known;
+		const current = latest.current;
+		return current.workSessionChatIds.includes(id) ? current.workSessionDirectory : null;
+	};
+
+	const getSystem = async (id: string) => {
+		const current = latest.current;
+		const folders = chats?.getState().chats[id]?.workspaceFolders ?? current.folders;
+		const config = await chats?.methods
+			.chatConfig({
+				chatId: id,
+				workSessionId: current.workSessionId,
+				workspaceId: current.workspaceId,
+				directory: current.directory,
+			})
+			.catch(() => undefined);
+		return chatSystemPrompt(folders, config?.instructions ?? []);
+	};
+
+	const track = useTracker();
+	const [forkPhase, setForkPhase] = useState<ForkPhase | null>(null);
+	// Guards a double click, which lands before the phase re-renders.
+	const forking = useRef(false);
+	const fork = ({ chatId: source, messageId, midTurn }: ForkRequest) => {
+		if (forking.current) return;
+		forking.current = true;
+		void forkChat({
+			workSessions,
+			panes,
+			workSessionId: latest.current.workSessionId,
+			chatId: source,
+			messageId,
+			onPhase: setForkPhase,
+			track: (success) => track(CHAT_TELEMETRY_EVENTS.chatForked, { success, midTurn }),
+		}).finally(() => {
+			forking.current = false;
+		});
+	};
+	const forkValue: ForkValue = { fork, pending: forkPhase !== null };
+
+	const composer: ComposerContext = {
+		workSessionId,
+		chatId: mounted.chatId,
+		directory,
+		workspaceId,
+		workspaceFolders,
+	};
+
+	return (
+		<div
+			ref={rootRef}
+			className="relative flex h-full min-h-0 flex-col"
+			data-qa-id="kilo-agent-pane"
+			{...{ [SESSION_ATTRIBUTE]: workSessionId }}
+		>
+			<FindScope
+				data-qa-id="kilo-agent-pane-content"
+				inert={forkPhase !== null}
+				aria-busy={forkPhase !== null}
+				className="flex min-h-0 flex-1 flex-col"
+				searchRootSelector='[data-slot="aui_message-group"]'
+				qaPrefix="chat-find"
+				placeholder="Find in transcript"
+			>
+				<QueryClientProvider client={services.queries}>
+					<ChatConnectionProvider services={services.chat}>
+						<ChatThread
+							key={mounted.generation}
+							chatId={mounted.chatId}
+							services={services.chat}
+							focus={services.focus}
+							paneId={pane.id}
+							composer={composer}
+							createChat={createChat}
+							directoryOf={directoryOf}
+							getSystem={getSystem}
+							onChatId={(id) => {
+								if (id) thread.show(id);
+							}}
+							focusRoot={() => focusComposerIn(rootRef.current)}
+						>
+							<ForkProvider value={forkValue}>
+								<Thread />
+							</ForkProvider>
+						</ChatThread>
+					</ChatConnectionProvider>
+				</QueryClientProvider>
+			</FindScope>
+			{forkPhase ? (
+				<ProgressOverlay
+					message={forkPhase === "forking" ? "Forking the chat…" : "Opening the chat…"}
+					data-qa-id="kilo-fork-progress"
+				/>
+			) : null}
+		</div>
+	);
+}
+
+type WorkspaceFolder = ComposerContext["workspaceFolders"][number];
+
+function sameFolders(previous: readonly WorkspaceFolder[], next: readonly WorkspaceFolder[]) {
+	return (
+		previous.length === next.length &&
+		previous.every(
+			(folder, index) =>
+				folder.path === next[index]!.path && folder.isPrimary === next[index]!.isPrimary,
+		)
+	);
+}
+
+interface ThreadReport {
+	/** A draft's first send is creating its chat. */
+	readonly creating: boolean;
+	/** The chat the thread last said it shows. */
+	readonly chatId: string | null;
+	/** How many times it has said so; tells a report from one made before a remount. */
+	readonly reports: number;
+}
+
+/**
+ * What the pane's thread says about itself, written by its callbacks (the
+ * runtime's thread id, a draft's first send) and read during the pane's
+ * render through `useSyncExternalStore`, so a render always sees the latest
+ * report even when it arrives between renders. A draft's chat is reported
+ * created and no longer creating in one change, so no render sees the
+ * second without the first.
+ */
+class ThreadReports {
+	#report: ThreadReport = { creating: false, chatId: null, reports: 0 };
+	readonly #listeners = new Set<() => void>();
+
+	readonly subscribe = (listener: () => void) => {
+		this.#listeners.add(listener);
+		return () => {
+			this.#listeners.delete(listener);
+		};
+	};
+
+	readonly getSnapshot = () => this.#report;
+
+	startCreating() {
+		this.#set({ ...this.#report, creating: true });
+	}
+
+	stopCreating() {
+		this.#set({ ...this.#report, creating: false });
+	}
+
+	created(chatId: string) {
+		this.#set({ creating: false, chatId, reports: this.#report.reports + 1 });
+	}
+
+	show(chatId: string) {
+		this.#set({ ...this.#report, chatId, reports: this.#report.reports + 1 });
+	}
+
+	#set(report: ThreadReport) {
+		this.#report = report;
+		for (const listener of this.#listeners) listener();
+	}
+}
+
+/**
+ * The chat the pane's thread is mounted for, and the generation that keys it.
+ * A new `chatId` remounts the thread unless the thread itself already shows
+ * it (reported by the runtime or a draft's first send since the last
+ * remount) or a draft is creating its chat: the work session may list the
+ * new chat before the pane records it, and neither may remount the thread
+ * that is sending the first message.
+ */
+function useMountedChat(chatId: string | null) {
+	const [thread] = useState(() => new ThreadReports());
+	const report = useSyncExternalStore(thread.subscribe, thread.getSnapshot);
+	const [mounted, setMounted] = useState({ generation: 0, chatId, reports: report.reports });
+	// A remount shows its chat until the thread reports another.
+	const shownChatId = report.reports === mounted.reports ? mounted.chatId : report.chatId;
+	if (!report.creating && chatId !== mounted.chatId && chatId !== shownChatId) {
+		setMounted({ generation: mounted.generation + 1, chatId, reports: report.reports });
+	}
+	return { mounted, thread };
 }
 
 export interface ChatThreadProps {
@@ -282,10 +396,8 @@ export function ChatThread({
 }: ChatThreadProps) {
 	const selection = useRef<PromptSelection>({});
 	const commandNames = useRef<readonly string[]>([]);
-	const sources = useRef<readonly MentionSource[]>([]);
-	sources.current = useMentionSources();
-	const latestComposer = useRef(composer);
-	latestComposer.current = composer;
+	const sources = useLatestRef<readonly MentionSource[]>(useMentionSources());
+	const latestComposer = useLatestRef(composer);
 	const modelSources = useModelSourcesRef();
 	const runtime = useChatRuntime({
 		...options,
@@ -309,7 +421,7 @@ export function ChatThread({
 			: {}),
 	});
 	const aui = useTranscriptAui();
-	const getSelection = useCallback(() => selection.current, []);
+	const getSelection = () => selection.current;
 	return (
 		<AssistantRuntimeProvider aui={aui} runtime={runtime}>
 			<ComposerContextProvider composer={composer}>
@@ -320,7 +432,12 @@ export function ChatThread({
 					}}
 				>
 					<ClientSlashSelectionProvider getSelection={getSelection}>
-						<CommandNames directory={composer.directory} names={commandNames} />
+						<CommandNames
+							directory={composer.directory}
+							onNames={(names) => {
+								commandNames.current = names;
+							}}
+						/>
 						{composer.workSessionId ? (
 							<ComposerRegistration
 								focus={focus}
@@ -355,10 +472,8 @@ function ComposerContextProvider({
 	children: ReactNode;
 }) {
 	const remoteId = useAuiState((state) => state.threadListItem.remoteId) ?? null;
-	const value = useMemo(
-		() => (remoteId && remoteId !== composer.chatId ? { ...composer, chatId: remoteId } : composer),
-		[composer, remoteId],
-	);
+	const value =
+		remoteId && remoteId !== composer.chatId ? { ...composer, chatId: remoteId } : composer;
 	return (
 		<ComposerContextContext.Provider value={value}>{children}</ComposerContextContext.Provider>
 	);
@@ -375,19 +490,20 @@ function ThreadPaneOpeners({ children }: { children: ReactNode }) {
 }
 
 /**
- * Keeps the names of Kilo's slash commands for the chat's folder where
- * prompts can read them: the server's only, as the `/` menu lists them
+ * Reports the names of Kilo's slash commands for the chat's folder, for
+ * prompts to read later: the server's only, as the `/` menu lists them
  * (without those a client command hides), so a client command is never sent.
  */
 function CommandNames({
 	directory,
-	names,
+	onNames,
 }: {
 	directory: string | null;
-	names: { current: readonly string[] };
+	onNames: (names: readonly string[]) => void;
 }) {
 	const { commands } = useSlashCommands(directory);
-	names.current = useMemo(() => serverCommandNames(commands), [commands]);
+	const commandNames = serverCommandNames(commands);
+	useLayoutEffect(() => onNames(commandNames), [onNames, commandNames]);
 	return null;
 }
 
@@ -430,8 +546,7 @@ function ShownComposerRegistration({
 	// Registering prefills an empty composer with the pane's draft, so it
 	// must happen once per mount: a re-run while a send has just emptied the
 	// composer (before its draft is cleared) would put the sent text back.
-	const latestFocusRoot = useRef(focusRoot);
-	latestFocusRoot.current = focusRoot;
+	const latestFocusRoot = useLatestRef(focusRoot);
 	useEffect(
 		() =>
 			focus.register({
@@ -441,7 +556,7 @@ function ShownComposerRegistration({
 				getText: () => aui.composer.getState().text,
 				setText: (next) => aui.composer.setText(next),
 			}),
-		[aui, focus, paneId, workSessionId],
+		[aui, focus, paneId, workSessionId, latestFocusRoot],
 	);
 	useEffect(
 		() => focus.reportDraft(workSessionId, paneId, text),

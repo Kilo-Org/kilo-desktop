@@ -60,6 +60,7 @@ const ORIGIN_KEYS: Readonly<Record<string, string>> = {
 	listChannels: "conda.channels.list",
 	addChannel: "conda.channels.add",
 	removeChannel: "conda.channels.remove",
+	resolveChannel: "conda.channels.resolve",
 	findRepodata: "conda.repodata.find",
 	cancelJob: "conda.jobs.cancel",
 };
@@ -94,7 +95,7 @@ export interface EnvironmentsHostOptions {
 	readonly identity?: AccountState;
 	/** Flag overrides (`environments-feature` is off unless set). */
 	readonly flags?: Readonly<Record<string, boolean | string | number>>;
-	/** The window's route search (`{ env }` for a deep link). */
+	/** The window's route search (`{ env }`, or an install link's `{ packageAction, package, … }`). */
 	readonly search?: Record<string, string>;
 	readonly navigate?: (path: string, options: { search: Record<string, string> }) => void;
 	/** False keeps the route where it was when navigating (default true). */

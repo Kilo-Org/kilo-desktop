@@ -15,7 +15,7 @@ Electron e2e tests live in the root `e2e/` workspace package (`@kilo-desktop/e2e
 | Real files / processes / kernel    | Integration `*.integration.test.ts` | Co-located                 |
 | One component in a test kernel     | Component `*.browser.test.tsx`      | Co-located in the plugin   |
 | Kernel boot + bundled plugins      | App-level `*.app.test.tsx`          | `apps/web/src/kernel/`     |
-| Packaged Electron / IPC / protocol | E2E `@smoke` / full                 | `e2e/` or `plugins/*/e2e/` |
+| Packaged Electron / IPC / protocol | E2E `@smoke` / full                 | `e2e/specs/<plugin>/`      |
 
 **If it does not need Electron IPC or the packaged binary, it belongs in a Vitest browser test — not e2e.**
 Do not re-smoke the same CRUD journey in app-level and e2e.
@@ -23,12 +23,12 @@ For Vitest tiers and fakes, see `.agents/skills/write-vitest/SKILL.md`.
 
 ## Three-file POM pattern
 
-Every e2e flow uses a **page object**, a **per-feature fixture**, and a **spec**. Specs only call page-object methods — no raw `fill` / `click` / `expect` in specs.
+Every e2e flow uses a **page object**, a **fixture**, and a **spec**, laid out by plugin directory (`<plugin>` = `plugins/<plugin>`): `e2e/pages/<plugin>/`, `e2e/fixtures/<plugin>.ts` (or `e2e/fixtures/<plugin>/<feature>.ts` when one plugin needs several), `e2e/specs/<plugin>/` (the config also picks up `plugins/<plugin>/e2e/specs/**` with a plugin-local `fixtures.ts`, unused today). Specs only call page-object methods — no raw `fill` / `click` / `expect` in specs.
 
 ### Page object
 
 ```typescript
-// e2e/pages/<area>/my-page.ts  (or plugins/<id>/e2e/pages/my-page.ts)
+// e2e/pages/<plugin>/my-page.ts
 import {
 	click,
 	expectElementToBeVisible,
@@ -53,14 +53,15 @@ export class MyPage {
 
 ### Fixture
 
-`e2e/fixtures/shell.ts` is Electron + `appShellPage` (kilo.shell's frame) only. Feature page objects extend it (kilo.shell's own features in `e2e/fixtures/shell/<feature>.ts`):
+`e2e/fixtures/shell.ts` is Electron + `appShellPage` (kilo.shell's frame) only. Plugin fixtures extend it (kilo.shell's own features in `e2e/fixtures/shell/<feature>.ts`):
 
 ```typescript
-// e2e/fixtures/<area>/<feature>.ts  (or plugins/<id>/e2e/fixtures.ts)
-import { test as shellTest } from "../shell.js";
-import { MyPage } from "../../pages/<area>/my-page.js";
+// e2e/fixtures/<plugin>.ts
+import { MyPage } from "../pages/<plugin>/my-page.js";
+import { test as shellTest } from "./shell.js";
 
 export const test = shellTest.extend<{ myPage: MyPage }>({
+	appIsolationKey: "my-plugin", // only when the flow needs its own app
 	// Playwright requires `{}` destructuring; oxlint-disable no-empty-pattern when unused.
 	myPage: async ({}, use) => {
 		await use(new MyPage());
@@ -72,7 +73,8 @@ export const { expect } = test;
 ### Spec
 
 ```typescript
-import { test } from "../../fixtures/<area>/<feature>.js";
+// e2e/specs/<plugin>/my-feature.spec.ts
+import { test } from "../../fixtures/<plugin>.js";
 
 test.describe("My feature @smoke", () => {
 	test("submits a value", async ({ appShellPage, myPage }) => {
@@ -91,7 +93,7 @@ test.describe("My feature @smoke", () => {
 - **Use `getLocatorByTestId()`** for `data-qa-id` — never raw CSS `[data-qa-id="..."]`.
 - **Never use `.nth()`, `.first()`, `.last()`** — disambiguate with ancestor scoping.
 - **No `console.log`** — use `logger` from `@anaconda/playwright-utils` in page objects only.
-- **Tag smoke specs with `@smoke`** so they run on every PR. A PR also runs the full specs of the areas it changes (`e2e/scripts/select-pr-e2e.ts`); add a `RELATED_SPECS` entry when a plugin is exercised by specs outside `plugins/<id>/e2e/`.
+- **Tag smoke specs with `@smoke`.** A PR runs the full specs of the areas it changes and `@smoke` only for shared inputs (`e2e/scripts/select-pr-e2e.ts`). A new spec area gets an owner in `AREA_OWNERS` (`e2e/utils/registered-specs.ts`, so it is skipped when its plugin is not registered) and a `RELATED_SPECS` entry mapping its plugin directory to `e2e/specs/<plugin>` plus any other areas it affects (unmapped, a change to the plugin runs only `@smoke`).
 - **Default to the shared worker Electron app** via `shell.ts`.
 - **Set a fixture's isolation key in `extend`, never with a module-level `test.use()`** — `shellTest.extend({ appIsolationKey: "my-feature", ... })`. A `test.use()` in a fixture module binds to whichever spec loads it first and causes Playwright's "inconsistent test.use() options" flake. Call `test.use({ appIsolationKey })` only in a spec, and only for a key that differs from its fixture's default (repeating the default splits the pool into a second app).
 - **Go through the UI, not main's state.** `readMainSnapshot` / `waitForDomainObjectState` (`kernel:hydrate`) make main forget what the window implements; use them only for state with no UI, last, in a worker of its own. `callDomainObject` is fine for setup (resetting state a test changed).

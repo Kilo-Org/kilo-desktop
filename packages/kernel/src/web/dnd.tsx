@@ -5,7 +5,7 @@ import type { ObjectRef, ObjectTypeDefinition } from "../object-type";
 import type { QualifiedId } from "../ids";
 
 /** Props that make an element drag the given domain object references. */
-export function useDragSource(
+export function dragSourceProps(
 	refs: readonly ObjectRef[],
 	options: { readonly disabled?: boolean } = {},
 ) {

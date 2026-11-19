@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { useDomainObject, useExtensions } from "@kilo-desktop/kernel/web";
+import { useStableCallback } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { PaneKind, Panes, WorkSessions } from "../../contracts";
 import { implementationOf } from "../shared/pane-kinds";
@@ -21,37 +22,27 @@ export function usePrefetchWorkSession() {
 	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	useEffect(() => () => clearTimeout(timer.current), []);
 
-	const prefetch = useCallback(
-		(workSessionId: string) => {
-			const workSession = workSessions
-				?.getState()
-				.workSessions.find((candidate) => candidate.id === workSessionId);
-			const sessionPanes = panes?.getState().byWorkSession[workSessionId]?.panes ?? [];
-			if (!workSession) return;
-			for (const pane of sessionPanes) {
-				const prefetchPane = implementationOf(
-					kinds.find((kind) => kind.key === pane.kind),
-				)?.prefetch;
-				try {
-					prefetchPane?.({ workSession, pane, panes: sessionPanes });
-				} catch {
-					// Best effort: opening loads whatever a prefetch didn't.
-				}
+	const prefetch = (workSessionId: string) => {
+		const workSession = workSessions
+			?.getState()
+			.workSessions.find((candidate) => candidate.id === workSessionId);
+		const sessionPanes = panes?.getState().byWorkSession[workSessionId]?.panes ?? [];
+		if (!workSession) return;
+		for (const pane of sessionPanes) {
+			const prefetchPane = implementationOf(kinds.find((kind) => kind.key === pane.kind))?.prefetch;
+			try {
+				prefetchPane?.({ workSession, pane, panes: sessionPanes });
+			} catch {
+				// Best effort: opening loads whatever a prefetch didn't.
 			}
-		},
-		[kinds, panes, workSessions],
-	);
+		}
+	};
 
-	return useMemo(
-		() => ({
-			intend(workSessionId: string) {
-				clearTimeout(timer.current);
-				timer.current = setTimeout(() => prefetch(workSessionId), PREFETCH_HOVER_DELAY_MS);
-			},
-			cancel() {
-				clearTimeout(timer.current);
-			},
-		}),
-		[prefetch],
-	);
+	// Stable: SessionList's row chrome is cached on these two.
+	const intend = useStableCallback((workSessionId: string) => {
+		clearTimeout(timer.current);
+		timer.current = setTimeout(() => prefetch(workSessionId), PREFETCH_HOVER_DELAY_MS);
+	});
+	const cancel = useStableCallback(() => clearTimeout(timer.current));
+	return { intend, cancel };
 }

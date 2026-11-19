@@ -18,6 +18,7 @@ import {
 	ComposerAction,
 	type ComposerActionButton,
 	type ComposerActionImplementation,
+	type ComposerActionMenu,
 	type ComposerActionSlot,
 	type ComposerActionTrigger,
 	type ComposerContext,
@@ -125,8 +126,6 @@ type Of<K extends ComposerActionImplementation["kind"]> = Extract<
 	{ kind: K }
 >;
 
-const NO_TRIGGER = (): ComposerActionTrigger => ({});
-
 function accentStyle(color: string | undefined): CSSProperties | undefined {
 	if (!color) return undefined;
 	return {
@@ -160,17 +159,17 @@ const TriggerContent: FC<{ id: string; trigger: ComposerActionTrigger }> = ({ id
 	);
 };
 
-const ButtonAction: FC<ActionViewProps & { implementation: Of<"action"> }> = ({
-	id,
-	title,
-	command,
-	implementation,
-	context,
-}) => {
+const ButtonAction: FC<ActionViewProps & { implementation: Of<"action"> }> = (props) => {
+	const { Button } = props.implementation;
+	const draw = (button: ComposerActionButton) => <ActionButton {...props} button={button} />;
+	if (!Button) return draw({});
+	return <Button context={props.context}>{draw}</Button>;
+};
+
+const ActionButton: FC<
+	ActionViewProps & { implementation: Of<"action">; button: ComposerActionButton }
+> = ({ id, title, command, implementation, context, button }) => {
 	const kernel = useKernel();
-	const useButton: (context: ComposerContext) => ComposerActionButton =
-		implementation.useButton ?? NO_TRIGGER;
-	const button = useButton(context);
 	if (button.hidden) return null;
 	const Icon = button.icon;
 	const run = () => {
@@ -234,7 +233,17 @@ const MenuAction: FC<ActionViewProps & { implementation: Of<"menu"> }> = ({
 	implementation,
 	context,
 }) => {
-	const menu = implementation.useMenu(context);
+	const { Menu } = implementation;
+	return (
+		<Menu context={context}>{(menu) => <ActionMenu id={id} title={title} menu={menu} />}</Menu>
+	);
+};
+
+const ActionMenu: FC<{ id: string; title: string; menu: ComposerActionMenu }> = ({
+	id,
+	title,
+	menu,
+}) => {
 	if (menu.hidden) return null;
 	return (
 		<DropdownMenu>
@@ -296,16 +305,17 @@ const MenuAction: FC<ActionViewProps & { implementation: Of<"menu"> }> = ({
 	);
 };
 
-const PopoverAction: FC<ActionViewProps & { implementation: Of<"popover"> }> = ({
-	id,
-	title,
-	implementation,
-	context,
-}) => {
+const PopoverAction: FC<ActionViewProps & { implementation: Of<"popover"> }> = (props) => {
+	const { Trigger } = props.implementation;
+	const draw = (trigger: ComposerActionTrigger) => <ActionPopover {...props} trigger={trigger} />;
+	if (!Trigger) return draw({});
+	return <Trigger context={props.context}>{draw}</Trigger>;
+};
+
+const ActionPopover: FC<
+	ActionViewProps & { implementation: Of<"popover">; trigger: ComposerActionTrigger }
+> = ({ id, title, implementation, context, trigger }) => {
 	const [open, setOpen] = useState(false);
-	const useTrigger: (context: ComposerContext) => ComposerActionTrigger =
-		implementation.useTrigger ?? NO_TRIGGER;
-	const trigger = useTrigger(context);
 	if (trigger.hidden) return null;
 	const { Content } = implementation;
 	return (

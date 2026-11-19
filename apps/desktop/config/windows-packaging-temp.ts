@@ -2,25 +2,10 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 /**
- * Squirrel.Windows still uses .NET Framework MAX_PATH (260) in two places:
- * nuget.exe pack, and `extractZipWithEscaping` during `--releasify`.
- *
- * Releasify extracts each nupkg entry to `{TEMP}\{guid}\{entry}`. The GUID
- * folder is 36 characters, so even a short TEMP cannot save zip entries that
- * are themselves longer than ~217 characters. Keep TEMP/packager tmpdir short
- * *and* keep nupkg-relative paths (especially extra-resource trees) short.
+ * Squirrel.Windows still uses .NET Framework MAX_PATH (260): nuget.exe pack and
+ * `extractZipWithEscaping` during `--releasify` extract each nupkg entry to
+ * `{TEMP}\{guid}\{entry}`, so TEMP and the packager tmpdir must stay short.
  */
-export const WINDOWS_MAX_PATH = 260;
-const SQUIRREL_TEMP_GUID = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx";
-
-export function squirrelExtractPath(tempDirectory: string, nupkgEntry: string): string {
-	return path.win32.join(tempDirectory, SQUIRREL_TEMP_GUID, nupkgEntry);
-}
-
-export function squirrelExtractFitsMaxPath(tempDirectory: string, nupkgEntry: string): boolean {
-	return squirrelExtractPath(tempDirectory, nupkgEntry).length < WINDOWS_MAX_PATH;
-}
-
 export function getWindowsPackagingTempDirectory(input: {
 	readonly platform: NodeJS.Platform;
 	readonly driveRoot: string;

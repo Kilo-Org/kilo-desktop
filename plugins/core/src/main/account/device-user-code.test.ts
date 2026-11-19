@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deviceUserCode, parseDeviceCode } from "./account-service";
+import { deviceUserCode } from "./account-service";
 
 describe("deviceUserCode", () => {
 	it("prefers the verification URL's code over the instructions", () => {
@@ -33,12 +33,5 @@ describe("deviceUserCode", () => {
 		expect(deviceUserCode({ url: "https://app.kilo.ai/device", instructions: undefined })).toBe(
 			undefined,
 		);
-	});
-});
-
-describe("parseDeviceCode", () => {
-	it("reads the code from the instructions text", () => {
-		expect(parseDeviceCode("Enter code: ABCD-1234")).toBe("ABCD-1234");
-		expect(parseDeviceCode(undefined)).toBeUndefined();
 	});
 });

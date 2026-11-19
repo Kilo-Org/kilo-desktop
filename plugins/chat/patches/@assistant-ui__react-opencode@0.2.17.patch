@@ -460,7 +460,7 @@ index 2ee4f06..013cb77 100644
  //# sourceMappingURL=openCodeMessageProjection.d.ts.map
 \ No newline at end of file
 diff --git a/dist/openCodeMessageProjection.js b/dist/openCodeMessageProjection.js
-index 014532f..c34310c 100644
+index 014532f..1857c26 100644
 --- a/dist/openCodeMessageProjection.js
 +++ b/dist/openCodeMessageProjection.js
 @@ -3,6 +3,10 @@ import { projectOpenCodePermissionApproval, projectResolvedOpenCodePermissionApp
@@ -579,7 +579,7 @@ index 014532f..c34310c 100644
  		const maybeMessage = isRecord(error) && isRecord(error.data) && typeof error.data.message === "string" ? error.data.message : void 0;
  		const fallbackMessage = typeof error === "string" ? error : isRecord(error) && typeof error.name === "string" ? error.name : "OpenCode run failed";
  		return {
-@@ -290,30 +318,55 @@ const getMessageStatus = (state, message) => {
+@@ -290,30 +318,56 @@ const getMessageStatus = (state, message) => {
  			error: maybeMessage ?? fallbackMessage
  		};
  	}
@@ -599,6 +599,7 @@ index 014532f..c34310c 100644
 -const mergeServerMessages = (messages) => {
 -	const merged = [];
 +const isBackgroundUserMessage = (message) => message.info?.role === "user" && message.parts.some((part) => part.type === "text" && part.synthetic === true && part.metadata?.background === true);
++const isHiddenUserMessage = (message) => message.info?.role === "user" && message.parts.length > 0 && message.parts.every((part) => part.type === "text" && part.synthetic === true);
 +const mergeAssistantSteps = (steps) => {
 +	if (steps.length === 1) return steps[0];
 +	const first = steps[0];
@@ -628,7 +629,7 @@ index 014532f..c34310c 100644
 -				parts: [...previous.parts, ...message.parts],
 -				shadowParts: previous.shadowParts || message.shadowParts ? [...previous.shadowParts ?? [], ...message.shadowParts ?? []] : void 0
 -			};
-+		if (isBackgroundUserMessage(message)) continue;
++		if (isBackgroundUserMessage(message) || isHiddenUserMessage(message)) continue;
 +		const previous = groups[groups.length - 1];
 +		if (previous?.[0]?.info?.role === "assistant" && message.info?.role === "assistant") {
 +			previous.push(message);
@@ -649,7 +650,7 @@ index 014532f..c34310c 100644
  	if (!message.info) return null;
  	const metadata = { custom: { opencode: {
  		originalMessage: message.info,
-@@ -322,11 +375,11 @@ const projectServerMessage = (state, message, timing) => {
+@@ -322,11 +376,11 @@ const projectServerMessage = (state, message, timing) => {
  	if (message.info.role === "assistant") {
  		const assistantInfo = message.info;
  		return {
@@ -663,7 +664,7 @@ index 014532f..c34310c 100644
  			metadata: {
  				custom: {
  					...metadata.custom,
-@@ -343,7 +396,7 @@ const projectServerMessage = (state, message, timing) => {
+@@ -343,7 +397,7 @@ const projectServerMessage = (state, message, timing) => {
  	if (message.info.role === "user") {
  		const { content, attachments } = projectUserMessage(message);
  		return {
@@ -672,7 +673,7 @@ index 014532f..c34310c 100644
  			role: "user",
  			createdAt: new Date(message.info.time?.created ?? Date.now()),
  			content,
-@@ -364,18 +417,87 @@ const projectPendingMessage = (pending) => ({
+@@ -364,18 +418,87 @@ const projectPendingMessage = (pending) => ({
  		error: pending.status === "failed" ? pending.error instanceof Error ? pending.error.message : String(pending.error ?? "Failed to send message") : void 0
  	} } }
  });
@@ -2633,7 +2634,7 @@ index 4ac43be..a33d6e0 100644
    OpenCodeStateEvent,
    OpenCodeThreadControllerLike,
 diff --git a/src/openCodeMessageProjection.ts b/src/openCodeMessageProjection.ts
-index 2c792f2..0df4514 100644
+index 2c792f2..8f3c78d 100644
 --- a/src/openCodeMessageProjection.ts
 +++ b/src/openCodeMessageProjection.ts
 @@ -28,6 +28,22 @@ type ProjectedContentPart = Exclude<
@@ -2764,7 +2765,7 @@ index 2c792f2..0df4514 100644
      const maybeMessage =
        isRecord(error) &&
        isRecord(error.data) &&
-@@ -557,52 +635,105 @@ const getMessageStatus = (
+@@ -557,52 +635,112 @@ const getMessageStatus = (
      };
    }
  
@@ -2818,6 +2819,13 @@ index 2c792f2..0df4514 100644
 +      part.metadata?.background === true,
 +  );
  
++// Kilo-only context with nothing the person wrote (a fork's handoff note):
++// projected, it would be an empty bubble with its own actions.
++const isHiddenUserMessage = (message: OpenCodeServerMessage) =>
++  message.info?.role === "user" &&
++  message.parts.length > 0 &&
++  message.parts.every((part) => part.type === "text" && part.synthetic === true);
++
 +const mergeAssistantSteps = (
 +  steps: readonly OpenCodeServerMessage[],
 +): OpenCodeServerMessage => {
@@ -2846,7 +2854,7 @@ index 2c792f2..0df4514 100644
 +): ServerMessageGroup[] => {
 +  const groups: OpenCodeServerMessage[][] = [];
 +  for (const message of messages) {
-+    if (isBackgroundUserMessage(message)) continue;
++    if (isBackgroundUserMessage(message) || isHiddenUserMessage(message)) continue;
 +    const previous = groups[groups.length - 1];
      if (
 -      previous?.info?.role === "assistant" &&
@@ -2891,7 +2899,7 @@ index 2c792f2..0df4514 100644
  ): OpenCodeProjectedThreadMessage | null => {
    if (!message.info) return null;
  
-@@ -618,11 +749,11 @@ const projectServerMessage = (
+@@ -618,11 +756,11 @@ const projectServerMessage = (
    if (message.info.role === "assistant") {
      const assistantInfo = message.info as AssistantMessage;
      return {
@@ -2905,7 +2913,7 @@ index 2c792f2..0df4514 100644
        metadata: {
          custom: {
            ...metadata.custom,
-@@ -640,7 +771,7 @@ const projectServerMessage = (
+@@ -640,7 +778,7 @@ const projectServerMessage = (
    if (message.info.role === "user") {
      const { content, attachments } = projectUserMessage(message);
      return {
@@ -2914,7 +2922,7 @@ index 2c792f2..0df4514 100644
        role: "user",
        createdAt: new Date(message.info.time?.created ?? Date.now()),
        content,
-@@ -675,39 +806,185 @@ const projectPendingMessage = (
+@@ -675,39 +813,185 @@ const projectPendingMessage = (
    },
  });
  

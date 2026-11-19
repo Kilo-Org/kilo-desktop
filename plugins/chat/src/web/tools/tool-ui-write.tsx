@@ -1,8 +1,6 @@
 import { createFileMutationDiff, parseDiffFromFile } from "./tool-ui-file-mutation";
 import { getWriteContent } from "./tool-diff-stats";
 
-export { getWriteContent } from "./tool-diff-stats";
-
 export const WriteDiff = createFileMutationDiff({
 	subgroupKind: "writing",
 	liveVerb: "Writing",

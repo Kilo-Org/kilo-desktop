@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
 	DEFAULT_SESSION_LIST_VIEW,
@@ -33,10 +33,10 @@ export function useSessionListView() {
 		writeSessionListView(view);
 	}, [view]);
 
-	const update = useCallback((patch: Partial<SessionListView>) => {
+	const update = (patch: Partial<SessionListView>) => {
 		setView((current) => ({ ...current, ...patch }));
-	}, []);
-	const reset = useCallback(() => setView(DEFAULT_SESSION_LIST_VIEW), []);
+	};
+	const reset = () => setView(DEFAULT_SESSION_LIST_VIEW);
 
-	return useMemo(() => ({ view, update, reset }), [reset, update, view]);
+	return { view, update, reset };
 }

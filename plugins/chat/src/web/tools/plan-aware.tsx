@@ -1,5 +1,4 @@
 import { useAuiState } from "@assistant-ui/react";
-import { memo } from "react";
 
 import { PlanCard } from "../plan/PlanCard";
 import { getPlanProjectionForMessage } from "../plan/plan-projection";
@@ -17,7 +16,7 @@ const useMessagePlanProjection = () => {
  * calls show nothing, and every other call renders as itself.
  */
 export function PlanAware(Component: ToolCallComponent): ToolCallComponent {
-	const Wrapped: ToolCallComponent = memo((props: ToolCallView) => {
+	const Wrapped: ToolCallComponent = (props: ToolCallView) => {
 		const projection = useMessagePlanProjection();
 		if (projection?.hiddenCallIds.has(props.toolCallId)) {
 			return projection.anchorCallId === props.toolCallId ? (
@@ -25,15 +24,15 @@ export function PlanAware(Component: ToolCallComponent): ToolCallComponent {
 			) : null;
 		}
 		return <Component {...props} />;
-	});
+	};
 	Wrapped.displayName = `PlanAware(${Component.displayName || Component.name || "Tool"})`;
 	return Wrapped;
 }
 
 /** `plan_exit`: the plan card when the call anchors its revision, otherwise nothing. */
-export const PlanExitTool: ToolCallComponent = memo((props) => {
+export const PlanExitTool: ToolCallComponent = (props) => {
 	const projection = useMessagePlanProjection();
 	if (projection?.anchorCallId !== props.toolCallId) return null;
 	return <PlanCard projection={projection} />;
-});
+};
 PlanExitTool.displayName = "PlanExitTool";

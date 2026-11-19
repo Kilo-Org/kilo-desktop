@@ -32,17 +32,17 @@ export function useChatSelections(): ChatSelections | undefined {
 const selectStatus = (state: { status: string; version?: string | undefined }) =>
 	`${state.status}\n${state.version ?? ""}`;
 
+const isReady = (status: string | undefined) => status?.startsWith("ready\n") ?? false;
+
 /** The window's Kilo connection, re-read whenever the server restarts. */
 export function useChatConnection(): ChatConnectionStatus {
 	const services = useContext(ServicesContext);
 	const status = useDomainObjectState(KiloServer, selectStatus);
 	const [connection, setConnection] = useState<ServerConnection | undefined>();
-	const ready = status?.startsWith("ready\n") ?? false;
+	if ((!services || !isReady(status)) && connection !== undefined) setConnection(undefined);
+	// Keyed on the whole status, so a restart re-reads the connection.
 	useEffect(() => {
-		if (!services || !ready) {
-			setConnection(undefined);
-			return;
-		}
+		if (!services || !isReady(status)) return;
 		let current = true;
 		services.connection().then(
 			(next) => {
@@ -55,6 +55,6 @@ export function useChatConnection(): ChatConnectionStatus {
 		return () => {
 			current = false;
 		};
-	}, [services, ready, status]);
+	}, [services, status]);
 	return { connection, isPending: connection === undefined };
 }

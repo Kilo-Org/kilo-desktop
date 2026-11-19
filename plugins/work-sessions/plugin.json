@@ -147,6 +147,11 @@
 			"description": "Read-only facts about work sessions the session list filters by."
 		},
 		{
+			"id": "work-session-grouping",
+			"kind": "additive",
+			"description": "A way to group the session list into a plugin's categories."
+		},
+		{
 			"id": "work-sessions-view",
 			"kind": "additive",
 			"description": "Another view of the work sessions, shown in place of the open work session."

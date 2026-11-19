@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { MediaItem } from "../../contracts";
-import { dropViewerHandoff, handOffViewerItems, takeViewerItems } from "./viewer-handoff";
+import {
+	dropViewerHandoff,
+	handOffViewerItems,
+	peekViewerItems,
+	takeViewerItems,
+} from "./viewer-handoff";
 
 const items = (id: string): MediaItem[] => [
 	{ kind: "mermaid", id, code: "flowchart LR\n  A --> B", label: "Flowchart" },
@@ -13,6 +18,15 @@ describe("viewer hand-off", () => {
 
 		expect(takeViewerItems("s/a", 3)).toEqual(items("a"));
 		expect(takeViewerItems("s/a", 3)).toBeNull();
+	});
+
+	it("peeks at the items at exactly their revision without taking them", () => {
+		handOffViewerItems("s/p", 2, items("p"));
+
+		expect(peekViewerItems("s/p", 1)).toBeNull();
+		expect(peekViewerItems("s/p", 2)).toEqual(items("p"));
+		expect(takeViewerItems("s/p", 2)).toEqual(items("p"));
+		expect(peekViewerItems("s/p", 2)).toBeNull();
 	});
 
 	it("keeps a newer hand-off for the pane to reach, and drops an older one", () => {

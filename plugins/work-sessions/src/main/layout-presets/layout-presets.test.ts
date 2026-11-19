@@ -80,8 +80,10 @@ describe("layout presets", () => {
 			presets: [{ id: "preset-2" }],
 			defaultPresetId: null,
 		});
-		await layouts.methods.setDefault({ id: "preset-2" });
-		await layouts.methods.setDefault({ id: null });
+		await restarted.layouts.methods.setDefault({ id: "preset-2" });
+		expect(restarted.layouts.getState().defaultPresetId).toBe("preset-2");
+		await restarted.layouts.methods.setDefault({ id: null });
+		expect(restarted.layouts.getState().defaultPresetId).toBeNull();
 		await expect(layouts.methods.rename({ id: "gone", name: "x" })).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});

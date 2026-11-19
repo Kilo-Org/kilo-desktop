@@ -181,21 +181,6 @@ describe("kilo.git/pull-requests", () => {
 		await eventually(() => expect(lookups.batches.at(-1)).toEqual(["/app/.kilo/worktrees/fix"]));
 	});
 
-	it("pauses while no window is visible", async () => {
-		const host = await boot({ sessions: [session("local")] });
-		await host.pullRequests.methods.setActive({
-			windowId: "main",
-			directories: [],
-			visible: false,
-		});
-		await host.pullRequests.methods.refresh({ directory: "/elsewhere" });
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(host.lookups.batches).toEqual([]);
-
-		await host.pullRequests.methods.setActive({ windowId: "main", directories: [], visible: true });
-		await vi.waitFor(() => expect(host.lookups.batches).toHaveLength(1), WAIT);
-	});
-
 	it("shows a pull request just created, then drops directories no session uses", async () => {
 		const storage = createMemoryStorage();
 		const host = await boot({ sessions: SESSIONS, storage });

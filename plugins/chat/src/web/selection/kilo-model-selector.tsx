@@ -15,8 +15,6 @@ import {
 	ServerIcon,
 } from "lucide-react";
 import {
-	useMemo,
-	useCallback,
 	useEffect,
 	useRef,
 	useState,
@@ -68,7 +66,11 @@ import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
-import type { ComposerActionPopoverProps, ComposerActionTrigger } from "../../contracts";
+import type {
+	ComposerActionPopoverProps,
+	ComposerActionStateProps,
+	ComposerActionTrigger,
+} from "../../contracts";
 import { KILO_PROVIDER_ID } from "./provider-ids";
 import { useChatModelSelection } from "./ChatModelSelectionContext";
 import {
@@ -127,12 +129,10 @@ type ScrollEdges = { top: boolean; bottom: boolean };
 /**
  * Tracks whether a scroll viewport has hidden content above/below, to drive
  * scroll arrows (the fade itself is the CSS `scroll-fade-y` utility).
- * `contentKey` re-attaches the observer when the viewport's first child is
- * swapped.
  */
-function useScrollEdges(viewportRef: RefObject<HTMLElement | null>, contentKey?: unknown) {
+function useScrollEdges(viewportRef: RefObject<HTMLElement | null>) {
 	const [edges, setEdges] = useState<ScrollEdges>({ top: false, bottom: false });
-	const update = useCallback(() => {
+	const update = () => {
 		const viewport = viewportRef.current;
 		if (!viewport) return;
 		const top = viewport.scrollTop > 1;
@@ -140,7 +140,7 @@ function useScrollEdges(viewportRef: RefObject<HTMLElement | null>, contentKey?:
 		setEdges((current) =>
 			current.top === top && current.bottom === bottom ? current : { top, bottom },
 		);
-	}, [viewportRef]);
+	};
 
 	useEffect(() => {
 		const viewport = viewportRef.current;
@@ -150,7 +150,7 @@ function useScrollEdges(viewportRef: RefObject<HTMLElement | null>, contentKey?:
 		if (viewport.firstElementChild) observer.observe(viewport.firstElementChild);
 		update();
 		return () => observer.disconnect();
-	}, [contentKey, update, viewportRef]);
+	}, [update, viewportRef]);
 
 	return { edges, update };
 }
@@ -297,6 +297,151 @@ function optimisticTriggerModel(
 	};
 }
 
+const NO_PROVIDERS: readonly KiloProviderGroup[] = [];
+const NO_MODELS: readonly KiloCatalogModel[] = [];
+
+/** The catalog's providers, with the local model source's slotted in before the first non-Kilo one. */
+function withSourceProvider(
+	catalogProviders: readonly KiloProviderGroup[],
+	sourceProviderId: string | undefined,
+	sourceTitle: string | undefined,
+): readonly KiloProviderGroup[] {
+	if (
+		!sourceProviderId ||
+		!sourceTitle ||
+		catalogProviders.some((provider) => provider.id === sourceProviderId)
+	) {
+		return catalogProviders;
+	}
+	const localProvider: KiloProviderGroup = {
+		id: sourceProviderId,
+		name: sourceTitle,
+		connected: false,
+	};
+	const firstNonKilo = catalogProviders.findIndex((provider) => !isKiloGatewayProvider(provider));
+	if (firstNonKilo < 0) return [...catalogProviders, localProvider];
+	return [
+		...catalogProviders.slice(0, firstNonKilo),
+		localProvider,
+		...catalogProviders.slice(firstNonKilo),
+	];
+}
+
+/** The rail shown: the person's pick while it exists, else favorites, the model's provider, or the first. */
+function resolveActiveRail(
+	providers: readonly KiloProviderGroup[],
+	railSelection: RailSelection | undefined,
+	hasFavorites: boolean,
+	model: KiloModelRef | undefined,
+): RailSelection | undefined {
+	if (railSelection === "favorites") {
+		return "favorites";
+	}
+	if (railSelection && providers.some((provider) => provider.id === railSelection)) {
+		return railSelection;
+	}
+	if (hasFavorites) {
+		return "favorites";
+	}
+	if (model && providers.some((provider) => provider.id === model.providerID)) {
+		return model.providerID;
+	}
+	return providers[0]?.id;
+}
+
+function gatewayPublisherOptions(
+	models: readonly KiloCatalogModel[],
+): readonly { id: string; label: string }[] {
+	const options = new Map<string, string>();
+	for (const entry of models) {
+		const id = gatewayPublisherId(entry);
+		if (id && !options.has(id)) options.set(id, gatewayPublisherLabel(entry, id));
+	}
+	return [...options]
+		.map(([id, label]) => ({ id, label }))
+		.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** The selected publishers the catalog still has. */
+function selectedPublisherIds(
+	publishers: readonly { id: string }[],
+	selected: ReadonlySet<string>,
+): ReadonlySet<string> {
+	return new Set(publishers.map(({ id }) => id).filter((id) => selected.has(id)));
+}
+
+function filterVisibleModels(
+	models: readonly KiloCatalogModel[],
+	view: {
+		readonly activeRail: RailSelection | undefined;
+		readonly activePublishers: ReadonlySet<string>;
+		readonly favoriteIds: ReadonlySet<string>;
+		readonly hasGatewayFilters: boolean;
+		readonly kiloRailSelected: boolean;
+		readonly searchQuery: string;
+		readonly selectedCosts: ReadonlySet<GatewayCostFilter>;
+	},
+): readonly KiloCatalogModel[] {
+	const { activeRail, activePublishers, favoriteIds, selectedCosts } = view;
+	if (view.searchQuery.trim().length > 0)
+		return filterModelsBySearchQuery(models, view.searchQuery);
+	const scoped =
+		activeRail === "favorites"
+			? models.filter((entry) => favoriteIds.has(entry.id))
+			: !activeRail
+				? sortModelsWithFavoritesFirst(models, favoriteIds)
+				: sortModelsWithFavoritesFirst(
+						models.filter((entry) => entry.providerID === activeRail),
+						favoriteIds,
+					);
+	if (!view.kiloRailSelected || !view.hasGatewayFilters) return scoped;
+	return scoped.filter((entry) => {
+		// Free is orthogonal to tier/auto: Auto Free matches both "free" and "auto".
+		const matchesCost =
+			selectedCosts.size === 0 ||
+			(selectedCosts.has("free") && isFreeCatalogModel(entry)) ||
+			(isKiloAutoModel(entry)
+				? selectedCosts.has("auto")
+				: entry.costTier !== undefined && selectedCosts.has(entry.costTier));
+		const publisher = gatewayPublisherId(entry);
+		return (
+			matchesCost &&
+			(activePublishers.size === 0 || (publisher !== undefined && activePublishers.has(publisher)))
+		);
+	});
+}
+
+/**
+ * The catalog for the selector root, which reads `selectedModel.icon` for the
+ * trigger: an icon only on the selected row, so the whole catalog's JSX is not
+ * rebuilt; an optimistic row for the remembered model while the catalog loads.
+ */
+function selectorModels(
+	models: readonly KiloCatalogModel[],
+	selectedId: string | undefined,
+	trigger: {
+		readonly pendingModel: KiloModelRef | undefined;
+		readonly name: string | undefined;
+		readonly effort: string | undefined;
+		readonly efforts: readonly ModelSelectorEffortOption[] | undefined;
+	},
+): readonly KiloCatalogModel[] {
+	const { pendingModel, ...meta } = trigger;
+	if (models.length === 0 && pendingModel) {
+		return [withProviderIcon(optimisticTriggerModel(pendingModel, meta))];
+	}
+	if (!selectedId) {
+		return models;
+	}
+	const selectedIndex = models.findIndex((entry) => entry.id === selectedId);
+	if (selectedIndex < 0) {
+		return models;
+	}
+	const next = models.slice();
+	next[selectedIndex] = withProviderIcon(models[selectedIndex]!);
+	return next;
+}
+
 function shouldMoveListWithHomeEnd(target: EventTarget | null, key: "Home" | "End"): boolean {
 	if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) {
 		return true;
@@ -335,12 +480,13 @@ function nextHighlightIndex(length: number, currentIndex: number, key: ListNavig
 	}
 }
 
-/**
- * Composer model picker: assistant-ui ModelSelector compound API with a
- * provider rail (favorites + providers) and searchable list.
- */
+function selectedTriggerModel(models: readonly KiloCatalogModel[], selectedId: string | undefined) {
+	const entry = selectedId ? models.find((candidate) => candidate.id === selectedId) : undefined;
+	return entry ? [withProviderIcon(entry)] : [];
+}
+
 /** The model picker's button: the selected model, its provider's icon and effort. */
-export function useKiloModelTrigger(): ComposerActionTrigger {
+export function KiloModelTrigger({ children }: ComposerActionStateProps<ComposerActionTrigger>) {
 	const {
 		model,
 		name,
@@ -354,16 +500,13 @@ export function useKiloModelTrigger(): ComposerActionTrigger {
 	} = useChatModelSelection();
 	const models = catalog?.models ?? [];
 	const selectedId = model ? modelRefToId(model) : undefined;
-	const triggerModels = useMemo(() => {
-		if (models.length === 0 && isCatalogPending && model) {
-			return [withProviderIcon(optimisticTriggerModel(model, { name, effort, efforts }))];
-		}
-		const entry = selectedId ? models.find((candidate) => candidate.id === selectedId) : undefined;
-		return entry ? [withProviderIcon(entry)] : [];
-	}, [effort, efforts, isCatalogPending, model, models, name, selectedId]);
+	const triggerModels =
+		models.length === 0 && isCatalogPending && model
+			? [withProviderIcon(optimisticTriggerModel(model, { name, effort, efforts }))]
+			: selectedTriggerModel(models, selectedId);
 	const hasProviders = (catalog?.providers.length ?? 0) > 0 || modelSource !== undefined;
 	const showLoadingPlaceholder = (isCatalogPending || isSelectionPending) && !model;
-	return {
+	return children({
 		label: (
 			<ModelSelectorRoot
 				embedded
@@ -392,29 +535,128 @@ export function useKiloModelTrigger(): ComposerActionTrigger {
 		ariaLabel: showLoadingPlaceholder ? "Loading models" : "Select model",
 		busy: isCatalogPending,
 		disabled: isCatalogError || (!isCatalogPending && models.length === 0 && !hasProviders),
-	};
+	});
 }
 
 /** The model picker's popup, inside the composer action's popover. */
+/**
+ * What the picker lists for the person's rail, search and gateway filters:
+ * the providers rail, the models (in sections on Kilo's rail), the local
+ * model source's states, and the catalog the selector root reads.
+ */
+function useCatalogView(
+	selection: ReturnType<typeof useChatModelSelection>,
+	view: {
+		readonly railSelection: RailSelection | undefined;
+		readonly searchQuery: string;
+		readonly selectedCosts: ReadonlySet<GatewayCostFilter>;
+		readonly selectedPublishers: ReadonlySet<string>;
+		readonly isStartingLocalProvider: boolean;
+		readonly localServerStarting: boolean;
+		readonly needsSignIn: boolean;
+	},
+) {
+	const { favoriteIds, toggleFavorite, hasFavorites } = useModelFavorites();
+	const {
+		model,
+		name,
+		effort,
+		efforts,
+		catalog,
+		isCatalogPending,
+		isCatalogFetching = false,
+		modelSource,
+	} = selection;
+	const { searchQuery, selectedCosts } = view;
+	const sourceProviderId = modelSource?.providerId;
+	const providers = withSourceProvider(
+		catalog?.providers ?? NO_PROVIDERS,
+		sourceProviderId,
+		modelSource?.title,
+	);
+	const activeRail = resolveActiveRail(providers, view.railSelection, hasFavorites, model);
+	const kiloRailSelected = providers.some(
+		(provider) => provider.id === activeRail && isKiloGatewayProvider(provider),
+	);
+	const models = catalog?.models ?? NO_MODELS;
+	const isSearching = searchQuery.trim().length > 0;
+	const gatewayPublishers = gatewayPublisherOptions(models);
+	const activePublishers = selectedPublisherIds(gatewayPublishers, view.selectedPublishers);
+	const hasGatewayFilters = selectedCosts.size > 0 || activePublishers.size > 0;
+	const visibleModels = filterVisibleModels(models, {
+		activeRail,
+		activePublishers,
+		favoriteIds,
+		hasGatewayFilters,
+		kiloRailSelected,
+		searchQuery,
+		selectedCosts,
+	});
+	const modelSections =
+		kiloRailSelected && !isSearching && !hasGatewayFilters
+			? kiloGatewayModelSections(visibleModels)
+			: undefined;
+	const displayedModels = modelSections?.flatMap((section) => section.models) ?? visibleModels;
+	const showSignInItem = view.needsSignIn && !isCatalogPending && !isSearching && kiloRailSelected;
+	const sourceRailSelected = sourceProviderId !== undefined && activeRail === sourceProviderId;
+	const catalogHasLocalModels = models.some((entry) => entry.providerID === sourceProviderId);
+	const awaitingLocalCatalog =
+		sourceRailSelected &&
+		!catalogHasLocalModels &&
+		(modelSource?.pending === true || (modelSource?.hasModels === true && isCatalogFetching));
+	const showLocalModelLoading =
+		(!catalogHasLocalModels &&
+			(view.isStartingLocalProvider || (sourceRailSelected && view.localServerStarting))) ||
+		awaitingLocalCatalog;
+	const selectedId = model ? modelRefToId(model) : undefined;
+	return {
+		favoriteIds,
+		toggleFavorite,
+		providers,
+		activeRail,
+		kiloRailSelected,
+		isSearching,
+		gatewayPublishers,
+		activePublishers,
+		hasGatewayFilters,
+		modelSections,
+		displayedModels,
+		showModelProviderIcons: isSearching || activeRail === "favorites" || activeRail === undefined,
+		showSignInItem,
+		showLocalModelLoading,
+		showLocalModelEmptyState:
+			!isCatalogPending &&
+			!showLocalModelLoading &&
+			!isSearching &&
+			sourceRailSelected &&
+			!catalogHasLocalModels,
+		showLocalModelActions:
+			!isCatalogPending && !showLocalModelLoading && !isSearching && sourceRailSelected,
+		navIds: showSignInItem
+			? [SIGN_IN_ITEM_ID, ...displayedModels.map((entry) => entry.id)]
+			: displayedModels.map((entry) => entry.id),
+		selectedId,
+		// ModelSelectorValue reads `selectedModel.icon` for the trigger — attach an icon
+		// only for the selected row so we don't rebuild JSX for the whole catalog.
+		modelsForSelector: selectorModels(models, selectedId, {
+			pendingModel: isCatalogPending ? model : undefined,
+			name,
+			effort,
+			efforts,
+		}),
+		showSidebar: isCatalogPending || (!isSearching && providers.length > 0),
+	};
+}
+
 export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open" | "close">> = ({
 	open,
 	close,
 }) => {
 	const navigation = useDomainObject(Navigation);
 	const { needsSignIn, signIn } = useKiloSignIn();
-	const {
-		model,
-		setModel,
-		effort,
-		setEffort,
-		name,
-		efforts,
-		catalog,
-		isCatalogPending,
-		isCatalogFetching = false,
-		refreshCatalog,
-		modelSource,
-	} = useChatModelSelection();
+	const selection = useChatModelSelection();
+	const { setModel, effort, setEffort, refreshCatalog, modelSource } = selection;
+	const isCatalogPending = selection.isCatalogPending;
 	// Providers added or removed in AI Providers (kilo.core) since the catalog
 	// was read show up when the picker opens.
 	useEffect(() => {
@@ -423,7 +665,6 @@ export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open
 	const sourceProviderId = modelSource?.providerId;
 	const sourceStatus = modelSource?.status;
 	const startSource = modelSource?.start;
-	const { favoriteIds, toggleFavorite, hasFavorites } = useModelFavorites();
 	const [railSelection, setRailSelection] = useState<RailSelection | undefined>(undefined);
 	const [isStartingLocalProvider, setIsStartingLocalProvider] = useState(false);
 	const isStartingLocalProviderRef = useRef(false);
@@ -437,226 +678,84 @@ export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open
 	const [highlightId, setHighlightId] = useState<string | undefined>(undefined);
 	const scrollToHighlightedRef = useRef<(id: string) => void>(() => {});
 	const isListScrollingRef = useRef(false);
-	const navIdsRef = useRef<readonly string[]>([]);
-
-	const catalogProviders = catalog?.providers ?? [];
-	const sourceTitle = modelSource?.title;
-	const providers = useMemo(() => {
-		if (
-			!sourceProviderId ||
-			!sourceTitle ||
-			catalogProviders.some((provider) => provider.id === sourceProviderId)
-		) {
-			return catalogProviders;
+	const [wasOpen, setWasOpen] = useState(open);
+	if (open !== wasOpen) {
+		setWasOpen(open);
+		if (!open) {
+			setSearchQuery("");
+			setHighlightId(undefined);
 		}
-		const localProvider: KiloProviderGroup = {
-			id: sourceProviderId,
-			name: sourceTitle,
-			connected: false,
-		};
-		const firstNonKilo = catalogProviders.findIndex((provider) => !isKiloGatewayProvider(provider));
-		if (firstNonKilo < 0) return [...catalogProviders, localProvider];
-		return [
-			...catalogProviders.slice(0, firstNonKilo),
-			localProvider,
-			...catalogProviders.slice(firstNonKilo),
-		];
-	}, [catalogProviders, sourceProviderId, sourceTitle]);
-	const models = catalog?.models ?? [];
+	}
 	const localServerRunning =
 		sourceStatus?.status === "ready" || sourceStatus?.status === "loading-model";
 	const localServerStarting =
 		sourceStatus?.status === "preparing-runtime" || sourceStatus?.status === "starting";
-	const selectRail = useCallback(
-		(nextRail: RailSelection) => {
-			setRailSelection(nextRail);
-			if (
-				nextRail !== sourceProviderId ||
-				localServerRunning ||
-				localServerStarting ||
-				!startSource ||
-				isStartingLocalProviderRef.current
-			) {
-				return;
-			}
+	const {
+		favoriteIds,
+		toggleFavorite,
+		providers,
+		activeRail,
+		kiloRailSelected,
+		isSearching,
+		gatewayPublishers,
+		activePublishers,
+		hasGatewayFilters,
+		modelSections,
+		displayedModels,
+		showModelProviderIcons,
+		showSignInItem,
+		showLocalModelLoading,
+		showLocalModelEmptyState,
+		showLocalModelActions,
+		navIds,
+		selectedId,
+		modelsForSelector,
+		showSidebar,
+	} = useCatalogView(selection, {
+		railSelection,
+		searchQuery,
+		selectedCosts,
+		selectedPublishers,
+		isStartingLocalProvider,
+		localServerStarting,
+		needsSignIn,
+	});
 
-			isStartingLocalProviderRef.current = true;
-			setIsStartingLocalProvider(true);
-			void startSource()
-				.catch(() => undefined)
-				.finally(() => {
-					isStartingLocalProviderRef.current = false;
-					setIsStartingLocalProvider(false);
-				});
-		},
-		[localServerRunning, localServerStarting, sourceProviderId, startSource],
-	);
-	const isSearching = searchQuery.trim().length > 0;
+	const selectRail = (nextRail: RailSelection) => {
+		setRailSelection(nextRail);
+		if (
+			nextRail !== sourceProviderId ||
+			localServerRunning ||
+			localServerStarting ||
+			!startSource ||
+			isStartingLocalProviderRef.current
+		) {
+			return;
+		}
 
-	const activeRail: RailSelection | undefined = useMemo(() => {
-		if (railSelection === "favorites") {
-			return "favorites";
-		}
-		if (railSelection && providers.some((provider) => provider.id === railSelection)) {
-			return railSelection;
-		}
-		if (hasFavorites) {
-			return "favorites";
-		}
-		if (model && providers.some((provider) => provider.id === model.providerID)) {
-			return model.providerID;
-		}
-		return providers[0]?.id;
-	}, [hasFavorites, model, providers, railSelection]);
-	const kiloRailSelected = providers.some(
-		(provider) => provider.id === activeRail && isKiloGatewayProvider(provider),
-	);
-	const gatewayPublishers = useMemo(() => {
-		const options = new Map<string, string>();
-		for (const entry of models) {
-			const id = gatewayPublisherId(entry);
-			if (id && !options.has(id)) options.set(id, gatewayPublisherLabel(entry, id));
-		}
-		return [...options]
-			.map(([id, label]) => ({ id, label }))
-			.sort((a, b) => a.label.localeCompare(b.label));
-	}, [models]);
-	const activePublishers = useMemo(
-		() => new Set(gatewayPublishers.map(({ id }) => id).filter((id) => selectedPublishers.has(id))),
-		[gatewayPublishers, selectedPublishers],
-	);
-	const hasGatewayFilters = selectedCosts.size > 0 || activePublishers.size > 0;
+		isStartingLocalProviderRef.current = true;
+		setIsStartingLocalProvider(true);
+		void startSource()
+			.catch(() => undefined)
+			.finally(() => {
+				isStartingLocalProviderRef.current = false;
+				setIsStartingLocalProvider(false);
+			});
+	};
 	const clearGatewayFilters = () => {
 		setSelectedCosts(new Set());
 		setSelectedPublishers(new Set());
 		setHighlightId(undefined);
 	};
-
-	const visibleModels = useMemo(() => {
-		const scoped = (() => {
-			if (isSearching) {
-				return models;
-			}
-			if (activeRail === "favorites") {
-				return models.filter((entry) => favoriteIds.has(entry.id));
-			}
-			if (!activeRail) {
-				return sortModelsWithFavoritesFirst(models, favoriteIds);
-			}
-			return sortModelsWithFavoritesFirst(
-				models.filter((entry) => entry.providerID === activeRail),
-				favoriteIds,
-			);
-		})();
-		if (isSearching) return filterModelsBySearchQuery(scoped, searchQuery);
-		if (!kiloRailSelected || !hasGatewayFilters) return scoped;
-		return scoped.filter((entry) => {
-			// Free is orthogonal to tier/auto: Auto Free matches both "free" and "auto".
-			const matchesCost =
-				selectedCosts.size === 0 ||
-				(selectedCosts.has("free") && isFreeCatalogModel(entry)) ||
-				(isKiloAutoModel(entry)
-					? selectedCosts.has("auto")
-					: entry.costTier !== undefined && selectedCosts.has(entry.costTier));
-			const publisher = gatewayPublisherId(entry);
-			return (
-				matchesCost &&
-				(activePublishers.size === 0 ||
-					(publisher !== undefined && activePublishers.has(publisher)))
-			);
-		});
-	}, [
-		activeRail,
-		activePublishers,
-		favoriteIds,
-		hasGatewayFilters,
-		isSearching,
-		kiloRailSelected,
-		models,
-		searchQuery,
-		selectedCosts,
-	]);
-	const modelSections = useMemo(
-		() =>
-			kiloRailSelected && !isSearching && !hasGatewayFilters
-				? kiloGatewayModelSections(visibleModels)
-				: undefined,
-		[hasGatewayFilters, kiloRailSelected, isSearching, visibleModels],
-	);
-	const displayedModels = useMemo(
-		() => modelSections?.flatMap((section) => section.models) ?? visibleModels,
-		[modelSections, visibleModels],
-	);
-	const showModelProviderIcons =
-		isSearching || activeRail === "favorites" || activeRail === undefined;
-	const showSignInItem = needsSignIn && !isCatalogPending && !isSearching && kiloRailSelected;
-	const sourceRailSelected = sourceProviderId !== undefined && activeRail === sourceProviderId;
-	const catalogHasLocalModels = models.some((entry) => entry.providerID === sourceProviderId);
-	const awaitingLocalCatalog =
-		sourceRailSelected &&
-		!catalogHasLocalModels &&
-		(modelSource?.pending === true || (modelSource?.hasModels === true && isCatalogFetching));
-	const showLocalModelLoading =
-		(!catalogHasLocalModels &&
-			(isStartingLocalProvider || (sourceRailSelected && localServerStarting))) ||
-		awaitingLocalCatalog;
-	const showLocalModelEmptyState =
-		!isCatalogPending &&
-		!showLocalModelLoading &&
-		!isSearching &&
-		sourceRailSelected &&
-		!catalogHasLocalModels;
-	const showLocalModelActions =
-		!isCatalogPending && !showLocalModelLoading && !isSearching && sourceRailSelected;
 	const sourceSettingsSection = modelSource?.settingsSection;
-	const openLocalModelServerSettings = useCallback(
-		() =>
-			void navigation?.methods
-				.openSettings({ ...(sourceSettingsSection ? { section: sourceSettingsSection } : {}) })
-				.catch(() => undefined),
-		[navigation, sourceSettingsSection],
-	);
-	const navIds = useMemo(
-		() =>
-			showSignInItem
-				? [SIGN_IN_ITEM_ID, ...displayedModels.map((entry) => entry.id)]
-				: displayedModels.map((entry) => entry.id),
-		[displayedModels, showSignInItem],
-	);
-
-	navIdsRef.current = navIds;
-
-	const selectedId = model ? modelRefToId(model) : undefined;
+	const openLocalModelServerSettings = () =>
+		void navigation?.methods
+			.openSettings({ ...(sourceSettingsSection ? { section: sourceSettingsSection } : {}) })
+			.catch(() => undefined);
 	const commandValue =
 		highlightId && navIds.includes(highlightId)
 			? highlightId
 			: (displayedModels.find((entry) => entry.id === selectedId)?.id ?? navIds[0]);
-
-	// ModelSelectorValue reads `selectedModel.icon` for the trigger — attach an icon
-	// only for the selected row so we don't rebuild JSX for the whole catalog.
-	const modelsForSelector = useMemo(() => {
-		if (models.length === 0 && isCatalogPending && model) {
-			return [withProviderIcon(optimisticTriggerModel(model, { name, effort, efforts }))];
-		}
-		if (!selectedId) {
-			return models;
-		}
-		const selectedIndex = models.findIndex((entry) => entry.id === selectedId);
-		if (selectedIndex < 0) {
-			return models;
-		}
-		const next = models.slice();
-		next[selectedIndex] = withProviderIcon(models[selectedIndex]!);
-		return next;
-	}, [effort, efforts, isCatalogPending, model, models, name, selectedId]);
-
-	const showSidebar = isCatalogPending || (!isSearching && providers.length > 0);
-
-	useEffect(() => {
-		if (open) return;
-		setSearchQuery("");
-		setHighlightId(undefined);
-	}, [open]);
 
 	return (
 		<ModelSelectorRoot
@@ -703,7 +802,7 @@ export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open
 					) {
 						return;
 					}
-					const list = navIdsRef.current;
+					const list = navIds;
 					if (list.length === 0) {
 						return;
 					}
@@ -1029,10 +1128,9 @@ const ModelListSkeleton: FC = () => {
 	);
 };
 
-const VirtualizedCatalogList: FC<{
+interface CatalogListProps {
 	models: readonly KiloCatalogModel[];
 	currentModelId: string | undefined;
-	sections?: readonly CatalogModelSection[];
 	favoriteIds: ReadonlySet<string>;
 	showProviderIcons: boolean;
 	showSignInItem: boolean;
@@ -1041,10 +1139,33 @@ const VirtualizedCatalogList: FC<{
 	scrollToHighlightedRef: MutableRefObject<(id: string) => void>;
 	isListScrollingRef: MutableRefObject<boolean>;
 	onToggleFavorite: (model: KiloCatalogModel) => void;
-}> = ({
+}
+
+function catalogListEntries(
+	models: readonly KiloCatalogModel[],
+	sections: readonly CatalogModelSection[] | undefined,
+): readonly CatalogListEntry[] {
+	return sections
+		? sections.flatMap((section): CatalogListEntry[] => [
+				{ kind: "section", id: section.id, label: section.label },
+				...section.models.map((model) => ({ kind: "model" as const, model })),
+			])
+		: models.map((model) => ({ kind: "model", model }));
+}
+
+/** The catalog's rows, with section headings when it has sections. */
+const VirtualizedCatalogList: FC<
+	CatalogListProps & { sections?: readonly CatalogModelSection[] | undefined }
+> = ({ sections, ...props }) => (
+	<VirtualizedCatalogRows {...props} listEntries={catalogListEntries(props.models, sections)} />
+);
+
+const VirtualizedCatalogRows: FC<
+	CatalogListProps & { listEntries: readonly CatalogListEntry[] }
+> = ({
 	models,
+	listEntries,
 	currentModelId,
-	sections,
 	favoriteIds,
 	showProviderIcons,
 	showSignInItem,
@@ -1054,17 +1175,9 @@ const VirtualizedCatalogList: FC<{
 	isListScrollingRef,
 	onToggleFavorite,
 }) => {
+	"use no memo";
+	// TanStack's useVirtualizer mutates one instance in place, so memoizing its readers would show stale rows.
 	const listRef = useRef<HTMLDivElement>(null);
-	const listEntries = useMemo<CatalogListEntry[]>(
-		() =>
-			sections
-				? sections.flatMap((section) => [
-						{ kind: "section", id: section.id, label: section.label },
-						...section.models.map((model) => ({ kind: "model" as const, model })),
-					])
-				: models.map((model) => ({ kind: "model", model })),
-		[models, sections],
-	);
 	const listEntriesRef = useRef(listEntries);
 	listEntriesRef.current = listEntries;
 	const virtualizer = useVirtualizer({
@@ -1244,14 +1357,14 @@ const ProviderRail: FC<{
 }> = ({ providers, selectedRail, onSelectRail, sourceProviderId }) => {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const { edges: scrollHints, update: updateScrollHints } = useScrollEdges(scrollRef);
-	const scrollProviders = useCallback((direction: -1 | 1) => {
+	const scrollProviders = (direction: -1 | 1) => {
 		const viewport = scrollRef.current;
 		if (!viewport) return;
 		viewport.scrollBy({
 			top: direction * Math.max(viewport.clientHeight - 40, 40),
 			behavior: "smooth",
 		});
-	}, []);
+	};
 
 	return (
 		<div className="bg-background/40 relative w-11 shrink-0 overflow-hidden">

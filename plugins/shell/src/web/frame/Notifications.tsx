@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import { CircleAlertIcon, CircleCheckIcon, InfoIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 
 import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
@@ -12,14 +12,11 @@ type Action = NonNullable<NotificationContent["action"]>;
 
 function useRunAction(): (action: Action) => void {
 	const kernel = useKernel();
-	return useCallback(
-		(action) => {
-			void kernel.commands.execute(action.command, action.input).catch((error: unknown) => {
-				kernel.kernelSdk.logger.error(`Command "${action.command}" failed`, error);
-			});
-		},
-		[kernel],
-	);
+	return (action) => {
+		void kernel.commands.execute(action.command, action.input).catch((error: unknown) => {
+			kernel.kernelSdk.logger.error(`Command "${action.command}" failed`, error);
+		});
+	};
 }
 
 /** Shows the toasts main addresses to this window (`kilo.shell/notifications`' `toast` event). */

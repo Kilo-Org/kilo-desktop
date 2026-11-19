@@ -22,7 +22,6 @@ import {
 import {
 	useEffect,
 	useLayoutEffect,
-	useMemo,
 	useRef,
 	useState,
 	type FC,
@@ -54,6 +53,7 @@ import { retryFailedPrompt } from "../checkpoints/retry-failed-prompt";
 import { retryFailedTurn } from "../checkpoints/retry-failed-turn";
 import { useRevertPending } from "../checkpoints/revert-pending";
 import { RevertToHereButton } from "../checkpoints/revert-to-here-button";
+import { ForkFromHereButton } from "../fork/fork-from-here-button";
 import {
 	AssistantImagePart,
 	FoldHoistedParts,
@@ -255,24 +255,63 @@ const turnSummaryLabel = (interrupted: boolean, duration: string | null) =>
  * Says a turn was stopped when it has no work fold to carry that label, e.g.
  * a stop before any output or while only text was streaming.
  */
-const TurnStoppedNote: FC<{ duration: string | null }> = ({ duration }) => (
+const TurnStoppedNote: FC<{ timing: TurnTiming | null }> = ({ timing }) => (
 	<p className="text-muted-foreground mt-2 text-xs" data-qa-id="kilo-turn-stopped">
-		{turnSummaryLabel(true, duration)}
+		<TurnSummaryLabel interrupted timing={timing} />
 	</p>
 );
+
+/** When a settled turn began and, once recorded, ended; null while it runs. */
+interface TurnTiming {
+	readonly startedAt: number;
+	readonly completedAt: number | undefined;
+}
+
+const TurnSummaryLabel: FC<{ interrupted: boolean; timing: TurnTiming | null }> = ({
+	interrupted,
+	timing,
+}) =>
+	timing ? (
+		<SettledTurnSummaryLabel interrupted={interrupted} {...timing} />
+	) : (
+		turnSummaryLabel(interrupted, null)
+	);
+
+/** Mounts as the turn settles, so a turn with no recorded end is timed to then. */
+const SettledTurnSummaryLabel: FC<{ interrupted: boolean } & TurnTiming> = ({
+	interrupted,
+	startedAt,
+	completedAt,
+}) => {
+	const [settledAt] = useState(() => Date.now());
+	return turnSummaryLabel(
+		interrupted,
+		formatTurnDuration(Math.max(0, (completedAt ?? settledAt) - startedAt)),
+	);
+};
 
 /** A settled turn's work, folded under "Worked for 12s" above its final reply. */
 const TurnWorkDisclosure: FC<
 	PropsWithChildren<{
 		animateCollapse: boolean;
-		duration: string | null;
+		timing: TurnTiming | null;
 		interrupted: boolean;
 		/** A pending jump to a delegation inside this fold. */
 		revealNonce: number | null;
 		/** Reports whether the fold is on screen, so the message can skip its own stop note. */
 		onPresenceChange: (present: boolean) => void;
+		/** Reports the end-of-turn collapse latched, so a remount never replays it. */
+		onCollapseLatched: () => void;
 	}>
-> = ({ animateCollapse, duration, interrupted, revealNonce, onPresenceChange, children }) => {
+> = ({
+	animateCollapse,
+	timing,
+	interrupted,
+	revealNonce,
+	onPresenceChange,
+	onCollapseLatched,
+	children,
+}) => {
 	useLayoutEffect(() => {
 		onPresenceChange(true);
 		return () => onPresenceChange(false);
@@ -285,10 +324,16 @@ const TurnWorkDisclosure: FC<
 	// never folds work the user reopened.
 	const pendingCollapseRef = useRef(animateCollapse);
 	useEffect(() => {
-		if (revealNonce === null) return;
-		// A reveal outranks the end-of-turn collapse, even one already scheduled.
-		pendingCollapseRef.current = false;
-		setOpen(true);
+		if (animateCollapse) onCollapseLatched();
+	}, [animateCollapse, onCollapseLatched]);
+	// A reveal outranks the end-of-turn collapse, even one already scheduled.
+	const [seenRevealNonce, setSeenRevealNonce] = useState<number | null>(null);
+	if (revealNonce !== seenRevealNonce) {
+		setSeenRevealNonce(revealNonce);
+		if (revealNonce !== null) setOpen(true);
+	}
+	useEffect(() => {
+		if (revealNonce !== null) pendingCollapseRef.current = false;
 	}, [revealNonce]);
 	useEffect(() => {
 		if (!pendingCollapseRef.current) return;
@@ -314,7 +359,9 @@ const TurnWorkDisclosure: FC<
 				className="text-muted-foreground hover:text-foreground border-border-subtle flex w-full items-center gap-1 border-b pt-1 pb-3 text-xs transition-colors"
 				data-qa-id="kilo-turn-work-toggle"
 			>
-				<span>{turnSummaryLabel(interrupted, duration)}</span>
+				<span>
+					<TurnSummaryLabel interrupted={interrupted} timing={timing} />
+				</span>
 				{open ? (
 					<ChevronDownIcon aria-hidden className="size-3.5" />
 				) : (
@@ -329,6 +376,17 @@ const TurnWorkDisclosure: FC<
 		</Collapsible>
 	);
 };
+
+/** A running turn groups its activity as it streams; a settled one folds its work. */
+function groupMessageParts(
+	parts: Parameters<typeof createActivityGroupBy>[0],
+	isRunning: boolean,
+	hiddenPlanCallIds: ReadonlySet<string> | undefined,
+) {
+	return isRunning
+		? createActivityGroupBy(parts, { hiddenPlanCallIds })
+		: createTurnWorkGroupBy(parts, { hiddenPlanCallIds });
+}
 
 const AssistantMessage: FC = () => {
 	const messageParts = useAuiState((s) => s.message.parts);
@@ -373,32 +431,23 @@ const AssistantMessage: FC = () => {
 		(threadOwnsRun && !planTurnEnded) ||
 		(isLastMessage && hasActiveSubagents);
 	const interrupted = status?.type === "incomplete" && status.reason === "cancelled";
-	const wasRunningRef = useRef(isRunning);
-	const animateWorkCollapse = wasRunningRef.current && !isRunning;
-	useEffect(() => {
-		wasRunningRef.current = isRunning;
-	}, [isRunning]);
-	const duration = isRunning
-		? null
-		: formatTurnDuration(Math.max(0, (turnCompletedAt ?? Date.now()) - turnStartedAt));
-	const groupActivityParts = useMemo(
-		() =>
-			isRunning
-				? createActivityGroupBy(messageParts, { hiddenPlanCallIds })
-				: createTurnWorkGroupBy(messageParts, { hiddenPlanCallIds }),
-		[hiddenPlanCallIds, isRunning, messageParts],
-	);
-	const delegationToolCallIds = useMemo(
-		() =>
-			messageParts.flatMap((part) =>
-				part.type === "tool-call" && isDelegationTool(part.toolName) ? [part.toolCallId] : [],
-			),
-		[messageParts],
+	const [wasRunning, setWasRunning] = useState(isRunning);
+	// True from the render in which the turn ends until the fold latches it on
+	// mount, so a later remount does not replay the collapse.
+	const [animateWorkCollapse, setAnimateWorkCollapse] = useState(false);
+	if (wasRunning !== isRunning) {
+		setWasRunning(isRunning);
+		setAnimateWorkCollapse(wasRunning && !isRunning);
+	}
+	const delegationToolCallIds = messageParts.flatMap((part) =>
+		part.type === "tool-call" && isDelegationTool(part.toolName) ? [part.toolCallId] : [],
 	);
 	const delegationRevealNonce = useDelegationRevealNonce(delegationToolCallIds);
 	const [hasTurnWorkFold, setHasTurnWorkFold] = useState(false);
 	// Dim while a revert is in flight from a boundary before this message.
 	const dimmed = useIsAfterPendingBoundary(useRevertPending().pendingId);
+	const timing = isRunning ? null : { startedAt: turnStartedAt, completedAt: turnCompletedAt };
+	const groupActivityParts = groupMessageParts(messageParts, isRunning, hiddenPlanCallIds);
 
 	return (
 		<MessagePrimitive.Root
@@ -431,9 +480,10 @@ const AssistantMessage: FC = () => {
 											<TurnWorkDisclosure
 												animateCollapse={animateWorkCollapse}
 												revealNonce={delegationRevealNonce}
-												duration={duration}
+												timing={timing}
 												interrupted={interrupted}
 												onPresenceChange={setHasTurnWorkFold}
+												onCollapseLatched={() => setAnimateWorkCollapse(false)}
 											>
 												{children}
 											</TurnWorkDisclosure>
@@ -485,7 +535,7 @@ const AssistantMessage: FC = () => {
 					</MessagePrimitive.GroupedParts>
 					<TurnSavedImages />
 					{interrupted && !isRunning && !hasTurnWorkFold ? (
-						<TurnStoppedNote duration={duration} />
+						<TurnStoppedNote timing={timing} />
 					) : null}
 					{isRunning ? (
 						<AssistantWorkingIndicator
@@ -590,6 +640,7 @@ const UserActionBar: FC = () => {
 			)}
 		>
 			<RevertToHereButton />
+			<ForkFromHereButton />
 			<MessageCopyButton />
 		</ActionBarPrimitive.Root>
 	);

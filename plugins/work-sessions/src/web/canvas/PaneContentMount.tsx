@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 type ContentHost = {
@@ -7,10 +7,13 @@ type ContentHost = {
 };
 
 export type PaneContentMountRegistry = {
+	/** The hidden element that holds hosts between targets; a callback ref. */
+	readonly setParking: (element: HTMLDivElement | null) => void;
 	readonly attachTarget: (paneId: string, target: HTMLDivElement) => void;
 	readonly parkDescendants: (root: HTMLDivElement) => void;
 	readonly parkPanes: (paneIds: Iterable<string>) => void;
-	readonly registerHost: (paneId: string, host: ContentHost) => boolean;
+	/** Moves the host into its pane's target, if one is connected, and reports it ready. */
+	readonly registerHost: (paneId: string, host: ContentHost) => void;
 	readonly restoreParked: () => void;
 	readonly unregisterHost: (paneId: string, host: HTMLDivElement) => void;
 };
@@ -25,9 +28,8 @@ function moveConnectedHost(host: HTMLDivElement, destination: HTMLDivElement) {
 // be replaced by a layout move, so the registry parks each connected portal host
 // before its old target is removed and transfers it into the next target without
 // resetting iframe documents or React state.
-export function createPaneContentMountRegistry(
-	parkingRef: RefObject<HTMLDivElement | null>,
-): PaneContentMountRegistry {
+export function createPaneContentMountRegistry(): PaneContentMountRegistry {
+	let parkingElement: HTMLDivElement | null = null;
 	const hosts = new Map<string, ContentHost>();
 	const targets = new Map<string, HTMLDivElement>();
 	const parked = new Set<string>();
@@ -40,6 +42,9 @@ export function createPaneContentMountRegistry(
 	};
 
 	return {
+		setParking(element) {
+			parkingElement = element;
+		},
 		attachTarget(paneId, target) {
 			targets.set(paneId, target);
 			const host = hosts.get(paneId);
@@ -49,12 +54,12 @@ export function createPaneContentMountRegistry(
 			host.onTargetReady();
 		},
 		parkPanes(paneIds) {
-			const parking = parkingRef.current;
+			const parking = parkingElement;
 			if (!parking) return;
 			for (const paneId of paneIds) parkPane(paneId, parking);
 		},
 		parkDescendants(root) {
-			const parking = parkingRef.current;
+			const parking = parkingElement;
 			if (!parking) return;
 			for (const [paneId, host] of hosts) {
 				if (root.contains(host.element)) parkPane(paneId, parking);
@@ -63,11 +68,9 @@ export function createPaneContentMountRegistry(
 		registerHost(paneId, host) {
 			hosts.set(paneId, host);
 			const target = targets.get(paneId);
-			if (target?.isConnected) {
-				moveConnectedHost(host.element, target);
-				return true;
-			}
-			return false;
+			if (!target?.isConnected) return;
+			moveConnectedHost(host.element, target);
+			host.onTargetReady();
 		},
 		restoreParked() {
 			for (const paneId of parked) {
@@ -105,11 +108,10 @@ export function PaneContentMount({
 	});
 
 	useLayoutEffect(() => {
-		const attached = registry.registerHost(paneId, {
+		registry.registerHost(paneId, {
 			element: host,
 			onTargetReady: () => setReady(true),
 		});
-		if (attached) setReady(true);
 		return () => registry.unregisterHost(paneId, host);
 	}, [host, paneId, registry]);
 

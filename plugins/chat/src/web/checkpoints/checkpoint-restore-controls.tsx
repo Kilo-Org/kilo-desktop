@@ -14,11 +14,6 @@ import { useEffect, useState, type FC } from "react";
 /** Tracks which (sessionId, boundaryId, workspace) combinations have already shown a notice in this app session. */
 const shownNotices = new Set<string>();
 
-/** Test-only reset — call in afterEach to start each test with a clean history. */
-export function resetCheckpointNoticeHistory(): void {
-	shownNotices.clear();
-}
-
 import {
 	useRevertBoundaryId,
 	useRevertDiffs,
@@ -85,9 +80,8 @@ export const CheckpointRestoreControls: FC = () => {
 			aui.thread.composer().setText("");
 		} catch {
 			toast.error("Could not restore the reverted messages.");
-		} finally {
-			setIsUndoing(false);
 		}
+		setIsUndoing(false);
 	};
 
 	return (

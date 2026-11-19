@@ -58,11 +58,7 @@ describe("git/for-each-ref", () => {
 		});
 
 		it("lists remote-tracking branches when remotes are requested", async () => {
-			const { path: repoPath, remote } = await initializeWithRemote(
-				"remote-refs",
-				undefined,
-				"main",
-			);
+			const { path: repoPath } = await initializeWithRemote("remote-refs", undefined, "main");
 			await makeCommit(repoPath, {
 				entries: [{ path: "README.md", contents: "# repo\n" }],
 			});
@@ -83,7 +79,6 @@ describe("git/for-each-ref", () => {
 					}),
 				]),
 			);
-			expect(remote).toBeTruthy();
 		});
 
 		it("returns null for a directory that is not a git repository", async () => {

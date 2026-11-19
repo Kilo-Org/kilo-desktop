@@ -1,7 +1,7 @@
 import { MessageSquareIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { useDomainObject, useDragSource } from "@kilo-desktop/kernel/web";
+import { useDomainObject, dragSourceProps } from "@kilo-desktop/kernel/web";
 import {
 	WorkSessionObjectType,
 	WorkSessions,
@@ -46,7 +46,7 @@ export function BoardCard({
 }) {
 	const [renaming, setRenaming] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
-	const drag = useDragSource([{ type: WorkSessionObjectType.id, id: session.id }], {
+	const drag = dragSourceProps([{ type: WorkSessionObjectType.id, id: session.id }], {
 		disabled: renaming,
 	});
 	const workspace = workspaces.find((candidate) => candidate.id === session.workspaceId);

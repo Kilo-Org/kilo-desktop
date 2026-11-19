@@ -18,8 +18,6 @@ type Of<K extends StatusBarItemImplementation["kind"]> = Extract<
 	{ kind: K }
 >;
 
-const NO_TRIGGER = (): StatusBarItemTrigger => ({});
-
 const TONE_CLASS = {
 	default: "",
 	warning: "text-warning",
@@ -116,13 +114,24 @@ function triggerProps(item: StatusBarContribution, trigger: StatusBarItemTrigger
 	};
 }
 
-const ActionItem: FC<{ item: StatusBarContribution; implementation: Of<"action"> }> = ({
+type ItemProps<K extends "action" | "popover"> = {
+	item: StatusBarContribution;
+	implementation: Of<K>;
+};
+
+const ActionItem: FC<ItemProps<"action">> = (props) => {
+	const { Trigger } = props.implementation;
+	const draw = (trigger: StatusBarItemTrigger) => <ActionButton {...props} trigger={trigger} />;
+	if (!Trigger) return draw({});
+	return <Trigger>{draw}</Trigger>;
+};
+
+const ActionButton: FC<ItemProps<"action"> & { trigger: StatusBarItemTrigger }> = ({
 	item,
 	implementation,
+	trigger,
 }) => {
 	const kernel = useKernel();
-	const useTrigger = implementation.useTrigger ?? NO_TRIGGER;
-	const trigger = useTrigger();
 	if (trigger.hidden) return null;
 	const run = () => {
 		if (implementation.run) return void implementation.run();
@@ -136,13 +145,19 @@ const ActionItem: FC<{ item: StatusBarContribution; implementation: Of<"action">
 	);
 };
 
-const PopoverItem: FC<{ item: StatusBarContribution; implementation: Of<"popover"> }> = ({
+const PopoverItem: FC<ItemProps<"popover">> = (props) => {
+	const { Trigger } = props.implementation;
+	const draw = (trigger: StatusBarItemTrigger) => <PopoverButton {...props} trigger={trigger} />;
+	if (!Trigger) return draw({});
+	return <Trigger>{draw}</Trigger>;
+};
+
+const PopoverButton: FC<ItemProps<"popover"> & { trigger: StatusBarItemTrigger }> = ({
 	item,
 	implementation,
+	trigger,
 }) => {
 	const [open, setOpen] = useState(false);
-	const useTrigger = implementation.useTrigger ?? NO_TRIGGER;
-	const trigger = useTrigger();
 	if (trigger.hidden) return null;
 	const { Content } = implementation;
 	return (

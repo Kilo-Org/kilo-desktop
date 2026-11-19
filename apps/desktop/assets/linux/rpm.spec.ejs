@@ -1,0 +1,73 @@
+# Based on resources/spec.ejs from electron-installer-redhat 4.0.0 (MIT License,
+# https://github.com/electron-userland/electron-installer-redhat); changes are commented.
+%define _binary_payload w<%= compressionLevel %>.xzdio
+
+# The payload is a finished Electron app: skip the build host's post-install
+# scripts (stripping, Python byte-compiling and shebang mangling of the bundled
+# conda bridge) and debuginfo, and don't ship /usr/lib/.build-id links, which
+# conflict with other Electron apps that bundle the same binaries.
+%global __os_install_post %{nil}
+%global debug_package %{nil}
+%global _build_id_links none
+
+Name: <%= name %>
+Version: <%= version %>
+Release: <%= revision %>%{?dist}
+<% if (description) { print(`Summary: ${description}\n`) }
+%>
+<% if (license) { print(`License: ${license}\n`) }
+if (homepage) { print(`URL: ${homepage}\n`) }
+if (license || homepage) { print('\n') }
+
+%>Requires: <%= requires.join(', ') %>
+AutoReqProv: no
+
+<% if (productDescription) {
+%>%description
+<% print(productDescription)
+print('\n\n\n') }
+
+
+%>%install
+mkdir -p %{buildroot}/usr/
+# rpm 4.20+ runs the install section in a per-package build directory, not in BUILD.
+cp -r %{_topdir}/BUILD/usr/* %{buildroot}/usr/
+# cp drops the setuid bit the installer gave Chromium's sandbox helper; restore it like the DEB.
+chmod 4755 %{buildroot}/usr/lib/<%= name %>/chrome-sandbox
+# Tells the in-app updater to offer RPMs (apps/desktop/config/linux-package.ts).
+printf 'rpm\n' > %{buildroot}/usr/lib/<%= name %>/resources/<%= packageFormatFile %>
+
+
+%files
+/usr/bin/<%= name %>
+/usr/lib/<%= name %>/
+/usr/share/applications/<%= name %>.desktop
+/usr/share/doc/<%= name %>/
+<% if (_.isObject(icon)) {
+  _.forEach(icon, function (path, resolution) {
+    %>/usr/share/icons/hicolor/<%= resolution %>/apps/<%= name %><%= resolution === 'symbolic' ? '-symbolic' : '' %>.<%= ['scalable', 'symbolic'].includes(resolution) ? 'svg' : 'png' %>
+<% }) } else {
+  %>/usr/share/pixmaps/<%= name %>.png
+<% } %>
+
+<% if (pre) {
+  %>%pre
+<% print(pre)
+if (preun || post || postun) print('\n\n\n') }
+
+
+%><% if (preun) {
+  %>%preun
+<% print(preun)
+if (post || postun) print('\n\n\n') }
+
+
+%><% if (post) {
+  %>%post
+<% print(post)
+if (postun) print('\n\n\n') }
+
+
+%><% if (postun) {
+  %>%postun
+<% print(postun) } %>

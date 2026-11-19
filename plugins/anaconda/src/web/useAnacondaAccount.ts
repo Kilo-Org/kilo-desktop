@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -49,19 +49,15 @@ export function useAnacondaAccount(
 		};
 	}, [account]);
 
-	const signIn = useCallback(() => account.methods.signIn(undefined).catch(failure), [account]);
-	const cancelSignIn = useCallback(
-		() => account.methods.cancelSignIn(undefined).catch(() => undefined),
-		[account],
-	);
-	const signOut = useCallback(async () => {
+	const signIn = () => account.methods.signIn(undefined).catch(failure);
+	const cancelSignIn = () => account.methods.cancelSignIn(undefined).catch(() => undefined);
+	const signOut = () => {
 		setSigningOut(true);
-		try {
-			return await account.methods.signOut(undefined).catch(failure);
-		} finally {
-			setSigningOut(false);
-		}
-	}, [account]);
+		return account.methods
+			.signOut(undefined)
+			.catch(failure)
+			.finally(() => setSigningOut(false));
+	};
 
 	const pending = signingIn ? "sign-in" : signingOut ? "sign-out" : null;
 	return { session, resolving, pending, signIn, cancelSignIn, signOut };

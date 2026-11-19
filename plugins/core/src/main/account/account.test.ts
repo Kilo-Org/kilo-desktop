@@ -667,7 +667,6 @@ describe("the terms of service", () => {
 
 		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(true));
 		await accountOf(kernel).methods.refresh(undefined);
-		await new Promise((resolve) => setTimeout(resolve, 20));
 
 		expect(termsOf(kernel).getState().accepted).toBe(true);
 		expect(events(tracked)).not.toContain("kilo.core/terms-linked");

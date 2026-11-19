@@ -106,21 +106,9 @@ export function formatCompactCount(value: number): string {
 	return String(count);
 }
 
-export function formatUsageK(value: number): string {
-	const count = Math.max(0, Number.isFinite(value) ? value : 0);
-	if (!(count > 0)) return "0k";
-	const thousands = count / 1000;
-	if (thousands < 1) return `${thousands.toFixed(1)}k`;
-	return `${Math.round(thousands)}k`;
-}
-
 // Cache per message object / thread so useAuiState snapshots keep a stable reference.
 const tokensByMessage = new WeakMap<object, SessionModelUsageTokens>();
 const totalsByMessages = new WeakMap<object, SessionModelUsageTokens>();
-
-export function occupancyFromMessage(message: ThreadUsageMessage | undefined): number {
-	return occupancyFromTokens(tokensFromMessage(message) ?? EMPTY_TOKENS);
-}
 
 export function tokensFromMessage(
 	message: ThreadUsageMessage | undefined,
@@ -156,10 +144,6 @@ export function lastAssistantCost(messages: readonly ThreadUsageMessage[]): numb
 	return undefined;
 }
 
-export function occupancyFromStepFinishParts(parts: ThreadUsageMessage["parts"]): number {
-	return occupancyFromTokens(tokensFromStepFinishParts(parts) ?? EMPTY_TOKENS);
-}
-
 export function fallbackTotalsFromMessages(
 	messages: readonly ThreadUsageMessage[],
 ): SessionModelUsageTokens {
@@ -173,10 +157,6 @@ export function fallbackTotalsFromMessages(
 	}
 	totalsByMessages.set(messages, total);
 	return total;
-}
-
-export function lastAssistantOccupancy(messages: readonly ThreadUsageMessage[]): number {
-	return occupancyFromTokens(lastAssistantTokens(messages) ?? EMPTY_TOKENS);
 }
 
 export function lastAssistantTokens(

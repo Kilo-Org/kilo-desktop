@@ -30,7 +30,6 @@ class FakeProvider extends EventEmitter<FeatureFlagEvents> implements FeatureFla
 	}
 
 	start = async () => "complete" as const;
-	getFlag = <T>(key: string, fallback?: T) => (this.flags[key] ?? fallback) as T;
 	getAllFlags = () => this.flags;
 
 	/** LaunchDarkly pushed new values. */
@@ -233,7 +232,6 @@ describe("LaunchDarkly as the flag source", () => {
 		);
 		const calls = provider.identify.mock.calls.length;
 		primary.set({ ...ADA });
-		await new Promise((resolve) => setTimeout(resolve, 10));
 		expect(provider.identify).toHaveBeenCalledTimes(calls);
 
 		primary.set(null);

@@ -51,8 +51,9 @@ export interface LaunchedPane {
 }
 
 /**
- * Opens a pane of `kind` and places it; the layout is saved only when
- * placement moves it. Main reports the pane as opened.
+ * Opens a pane of `kind` and places it. Tabs (no placement, or `into` a
+ * group) are placed by main in the write that opens them; a new group beside
+ * the active one is moved there afterwards. Main reports the pane as opened.
  */
 export async function launchPane(
 	panes: PanesHandle,
@@ -65,16 +66,18 @@ export async function launchPane(
 	const anchor = sessionLayout(before, layoutKindOf);
 	const anchorGroup = anchor.activePaneId ? findPaneGroup(anchor, anchor.activePaneId) : undefined;
 	// No placement given (⌘T): a tab of the active group, as a person picking a pane expects.
+	const asTab = !placement || "into" in placement;
 	const pane = await panes.methods.open({
 		workSessionId,
 		kind,
-		...(placement ? {} : { placement: "tab" as const }),
+		...(asTab ? { placement: "tab" as const } : {}),
+		...(placement && "into" in placement ? { groupId: placement.into } : {}),
 	});
 	const opened = !before.panes.some((existing) => existing.id === pane.id);
-	if (!placement || !opened) return { pane, opened };
-	const target = "into" in placement ? placement.into : anchorGroup?.id;
+	if (asTab || !opened) return { pane, opened };
+	const target = anchorGroup?.id;
 	if (!target) return { pane, opened };
-	const position: DropPosition = "into" in placement ? "inside" : placement.beside;
+	const position: DropPosition = placement.beside;
 	const layout = sessionLayout(
 		{ ...before, panes: [...before.panes, pane], activePaneId: pane.id },
 		layoutKindOf,

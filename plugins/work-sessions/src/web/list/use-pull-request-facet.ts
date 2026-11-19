@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { useExtensions } from "@kilo-desktop/kernel/web";
 
@@ -17,13 +17,11 @@ export function usePullRequestFacet(): SessionListPullRequests | null {
 		(contribution) => contribution.metadata.facet === "pull-request",
 	)?.implementation;
 	const active = source ?? NO_SOURCE;
-	const subscribe = useCallback((listener: () => void) => active.subscribe(listener), [active]);
+	const subscribe = (listener: () => void) => active.subscribe(listener);
 	const states: Readonly<Record<string, WorkSessionPullRequestState>> = useSyncExternalStore(
 		subscribe,
 		active.get,
 	);
-	return useMemo(() => {
-		if (!source) return null;
-		return Object.fromEntries(Object.entries(states).map(([id, state]) => [id, { state }]));
-	}, [source, states]);
+	if (!source) return null;
+	return Object.fromEntries(Object.entries(states).map(([id, state]) => [id, { state }]));
 }

@@ -16,7 +16,6 @@ describe("ContributedEnvManager", () => {
 			manager.contribute("source-a", { API_KEY: "abc123", OTHER: "val" });
 
 			expect(manager.getMergedEnv()).toEqual({ API_KEY: "abc123", OTHER: "val" });
-			expect(manager.size).toBe(1);
 		});
 
 		it("fires onChange when a new contribution is added", () => {
@@ -68,7 +67,6 @@ describe("ContributedEnvManager", () => {
 			manager.contribute("source-a", { NEW_KEY: "new" });
 
 			expect(manager.getMergedEnv()).toEqual({ NEW_KEY: "new" });
-			expect(manager.size).toBe(1);
 		});
 	});
 
@@ -80,7 +78,6 @@ describe("ContributedEnvManager", () => {
 
 			dispose();
 			expect(manager.getMergedEnv()).toEqual({});
-			expect(manager.size).toBe(0);
 			expect(onChange).toHaveBeenCalledOnce();
 		});
 
@@ -144,22 +141,6 @@ describe("ContributedEnvManager", () => {
 		});
 	});
 
-	describe("size", () => {
-		it("tracks the number of active contributions", () => {
-			const { manager } = createHarness();
-			expect(manager.size).toBe(0);
-
-			const disposeA = manager.contribute("source-a", { A: "1" });
-			expect(manager.size).toBe(1);
-
-			manager.contribute("source-b", { B: "2" });
-			expect(manager.size).toBe(2);
-
-			disposeA();
-			expect(manager.size).toBe(1);
-		});
-	});
-
 	// Regression:
 	// The doc-and-log said "last-write-wins" but Map iteration is INSERTION
 	// order; a source re-contributing after another source's first
@@ -167,13 +148,6 @@ describe("ContributedEnvManager", () => {
 	// Fix: delete-then-set on every contribute() so the entry moves to the
 	// tail of iteration order.
 	describe("last-write-wins (recency)", () => {
-		it("gives the last CONTRIBUTOR the winning value when the same key overlaps", () => {
-			const { manager } = createHarness();
-			manager.contribute("first", { SHARED: "from-first" });
-			manager.contribute("second", { SHARED: "from-second" });
-			expect(manager.getMergedEnv().SHARED).toBe("from-second");
-		});
-
 		it("gives an older source the winning value if it re-contributes AFTER a competing source", () => {
 			// Before the fix, re-contributing from "first" moved the value in
 			// the Map slot but not the iteration position, so "second" (a

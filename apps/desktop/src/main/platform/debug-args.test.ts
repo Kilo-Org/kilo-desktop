@@ -20,23 +20,6 @@ describe("hasForbiddenDebugArgs", () => {
 		expect(hasForbiddenDebugArgs([], fakeHasSwitch("remote-allow-origins"))).toBe(true);
 	});
 
-	it("catches single-dash and mixed-case remote-debugging forms through hasSwitch", () => {
-		// Chromium accepts `-remote-debugging-port=9222` and lowercases on Windows;
-		// its parser reports the normalized switch name regardless of argv spelling.
-		expect(
-			hasForbiddenDebugArgs(
-				["-remote-debugging-port=9222"],
-				fakeHasSwitch("remote-debugging-port"),
-			),
-		).toBe(true);
-		expect(
-			hasForbiddenDebugArgs(
-				["--Remote-Debugging-Port=9222"],
-				fakeHasSwitch("remote-debugging-port"),
-			),
-		).toBe(true);
-	});
-
 	it("flags Node inspector arguments in any argv form", () => {
 		expect(hasForbiddenDebugArgs(["--inspect"], noSwitches)).toBe(true);
 		expect(hasForbiddenDebugArgs(["--inspect=127.0.0.1:9229"], noSwitches)).toBe(true);

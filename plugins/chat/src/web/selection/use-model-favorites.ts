@@ -1,5 +1,3 @@
-import { useCallback, useMemo } from "react";
-
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Models, type ModelRef, type ModelsState } from "@kilo-desktop/plugin-core/contracts";
 
@@ -13,18 +11,15 @@ const selectFavorites = (state: ModelsState) => state.preferences.favorites;
 export function useModelFavorites() {
 	const models = useDomainObject(Models);
 	const favorites = useDomainObjectState(Models, selectFavorites) ?? NO_FAVORITES;
-	const favoriteIds = useMemo(() => favoriteKeySet(favorites.map(toKiloModelRef)), [favorites]);
-	const toggleFavorite = useCallback(
-		(target: KiloModelRef) => {
-			void models?.methods
-				.setFavorite({
-					aiProviderId: target.providerID,
-					modelId: target.modelID,
-					favorite: !favoriteIds.has(`${target.providerID}/${target.modelID}`),
-				})
-				.catch(() => undefined);
-		},
-		[favoriteIds, models],
-	);
+	const favoriteIds = favoriteKeySet(favorites.map(toKiloModelRef));
+	const toggleFavorite = (target: KiloModelRef) => {
+		void models?.methods
+			.setFavorite({
+				aiProviderId: target.providerID,
+				modelId: target.modelID,
+				favorite: !favoriteIds.has(`${target.providerID}/${target.modelID}`),
+			})
+			.catch(() => undefined);
+	};
 	return { favoriteIds, toggleFavorite, hasFavorites: favorites.length > 0 };
 }

@@ -21,7 +21,7 @@ import type { DecisionAnswer } from "../extension-point";
 import type { PluginEntry, PluginRegistration } from "../plugin";
 import { testPlugin } from "../test-fixtures";
 import { createTestKernelPair } from "../testing";
-import { createMainKernel, type MainKernelHost } from "./main-kernel";
+import { createMainKernel, DEFAULT_STOP_CAP_MS, type MainKernelHost } from "./main-kernel";
 
 function fakeHost(overrides: Partial<MainKernelHost> = {}): MainKernelHost {
 	return {
@@ -211,12 +211,11 @@ describe("main kernel — stopping", () => {
 				}),
 			],
 			fakeHost(),
-			{ stopCapMs: 1_000 },
 		);
 		await kernel.start();
 
 		const stopping = kernel.stop();
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(DEFAULT_STOP_CAP_MS);
 
 		await expect(stopping).resolves.toBeUndefined();
 		expect(kernel.kernelSdk.domainObjects.get(KernelApp)!.getState().phase).toBe("stopped");

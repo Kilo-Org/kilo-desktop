@@ -1,7 +1,7 @@
 import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 import type { MarkdownRendererComponents } from "@kilo-desktop/ui/lib/markdown-extension";
 import { createMermaidMarkdownExtension } from "@kilo-desktop/ui/components/mermaid-diagram";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { FileReadResult } from "../../contracts/models.js";
 import type { ReadFile } from "../documents.js";
@@ -84,32 +84,25 @@ export function MarkdownPreview({
 	readonly read: ReadFile;
 	readonly onOpenFile: (relativePath: string) => void;
 }) {
-	const fileLinks = useMemo(
-		() =>
-			createFilesPreviewMarkdownExtension({
-				workspaceDirectory,
-				relativePath,
-				onOpenFile,
-			}),
-		[onOpenFile, relativePath, workspaceDirectory],
-	);
-	const extensions = useMemo(() => [fileLinks, mermaidExtension], [fileLinks]);
+	const fileLinks = createFilesPreviewMarkdownExtension({
+		workspaceDirectory,
+		relativePath,
+		onOpenFile,
+	});
+	const extensions = [fileLinks, mermaidExtension];
 	// MarkdownContent rebuilds its component map whenever these identities change,
 	// which remounts every rendered element (diagrams restart, images refetch).
-	const components = useMemo<MarkdownRendererComponents>(
-		() => ({
-			img: ({ alt, src }) => (
-				<MarkdownImage
-					currentPath={relativePath}
-					read={read}
-					workspaceDirectory={workspaceDirectory}
-					{...(alt ? { alt } : {})}
-					{...(src ? { src } : {})}
-				/>
-			),
-		}),
-		[read, relativePath, workspaceDirectory],
-	);
+	const components: MarkdownRendererComponents = {
+		img: ({ alt, src }) => (
+			<MarkdownImage
+				currentPath={relativePath}
+				read={read}
+				workspaceDirectory={workspaceDirectory}
+				{...(alt ? { alt } : {})}
+				{...(src ? { src } : {})}
+			/>
+		),
+	};
 	return (
 		<MarkdownContent
 			className="min-h-0 max-w-none flex-1 overflow-auto px-6 py-5"

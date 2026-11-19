@@ -99,6 +99,41 @@ export const WorkSessionFacet = defineExtensionPoint({
 	implementation: implementation<WorkSessionFacetSource<WorkSessionPullRequestState>>("renderer"),
 });
 
+// --- Groupings ---
+
+/** One category of a grouping: its work sessions, in the order the grouping keeps them. */
+export interface WorkSessionGroup {
+	readonly id: string;
+	readonly label: string;
+	readonly workSessionIds: readonly string[];
+}
+
+/**
+ * A grouping's categories, in order. `get` returns the same array until the
+ * categories change, and `subscribe` reports each change.
+ */
+export interface WorkSessionGroupingSource {
+	get(): readonly WorkSessionGroup[];
+	subscribe(listener: () => void): () => void;
+}
+
+/**
+ * A way to group the session list, offered beside its own groupings (status,
+ * workspace, updated) under the view menu's Grouping. Chosen, the list shows
+ * only the work sessions in one of its categories, each category a shelf in
+ * the grouping's order, with sessions in the order the category keeps them.
+ * Empty categories keep their shelf; sessions in none are left out; archived
+ * ones still go to the Archived shelf. A work session in more than one category shows
+ * in the first.
+ */
+export const WorkSessionGrouping = defineExtensionPoint({
+	id: "kilo.work-sessions/work-session-grouping",
+	kind: "additive",
+	description: "A way to group the session list into a plugin's categories.",
+	metadata: z.object({ title: z.string() }),
+	implementation: implementation<WorkSessionGroupingSource>("renderer"),
+});
+
 // --- How work sessions are shown, and other views of them ---
 
 export interface WorkSessionRendererProps {

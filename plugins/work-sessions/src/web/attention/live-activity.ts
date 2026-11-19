@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import type { AnyDomainObject, DomainObjectHandle, PluginSdk } from "@kilo-desktop/kernel";
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
@@ -20,7 +18,7 @@ export function useSessionActivities(
 	sessions: readonly WorkSession[],
 ): Readonly<Record<string, SessionActivity>> {
 	const chats = useChats();
-	return useMemo(() => sessionActivities(sessions, chats), [chats, sessions]);
+	return sessionActivities(sessions, chats);
 }
 
 /** The sessions needing attention, in the given order. */

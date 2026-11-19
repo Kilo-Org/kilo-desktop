@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { defineDomainObject } from "./domain-object";
 import { defineExtensionPoint } from "./extension-point";
-import { createKernel } from "./kernel";
+import { createKernel, DEFAULT_ACTIVATION_BUDGET, DEFAULT_HYDRATE_TIMEOUT_MS } from "./kernel";
 import type { PluginSdk } from "./sdk";
 import { testPlugin } from "./test-fixtures";
 import { createLinkedTransports } from "./transport";
@@ -147,12 +147,11 @@ describe("createKernel — plugin runtime", () => {
 		vi.useFakeTimers();
 		const kernel = createKernel({
 			process: "main",
-			activationBudget: { warnMs: 10, failMs: 100 },
 			registrations: [hostPlugin(() => new Promise(() => {}))],
 		});
 
 		const activation = kernel.activate();
-		await vi.advanceTimersByTimeAsync(100);
+		await vi.advanceTimersByTimeAsync(DEFAULT_ACTIVATION_BUDGET.failMs);
 		await activation;
 
 		expect(kernel.pluginState("acme.host")).toBe("failed");
@@ -448,12 +447,11 @@ describe("createKernel — window hydration", () => {
 			windowId: "w1",
 			transport: transports.connectRenderer("w1"),
 			registrations: [hostPlugin(activate)],
-			hydrateTimeoutMs: 1_000,
 		});
 
 		const activating = renderer.activate();
 		const settled = expect(activating).rejects.toMatchObject({ code: "TIMEOUT" });
-		await vi.advanceTimersByTimeAsync(1_000);
+		await vi.advanceTimersByTimeAsync(DEFAULT_HYDRATE_TIMEOUT_MS);
 
 		await settled;
 		expect(activate).not.toHaveBeenCalled();

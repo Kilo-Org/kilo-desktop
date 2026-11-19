@@ -8,8 +8,6 @@ import {
 	type UseMutationResult,
 	type UseQueryResult,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
-
 import { KernelError, type DomainObjectMethods } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 
@@ -31,7 +29,7 @@ const UNAVAILABLE_CLIENT = new Proxy({} as CondaClient, { get: () => unavailable
 /** This window's `kilo.environments/conda` methods; calls fail while it is not provided. */
 export function useConda(): CondaClient {
 	const conda = useDomainObject(Conda);
-	return useMemo(() => conda?.methods ?? UNAVAILABLE_CLIENT, [conda]);
+	return conda?.methods ?? UNAVAILABLE_CLIENT;
 }
 
 /** Whether Conda Environments can be used; null until known. */

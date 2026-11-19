@@ -119,7 +119,6 @@ describe("a work session's pull request", () => {
 		const host = await renderSlot("row", {
 			pullRequests: { byDirectory: { [WORKTREE]: entry("kilo/fix", null) } },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(page.getByTestId("git-session-row-pull-request").query()).toBeNull();
 
 		await host.setPullRequests(WITH_PR);
@@ -187,7 +186,6 @@ describe("a work session's branch on hover", () => {
 			{ repository: { repositoryType: () => ({ kind: "bare" as const }) } },
 			workSession("wses_1"),
 		);
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(page.getByTestId("git-session-details-branch").query()).toBeNull();
 	});
 });

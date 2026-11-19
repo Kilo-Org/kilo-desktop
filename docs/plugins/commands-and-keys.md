@@ -4,7 +4,7 @@ A **command** is a named action a person can run: "New terminal", "Push".
 It has no placement. The command palette lists it, the keyboard runs it,
 and surfaces such as a session header or the composer refer to it by id.
 Commands are contributions to the kernel's `kernel/command` point. Why they
-exist: [plugin-architecture.md §2.6](../plugin-architecture.md#26-commands).
+exist: [plugin-architecture.md](../plugin-architecture.md#building-blocks).
 
 ## Adding a command
 
@@ -44,8 +44,9 @@ The command's id is `example.hello/say-hello`. Metadata fields:
 
 Run a command from code with `useKernel().commands.execute(id, args)` in
 React (the handler gets `args`), e.g.
-`commands.execute("kilo.work-sessions/open-work-session", { workSessionId })`. A window can run a command that only main
-or another window implements; the kernel forwards it.
+`commands.execute("kilo.work-sessions/open-work-session", { workSessionId })`.
+A window can run a command that only main or another window implements; the
+kernel forwards it.
 
 Implement a command in the window when it acts on that window (its open
 work session, its focus — kilo.work-sessions' `next-work-session`,
@@ -114,4 +115,6 @@ sdk.context.set("hasTodos", todos.length > 0); // local name; only the owner can
   are set in a window and only exist there (focus, the open work session).
 - Read keys with `useContextKey("acme.todos/hasTodos")` in React, or
   `sdk.context.get` / `sdk.context.evaluate(when)` in code.
-- A key id ending in `*` declares a family (`flag:*`).
+- A key id ending in `*` declares a family, as the kernel's `kernel/flag:*`
+  does.
+- Every plugin's keys are listed in [schema.md](./schema.md).

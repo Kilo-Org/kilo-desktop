@@ -1,5 +1,3 @@
-import { useCallback } from "react";
-
 import {
 	KernelWindows,
 	type DomainObjectHandle,
@@ -23,15 +21,12 @@ const NO_POP_OUTS: ReadonlyMap<string, string> = new Map();
 
 /** The work session's popped-out panes: pane id → window id. */
 export function usePoppedOutPanes(workSessionId: string): ReadonlyMap<string, string> {
-	const select = useCallback(
-		(state: WindowsState) => {
-			const entries = paneWindows(state)
-				.filter((window) => window.workSessionId === workSessionId)
-				.map((window) => `${window.paneId}\n${window.windowId}`);
-			return entries.join("\t");
-		},
-		[workSessionId],
-	);
+	const select = (state: WindowsState) => {
+		const entries = paneWindows(state)
+			.filter((window) => window.workSessionId === workSessionId)
+			.map((window) => `${window.paneId}\n${window.windowId}`);
+		return entries.join("\t");
+	};
 	const serialized = useDomainObjectState(KernelWindows, select);
 	if (!serialized) return NO_POP_OUTS;
 	return new Map(serialized.split("\t").map((entry) => entry.split("\n") as [string, string]));

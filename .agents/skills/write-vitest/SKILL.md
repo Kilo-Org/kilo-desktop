@@ -34,11 +34,12 @@ Canonical taxonomy: [docs/TESTING.md](../../../docs/TESTING.md). This skill cove
 | `createMemoryStorage`  | `@kilo-desktop/kernel/testing`             | In-memory plugin storage / kv                            |
 | `createPluginHost`     | `@kilo-desktop/kernel/testing/plugin-host` | One plugin's contributions (`renderSlot`) and domain methods (`invoke`) without the owner's UI |
 | `renderShell`          | `@kilo-desktop/plugin-shell/testing`       | Boot kilo.shell around a plugin that contributes to it   |
+| `renderWorkSessions`   | `@kilo-desktop/plugin-work-sessions/testing` | Boot kilo.shell + kilo.work-sessions' window (fake main) around a plugin that contributes panes or work-session UI |
 
 Plugin-specific guidance (faking dependencies, reliability rules,
 removability): [docs/plugins/testing.md](../../../docs/plugins/testing.md).
 
-Other plugins are reached through their `./contracts` (domain and point
+Other plugins are reached through their `./contracts` (domain object and point
 definitions); fakes of another plugin provide its domain object in the test
 kernel and throw `KernelError`s, whose messages survive the process boundary.
 
@@ -59,10 +60,10 @@ kernel and throw `KernelError`s, whose messages survive the process boundary.
 ```typescript
 afterEach(() => {
 	for (const db of databases.splice(0)) {
-		db.$client.close();
+		db.close();
 	}
 	for (const directory of directories.splice(0)) {
-		fs.rmSync(directory, { recursive: true, force: true });
+		fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 	}
 });
 ```
@@ -74,7 +75,7 @@ afterEach(() => {
 - Vitest browser + Testing Library; `page.elementLocator(baseElement)`.
 - Interactive elements need stable `data-qa-id` (Playwright/Vitest `testIdAttribute`).
 - Prefer `getByTestId` / roles over brittle CSS.
-- Boot the plugin with `createTestKernelPair` (or `renderShell` when it contributes to kilo.shell).
+- Boot the plugin with `createTestKernelPair` / `createPluginHost` (or `renderShell` / `renderWorkSessions` when it contributes to kilo.shell / kilo.work-sessions).
 - `QueryClient` in tests: `{ defaultOptions: { queries: { retry: false } } }`.
 
 ### App-level (`*.app.test.tsx`)

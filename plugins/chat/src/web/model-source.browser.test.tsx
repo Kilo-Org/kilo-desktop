@@ -98,7 +98,9 @@ describe("the model-source point", () => {
 		const prepare = vi.fn(() => loading.promise);
 		const host = await renderAgentPane({
 			models: modelsWithLocalModel,
-			plugins: [localSource({ useState: () => state({ modelIds: ["qwen"] }), prepare })],
+			plugins: [
+				localSource({ State: ({ children }) => children(state({ modelIds: ["qwen"] })), prepare }),
+			],
 		});
 
 		await page.getByTestId("kilo-model-selector-trigger").click();
@@ -118,7 +120,7 @@ describe("the model-source point", () => {
 	it("sends prompts for other providers without loading anything", async () => {
 		const prepare = vi.fn(async () => undefined);
 		const host = await renderAgentPane({
-			plugins: [localSource({ useState: () => state(), prepare })],
+			plugins: [localSource({ State: ({ children }) => children(state()), prepare })],
 		});
 
 		await page.getByTestId("kilo-model-selector-trigger").click();
@@ -141,7 +143,7 @@ describe("the model-source point", () => {
 	it("adds the source's rail to the picker and starts it when chosen", async () => {
 		const start = vi.fn(async () => undefined);
 		await renderAgentPane({
-			plugins: [localSource({ useState: () => state(), start })],
+			plugins: [localSource({ State: ({ children }) => children(state()), start })],
 		});
 
 		await page.getByTestId("kilo-model-selector-trigger").click();

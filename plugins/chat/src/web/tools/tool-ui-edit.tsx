@@ -1,8 +1,6 @@
 import { createFileMutationDiff, parseDiffFromFile } from "./tool-ui-file-mutation";
 import { getEditNewString, getEditOldString, hasEditStringArgs } from "./tool-diff-stats";
 
-export { getEditNewString, getEditOldString } from "./tool-diff-stats";
-
 export const EditDiff = createFileMutationDiff({
 	subgroupKind: "editing",
 	liveVerb: "Editing",

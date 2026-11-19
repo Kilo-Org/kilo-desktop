@@ -585,7 +585,6 @@ describe("AI providers and models", () => {
 		setServerStatus("stopped");
 
 		setAccount(signedIn("org-1"));
-		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(models.getState().followingAccount).toBe(true);
 
 		setServerStatus("ready");
@@ -600,7 +599,6 @@ describe("AI providers and models", () => {
 
 		setAccount(signedIn("org-1"));
 		await readsSettled(2);
-		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(models.getState().followingAccount).toBe(true);
 
 		delete fake.listError;

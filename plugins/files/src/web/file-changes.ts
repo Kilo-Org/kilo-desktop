@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import useLatest from "react-use/esm/useLatest.js";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -9,8 +9,12 @@ import {
 	toPosixPath,
 	type FileChange,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 const TRAILING_SLASHES = /\/+$/u;
+
+const sameContent = (previous: unknown, next: unknown): boolean =>
+	JSON.stringify(previous) === JSON.stringify(next);
 
 export interface FileChangeOptions {
 	/** Native directories, watched recursively. */
@@ -37,13 +41,15 @@ export function useWorkspaceFileChanges(options: FileChangeOptions): void {
 		),
 		...(options.files ?? []).map((file) => escapeGlob(toPosixPath(file))),
 	];
-	const filterKey = JSON.stringify([includes, options.types ?? null]);
-	const filter = useMemo(() => {
-		const [include, types] = JSON.parse(filterKey) as [string[], FileChange["type"][] | null];
-		return createWorkspaceChangeFilter({ includes: include, ...(types ? { types } : {}) });
-	}, [filterKey]);
+	const spec = useStableValue({ includes, types: options.types }, sameContent);
+	const filter = createWorkspaceChangeFilter({
+		includes: spec.includes,
+		...(spec.types ? { types: [...spec.types] } : {}),
+	});
 	const watching = (options.enabled ?? true) && includes.length > 0;
 
+	// The domain object's `on` returns its unsubscribe, which the effect returns.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!files || !watching) return;
 		return files.on("changed", (event) => {

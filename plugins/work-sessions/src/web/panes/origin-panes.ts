@@ -68,6 +68,8 @@ async function reopen(
 	record: WorkSessionPanes,
 ): Promise<void> {
 	for (const pane of record.panes) {
+		// Panes open in their saved order, which is the order their tabs take.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		await panes.methods.open({
 			workSessionId,
 			paneId: pane.id,

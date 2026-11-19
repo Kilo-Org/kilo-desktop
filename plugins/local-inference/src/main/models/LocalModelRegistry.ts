@@ -141,34 +141,33 @@ export class LocalModelRegistry {
 	async adoptLegacyManagedFiles(modelsDir: string): Promise<void> {
 		const managedRoot = await realpath(modelsDir);
 		const models = this.list();
-		let changed = false;
-		for (const [index, model] of models.entries()) {
-			if (model.managedFile) continue;
-			if (!model.catalog) continue;
-			try {
-				const canonicalPath = await realpath(model.path);
-				const relative = path.relative(managedRoot, canonicalPath);
-				if (
-					relative.length === 0 ||
-					relative.startsWith(`..${path.sep}`) ||
-					path.isAbsolute(relative) ||
-					path.extname(canonicalPath).toLowerCase() !== ".gguf"
-				) {
-					continue;
+		const adopted = await Promise.all(
+			models.map(async (model): Promise<LocalModel | null> => {
+				if (model.managedFile) return null;
+				if (!model.catalog) return null;
+				try {
+					const canonicalPath = await realpath(model.path);
+					const relative = path.relative(managedRoot, canonicalPath);
+					if (
+						relative.length === 0 ||
+						relative.startsWith(`..${path.sep}`) ||
+						path.isAbsolute(relative) ||
+						path.extname(canonicalPath).toLowerCase() !== ".gguf"
+					) {
+						return null;
+					}
+					const details = await stat(canonicalPath);
+					if (!details.isFile() || details.size <= 0) return null;
+					return { ...model, managedFile: true, sizeBytes: model.sizeBytes ?? details.size };
+				} catch {
+					// An unresolvable legacy file is not safe to adopt as app-managed.
+					return null;
 				}
-				const details = await stat(canonicalPath);
-				if (!details.isFile() || details.size <= 0) continue;
-				models[index] = {
-					...model,
-					managedFile: true,
-					sizeBytes: model.sizeBytes ?? details.size,
-				};
-				changed = true;
-			} catch {
-				// An unresolvable legacy file is not safe to adopt as app-managed.
-			}
+			}),
+		);
+		if (adopted.some((model) => model !== null)) {
+			this.#store.set({ models: models.map((model, index) => adopted[index] ?? model) });
 		}
-		if (changed) this.#store.set({ models });
 	}
 
 	async add(

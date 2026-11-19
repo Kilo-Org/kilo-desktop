@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { DomainObjectMethods } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -20,6 +20,28 @@ const selectReady = (state: ModelsState) => state.ready;
 
 function message(error: unknown): string {
 	return error instanceof Error && error.message ? error.message : String(error);
+}
+
+function withError(errors: Errors, operation: Operation, error: string | undefined): Errors {
+	const rest = { ...errors };
+	delete rest[operation];
+	return error === undefined ? rest : { ...rest, [operation]: error };
+}
+
+/** Awaits `work`, reporting its outcome; a failure is still rethrown. */
+async function settle(
+	work: () => Promise<unknown>,
+	report: { succeeded(): void; failed(error: unknown): void; settled(): void },
+): Promise<void> {
+	try {
+		await work();
+		report.succeeded();
+	} catch (error) {
+		report.failed(error);
+		throw error;
+	} finally {
+		report.settled();
+	}
 }
 
 /**
@@ -46,15 +68,12 @@ export function useAiProviders() {
 		[],
 	);
 
-	const setError = useCallback((operation: Operation, error: string | undefined) => {
+	const setError = (operation: Operation, error: string | undefined) => {
 		if (!mounted.current) return;
-		setErrors((current) => {
-			const { [operation]: _previous, ...rest } = current;
-			return error === undefined ? rest : { ...rest, [operation]: error };
-		});
-	}, []);
+		setErrors((current) => withError(current, operation, error));
+	};
 
-	const reload = useCallback(async () => {
+	const reload = async () => {
 		if (!models) return;
 		setLoading(true);
 		setError("load", undefined);
@@ -62,88 +81,68 @@ export function useAiProviders() {
 			await models.methods.refresh(undefined);
 		} catch (error) {
 			setError("load", message(error));
-		} finally {
-			if (mounted.current) setLoading(false);
 		}
-	}, [models, setError]);
+		if (mounted.current) setLoading(false);
+	};
 
 	const requested = useRef(false);
+	// The request runs once (`requested`), and `reload` only sets state while mounted.
+	// react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
 	useEffect(() => {
 		if (!models || ready || requested.current) return;
 		requested.current = true;
 		void reload();
 	}, [models, ready, reload]);
 
-	const run = useCallback(
-		async (operation: Operation, change: (methods: ModelsMethods) => Promise<unknown>) => {
-			if (!models) throw new Error("Kilo isn't available.");
-			setRunning((count) => count + 1);
-			setError(operation, undefined);
-			try {
-				await change(models.methods);
+	const run = async (
+		operation: Operation,
+		change: (methods: ModelsMethods) => Promise<unknown>,
+	) => {
+		if (!models) throw new Error("Kilo isn't available.");
+		setRunning((count) => count + 1);
+		setError(operation, undefined);
+		await settle(() => change(models.methods), {
+			succeeded: () => {
 				if (mounted.current) setErrors({});
-			} catch (error) {
-				setError(operation, message(error));
-				throw error;
-			} finally {
+			},
+			failed: (error) => setError(operation, message(error)),
+			settled: () => {
 				if (mounted.current) setRunning((count) => count - 1);
-			}
-		},
-		[models, setError],
-	);
+			},
+		});
+	};
 
-	const readCustom = useCallback(
-		(aiProviderId: string) =>
-			models ? models.methods.customAiProvider({ aiProviderId }) : Promise.resolve(null),
-		[models],
-	);
+	const readCustom = (aiProviderId: string) =>
+		models ? models.methods.customAiProvider({ aiProviderId }) : Promise.resolve(null);
 
-	const presentEnv = useCallback(
-		(names: readonly string[]) =>
-			models
-				? models.methods.presentEnv({ names: [...names] })
-				: Promise.resolve({ names: [] as string[] }),
-		[models],
-	);
+	const presentEnv = (names: readonly string[]) =>
+		models
+			? models.methods.presentEnv({ names: [...names] })
+			: Promise.resolve({ names: [] as string[] });
 
-	return useMemo(
-		() => ({
-			available: models !== null,
-			aiProviders: aiProviders ?? {},
-			ready,
-			loading: !ready && (loading || errors.load === undefined),
-			loadFailed: !ready && errors.load !== undefined,
-			pending: running > 0,
-			/** The latest failure the page shows, newest kind first. */
-			error: errors.connect ?? errors.disconnect ?? errors.save ?? errors.load ?? null,
-			connectError: errors.connect ?? null,
-			saveError: errors.save ?? null,
-			reload,
-			resetConnect: () => setError("connect", undefined),
-			resetSave: () => setError("save", undefined),
-			connect: (aiProviderId: string, apiKey: string) =>
-				run("connect", (methods) => methods.connectAiProvider({ aiProviderId, apiKey })),
-			disconnect: (aiProviderId: string) =>
-				run("disconnect", (methods) => methods.disconnectAiProvider({ aiProviderId })),
-			saveCustom: (provider: CustomAiProvider) =>
-				run("save", (methods) => methods.saveCustomAiProvider(provider)),
-			readCustom,
-			presentEnv,
-		}),
-		[
-			models,
-			aiProviders,
-			ready,
-			loading,
-			errors,
-			running,
-			reload,
-			run,
-			setError,
-			readCustom,
-			presentEnv,
-		],
-	);
+	return {
+		available: models !== null,
+		aiProviders: aiProviders ?? {},
+		ready,
+		loading: !ready && (loading || errors.load === undefined),
+		loadFailed: !ready && errors.load !== undefined,
+		pending: running > 0,
+		/** The latest failure the page shows, newest kind first. */
+		error: errors.connect ?? errors.disconnect ?? errors.save ?? errors.load ?? null,
+		connectError: errors.connect ?? null,
+		saveError: errors.save ?? null,
+		reload,
+		resetConnect: () => setError("connect", undefined),
+		resetSave: () => setError("save", undefined),
+		connect: (aiProviderId: string, apiKey: string) =>
+			run("connect", (methods) => methods.connectAiProvider({ aiProviderId, apiKey })),
+		disconnect: (aiProviderId: string) =>
+			run("disconnect", (methods) => methods.disconnectAiProvider({ aiProviderId })),
+		saveCustom: (provider: CustomAiProvider) =>
+			run("save", (methods) => methods.saveCustomAiProvider(provider)),
+		readCustom,
+		presentEnv,
+	};
 }
 
 export type AiProvidersModel = ReturnType<typeof useAiProviders>;

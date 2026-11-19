@@ -147,13 +147,17 @@ describe("notebook packaging", () => {
 	});
 
 	it("resolves the installed plugin root when packaging options are omitted", () => {
-		try {
-			expect(createNotebookPackagingPlan().asarUnpackPackages).toEqual(
-				NOTEBOOK_ASAR_UNPACK_PACKAGES,
-			);
-		} catch (error) {
-			expect(error).toBeInstanceOf(Error);
-			expect((error as Error).message).toMatch(/missing|not configured/);
-		}
+		const plan = createNotebookPackagingPlan({
+			platform: "win32",
+			arch: "x64",
+			exists: () => true,
+		});
+
+		const pluginRoot = path.dirname(require.resolve("@kilo-desktop/plugin-notebook/plugin.json"));
+		expect(plan.extraResources).toEqual([
+			path.join(pluginRoot, "resources/notebook"),
+			path.join(pluginRoot, "resources/kilo-plugin"),
+			path.join(pluginRoot, "resources/runtimed"),
+		]);
 	});
 });

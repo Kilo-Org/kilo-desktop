@@ -1,5 +1,5 @@
 import { FileTextIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import type { PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
@@ -13,6 +13,7 @@ import {
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import { PagesServer, type PagesServerState } from "../contracts/index.js";
 
@@ -37,19 +38,33 @@ const selectStatus = (state: PagesServerState) => state.status;
  * reloaded when hidden.
  */
 export function PagesPane(_props: PaneProps) {
+	const available = useDomainObject(PagesServer) !== null;
+	const [attempt, setAttempt] = useState(0);
+
+	if (!available) {
+		return (
+			<PagesMessage
+				title="Pages isn't available here"
+				description="Pages opens in the desktop app."
+			/>
+		);
+	}
+	// A retry remounts the body, so each attempt asks for the view afresh.
+	return <PagesView key={attempt} onRetry={() => setAttempt((current) => current + 1)} />;
+}
+
+function PagesView({ onRetry }: { readonly onRetry: () => void }) {
 	const server = useDomainObject(PagesServer);
 	const status = useDomainObjectState(PagesServer, selectStatus);
 	const [view, setView] = useState<View>({ kind: "loading" });
-	const [attempt, setAttempt] = useState(0);
-	const retry = useCallback(() => {
-		setView({ kind: "loading" });
-		setAttempt((current) => current + 1);
-	}, []);
+	// The handle is a new object each render; the request runs once per mount.
+	const serverRef = useLatestRef(server);
 
 	useEffect(() => {
-		if (!server) return;
+		const handle = serverRef.current;
+		if (!handle) return;
 		let current = true;
-		server.methods.prepareView(undefined).then(
+		handle.methods.prepareView(undefined).then(
 			({ partition, url }) => current && setView({ kind: "ready", partition, url }),
 			(error: unknown) =>
 				current &&
@@ -61,20 +76,12 @@ export function PagesPane(_props: PaneProps) {
 		return () => {
 			current = false;
 		};
-	}, [server, attempt]);
+	}, [serverRef]);
 
-	if (!server) {
-		return (
-			<PagesMessage
-				title="Pages isn't available here"
-				description="Pages opens in the desktop app."
-			/>
-		);
-	}
 	if (view.kind === "failed") {
 		return (
 			<PagesMessage title="Pages couldn't start" description={view.message}>
-				<Button type="button" variant="outline" data-qa-id="pages-retry" onClick={retry}>
+				<Button type="button" variant="outline" data-qa-id="pages-retry" onClick={onRetry}>
 					Try again
 				</Button>
 			</PagesMessage>

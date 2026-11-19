@@ -28,9 +28,14 @@ env:
   GIT_CONFIG_KEY_5: init.defaultBranch
   GIT_CONFIG_VALUE_5: main
 
+# One job per runner type saves the pnpm store on a lockfile change: lint-format
+# on Linux and each `test` leg on Windows and macOS (under its own "platform"
+# store scope, and only when main holds no full store for the lockfile yet).
+# Every other job passes save-pnpm-store: "false" and only restores.
 jobs:
   lint-format:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
@@ -54,24 +59,42 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:plugin-isolation --build all
 
   typecheck:
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
+      # Depth 2: a PR checks out its merge commit, whose first parent (HEAD^1)
+      # is the base it merges into. Without it turbo can't diff, and --affected
+      # fell back to checking all 28 packages on every PR.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/turbo-cache
-      # --affected: on depth-1 checkouts turbo can't resolve the merge base
-      # and safely falls back to running every package.
+      # PRs check the packages the diff affects and their dependents (global
+      # inputs such as the lockfile or tsconfig.base.json affect every package);
+      # the merge queue checks everything.
       # --concurrency=4: turbo's default of 10 parallel tsc runs exhausts the
       # 16 GB runner on a full (uncached) check; the kernel kills one (exit 137).
-      - run: pnpm exec turbo run check --affected --concurrency=4
+      - name: Typecheck
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            TURBO_SCM_BASE=HEAD^1 pnpm exec turbo run check --affected --concurrency=4
+          else
+            pnpm exec turbo run check --concurrency=4
+          fi
 
   # Linux runs every Vitest tier (unit, integration, browser) in three shards,
   # split by recorded per-package duration (scripts/test-durations/coverage.json).
@@ -84,6 +107,7 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 25
     concurrency:
       group: test-linux-${{ matrix.shard }}-${{ github.ref }}
       cancel-in-progress: true
@@ -103,10 +127,13 @@ jobs:
         with:
           fetch-depth: 2
       - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/turbo-cache
         with:
           key-suffix: linux-${{ matrix.shard }}
+          vitest: "true"
       - uses: ./.github/actions/install-test-runtime
         with:
           runtime: electron
@@ -115,7 +142,6 @@ jobs:
         with:
           runtime: playwright
           package-name: "@kilo-desktop/web"
-          with-deps: "true"
       - name: Run the tests this PR can reach
         if: github.event_name == 'pull_request'
         run: node scripts/test-changed.mjs HEAD^1 --shard ${{ matrix.shard }}/3 --concurrency 2
@@ -123,28 +149,13 @@ jobs:
         if: github.event_name != 'pull_request'
         run: node scripts/test-changed.mjs --all --task coverage --shard ${{ matrix.shard }}/3 --concurrency 2
 
-  # Keeps the Linux leg's name, the required branch-protection check, now that
-  # its work is sharded across test-linux.
-  test-linux-gate:
-    name: test (blacksmith-4vcpu-ubuntu-2404)
-    if: always()
-    needs: test-linux
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    steps:
-      - name: Verify Linux test shards
-        shell: bash
-        env:
-          RESULT: ${{ needs.test-linux.result }}
-        run: |
-          echo "test-linux: $RESULT"
-          [[ "$RESULT" == "success" ]]
-
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [blacksmith-8vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     concurrency:
       # Windows runners contend over native modules and SQLite files.
       group: test-${{ matrix.os }}-${{ github.ref }}
@@ -153,6 +164,13 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       GIT_CONFIG_NOSYSTEM: "true"
+      # The packages with real Git and filesystem checks per platform.
+      PLATFORM_PACKAGES: >-
+        @kilo-desktop/git-client
+        @kilo-desktop/plugin-core
+        @kilo-desktop/plugin-git
+        @kilo-desktop/plugin-notebook
+        @kilo-desktop/plugin-work-sessions
     steps:
       # Job-level env cannot use the runner context, so pin GIT_CONFIG_GLOBAL
       # here before checkout. An empty writable file (not /dev/null) lets
@@ -163,22 +181,40 @@ jobs:
         run: |
           : > "$RUNNER_TEMP/kilo-test-gitconfig"
           echo "GIT_CONFIG_GLOBAL=$RUNNER_TEMP/kilo-test-gitconfig" >> "$GITHUB_ENV"
+      # Depth 2 for --affected below (see typecheck).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      # Only these packages and their dependencies (12 of 29 projects, ~900 of
+      # ~1,400 packages): linking the whole workspace was most of this job's
+      # time on Windows. The root project comes along, with turbo and vitest.
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
+        with:
+          store-scope: platform
+      - name: Install the platform-tested packages
+        shell: bash
+        run: |
+          filters=()
+          for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package..."); done
+          pnpm install --frozen-lockfile "${filters[@]}"
       - uses: ./.github/actions/turbo-cache
+        with:
+          vitest: "true"
       # Coverage, including browser projects, runs in test-linux. These legs
       # keep checks for real Git and filesystem behavior per platform, as
-      # Turbo-managed tasks: cached, and the packages run concurrently.
+      # Turbo-managed tasks: cached, and the packages run concurrently. PRs run
+      # only the packages the diff affects (--affected intersects the filters);
+      # the merge queue runs all of them.
       - name: Run platform compatibility tests
         shell: bash
-        run: >-
-          pnpm exec turbo run test:platform
-          --filter=@kilo-desktop/git-client
-          --filter=@kilo-desktop/plugin-core
-          --filter=@kilo-desktop/plugin-git
-          --filter=@kilo-desktop/plugin-notebook
-          --filter=@kilo-desktop/plugin-work-sessions
+        run: |
+          filters=()
+          for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package"); done
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            TURBO_SCM_BASE=HEAD^1 pnpm exec turbo run test:platform --affected "${filters[@]}"
+          else
+            pnpm exec turbo run test:platform "${filters[@]}"
+          fi
 
   # Plans PR e2e before any runner packages the app: the specs the diff can
   # reach (e2e/scripts/select-pr-e2e.ts) and a shard count sized by their
@@ -187,6 +223,7 @@ jobs:
   e2e-plan:
     if: github.event_name == 'pull_request'
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     outputs:
       grep: ${{ steps.plan.outputs.grep }}
       total: ${{ steps.plan.outputs.total }}
@@ -224,6 +261,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/run-e2e
         with:
@@ -273,6 +312,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - uses: ./.github/actions/run-e2e
         with:
@@ -280,18 +321,21 @@ jobs:
           report-name: playwright-report-merge-${{ matrix.shard-name }}
           upload-on: always
 
-  # One HTML report for the sharded macOS leg. Informational only: the gate
-  # below depends on the test jobs, never on this merge.
+  # One HTML report per sharded merge-queue platform. Informational only:
+  # `Check` depends on the test jobs, never on this merge.
   e2e-merge-report:
     if: always() && github.event_name == 'merge_group'
     needs: e2e-merge
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
       - run: pnpm install --frozen-lockfile
       - name: Download shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -330,36 +374,35 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  # Keep the displayed name while it is the required branch-protection check.
-  # The gate covers PR smoke or both merge-queue matrix legs, as appropriate.
-  e2e-gate:
-    name: e2e-smoke
+  # The only check branch protection requires (both main rulesets), so
+  # splitting, renaming or resharding jobs needs no ruleset change. Add every
+  # new job to `needs`. A job may be skipped only for the reason this workflow
+  # skips it; any other skip fails. `always()`, not `!cancelled()`: a skipped
+  # check reports success to branch protection, so a cancelled run must still
+  # fail this one.
+  check:
+    name: Check
     if: always()
-    needs: [e2e-plan, e2e-pr, e2e-merge]
+    needs: [lint-format, plugin-isolation, typecheck, test-linux, test, e2e-plan, e2e-pr, e2e-merge]
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     steps:
-      - name: Verify required E2E jobs
+      - name: Require every job to pass
         shell: bash
         env:
+          RESULTS: ${{ toJSON(needs) }}
           EVENT_NAME: ${{ github.event_name }}
-          PLAN_RESULT: ${{ needs.e2e-plan.result }}
-          PLAN_TOTAL: ${{ needs.e2e-plan.outputs.total }}
-          PR_RESULT: ${{ needs.e2e-pr.result }}
-          MERGE_RESULT: ${{ needs.e2e-merge.result }}
         run: |
-          if [[ "$EVENT_NAME" == "pull_request" && "$PR_RESULT" == "success" ]]; then
-            exit 0
-          fi
-
-          # Nothing the PR changed can reach e2e (planned zero shards).
-          if [[ "$EVENT_NAME" == "pull_request" && "$PLAN_RESULT" == "success" && "$PLAN_TOTAL" == "0" && "$PR_RESULT" == "skipped" ]]; then
-            echo "No e2e specs selected for this PR."
-            exit 0
-          fi
-
-          if [[ "$EVENT_NAME" == "merge_group" && "$MERGE_RESULT" == "success" ]]; then
-            exit 0
-          fi
-
-          echo "E2E gate failed: event=$EVENT_NAME plan=$PLAN_RESULT/$PLAN_TOTAL pr=$PR_RESULT merge=$MERGE_RESULT"
-          exit 1
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          # e2e-merge-report is informational and deliberately not listed.
+          echo "$RESULTS" | jq -e --arg event "$EVENT_NAME" '
+            def allowed_skip:
+              if .key == "e2e-plan" then $event != "pull_request"
+              elif .key == "e2e-pr" then $event != "pull_request"
+                or (.plan.result == "success" and .plan.outputs.total == "0")
+              elif .key == "e2e-merge" then $event != "merge_group"
+              else false end;
+            .["e2e-plan"] as $plan
+            | all(to_entries[] | . + {plan: $plan};
+                .value.result == "success"
+                or (.value.result == "skipped" and allowed_skip))' > /dev/null

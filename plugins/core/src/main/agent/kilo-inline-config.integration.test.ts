@@ -99,36 +99,28 @@ describe.skipIf(!kiloExecutable)("Desktop's inline config in the bundled Kilo CL
 		);
 	}
 
-	it(
-		"applies the archive rules to a tar extraction into Kilo's config directory, over a user's bash allow",
-		async () => {
-			const extraction = await runBash("tar -xf payload.tar -C ~/.config/kilo");
-			expect(extraction.exitCode).not.toBe(0);
-			expect(extraction.stdout).not.toContain('"result"');
+	it("applies the archive rules to a tar extraction into Kilo's config directory, over a user's bash allow", async () => {
+		const extraction = await runBash("tar -xf payload.tar -C ~/.config/kilo");
+		expect(extraction.exitCode).not.toBe(0);
+		expect(extraction.stdout).not.toContain('"result"');
 
-			const echo = await runBash("echo still-allowed");
-			expect(echo.exitCode).toBe(0);
-			expect(echo.stdout).toContain("still-allowed");
-		},
-		KILO_TIMEOUT_MS * 2,
-	);
+		const echo = await runBash("echo still-allowed");
+		expect(echo.exitCode).toBe(0);
+		expect(echo.stdout).toContain("still-allowed");
+	});
 
-	it(
-		"keeps a user's scalar bash allow instead of replacing it with Kilo's default table",
-		async () => {
-			const result = await kilo(
-				["debug", "agent", "code"],
-				kiloInlineConfigContent([], "https://api.kilo.ai"),
-			);
-			expect(result.exitCode).toBe(0);
-			const agent = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))) as {
-				permission: PermissionRule[];
-			};
-			const bashCatchAll = agent.permission.filter(
-				(rule) => rule.permission === "bash" && rule.pattern === "*",
-			);
-			expect(bashCatchAll.at(-1)?.action).toBe("allow");
-		},
-		KILO_TIMEOUT_MS,
-	);
+	it("keeps a user's scalar bash allow instead of replacing it with Kilo's default table", async () => {
+		const result = await kilo(
+			["debug", "agent", "code"],
+			kiloInlineConfigContent([], "https://api.kilo.ai"),
+		);
+		expect(result.exitCode).toBe(0);
+		const agent = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))) as {
+			permission: PermissionRule[];
+		};
+		const bashCatchAll = agent.permission.filter(
+			(rule) => rule.permission === "bash" && rule.pattern === "*",
+		);
+		expect(bashCatchAll.at(-1)?.action).toBe("allow");
+	});
 });

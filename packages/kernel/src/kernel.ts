@@ -59,7 +59,6 @@ export interface KernelOptions {
 	readonly kernelDefinitions?: PluginDefinitions;
 	readonly kernelContextKeys?: readonly ContextKeyRecord[];
 	readonly transport?: KernelTransport;
-	readonly activationBudget?: ActivationBudget;
 	readonly logger?: KernelLogger;
 	/** Checked after hydration; true skips plugin activation (safe mode). */
 	readonly skipActivation?: () => boolean;
@@ -72,8 +71,6 @@ export interface KernelOptions {
 		pluginId: string,
 		manifest: PluginManifest | undefined,
 	) => PluginHostServices;
-	/** Renderer: how long to wait for main's hydration snapshot before failing. */
-	readonly hydrateTimeoutMs?: number;
 	/**
 	 * Main: plugins with a web (window) entry, the only plugins a window may
 	 * call main's domain methods as. Omitted, any plugin the kernel runs
@@ -148,7 +145,7 @@ interface Activation {
  */
 export function createKernel(options: KernelOptions): Kernel {
 	const logger = options.logger ?? SILENT_LOGGER;
-	const budget = options.activationBudget ?? DEFAULT_ACTIVATION_BUDGET;
+	const budget = DEFAULT_ACTIVATION_BUDGET;
 	const discovery = discoverPlugins(options.registrations, {
 		...(options.kernelDefinitions ? { kernelDefinitions: options.kernelDefinitions } : {}),
 		...(options.kernelContextKeys ? { kernelContextKeys: options.kernelContextKeys } : {}),
@@ -410,7 +407,7 @@ export function createKernel(options: KernelOptions): Kernel {
 
 	const hydrate = async (): Promise<void> => {
 		if (options.process !== "renderer" || !options.transport) return;
-		const timeoutMs = options.hydrateTimeoutMs ?? DEFAULT_HYDRATE_TIMEOUT_MS;
+		const timeoutMs = DEFAULT_HYDRATE_TIMEOUT_MS;
 		const payload = (await withTimeout(
 			options.transport.request(CHANNELS.hydrate, null),
 			timeoutMs,
@@ -445,6 +442,8 @@ export function createKernel(options: KernelOptions): Kernel {
 			}
 			for (const plugin of discovery.plugins) {
 				if (plugin.status !== "resolved" || states.get(plugin.manifest.id) !== "resolved") continue;
+				// Plugins activate one at a time in dependency order so each sees its dependencies active.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				if (plugin.manifest.when === undefined) await activatePlugin(plugin);
 				else if (whenHolds(plugin)) await startGated(plugin);
 				else setState(plugin.manifest.id, "inactive");
@@ -463,6 +462,8 @@ export function createKernel(options: KernelOptions): Kernel {
 			stopFollowing = undefined;
 			await reconciling;
 			for (const plugin of [...discovery.plugins].reverse()) {
+				// Deactivate in reverse dependency order so no plugin outlives a dependent.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await deactivatePlugin(plugin.manifest.id);
 			}
 		},

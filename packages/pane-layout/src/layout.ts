@@ -413,26 +413,6 @@ export function addPane(
 	};
 }
 
-export function rewritePaneId(layout: PaneLayout, fromId: string, toId: string): PaneLayout {
-	if (fromId === toId) return layout;
-	if (!findPane(layout, fromId)) return layout;
-	if (findPane(layout, toId)) return removePane(layout, fromId);
-
-	const groups = layout.groups.map((group) => {
-		if (!group.tabs.some((pane) => pane.id === fromId)) return group;
-		return {
-			...group,
-			tabs: group.tabs.map((pane) => (pane.id === fromId ? { ...pane, id: toId } : pane)),
-			activePaneId: group.activePaneId === fromId ? toId : group.activePaneId,
-		};
-	});
-	return {
-		...layout,
-		groups,
-		activePaneId: layout.activePaneId === fromId ? toId : layout.activePaneId,
-	};
-}
-
 export function removePane(layout: PaneLayout, paneId: string): PaneLayout {
 	const groupIndex = layout.groups.findIndex((group) =>
 		group.tabs.some((pane) => pane.id === paneId),
@@ -728,24 +708,6 @@ function fittedWidths(
 	return widths;
 }
 
-export function getFixedGroupLayout(
-	groups: readonly PaneGroup[],
-	availableWidth: number,
-	sizes: Readonly<Record<string, number>> = {},
-	gap = PANE_GAP,
-): { groups: PaneGroup[]; widths: Map<string, number> } {
-	const columns = getPaneColumns(groups, sizes);
-	const widths = fittedWidths(columns, Math.max(0, availableWidth), gap);
-	return {
-		groups: [...groups],
-		widths: new Map(
-			columns.flatMap((column) =>
-				column.groups.map((group) => [group.id, widths.get(column.id) ?? 0] as const),
-			),
-		),
-	};
-}
-
 function projectColumn(column: PaneColumn, width: number): ProjectedColumn {
 	const total = stackTotal(column.groups);
 	const groups = column.groups.map((group) => {
@@ -876,10 +838,11 @@ export function parseLayoutJson(value: unknown): PaneLayout | null {
 		if (record.activePaneId !== "") return null;
 	}
 
+	const knownGroupIds = new Set(groupIds);
 	const sizes: Record<string, number> = {};
 	if (record.sizes && typeof record.sizes === "object" && !Array.isArray(record.sizes)) {
 		for (const [id, width] of Object.entries(record.sizes as Record<string, unknown>)) {
-			if (groupIds.includes(id) && isFiniteNumber(width)) sizes[id] = width;
+			if (knownGroupIds.has(id) && isFiniteNumber(width)) sizes[id] = width;
 		}
 	}
 	return {

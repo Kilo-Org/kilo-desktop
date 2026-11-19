@@ -4,7 +4,10 @@ How Kilo Desktop is put together: the tech stack, the repository layout, and how
 Electron shell is hardened. Every feature is a plugin on a product-agnostic kernel:
 
 - [CONTEXT.md](../CONTEXT.md) lists every package and plugin.
-- [plugin-architecture.md](plugin-architecture.md) is the kernel and plugin design.
+- [plugin-architecture.md](plugin-architecture.md) is the kernel and plugin design, and how
+  to design a feature in its building blocks.
+- [plugins/schema.md](plugins/schema.md) is the generated catalog of every plugin, extension
+  point, domain object, object type and context key.
 - [plugins/](plugins/README.md) is the guide to writing a plugin, with an
   [example plugin](../examples/hello-plugin) and [llms.txt](../llms.txt) for coding
   agents.
@@ -36,7 +39,7 @@ Electron shell is hardened. Every feature is a plugin on a product-agnostic kern
 │   ├── ui/                     # Design-system primitives shared by every plugin
 │   ├── git-client/             # Node-only git client
 │   └── pane-layout/            # Pane layout model
-├── plugins/                    # Bundled plugins (kilo.shell, kilo.agent, kilo.chat, …)
+├── plugins/                    # Bundled plugins (kilo.core, kilo.shell, kilo.chat, …)
 ├── examples/                   # Example plugins for authors (never bundled)
 ├── e2e/                        # Playwright/Electron e2e
 ├── pnpm-workspace.yaml         # Workspace globs, dependency catalog, pnpm settings

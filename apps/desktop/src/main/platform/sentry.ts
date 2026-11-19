@@ -97,7 +97,3 @@ export function initSentry(preferences: PreferencesStore): void {
 export function identifySentryUser(preferences: PreferencesStore): void {
 	Sentry.setUser({ id: preferences.getInstallationId() });
 }
-
-export async function flushSentry(): Promise<void> {
-	await Sentry.close(2000);
-}

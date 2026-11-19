@@ -4,9 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME } from "./KiloConfigManager.js";
 import {
-	KILO_CONFIG_FILENAME,
-	OWNERSHIP_SIDECAR_FILENAME,
 	MCP_ENTRY_NAME,
 	MCP_ENTRY_SOURCE_ID,
 	reconcileWebMcpRelayConfig,
@@ -101,22 +100,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 			owners: Record<string, string>;
 		};
 		expect(sidecar.owners).toEqual({ [`mcp:${MCP_ENTRY_NAME}`]: MCP_ENTRY_SOURCE_ID });
-	});
-
-	it("points Kilo at the in-process MCP endpoint, not at a child process", async () => {
-		await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-		});
-		const config = await readConfig();
-		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME] as Record<
-			string,
-			unknown
-		>;
-
-		expect(entry).toEqual(EXPECTED_ENTRY);
-		// No child process, so nothing runs the app binary as Node.
-		expect(entry).not.toHaveProperty("command");
-		expect(entry).not.toHaveProperty("environment");
 	});
 
 	it("migrates the stdio relay entry written by earlier builds", async () => {
@@ -352,36 +335,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 		});
 
 		expect(outcome).toMatchObject({ kind: "written" });
-		const config = await readConfig();
-		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
-	});
-
-	it("recovers when a prior initialization crashed after writing a stale config but before updating the sidecar version", async () => {
-		// Also covered by the "recomputes absolute paths on every boot" case,
-		// but with an explicit crash-window framing. Sidecar says we own the
-		// entry; kilo.jsonc has an older path than the current process.
-		// The initializer must overwrite the entry to match the new paths.
-		const staleEntry = {
-			type: "local",
-			command: ["/old/exe", "/old/relay.js"],
-			environment: { ELECTRON_RUN_AS_NODE: "1" },
-			enabled: true,
-		};
-		// Sidecar marks it as ours, so it is replaced even though it is not a relay entry.
-		await writeFile(
-			configFile,
-			`${JSON.stringify({ mcp: { [MCP_ENTRY_NAME]: staleEntry } }, undefined, 2)}\n`,
-		);
-		await writeFile(
-			sidecarFile,
-			`${JSON.stringify({ version: 3, ownedEntryIds: [MCP_ENTRY_NAME], owners: {} }, undefined, 2)}\n`,
-		);
-
-		const outcome = await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-		});
-
-		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 		const config = await readConfig();
 		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
 	});

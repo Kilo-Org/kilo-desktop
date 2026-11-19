@@ -37,7 +37,10 @@ import { listWorkspacePackageNames } from "./config/workspace-packages.js";
 import { getRpmVersion, LINUX_PACKAGE_FORMAT_FILE } from "./config/linux-package.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
-import { ensureNodePtySpawnHelpersExecutable } from "@kilo-desktop/plugin-terminal/packaging";
+import {
+	ensureNodePtySpawnHelpersExecutable,
+	validateTerminalBundle,
+} from "@kilo-desktop/plugin-terminal/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -293,6 +296,9 @@ const config: ForgeConfig = {
 					platform,
 					arch,
 				);
+				await validateTerminalBundle(
+					path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
+				);
 				await assertNoShippedSource(buildPath, workspacePackageNames);
 				await writeAppLegalFiles({
 					buildPath,
@@ -472,6 +478,8 @@ const config: ForgeConfig = {
 			if (platform !== "win32") return;
 			const locateDll = createVisualStudioRedistLocator();
 			for (const outputPath of outputPaths) {
+				// One package at a time keeps the copy and its missing-DLL error tied to one output.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await bundleVcRuntime(outputPath, locateDll);
 			}
 		},
@@ -480,6 +488,8 @@ const config: ForgeConfig = {
 			for (const result of makeResults) {
 				for (const artifact of result.artifacts) {
 					if (artifact.toLowerCase().endsWith(".exe")) {
+						// Signs one installer at a time: each call drives an external signing tool.
+						// react-doctor-disable-next-line react-doctor/async-await-in-loop
 						await signWindowsFile(artifact);
 					}
 				}

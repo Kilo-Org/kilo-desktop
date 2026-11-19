@@ -43,15 +43,17 @@ export async function reclaimStaleCelld(port: number): Promise<void> {
 		.split("\n")
 		.map((line) => Number.parseInt(line.trim(), 10))
 		.filter((pid) => Number.isInteger(pid) && pid > 0);
-	for (const pid of pids) {
-		const name = (await run("ps", ["-p", String(pid), "-o", "comm="])).trim();
-		if (!name.endsWith("celld")) continue;
-		try {
-			process.kill(pid, "SIGKILL");
-		} catch {
-			// Already gone.
-		}
-	}
+	await Promise.all(
+		pids.map(async (pid) => {
+			const name = (await run("ps", ["-p", String(pid), "-o", "comm="])).trim();
+			if (!name.endsWith("celld")) return;
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {
+				// Already gone.
+			}
+		}),
+	);
 }
 
 export interface PortChoice {

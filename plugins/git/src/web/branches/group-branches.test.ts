@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { GitBranch } from "../../contracts";
-import { groupBranches } from "./group-branches";
+import { filterBranchGroups, groupBranches } from "./group-branches";
 
 function local(name: string, upstream: string | null = null): GitBranch {
 	return { name, upstream, tip: { sha: "sha" }, ref: `refs/heads/${name}`, kind: "local" };
@@ -73,5 +73,34 @@ describe("groupBranches", () => {
 
 	it("resolves no groups at all for an empty branch list", () => {
 		expect(groupBranches([], undefined, [])).toEqual([]);
+	});
+});
+
+describe("filterBranchGroups", () => {
+	const main = local("main");
+	const feature = local("feature-login");
+	const featureAuth = local("auth-feature");
+	const develop = remote("origin/develop");
+	// The weaker match comes first, so the test pins the best-first sort.
+	const groups = groupBranches([main, featureAuth, feature, develop], "main", []);
+
+	it("returns every group unchanged for an empty search", () => {
+		expect(filterBranchGroups(groups, "")).toEqual(groups);
+	});
+
+	it("drops groups with no matching branch and keeps group order", () => {
+		expect(filterBranchGroups(groups, "dev")).toEqual([
+			{ identifier: "remote", heading: "Remote", items: [develop] },
+		]);
+	});
+
+	it("matches fuzzily like the command menu and puts the best match first", () => {
+		const [localGroup] = filterBranchGroups(groups, "feat");
+		expect(localGroup?.items).toEqual([feature, featureAuth]);
+		expect(filterBranchGroups(groups, "flg")[0]?.items).toEqual([feature]);
+	});
+
+	it("matches a remote branch by its remote prefix", () => {
+		expect(filterBranchGroups(groups, "origin/dev")[0]?.items).toEqual([develop]);
 	});
 });

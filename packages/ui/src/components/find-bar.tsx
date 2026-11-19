@@ -2,6 +2,7 @@ import {
 	createContext,
 	useContext,
 	useEffect,
+	useEffectEvent,
 	useRef,
 	useState,
 	type ComponentProps,
@@ -120,9 +121,11 @@ export function FindBar({
 	onOpenChange,
 }: FindBarProps) {
 	const find = useDomFind({ rootRef, ...(searchRootSelector ? { searchRootSelector } : {}) });
-	const onOpenChangeRef = useRef(onOpenChange);
-	onOpenChangeRef.current = onOpenChange;
-	useEffect(() => onOpenChangeRef.current?.(find.open), [find.open]);
+	const reportOpen = useEffectEvent((open: boolean) => onOpenChange?.(open));
+	// Open state lives in useDomFind (it reacts to the window find chord); parents
+	// only mirror it for layout, so it can't be lifted into them.
+	// react-doctor-disable-next-line react-doctor/no-pass-data-to-parent, react-doctor/no-pass-live-state-to-parent
+	useEffect(() => reportOpen(find.open), [find.open]);
 	const { openBar } = find;
 	const inputRef = useRef<HTMLInputElement>(null);
 
@@ -154,14 +157,13 @@ export function FindBar({
 	const counter = describeMatches(find);
 
 	return (
-		<div
+		<search
 			className={cn(
 				"border-border bg-popover text-popover-foreground absolute top-3 right-3 z-30 flex items-center gap-1 rounded-md border p-1 shadow-md",
 				className,
 			)}
 			data-qa-id={`${qaPrefix}-bar`}
 			data-find-ignore
-			role="search"
 		>
 			<Input
 				ref={inputRef}
@@ -231,7 +233,7 @@ export function FindBar({
 			>
 				<XIcon />
 			</Button>
-		</div>
+		</search>
 	);
 }
 

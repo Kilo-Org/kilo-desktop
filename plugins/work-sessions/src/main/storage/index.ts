@@ -21,11 +21,6 @@ import {
 /** Reads one kv value a predecessor kept: parsed JSON, or null when there is none. */
 export type LegacyReader = (pluginId: string, namespace: string) => Promise<unknown>;
 
-export interface StorageOptions {
-	/** Defaults to the predecessor's `<namespace>.json` beside this plugin's storage folder. */
-	readonly readLegacy?: LegacyReader;
-}
-
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
@@ -71,12 +66,15 @@ interface Adoption {
  * data is not imported twice. A read that fails is retried next launch; the
  * predecessors' files are left in place for a downgrade.
  */
-export async function activateStorage(sdk: PluginSdk, options: StorageOptions = {}): Promise<void> {
-	const readLegacy = options.readLegacy ?? legacyFileReader(mainHost(sdk).storage.dir);
+export async function activateStorage(sdk: PluginSdk): Promise<void> {
+	const readLegacy = legacyFileReader(mainHost(sdk).storage.dir);
 	const adoption = adoptionStore(sdk);
+	const alreadyAdopted = new Set(adoption.snapshot().adopted);
 	for (const step of adoptions(sdk)) {
-		if (adoption.snapshot().adopted.includes(step.source)) continue;
+		if (alreadyAdopted.has(step.source)) continue;
 		try {
+			// A few small files read once at launch; in order, so the adopted log keeps the declared order.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			const raw = await readLegacy(step.pluginId, step.namespace);
 			if (raw !== null && raw !== undefined) step.adopt(raw);
 			markAdopted(adoption, step.source);

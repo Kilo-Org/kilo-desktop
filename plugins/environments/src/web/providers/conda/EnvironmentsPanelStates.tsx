@@ -36,20 +36,17 @@ export const PROVIDER_STARTUP_TIMEOUT_MS = 120_000;
  * without a page interaction.
  */
 function useStartupExhausted(startedAt: number, timeoutMs: number): boolean {
-	const remaining = Math.max(0, timeoutMs - (Date.now() - startedAt));
-	const [exhausted, setExhausted] = useState<boolean>(() => remaining === 0);
+	const deadline = startedAt + timeoutMs;
+	const [elapsedDeadline, setElapsedDeadline] = useState<number | null>(() =>
+		Date.now() >= deadline ? deadline : null,
+	);
 
 	useEffect(() => {
-		if (remaining === 0) {
-			setExhausted(true);
-			return;
-		}
-		setExhausted(false);
-		const timer = setTimeout(() => setExhausted(true), remaining);
+		const timer = setTimeout(() => setElapsedDeadline(deadline), deadline - Date.now());
 		return () => clearTimeout(timer);
-	}, [remaining]);
+	}, [deadline]);
 
-	return exhausted;
+	return elapsedDeadline === deadline;
 }
 
 /**

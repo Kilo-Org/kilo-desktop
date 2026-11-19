@@ -24,17 +24,19 @@ export async function ensureNodePtySpawnHelpersExecutable(
 		path.join(packageDirectory, "build", "Debug", "spawn-helper"),
 		path.join(packageDirectory, "prebuilds", `darwin-${arch}`, "spawn-helper"),
 	];
-	let found = false;
-	for (const candidate of candidates) {
-		try {
-			const metadata = await stat(candidate);
-			await chmod(candidate, metadata.mode | 0o111);
-			found = true;
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-		}
-	}
-	if (!found) {
+	const made = await Promise.all(
+		candidates.map(async (candidate) => {
+			try {
+				const metadata = await stat(candidate);
+				await chmod(candidate, metadata.mode | 0o111);
+				return true;
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+				return false;
+			}
+		}),
+	);
+	if (!made.includes(true)) {
 		throw new Error(`node-pty spawn-helper is missing from ${packageDirectory}`);
 	}
 }

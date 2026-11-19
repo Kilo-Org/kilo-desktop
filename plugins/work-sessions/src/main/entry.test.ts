@@ -70,7 +70,7 @@ describe("kilo.work-sessions in main", () => {
 			}
 			expect(kernel.kernelSdk.context.get(HAS_WORKSPACES_KEY)).toBe(false);
 			expect(kernel.kernelSdk.context.get(HAS_VCS_KEY)).toBe(false);
-			await new Promise((resolve) => setTimeout(resolve, 20));
+			await get.get(Workspaces)!.methods.checkFolders(undefined);
 			expect(errors).toEqual([]);
 			await kernel.stop();
 		},

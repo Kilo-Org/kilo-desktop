@@ -1,9 +1,10 @@
 import type { OpenCodePermissionRequest } from "@assistant-ui/react-opencode";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import type { DomainObjectState, PluginSdk } from "@kilo-desktop/kernel";
+import type { Contribution, DomainObjectState, PluginSdk } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { SIGNED_IN_KEY, Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 import {
 	PERMISSION_AUTO_ANSWER_TIMEOUT_MS,
 	PermissionAutoAnswer,
@@ -13,6 +14,17 @@ import { AutoApprove, needsPerson, neverAutoReplied, type ApprovalMode } from ".
 import { useOptionalExtensions } from "../optional-extensions";
 
 const NOTHING_HELD: readonly string[] = [];
+
+const sameRequests = (
+	a: readonly OpenCodePermissionRequest[],
+	b: readonly OpenCodePermissionRequest[],
+) => a.length === b.length && a.every((request, index) => request === b[index]);
+
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+	if (a.length !== b.length) return false;
+	const inB = new Set(b);
+	return a.every((id) => inB.has(id));
+}
 
 const selectHolding = (state: DomainObjectState<typeof AutoApprove>) => state.holding;
 const selectMode = (state: DomainObjectState<typeof AutoApprove>) => state.mode;
@@ -46,12 +58,7 @@ export function implementPermissionAutoAnswer(sdk: PluginSdk): void {
 		autoAnswers(request, {
 			mode: sdk.domainObjects.get(AutoApprove)?.getState().mode,
 			signedIn: sdk.context.get(SIGNED_IN_KEY) === true,
-			signInTools: new Set(
-				sdk.extensions
-					.list(Tool)
-					.filter((tool) => tool.metadata.requiresSignIn)
-					.map((tool) => toolWireName(tool.key)),
-			),
+			signInTools: signInToolNames(sdk.extensions.list(Tool)),
 		}),
 	);
 }
@@ -71,13 +78,30 @@ export function hiddenPermissions(
 		readonly rules: AutoAnswerRules;
 	},
 ): OpenCodePermissionRequest[] {
+	const holding = new Set(state.holding);
 	return pending.filter(
 		(request) =>
-			state.holding.includes(request.id) ||
+			holding.has(request.id) ||
 			(!state.released.has(request.id) &&
 				state.now - request.askedAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS &&
 				autoAnswers(request, state.rules)),
 	);
+}
+
+function signInToolNames(tools: readonly Contribution<typeof Tool>[]): ReadonlySet<string> {
+	return new Set(
+		tools.filter((tool) => tool.metadata.requiresSignIn).map((tool) => toolWireName(tool.key)),
+	);
+}
+
+/** `pending` without the requests in `hiddenKey` (newline-joined ids), or `pending` itself. */
+function withoutHidden(
+	pending: readonly OpenCodePermissionRequest[],
+	hiddenKey: string,
+): readonly OpenCodePermissionRequest[] {
+	if (!hiddenKey) return pending;
+	const hiddenIds = new Set(hiddenKey.split("\n"));
+	return pending.filter((request) => !hiddenIds.has(request.id));
 }
 
 /**
@@ -95,45 +119,33 @@ export function useVisiblePermissionRequests(
 	const mode = useDomainObjectState(AutoApprove, selectMode);
 	const signedIn = useContextKey(SIGNED_IN_KEY);
 	const tools = useOptionalExtensions(Tool);
-	const signInTools = useMemo(
-		() =>
-			new Set(
-				tools.filter((tool) => tool.metadata.requiresSignIn).map((tool) => toolWireName(tool.key)),
-			),
-		[tools],
-	);
-	const released = useRef(new Set<string>());
-	const held = useRef(new Set<string>());
-	for (const id of held.current) if (!holding.includes(id)) released.current.add(id);
-	held.current = new Set(holding);
+	const [held, setHeld] = useState(holding);
+	const [released, setReleased] = useState<ReadonlySet<string>>(() => new Set());
 	const [now, setNow] = useState(() => Date.now());
+	const holdingIds = new Set(holding);
+	if (!sameIds(held, holding)) {
+		setHeld(holding);
+		const letGo = held.filter((id) => !holdingIds.has(id));
+		if (letGo.length > 0) setReleased(new Set([...released, ...letGo]));
+	}
 
-	const hidden = useMemo(
-		() =>
-			hiddenPermissions(pending, {
-				holding,
-				released: released.current,
-				now,
-				rules: { mode, signedIn, signInTools },
-			}),
-		[holding, mode, now, pending, signInTools, signedIn],
-	);
-	const unreported = hidden.filter((request) => !holding.includes(request.id));
+	const hidden = hiddenPermissions(pending, {
+		holding,
+		released,
+		now,
+		rules: { mode, signedIn, signInTools: signInToolNames(tools) },
+	});
+	const unreported = hidden.filter((request) => !holdingIds.has(request.id));
 	const nextRevealAt = unreported.length
 		? Math.min(...unreported.map((request) => request.askedAt)) + PERMISSION_AUTO_ANSWER_TIMEOUT_MS
 		: undefined;
+	const visible = withoutHidden(pending, hidden.map((request) => request.id).join("\n"));
 	useEffect(() => {
 		if (nextRevealAt === undefined) return;
 		const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextRevealAt - Date.now()));
 		return () => clearTimeout(timer);
 	}, [nextRevealAt]);
 
-	const hiddenKey = hidden.map((request) => request.id).join("\n");
-	return useMemo(
-		() =>
-			hiddenKey
-				? pending.filter((request) => !hiddenKey.split("\n").includes(request.id))
-				: pending,
-		[hiddenKey, pending],
-	);
+	// Kept while the same requests show, so a reveal timer firing changes nothing downstream.
+	return useStableValue(visible, sameRequests);
 }

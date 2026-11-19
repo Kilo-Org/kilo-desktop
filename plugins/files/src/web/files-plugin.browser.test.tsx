@@ -132,7 +132,7 @@ describe("the Files pane kind", () => {
 		});
 		host.render(<PaneHost host={host} paneId="p1" />);
 
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await expect.element(page.getByTestId("files-view")).toBeInTheDocument();
 		expect(read).not.toHaveBeenCalled();
 		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
 		expect(document.querySelector('[data-qa-id="files-breadcrumb"]')).toBeNull();

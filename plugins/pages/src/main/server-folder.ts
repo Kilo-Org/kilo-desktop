@@ -67,17 +67,20 @@ async function readReceipt(dir: string): Promise<string | undefined> {
  */
 async function copyBuild(buildDir: string, serverDir: string, receipt: string): Promise<void> {
 	await mkdir(serverDir, { recursive: true });
-	for (const name of await readdir(serverDir)) {
-		if (name !== DATA_DIR) await rm(path.join(serverDir, name), { recursive: true, force: true });
-	}
-	for (const name of await readdir(buildDir)) {
-		if (name === RECEIPT || name === WRANGLER) continue;
-		await cp(path.join(buildDir, name), path.join(serverDir, name), {
-			recursive: true,
-			dereference: true,
-			mode: constants.COPYFILE_FICLONE,
-		});
-	}
+	const stale = (await readdir(serverDir)).filter((name) => name !== DATA_DIR);
+	await Promise.all(
+		stale.map((name) => rm(path.join(serverDir, name), { recursive: true, force: true })),
+	);
+	const copied = (await readdir(buildDir)).filter((name) => name !== RECEIPT && name !== WRANGLER);
+	await Promise.all(
+		copied.map((name) =>
+			cp(path.join(buildDir, name), path.join(serverDir, name), {
+				recursive: true,
+				dereference: true,
+				mode: constants.COPYFILE_FICLONE,
+			}),
+		),
+	);
 	await writeFile(path.join(serverDir, RECEIPT), receipt);
 }
 

@@ -71,7 +71,7 @@ export const Tool = defineExtensionPoint({
 
 /**
  * The name Kilo knows a tool by: `desktop_<plugin>_<id>`, with the `kilo.`
- * publisher dropped (`kilo.terminal/open_terminal` → `desktop_terminal_open_terminal`).
+ * publisher dropped (`kilo.terminal/open` → `desktop_terminal_open`).
  */
 export function toolWireName(contributionKey: string): string {
 	const slash = contributionKey.indexOf("/");
@@ -148,8 +148,6 @@ export const McpServer = defineExtensionPoint({
 	}),
 	implementation: implementation<McpServerSource>("main", { required: false }),
 });
-
-export const AGENT_EXTENSION_TYPES = ["kilo-plugin", "skill", "agent", "command"] as const;
 
 /** `${resources}` is the contributing plugin's own `resources/` folder; the kernel resolves it. */
 const resourcePathSchema = z.string().min(1);

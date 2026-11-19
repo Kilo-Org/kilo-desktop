@@ -1,6 +1,5 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import {
-	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -10,16 +9,12 @@ import {
 } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { PaneTabTooltipScope } from "./PaneTabTooltip";
 
-/** `ids`, or the previous array while it holds the same ids. */
-function useStableIds(ids: readonly string[]): readonly string[] {
-	const last = useRef(ids);
-	if (last.current.length !== ids.length || last.current.some((id, index) => id !== ids[index])) {
-		last.current = ids;
-	}
-	return last.current;
+function sameIds(previous: readonly string[], next: readonly string[]): boolean {
+	return previous.length === next.length && previous.every((id, index) => id === next[index]);
 }
 
 /*
@@ -41,16 +36,16 @@ export function PaneTabScrollArea({
 	tabIds: readonly string[];
 	activeTabId: string;
 }) {
-	const tabIds = useStableIds(tabIdsProp);
+	const tabIds = useStableValue(tabIdsProp, sameIds);
 	const [overflow, setOverflow] = useState({ left: false, right: false });
 	const previousTabIds = useRef(tabIds);
 	const [scrolling, setScrolling] = useState(false);
 	const scrollIdleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	const suspendTooltips = useCallback(() => {
+	const suspendTooltips = () => {
 		setScrolling(true);
 		clearTimeout(scrollIdleTimer.current);
 		scrollIdleTimer.current = setTimeout(() => setScrolling(false), 150);
-	}, []);
+	};
 
 	useEffect(() => () => clearTimeout(scrollIdleTimer.current), []);
 
@@ -59,8 +54,16 @@ export function PaneTabScrollArea({
 		const appended = lastTabId !== undefined && !previousTabIds.current.includes(lastTabId);
 		previousTabIds.current = tabIds;
 		const strip = scrollRef.current;
-		if (strip && appended) {
+		if (!strip) return;
+		if (appended) {
 			strip.scrollTo({ left: strip.scrollWidth, behavior: "instant" });
+		}
+		// A tab change that removes the overflow leaves no scroll to keep.
+		if (strip.scrollWidth - strip.clientWidth <= 1) {
+			strip.scrollLeft = 0;
+			// Overflow comes from measuring the strip after the tabs commit; render cannot know it.
+			// react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
+			setOverflow({ left: false, right: false });
 		}
 	}, [scrollRef, tabIds]);
 
@@ -89,13 +92,6 @@ export function PaneTabScrollArea({
 			strip.scrollTo({ left: target, behavior: "instant" });
 		}
 	}, [activeTabId, scrollRef, suspendTooltips]);
-
-	useLayoutEffect(() => {
-		const strip = scrollRef.current;
-		if (!strip || strip.scrollWidth - strip.clientWidth > 1) return;
-		strip.scrollLeft = 0;
-		setOverflow({ left: false, right: false });
-	}, [scrollRef, tabIds]);
 
 	useLayoutEffect(() => {
 		const strip = scrollRef.current;

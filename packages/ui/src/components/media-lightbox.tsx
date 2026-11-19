@@ -185,7 +185,7 @@ function LightboxView({
 		if (element && !element.contains(document.activeElement))
 			element.focus({ preventScroll: true });
 	}, []);
-	const panZoom = usePanZoom({
+	const { setViewportElement, ...panZoom } = usePanZoom({
 		content,
 		maxFit: item.kind === "mermaid" ? DIAGRAM_MAX_FIT : 1,
 	});
@@ -268,6 +268,8 @@ function LightboxView({
 	) : null;
 
 	return (
+		// A focus sink that catches keyboard shortcuts bubbling from the lightbox; every action also has a real button.
+		// react-doctor-disable-next-line react-doctor/no-static-element-interactions
 		<div
 			ref={root}
 			tabIndex={-1}
@@ -350,7 +352,7 @@ function LightboxView({
 				</div>
 			) : (
 				<div
-					ref={panZoom.viewportRef}
+					ref={setViewportElement}
 					{...(diagramFailed ? {} : panZoom.viewportHandlers)}
 					data-qa-id="media-lightbox-stage"
 					className={cn(

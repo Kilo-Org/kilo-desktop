@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDomainObject, useDomainObjectState, useSdk } from "@kilo-desktop/kernel/web";
 import { Theme } from "@kilo-desktop/plugin-shell/contracts";
@@ -35,6 +35,9 @@ type RuntimeState =
 	| { readonly status: "checking" }
 	| { readonly status: "available" }
 	| { readonly status: "unavailable"; readonly reason: string };
+
+const RUNTIME_CHECKING: RuntimeState = { status: "checking" };
+const RUNTIME_AVAILABLE: RuntimeState = { status: "available" };
 
 const selectMode = (state: { mode: "light" | "dark" }) => state.mode;
 
@@ -97,14 +100,32 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 	const frameSrc = notebookId ? nteractSrc(notebookId) : undefined;
 	const desktopFrame = frameSrc?.startsWith(DESKTOP_SCHEME_PREFIX) ?? false;
 	const [retryVersion, setRetryVersion] = useState(0);
-	const [runtime, setRuntime] = useState<RuntimeState>(
-		desktopFrame ? { status: "checking" } : { status: "available" },
-	);
+	// Each check is tagged with the attempt and handle it ran for; until a result
+	// for the current pair lands, the runtime reads as "checking".
+	const [runtimeCheck, setRuntimeCheck] = useState<{
+		readonly attempt: number;
+		readonly notebooks: typeof notebooks;
+		readonly state: RuntimeState;
+	}>();
+	const runtime = !desktopFrame
+		? RUNTIME_AVAILABLE
+		: runtimeCheck?.attempt === retryVersion && runtimeCheck.notebooks === notebooks
+			? runtimeCheck.state
+			: RUNTIME_CHECKING;
 	// New untitled notebooks settle their workspace environment.yml before the
 	// frame connects: the daemon picks the environment when the room is created.
 	const untitled = !notebookFileOf(pane);
 	const needsEnvironment = desktopFrame && untitled && directory !== null;
-	const [environmentReady, setEnvironmentReady] = useState(!needsEnvironment);
+	const [preparedEnvironment, setPreparedEnvironment] = useState<{
+		readonly runtime: RuntimeState;
+		readonly notebookId: string;
+		readonly directory: string;
+	}>();
+	const environmentReady =
+		!needsEnvironment ||
+		(preparedEnvironment?.runtime === runtime &&
+			preparedEnvironment.notebookId === notebookId &&
+			preparedEnvironment.directory === directory);
 	const [closeRequest, setCloseRequest] = useState<((close: boolean) => void) | null>(null);
 
 	useEffect(() => {
@@ -112,23 +133,21 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 		void notebooks.methods.resolvePane({ workSessionId, paneId: pane.id }).catch(() => undefined);
 	}, [notebookId, notebooks, openState, pane.id, workSessionId]);
 
-	const closeGuard = useMemo(
-		() =>
-			dirty && notebookId
-				? () => new Promise<boolean>((resolve) => setCloseRequest(() => resolve))
-				: null,
-		[dirty, notebookId],
-	);
+	const closeGuard =
+		dirty && notebookId
+			? () => new Promise<boolean>((resolve) => setCloseRequest(() => resolve))
+			: null;
 	useCloseGuard(workSessionId, pane.id, closeGuard);
 
 	useEffect(() => {
 		if (!desktopFrame || !notebooks) return;
 		let active = true;
-		setRuntime({ status: "checking" });
+		const settle = (state: RuntimeState) => {
+			if (active) setRuntimeCheck({ attempt: retryVersion, notebooks, state });
+		};
 		void notebooks.methods.status(undefined).then(
 			(result) => {
-				if (!active) return;
-				setRuntime(
+				settle(
 					result.availability.status === "available"
 						? { status: "available" }
 						: {
@@ -138,8 +157,7 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 				);
 			},
 			(error: unknown) => {
-				if (!active) return;
-				setRuntime({
+				settle({
 					status: "unavailable",
 					reason: error instanceof Error ? error.message : "Could not start the notebook runtime.",
 				});
@@ -154,16 +172,17 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 		if (!needsEnvironment || !notebookId || !directory || !notebooks) return;
 		if (runtime.status !== "available") return;
 		let active = true;
-		setEnvironmentReady(false);
 		// Whatever the outcome, the notebook opens: the environment file is a convenience.
-		const open = () => active && setEnvironmentReady(true);
+		const open = () => {
+			if (active) setPreparedEnvironment({ runtime, notebookId, directory });
+		};
 		void notebooks.methods
 			.prepareEnvironment({ notebookId, workingDirectory: directory })
 			.then(open, open);
 		return () => {
 			active = false;
 		};
-	}, [directory, needsEnvironment, notebookId, notebooks, runtime.status]);
+	}, [directory, needsEnvironment, notebookId, notebooks, runtime]);
 
 	useEffect(() => {
 		if (!frameSrc || !notebookId) return;
@@ -264,13 +283,10 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 		return () => window.removeEventListener("message", onMessage);
 	}, [mode, frameSrc]);
 
-	const settleClose = useCallback(
-		(close: boolean) => {
-			closeRequest?.(close);
-			setCloseRequest(null);
-		},
-		[closeRequest],
-	);
+	const settleClose = (close: boolean) => {
+		closeRequest?.(close);
+		setCloseRequest(null);
+	};
 
 	return (
 		<div ref={viewRef} className="bg-pane flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
@@ -338,6 +354,7 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 				// Sandboxing this application frame while granting both scripts and its own
 				// origin would add no boundary and would interfere with browser capabilities
 				// the notebook shell legitimately uses.
+				// react-doctor-disable-next-line react-doctor/iframe-missing-sandbox
 				<iframe
 					ref={frameRef}
 					src={frameSrc}

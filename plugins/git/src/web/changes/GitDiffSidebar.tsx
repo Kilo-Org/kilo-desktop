@@ -7,7 +7,14 @@ import { themeToTreeStyles } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import type { FileTreeBatchOperation, FileTreeSortComparator, GitStatusEntry } from "@pierre/trees";
 import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import {
+	useEffect,
+	useRef,
+	useState,
+	type CSSProperties,
+	type MouseEvent,
+	type RefObject,
+} from "react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -25,6 +32,7 @@ import {
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import type { DiffTheme } from "./diff-theme";
 import type { GitDiffTreeSource } from "./lib/diff-data-accumulator";
@@ -120,19 +128,27 @@ export function GitDiffSidebar({
 	treePlaceholder,
 	viewerRef,
 }: GitDiffSidebarProps) {
-	const sourceRef = useRef<GitDiffTreeSource | null>(source);
+	const sourceRef = useLatestRef<GitDiffTreeSource | null>(source);
 	const previousSourceRef = useRef<GitDiffTreeSource | null>(source);
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
-	sourceRef.current = source;
 
-	const folderOptions = useMemo(() => {
-		const names = workspaceFolders.map(({ path }) => folderName(path));
-		return workspaceFolders.map(({ path }, index) => ({
-			value: path,
-			label:
-				names.indexOf(names[index]!) === names.lastIndexOf(names[index]!) ? names[index]! : path,
-		}));
-	}, [workspaceFolders]);
+	const folderNames = workspaceFolders.map(({ path }) => folderName(path));
+	const folderOptions = workspaceFolders.map(({ path }, index) => ({
+		value: path,
+		label:
+			folderNames.indexOf(folderNames[index]!) === folderNames.lastIndexOf(folderNames[index]!)
+				? folderNames[index]!
+				: path,
+	}));
+
+	const revealFile = (path: string) => {
+		const itemId = sourceRef.current?.pathToItemId.get(path);
+		if (itemId == null) return;
+		// Expand first so scrollTo lands on the full diff, not a collapsed
+		// header that immediately grows underneath it.
+		onExpandItem(itemId);
+		viewerRef.current?.scrollTo({ type: "item", id: itemId, align: "start" });
+	};
 
 	const { model } = useFileTree({
 		paths: EMPTY_PATHS,
@@ -146,17 +162,28 @@ export function GitDiffSidebar({
 		sort: PRESERVE_INPUT_ORDER_SORT,
 		unsafeCSS: TREE_UNSAFE_CSS,
 		onSelectionChange(selectedPaths) {
-			if (selectedPaths.length !== 1) return;
-			const itemId = sourceRef.current?.pathToItemId.get(selectedPaths[0] ?? "");
-			if (itemId != null) {
-				// Expand first so scrollTo lands on the full diff, not a
-				// collapsed header that immediately grows underneath it.
-				onExpandItem(itemId);
-				viewerRef.current?.scrollTo({ type: "item", id: itemId, align: "start" });
-			}
+			if (selectedPaths.length === 1) revealFile(selectedPaths[0]!);
 		},
 	});
 	const search = useFileTreeSearch(model);
+
+	// Re-clicking the selected row changes no selection, so onSelectionChange
+	// never fires. Capture runs before the tree's row handler and sees the
+	// pre-click selection, so a click that does change it isn't revealed twice.
+	const revealReclickedFile = (event: MouseEvent<HTMLElement>) => {
+		if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+		const row = event.nativeEvent
+			.composedPath()
+			.find(
+				(target): target is HTMLElement =>
+					target instanceof HTMLElement && target.dataset.itemType === "file",
+			);
+		const path = row?.dataset.itemPath;
+		const selectedPaths = model.getSelectedPaths();
+		if (path != null && selectedPaths.length === 1 && selectedPaths[0] === path) {
+			revealFile(path);
+		}
+	};
 
 	useEffect(() => {
 		const previousSource = previousSourceRef.current;
@@ -311,6 +338,7 @@ export function GitDiffSidebar({
 					className="min-h-0 flex-1 overflow-hidden py-2"
 					data-qa-id="git-diff-tree"
 					model={model}
+					onClickCapture={revealReclickedFile}
 					style={{
 						...treeStyles,
 						backgroundColor: "transparent",

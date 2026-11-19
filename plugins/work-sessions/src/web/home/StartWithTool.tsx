@@ -21,6 +21,8 @@ function ShortcutKeys({ commandId }: { readonly commandId: string | undefined })
 			className="ms-auto hidden shrink-0 gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none @min-[10rem]:inline-flex"
 		>
 			{keys.map((key, index) => (
+				// Display-only keycaps of one chord: never reordered, and a glyph may repeat.
+				// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 				<Kbd
 					key={index}
 					className="bg-foreground/[0.07] size-5 rounded-[5px] px-0 text-[11px] font-normal"

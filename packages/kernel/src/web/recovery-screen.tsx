@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { CircleCheckIcon, ShieldIcon, TriangleAlertIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -88,17 +88,10 @@ export function RecoveryScreen({ reason }: { readonly reason: RecoveryReason }) 
 		() => kernel.issues(),
 		() => kernel.issues(),
 	);
-	const problems = useMemo(
-		() => uniqueErrors([...(plugins?.issues ?? []), ...localIssues]),
-		[plugins, localIssues],
-	);
-	const started = useMemo(
-		() =>
-			Object.values(plugins?.plugins ?? {})
-				.filter((plugin) => plugin.state === "active")
-				.map((plugin) => plugin.displayName),
-		[plugins],
-	);
+	const problems = uniqueErrors([...(plugins?.issues ?? []), ...localIssues]);
+	const started = Object.values(plugins?.plugins ?? {})
+		.filter((plugin) => plugin.state === "active")
+		.map((plugin) => plugin.displayName);
 	const turnedOff = (plugins?.disabled ?? []).map((id) => plugins?.plugins[id]?.displayName ?? id);
 	const runningServices = Object.values(services ?? {}).filter(
 		(service) => service.status === "ready",

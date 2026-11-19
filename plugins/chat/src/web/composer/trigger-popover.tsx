@@ -1,7 +1,6 @@
 "use client";
 
 import {
-	memo,
 	useEffect,
 	useRef,
 	type ComponentPropsWithoutRef,
@@ -12,7 +11,8 @@ import {
 import {
 	ComposerPrimitive,
 	unstable_defaultDirectiveFormatter,
-	unstable_useTriggerPopoverScopeContext,
+	// React Compiler only treats `use*` names as hooks; an `unstable_` prefix would be memoized like a plain call.
+	unstable_useTriggerPopoverScopeContext as useTriggerPopoverScopeContext,
 	type Unstable_DirectiveFormatter,
 	type Unstable_TriggerItem,
 } from "@assistant-ui/react";
@@ -141,7 +141,7 @@ const Items: FC<ItemsProps> = ({
 	loadingLabel,
 }) => {
 	const { isLoading, activeCategoryId, isSearchMode, highlightedItemId } =
-		unstable_useTriggerPopoverScopeContext();
+		useTriggerPopoverScopeContext();
 	const itemsRef = useRef<HTMLDivElement>(null);
 	const showBack = Boolean(activeCategoryId) && !isSearchMode;
 	useEffect(() => {
@@ -197,7 +197,7 @@ const Items: FC<ItemsProps> = ({
  * Pre-built popover UI for a trigger-driven picker (mentions, slash commands, etc).
  * Pass exactly one of `directive` (inserts a chip) or `action` (fires a handler).
  */
-const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
+export const ComposerTriggerPopover: FC<ComposerTriggerPopoverProps> = ({
 	iconMap,
 	fallbackIcon = SparklesIcon,
 	renderItemIcon,
@@ -211,16 +211,14 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
 	...props
 }) => {
 	const warnedRef = useRef(false);
-	if (
-		process.env.NODE_ENV !== "production" &&
-		!warnedRef.current &&
-		Boolean(directive) === Boolean(action)
-	) {
+	const misconfigured = Boolean(directive) === Boolean(action);
+	useEffect(() => {
+		if (process.env.NODE_ENV === "production" || warnedRef.current || !misconfigured) return;
 		warnedRef.current = true;
 		console.warn(
 			"[assistant-ui] ComposerTriggerPopover requires exactly one of `directive` or `action` props.",
 		);
-	}
+	}, [misconfigured]);
 
 	return (
 		<ComposerPrimitive.Unstable_TriggerPopover
@@ -263,8 +261,3 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
 		</ComposerPrimitive.Unstable_TriggerPopover>
 	);
 };
-ComposerTriggerPopoverImpl.displayName = "ComposerTriggerPopover";
-
-export const ComposerTriggerPopover = memo(
-	ComposerTriggerPopoverImpl,
-) as FC<ComposerTriggerPopoverProps>;

@@ -1,12 +1,7 @@
 import path from "node:path";
 
 import type { KiloLogger } from "./KiloServerManager.js";
-import {
-	KILO_CONFIG_FILENAME,
-	OWNERSHIP_SIDECAR_FILENAME,
-	KiloConfigManager,
-	type KiloConfigMutationOutcome,
-} from "./KiloConfigManager.js";
+import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 
 /**
  * Reconciles the Desktop-owned `mcp.desktop` entry in Desktop's Kilo config.
@@ -16,7 +11,6 @@ import {
  * stdio relay entries that earlier builds wrote, so they are migrated.
  */
 
-export { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME };
 export const MCP_ENTRY_NAME = "desktop";
 /** kilo.agent wrote the entry first; config ownership is persisted, so the id stays. */
 export const MCP_ENTRY_SOURCE_ID = "kilo.agent";
@@ -116,6 +110,19 @@ function mapRemovalOutcome(outcome: KiloConfigMutationOutcome): WebMcpRelayConfi
 	return outcome;
 }
 
+// KiloConfigManager queues its mutations, so these still apply one at a time.
+async function removeStaleEntries(
+	kiloConfig: Pick<KiloConfigManager, "removeMcpEntry">,
+): Promise<void> {
+	await Promise.all(
+		STALE_WEBMCP_RELAY_ENTRY_NAMES.map((staleName) =>
+			kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, staleName, {
+				adoptExisting: isDesktopWebMcpRelayEntry,
+			}),
+		),
+	);
+}
+
 export async function reconcileWebMcpRelayConfig(
 	options: ReconcileWebMcpRelayConfigOptions,
 ): Promise<WebMcpRelayConfigOutcome> {
@@ -123,11 +130,7 @@ export async function reconcileWebMcpRelayConfig(
 	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(options.configDirectory, logger);
 
 	if (options.enabled === false) {
-		for (const staleName of STALE_WEBMCP_RELAY_ENTRY_NAMES) {
-			await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, staleName, {
-				adoptExisting: isDesktopWebMcpRelayEntry,
-			});
-		}
+		await removeStaleEntries(kiloConfig);
 		return mapRemovalOutcome(
 			await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, {
 				adoptExisting: isDesktopWebMcpRelayEntry,
@@ -136,11 +139,7 @@ export async function reconcileWebMcpRelayConfig(
 	}
 
 	const entry = DESKTOP_WEBMCP_ENTRY;
-	for (const staleName of STALE_WEBMCP_RELAY_ENTRY_NAMES) {
-		await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, staleName, {
-			adoptExisting: isDesktopWebMcpRelayEntry,
-		});
-	}
+	await removeStaleEntries(kiloConfig);
 
 	const outcome = await kiloConfig.setMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, entry, {
 		adoptExisting: isDesktopWebMcpRelayEntry,

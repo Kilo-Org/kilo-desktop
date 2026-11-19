@@ -126,6 +126,9 @@ export class WorkspaceEnvironment {
 
 	async prepare(request: PrepareEnvironmentRequest): Promise<NotebookEnvironmentPreparation> {
 		const { state } = this.#options;
+		// The workspace is the user's own folder, not a server-owned base: it is
+		// rejected unless absolute and an existing directory before any file access.
+		// react-doctor-disable-next-line react-doctor/path-traversal-risk
 		const directory = path.resolve(request.workingDirectory);
 		if (!path.isAbsolute(request.workingDirectory)) {
 			return { outcome: "failed", reason: "The workspace directory must be absolute." };

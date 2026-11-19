@@ -37,6 +37,14 @@ export function dataUrlMime(url: string): string | null {
 	return match[1] || "text/plain";
 }
 
+function decodePercentPayload(payload: string): string {
+	try {
+		return decodeURIComponent(payload);
+	} catch {
+		throw new Error("Malformed data URL.");
+	}
+}
+
 /**
  * Decodes a `data:` URL without `fetch`, which the renderer's CSP
  * (`connect-src`) does not allow for data URLs.
@@ -47,9 +55,7 @@ export function dataUrlToBlob(url: string): Blob {
 	const header = url.slice(5, comma);
 	const payload = url.slice(comma + 1);
 	const mime = header.split(";")[0] || "text/plain";
-	if (!/;base64$/iu.test(header)) {
-		return new Blob([decodeURIComponent(payload)], { type: mime });
-	}
+	if (!/;base64$/iu.test(header)) return new Blob([decodePercentPayload(payload)], { type: mime });
 	const binary = atob(payload);
 	const bytes = new Uint8Array(binary.length);
 	for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);

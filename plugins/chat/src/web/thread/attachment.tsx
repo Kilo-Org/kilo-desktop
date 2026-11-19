@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useMemo, useState, type FC } from "react";
+import { type FC } from "react";
 import { CircleAlertIcon, FileTextIcon, XIcon } from "lucide-react";
 import {
 	AttachmentPrimitive,
@@ -12,28 +12,9 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Avatar, AvatarImage, AvatarFallback } from "@kilo-desktop/ui/components/avatar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { useFileObjectUrl } from "./file-object-url";
 import { useLightboxItem, type LightboxItemInput } from "./lightbox/chat-lightbox";
 import { TooltipIconButton } from "./tooltip-icon-button";
-
-const useFileSrc = (file: File | undefined) => {
-	const [src, setSrc] = useState<string | undefined>(undefined);
-
-	useEffect(() => {
-		if (!file) {
-			setSrc(undefined);
-			return;
-		}
-
-		const objectUrl = URL.createObjectURL(file);
-		setSrc(objectUrl);
-
-		return () => {
-			URL.revokeObjectURL(objectUrl);
-		};
-	}, [file]);
-
-	return src;
-};
 
 const useAttachmentFile = () =>
 	useAuiState((s) =>
@@ -47,7 +28,7 @@ const useAttachmentSrc = () => {
 			? s.attachment.content?.find((part) => part.type === "image")?.image
 			: undefined,
 	);
-	return useFileSrc(file) ?? src;
+	return useFileObjectUrl(file) ?? src;
 };
 
 /**
@@ -58,18 +39,14 @@ const useAttachmentLightbox = (gallery: boolean) => {
 	const src = useAttachmentSrc();
 	const file = useAttachmentFile();
 	const name = useAuiState((s) => s.attachment.name);
-	const input = useMemo<LightboxItemInput | null>(
-		() =>
-			src
-				? {
-						kind: "image",
-						src,
-						...(file ? { file } : {}),
-						...(name ? { alt: name, filename: name } : {}),
-					}
-				: null,
-		[src, file, name],
-	);
+	const input: LightboxItemInput | null = src
+		? {
+				kind: "image",
+				src,
+				...(file ? { file } : {}),
+				...(name ? { alt: name, filename: name } : {}),
+			}
+		: null;
 	return useLightboxItem(input, { gallery });
 };
 
@@ -124,12 +101,12 @@ const AttachmentUI: FC = () => {
 			? (s.attachment.status.message ?? "Upload failed")
 			: undefined,
 	);
-	const lightbox = useAttachmentLightbox(!isComposer);
-	const onTileKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (event.key !== "Enter" && event.key !== " ") return;
-		event.preventDefault();
-		lightbox.open();
-	};
+	const {
+		ref: lightboxRef,
+		open: openLightbox,
+		lightbox,
+		available: lightboxAvailable,
+	} = useAttachmentLightbox(!isComposer);
 
 	return (
 		<Tooltip>
@@ -142,18 +119,16 @@ const AttachmentUI: FC = () => {
 			>
 				<TooltipTrigger
 					render={
-						<div
-							ref={lightbox.ref}
-							onClick={lightbox.open}
-							onKeyDown={lightbox.available ? onTileKeyDown : undefined}
+						<button
+							type="button"
+							ref={lightboxRef}
+							onClick={openLightbox}
 							data-qa-id="chat-attachment-tile"
 							className={cn(
-								"aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-3 active:scale-[0.96] motion-reduce:transition-none dark:after:ring-white/10",
+								"aui-attachment-tile bg-muted block hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-3 active:scale-[0.96] motion-reduce:transition-none dark:after:ring-white/10",
 								isError && "after:ring-destructive/60 dark:after:ring-destructive/60",
-								lightbox.available && "cursor-zoom-in",
+								lightboxAvailable && "cursor-zoom-in",
 							)}
-							role="button"
-							tabIndex={0}
 							aria-label={`${typeLabel} attachment${
 								isError ? ", upload failed" : isUploading ? ", uploading" : ""
 							}`}
@@ -162,23 +137,23 @@ const AttachmentUI: FC = () => {
 				>
 					<AttachmentThumb />
 					{isUploading && (
-						<div
+						<span
 							aria-hidden="true"
 							className="aui-attachment-tile-uploading bg-background/60 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
 						>
 							<Spinner className="text-muted-foreground size-4" />
-						</div>
+						</span>
 					)}
 					{isError && (
-						<div
+						<span
 							aria-hidden="true"
 							className="aui-attachment-tile-error bg-background/70 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
 						>
 							<CircleAlertIcon className="text-destructive size-4" />
-						</div>
+						</span>
 					)}
 				</TooltipTrigger>
-				{lightbox.lightbox}
+				{lightbox}
 				{isComposer && <AttachmentRemove />}
 			</AttachmentPrimitive.Root>
 			<TooltipContent side="top">

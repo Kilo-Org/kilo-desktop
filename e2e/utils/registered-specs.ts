@@ -27,7 +27,7 @@ const AREA_OWNERS: Readonly<Record<string, string>> = {
 	pages: "kilo.pages",
 };
 
-/** Folders under `plugins/`; none while the bundled set is being rebuilt (docs/plugin-plan-v2.md). */
+/** Folders under `plugins/` (none when the folder is missing). */
 function pluginDirectories(pluginsDir: string): string[] {
 	return existsSync(pluginsDir) ? readdirSync(pluginsDir) : [];
 }

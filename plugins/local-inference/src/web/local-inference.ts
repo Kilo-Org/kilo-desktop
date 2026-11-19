@@ -7,7 +7,7 @@ import {
 	type UseMutationResult,
 	type UseQueryResult,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo } from "react";
+import { useEffect } from "react";
 
 import {
 	KernelError,
@@ -69,7 +69,7 @@ function localInferenceClient(
 export function useLocalInference(): LocalInferenceClient {
 	const models = useDomainObject(LocalModels);
 	const server = useDomainObject(ModelServer);
-	return useMemo(() => localInferenceClient(models, server), [models, server]);
+	return localInferenceClient(models, server);
 }
 
 export function localInferenceQueryKey<M extends LocalInferenceMethod>(
@@ -146,7 +146,8 @@ export function useFollowLocalInference(): void {
 			if (previous.status !== state.status) {
 				queryClient.setQueryData(localInferenceQueryKey("status"), state.status);
 			}
-			const changed = state.downloads.filter((download) => !previous.downloads.includes(download));
+			const previousDownloads = new Set(previous.downloads);
+			const changed = state.downloads.filter((download) => !previousDownloads.has(download));
 			for (const download of changed) {
 				queryClient.setQueryData<ModelDownload[]>(
 					localInferenceQueryKey("listDownloads"),
@@ -177,10 +178,8 @@ export function useModelServerState<T>(
 /** Sends a declared telemetry event (a `kernel/telemetry-event` id); never fails the caller. */
 export function useTrack(): (event: string, data?: Record<string, unknown>) => void {
 	const telemetry = useDomainObject(KernelTelemetry);
-	return useCallback(
-		(event, data = {}) => void telemetry?.methods.track({ event, data }).catch(() => undefined),
-		[telemetry],
-	);
+	return (event, data = {}) =>
+		void telemetry?.methods.track({ event, data }).catch(() => undefined);
 }
 
 /** A declared `kernel/flag`; false until flags are known. */
@@ -191,5 +190,5 @@ export function useFlag(name: string): boolean {
 /** The local path of a picked or dropped file; null where the window can't tell. */
 export function usePathForFile(): (file: File) => string | null {
 	const kernel = useKernel();
-	return useCallback((file: File) => kernel.pathForFile(file), [kernel]);
+	return (file: File) => kernel.pathForFile(file);
 }

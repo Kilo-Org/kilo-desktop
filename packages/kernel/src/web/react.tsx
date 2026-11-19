@@ -1,9 +1,7 @@
 import {
 	Component,
 	createContext,
-	useCallback,
 	useContext,
-	useMemo,
 	useRef,
 	useSyncExternalStore,
 	type ComponentType,
@@ -36,10 +34,7 @@ export function KernelProvider({
 	readonly as?: string;
 	readonly children: ReactNode;
 }) {
-	const sdk = useMemo(
-		() => (as === undefined ? kernel.kernelSdk : kernel.sdkFor(as)),
-		[kernel, as],
-	);
+	const sdk = as === undefined ? kernel.kernelSdk : kernel.sdkFor(as);
 	return (
 		<KernelContext.Provider value={kernel}>
 			<SdkContext.Provider value={sdk}>{children}</SdkContext.Provider>
@@ -66,12 +61,12 @@ function useSubscription<T>(
 	isEqual: (a: T, b: T) => boolean,
 ): T {
 	const cache = useRef<{ value: T } | null>(null);
-	const getSnapshot = useCallback(() => {
+	const getSnapshot = () => {
 		const next = read();
 		if (cache.current && isEqual(cache.current.value, next)) return cache.current.value;
 		cache.current = { value: next };
 		return next;
-	}, [read, isEqual]);
+	};
 	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
@@ -90,14 +85,12 @@ export function useExtensions<TPoint extends AnyExtensionPoint>(
 	point: TPoint,
 ): readonly Contribution<TPoint>[] {
 	const kernel = useKernel();
-	const subscribe = useCallback(
-		(onChange: () => void) =>
-			kernel.extensions.subscribe((pointId) => {
-				if (pointId === point.id) onChange();
-			}),
-		[kernel, point.id],
-	);
-	const read = useCallback(() => kernel.extensions.list(point), [kernel, point]);
+	const pointId = point.id;
+	const subscribe = (onChange: () => void) =>
+		kernel.extensions.subscribe((changedId) => {
+			if (changedId === pointId) onChange();
+		});
+	const read = () => kernel.extensions.list(point);
 	return useSubscription(subscribe, read, sameContributions);
 }
 
@@ -106,14 +99,12 @@ export function useExclusive<TPoint extends AnyExtensionPoint>(
 	point: TPoint,
 ): ExclusiveResolution<TPoint> {
 	const kernel = useKernel();
-	const subscribe = useCallback(
-		(onChange: () => void) =>
-			kernel.extensions.subscribe((pointId) => {
-				if (pointId === point.id) onChange();
-			}),
-		[kernel, point.id],
-	);
-	const read = useCallback(() => kernel.extensions.exclusive(point), [kernel, point]);
+	const pointId = point.id;
+	const subscribe = (onChange: () => void) =>
+		kernel.extensions.subscribe((changedId) => {
+			if (changedId === pointId) onChange();
+		});
+	const read = () => kernel.extensions.exclusive(point);
 	return useSubscription(subscribe, read, (a, b) => sameContributions(a.chain, b.chain));
 }
 
@@ -123,16 +114,13 @@ export function useDomainObject<TDomain extends AnyDomainObject>(
 ): DomainObjectHandle<TDomain> | null {
 	const kernel = useKernel();
 	const sdk = useSdk();
-	const subscribe = useCallback(
-		(onChange: () => void) =>
-			kernel.domainObjects.onChange((id) => {
-				if (id === domain.id) onChange();
-			}),
-		[kernel, domain.id],
-	);
-	const read = useCallback(() => kernel.domainObjects.isProvided(domain.id), [kernel, domain.id]);
+	const subscribe = (onChange: () => void) =>
+		kernel.domainObjects.onChange((id) => {
+			if (id === domain.id) onChange();
+		});
+	const read = () => kernel.domainObjects.isProvided(domain.id);
 	const provided = useSubscription(subscribe, read, Object.is);
-	return useMemo(() => (provided ? sdk.domainObjects.get(domain) : null), [provided, sdk, domain]);
+	return provided ? sdk.domainObjects.get(domain) : null;
 }
 
 const sameSelection = Object.is;
@@ -148,30 +136,26 @@ export function useDomainObjectState<TDomain extends AnyDomainObject, TSelected>
 	isEqual: (a: TSelected, b: TSelected) => boolean = sameSelection,
 ): TSelected | undefined {
 	const handle = useDomainObject(domain);
-	const subscribe = useCallback(
-		(onChange: () => void) => handle?.subscribe(() => onChange()) ?? (() => {}),
-		[handle],
-	);
-	const read = useCallback(
-		() => (handle ? selector(handle.getState()) : undefined),
-		[handle, selector],
-	);
-	const isSameSelection = useCallback(
-		(a: TSelected | undefined, b: TSelected | undefined) =>
-			a === undefined || b === undefined ? a === b : isEqual(a, b),
-		[isEqual],
-	);
+	const subscribe = (onChange: () => void) => handle?.subscribe(() => onChange()) ?? (() => {});
+	const read = () => (handle ? selector(handle.getState()) : undefined);
+	const isSameSelection = (a: TSelected | undefined, b: TSelected | undefined) =>
+		a === undefined || b === undefined ? a === b : isEqual(a, b);
 	return useSubscription(subscribe, read, isSameSelection);
 }
 
 export function useContextKey(key: string): boolean {
 	const kernel = useKernel();
-	const subscribe = useCallback(
-		(onChange: () => void) => kernel.contextKeys.subscribe(onChange),
-		[kernel],
-	);
-	const read = useCallback(() => kernel.contextKeys.get(key), [kernel, key]);
+	const subscribe = (onChange: () => void) => kernel.contextKeys.subscribe(onChange);
+	const read = () => kernel.contextKeys.get(key);
 	return useSubscription(subscribe, read, Object.is);
+}
+
+function sdkOrNull(kernel: RendererKernel, pluginId: string): PluginSdk | null {
+	try {
+		return kernel.sdkFor(pluginId);
+	} catch {
+		return null;
+	}
 }
 
 interface BoundaryProps {
@@ -216,13 +200,7 @@ export function RenderContribution<TProps extends object>({
 			? select(contribution.implementation as never)
 			: contribution.implementation
 	) as ComponentType<TProps> | undefined;
-	const sdk = useMemo(() => {
-		try {
-			return kernel.sdkFor(contribution.pluginId);
-		} catch {
-			return null;
-		}
-	}, [kernel, contribution.pluginId]);
+	const sdk = sdkOrNull(kernel, contribution.pluginId);
 	if (!ContributedComponent || !sdk) return null;
 	return (
 		<ContributionBoundary

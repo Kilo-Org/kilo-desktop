@@ -1,18 +1,22 @@
 import { useEffect, useState } from "react";
 
-import { KernelTelemetry, type PluginSdk } from "@kilo-desktop/kernel";
+import { KernelTelemetry, type DomainObjectHandle, type PluginSdk } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { KiloWorkStyle, type WorkStyle } from "@kilo-desktop/plugin-core/contracts";
 
-import type {
-	OnboardingControls,
-	OnboardingStepImplementation,
-	OnboardingStepView,
-} from "../../contracts";
+import type { OnboardingStepImplementation, OnboardingStepProps } from "../../contracts";
 import { WorkStyleShowcase, WorkStyleStep } from "./WorkStyleStep";
 
 const errorText = (reason: unknown) =>
 	reason instanceof Error && reason.message ? reason.message : "Could not save your work style.";
+
+async function applyWorkStyle(
+	workStyle: DomainObjectHandle<typeof KiloWorkStyle> | null,
+	style: WorkStyle,
+): Promise<void> {
+	if (!workStyle) throw new Error("Kilo isn't connected yet. Try again in a moment.");
+	await workStyle.methods.apply({ style });
+}
 
 /** Reports the step as origin did: shown (once per window) and each style the person continues with. */
 interface WorkStyleTelemetry {
@@ -45,13 +49,14 @@ function workStyleTelemetry(sdk: PluginSdk): WorkStyleTelemetry {
  */
 export function createWorkStyleStep(sdk: PluginSdk): OnboardingStepImplementation {
 	const telemetry = workStyleTelemetry(sdk);
-	return { useStep: (controls) => useWorkStyleStep(controls, telemetry) };
+	return { Step: (props) => <WorkStyleOnboardingStep {...props} telemetry={telemetry} /> };
 }
 
-function useWorkStyleStep(
-	{ next }: OnboardingControls,
-	telemetry: WorkStyleTelemetry,
-): OnboardingStepView {
+function WorkStyleOnboardingStep({
+	next,
+	children,
+	telemetry,
+}: OnboardingStepProps & { readonly telemetry: WorkStyleTelemetry }) {
 	const workStyle = useDomainObject(KiloWorkStyle);
 	const [style, setStyle] = useState<WorkStyle>("autonomous");
 	const [conflicts, setConflicts] = useState<readonly string[]>([]);
@@ -77,17 +82,15 @@ function useWorkStyleStep(
 		setError(null);
 		telemetry.selected(style);
 		try {
-			if (!workStyle) throw new Error("Kilo isn't connected yet. Try again in a moment.");
-			await workStyle.methods.apply({ style });
+			await applyWorkStyle(workStyle, style);
 			next();
 		} catch (reason) {
 			setError(errorText(reason));
-		} finally {
-			setBusy(false);
 		}
+		setBusy(false);
 	};
 
-	return {
+	return children({
 		title: "Choose how you want to work",
 		subtitle: "Decide how often Kilo checks with you before it edits files or runs commands.",
 		body: (
@@ -109,5 +112,5 @@ function useWorkStyleStep(
 			onClick: () => void apply(),
 		},
 		busy,
-	};
+	});
 }

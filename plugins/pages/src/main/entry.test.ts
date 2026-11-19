@@ -196,16 +196,16 @@ describe("the Pages server", () => {
 		process.env["FAKE_CELLD_MODE"] = "crash";
 		const { pages } = await boot({ entry: { readyTimeoutMs: 2_000 } });
 		await expect(pages.methods.ensure(undefined)).rejects.toThrow();
-		await expect.poll(() => pages.getState().status, { timeout: 15_000 }).toBe("error");
+		await expect.poll(() => pages.getState().status, { timeout: 10_000 }).toBe("error");
 		process.env["FAKE_CELLD_MODE"] = "serve";
 
 		await expect
 			.poll(async () => (await pages.methods.ensure(undefined).catch(() => null))?.origin, {
-				timeout: 20_000,
+				timeout: 8_000,
 				interval: 500,
 			})
 			.toMatch(/^http:\/\/localhost:/);
-	}, 40_000);
+	});
 
 	it("stops celld when the app quits", async () => {
 		const port = await allocateLoopbackPort();

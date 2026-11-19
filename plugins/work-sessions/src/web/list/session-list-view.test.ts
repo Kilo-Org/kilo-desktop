@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEmptySessionActivity, type SessionActivity } from "./session-activity";
+import { type SessionActivity } from "./session-activity";
 import {
 	DEFAULT_SESSION_LIST_VIEW,
 	UNSCOPED_WORKSPACE_FOCUS,
@@ -15,6 +15,11 @@ import {
 	type SessionListView,
 	type SessionListViewEntry,
 } from "./session-list-view";
+
+const emptyActivity = (): SessionActivity => ({
+	pendingPermissionIds: [],
+	pendingQuestionIds: [],
+});
 
 const workspaces = [
 	{ id: "ws-1", name: "Acme App" },
@@ -31,7 +36,7 @@ function entry(
 }
 
 function activity(patch: Partial<SessionActivity> = {}): SessionActivity {
-	return { ...createEmptySessionActivity(), ...patch };
+	return { ...emptyActivity(), ...patch };
 }
 
 const defaultView: SessionListView = { ...DEFAULT_SESSION_LIST_VIEW };

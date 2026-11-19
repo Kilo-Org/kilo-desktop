@@ -119,14 +119,14 @@ describe("getFileContents", () => {
 		await makeCommit(repoPath, {
 			entries: [{ path: "file.txt", contents: "committed contents\n" }],
 		});
-		await writeFile(join(repoPath, "file.txt"), "on disk\n");
+		await writeFile(join(repoPath, "file.txt"), "ok\n");
 
 		await expect(
 			createGitClient({ path: repoPath, logger: noopLogger }).getFileContents({
 				path: "file.txt",
 				maxBytes: 4,
 			}),
-		).rejects.toMatchObject({ name: "GitFileTooLargeError" });
+		).rejects.toMatchObject({ name: "GitFileTooLargeError", side: "old", path: "file.txt" });
 	});
 
 	it("throws GitFileTooLargeError when the working-tree file exceeds maxBytes", async () => {

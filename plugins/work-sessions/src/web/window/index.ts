@@ -17,7 +17,8 @@ export function activateWindow(sdk: PluginSdk): void {
 	sdk.onDispose(bindFailureReports(sdk));
 	if (sdk.context.get("kernel/secondaryWindow")) return;
 	const { showInPlace } = provideWorkSessionsWindow(sdk, {
-		openPane: (workSessionId, kind) => openOrShowPane(sdk, workSessionId, kind),
+		openPane: (workSessionId, kind, placement) =>
+			openOrShowPane(sdk, workSessionId, kind, placement),
 		startWithPane: (kind) => void startFromNewWorkSessionPage(kind),
 	});
 	implementWorkSessionCommands(sdk, showInPlace);

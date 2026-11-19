@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { XIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -46,15 +46,12 @@ function storedWidth(panel: Panel): number {
 function usePanelWidth(panel: Panel, main: RefObject<HTMLElement | null>) {
 	const aside = useRef<HTMLElement>(null);
 	const [width, setWidth] = useState(() => storedWidth(panel));
-	const resize = useCallback(
-		(delta: number) => {
-			const room = (aside.current?.offsetWidth ?? 0) + (main.current?.offsetWidth ?? 0);
-			const next = clampWidth(Math.min(width, room) - delta, room);
-			localStorage.setItem(widthKey(panel.key), String(next));
-			setWidth(next);
-		},
-		[main, panel.key, width],
-	);
+	const resize = (delta: number) => {
+		const room = (aside.current?.offsetWidth ?? 0) + (main.current?.offsetWidth ?? 0);
+		const next = clampWidth(Math.min(width, room) - delta, room);
+		localStorage.setItem(widthKey(panel.key), String(next));
+		setWidth(next);
+	};
 	return { aside, width, resize };
 }
 
@@ -124,8 +121,12 @@ function PanelSlot({
 				"flex min-h-0",
 				settled ? "min-w-[calc(280px+--spacing(1.5))]" : "overflow-hidden",
 			)}
+			// A one-shot reveal that must reflow the main pane; it snaps under reduced motion.
+			// react-doctor-disable-next-line react-doctor/no-layout-property-animation
 			initial={{ width: 0 }}
+			// react-doctor-disable-next-line react-doctor/no-layout-property-animation
 			animate={{ width: "auto" }}
+			// react-doctor-disable-next-line react-doctor/no-layout-property-animation
 			exit={{ width: 0 }}
 			transition={reduceMotion ? SHELL_LAYOUT_SNAP : SHELL_LAYOUT_SPRING}
 			onAnimationStart={() => setSettled(false)}

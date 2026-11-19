@@ -1,6 +1,5 @@
 import {
 	memo,
-	useCallback,
 	useEffect,
 	useRef,
 	useState,
@@ -11,6 +10,7 @@ import {
 } from "react";
 
 import { Tooltip, TooltipContent } from "@kilo-desktop/ui/components/tooltip";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { clamp } from "../usage/range";
@@ -62,30 +62,27 @@ export const ConversationMap = memo(function ConversationMap({
 		Math.max(0, entries.length - 1),
 	);
 
-	const handleKeyDown = useCallback(
-		(event: KeyboardEvent<HTMLElement>) => {
-			onKeyDown?.(event);
-			if (event.defaultPrevented) return;
+	const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+		onKeyDown?.(event);
+		if (event.defaultPrevented) return;
 
-			const ticks = railRef.current?.querySelectorAll<HTMLElement>(TICK);
-			if (!ticks?.length) return;
+		const ticks = railRef.current?.querySelectorAll<HTMLElement>(TICK);
+		if (!ticks?.length) return;
 
-			const current = Array.prototype.indexOf.call(ticks, event.target);
-			if (current === -1) return;
+		const current = Array.prototype.indexOf.call(ticks, event.target);
+		if (current === -1) return;
 
-			const next = {
-				ArrowUp: current - 1,
-				ArrowDown: current + 1,
-				Home: 0,
-				End: ticks.length - 1,
-			}[event.key];
-			if (next === undefined) return;
+		const next = {
+			ArrowUp: current - 1,
+			ArrowDown: current + 1,
+			Home: 0,
+			End: ticks.length - 1,
+		}[event.key];
+		if (next === undefined) return;
 
-			event.preventDefault();
-			ticks[clamp(next, 0, ticks.length - 1)]?.focus();
-		},
-		[onKeyDown],
-	);
+		event.preventDefault();
+		ticks[clamp(next, 0, ticks.length - 1)]?.focus();
+	};
 
 	const previewEntry = preview.current ? entries[preview.current.index] : undefined;
 
@@ -155,14 +152,18 @@ export const ConversationMap = memo(function ConversationMap({
 function useTickPreview() {
 	const [current, setCurrent] = useState<Preview | null>(null);
 	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	const isOpen = useRef(false);
-	isOpen.current = current !== null;
+	const isOpen = useLatestRef(current !== null);
 
 	const clearTimer = () => {
 		if (timer.current !== undefined) clearTimeout(timer.current);
 		timer.current = undefined;
 	};
-	useEffect(() => clearTimer, []);
+	useEffect(
+		() => () => {
+			if (timer.current !== undefined) clearTimeout(timer.current);
+		},
+		[],
+	);
 
 	const show = (next: Preview, immediate: boolean) => {
 		clearTimer();

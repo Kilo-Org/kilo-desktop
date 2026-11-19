@@ -330,13 +330,6 @@ export class ChatModelSelectorPage {
 		);
 	}
 
-	async verifyLocalServerButtonVisible(): Promise<void> {
-		await expectElementToBeVisible(
-			this.railLocalServer(),
-			"Provider rail should show the Local Model Server button",
-		);
-	}
-
 	async verifySearchVisible(): Promise<void> {
 		await expectElementToBeVisible(
 			this.searchInput(),

@@ -92,6 +92,22 @@ attached `kilo-cli.log` record bootstrap steps. Global setup also pre-warms the
 packaged Kilo CLI once so first-execution costs stay outside the sidecar's
 startup window.
 
+## Rules that keep flakes out
+
+`.oxlintrc.json` enables `@interfere/landmines` through `jsPlugins`:
+
+- `no-fixed-sleep` — a test or hook body may not await a fixed delay. Await the
+  operation, a promise its handler resolves, or advance `vi.useFakeTimers()`.
+- `no-flake-masking` — no test retries and no raised test timeouts. A test that
+  passes on rerun is a flake; wait on the event it depends on.
+- `package-exports` — packages declare explicit entrypoints, never `"./*"`.
+
+Violations fail `pnpm lint`, and each rule's message names the fix: await the
+signal the test depends on (or drive the production timer with
+`vi.useFakeTimers()`), and keep each test inside its project's timeout by waiting
+on events rather than budgeting extra time. A test that needs a longer wait is
+waiting on the wrong thing.
+
 ## How to run
 
 ```bash

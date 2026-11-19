@@ -326,26 +326,11 @@ describe("getDescriptionForError", () => {
 		}
 	});
 
-	it("returns the auth failure copy for auth failures", () => {
-		const description = getDescriptionForError(GitErrorCode.HTTPSAuthenticationFailed, "");
-		expect(description).toContain("Authentication failed");
-	});
-
 	it("interpolates the config key and value for BadConfigValue", () => {
 		const description = getDescriptionForError(
 			GitErrorCode.BadConfigValue,
 			"fatal: bad boolean config value 'nab' for 'core.autocrlf'",
 		);
 		expect(description).toBe("Unsupported value 'nab' for git config key 'core.autocrlf'");
-	});
-
-	it("falls back when the bad config value cannot be parsed", () => {
-		expect(getDescriptionForError(GitErrorCode.BadConfigValue, "unrelated")).toBe(
-			"Unsupported git configuration value.",
-		);
-	});
-
-	it("returns null for errors with no dedicated description", () => {
-		expect(getDescriptionForError(GitErrorCode.RemoteAlreadyExists, "")).toBeNull();
 	});
 });

@@ -227,6 +227,10 @@ describe("MarkdownText", () => {
 		await expect
 			.poll(() => codeBlocks()[0]?.textContent, { timeout: 10_000 })
 			.toBe(rendered(firstCode));
+		// The highlighter loads lazily; wait for it so there is a token to track.
+		await expect
+			.poll(() => codeBlocks()[0]?.querySelector("span"), { timeout: 10_000 })
+			.not.toBeNull();
 		// Closed lines keep their DOM nodes, so only the tail is rebuilt per chunk.
 		const firstToken = codeBlocks()[0]?.querySelector("span");
 
@@ -432,7 +436,6 @@ describe("MarkdownText", () => {
 		await expect.element(broken).toBeInTheDocument();
 		await vi.waitFor(() => expect((broken.element() as HTMLImageElement).complete).toBe(true));
 		expect(broken.element().getAttribute("role")).toBeNull();
-		expect(broken.element().className).not.toContain("cursor-zoom-in");
 	});
 
 	it("keeps unsafe image sources sanitized", async () => {

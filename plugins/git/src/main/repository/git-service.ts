@@ -211,11 +211,6 @@ export interface WorkspaceAccess {
 export interface GitServiceOptions {
 	readonly logger: KernelLogger;
 	readonly workspaces: WorkspaceAccess;
-	/**
-	 * Base directory for generated patch files. Defaults to `os.tmpdir()`
-	 * inside git-client; the shell passes the Electron temp directory.
-	 */
-	readonly tempDir?: string;
 	/** Factory for the shared client. Overridable in tests. */
 	readonly createClient?: () => GitClientSlice;
 	/** How paths are compared; the host's by default. Overridable in tests. */
@@ -366,7 +361,7 @@ export function ghErrorToKernelError(error: unknown): KernelError {
 	return new KernelError("BUSINESS", detail || "GitHub CLI operation failed.");
 }
 
-export function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
+function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
 	const failure = error as Partial<ExecaError> & { code?: string; timedOut?: boolean };
 	const detail = typeof failure.stderr === "string" ? failure.stderr : "";
 	if (failure.code === "ENOENT") return "missing";
@@ -569,7 +564,6 @@ export class GitService {
 	readonly #environmentReady: () => Promise<void>;
 	readonly #workspaces: WorkspaceAccess;
 	readonly #paths: PathIdentity;
-	readonly #tempDir: string | undefined;
 	/**
 	 * Patch file paths handed to callers but not yet released. The protocol
 	 * handler owns a patch's lifetime (release on stream close/cancel);
@@ -595,7 +589,6 @@ export class GitService {
 			: client;
 		this.#workspaces = options.workspaces;
 		this.#paths = options.pathIdentity ?? hostPathIdentity;
-		this.#tempDir = options.tempDir;
 		this.#worktrees = new WorktreeManager({
 			client: this.#client,
 			logger: options.logger,
@@ -1592,7 +1585,6 @@ export class GitService {
 		try {
 			const patch = await this.#client.createWorkingDirectoryPatch({
 				cwd: options.cwd,
-				...(this.#tempDir ? { tempDir: this.#tempDir } : {}),
 				...(options.unlimited ? { maxBytes: Number.POSITIVE_INFINITY } : {}),
 			});
 			if (patch === null) return null;

@@ -57,7 +57,7 @@ interface AddPackageDialogProps {
 }
 
 /** Wait this long after the last selection change before asking the solver. */
-const PREVIEW_DEBOUNCE_MS = 1500;
+export const PREVIEW_DEBOUNCE_MS = 1500;
 
 /**
  * Search the configured channels and add packages to an existing

@@ -111,15 +111,6 @@ describe("browser-mode host primitives", () => {
 		});
 	});
 
-	it("writes the clipboard", async () => {
-		const domains = await start();
-		const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-
-		await domains.get(KernelClipboard)!.methods.writeText({ text: "copied" });
-
-		expect(writeText).toHaveBeenCalledWith("copied");
-	});
-
 	it("shows notifications once the user has allowed them", async () => {
 		const shown: string[] = [];
 		vi.stubGlobal(

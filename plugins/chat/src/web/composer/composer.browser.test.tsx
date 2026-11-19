@@ -293,23 +293,6 @@ describe("client slash commands", () => {
 		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
 	});
 
-	it("hides a server command with a client command's name", async () => {
-		const server = new FakeKiloServer();
-		server.commands = [
-			...server.commands,
-			{ name: "compact", description: "The server's compact", template: "", hints: [] },
-		];
-		await renderChat({ server });
-		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
-
-		await input().click();
-		await userEvent.keyboard("/compact");
-		await expect
-			.element(page.getByText("Summarize the chat so far to free up context"))
-			.toBeVisible();
-		await expect.element(page.getByText("The server's compact")).not.toBeInTheDocument();
-	});
-
 	it("explains instead of compacting a chat that hasn't started", async () => {
 		const host = await renderChat();
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();

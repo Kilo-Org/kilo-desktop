@@ -70,7 +70,7 @@ export function isCssColor(value: string | undefined): value is string {
  * Prettify a kebab/snake/space-delimited agent id into a display name.
  * "docs-writer" → "Docs Writer", "my_agent" → "My Agent"
  */
-export function prettifyAgentId(id: string): string {
+function prettifyAgentId(id: string): string {
 	return id
 		.split(/[-_\s]+/)
 		.map((word) => (word.length > 0 ? word[0]!.toUpperCase() + word.slice(1) : ""))

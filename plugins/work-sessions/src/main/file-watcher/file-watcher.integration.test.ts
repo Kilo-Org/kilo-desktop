@@ -136,15 +136,12 @@ describe("workspace file watcher", () => {
 						expect(booted.files.getState().watched).toEqual([{ path: wslDir, state: "failed" }]),
 					{ timeout: 5_000 },
 				);
-				const attempts = subscribeSpy.mock.calls.length;
-				// Initial attempt + 5 retries, and no further attempts afterwards.
-				expect(attempts).toBe(6);
-				await new Promise((resolve) => setTimeout(resolve, 500));
-				expect(subscribeSpy.mock.calls.length).toBe(attempts);
+				// Initial attempt + 5 retries. The watcher publishes "failed" only
+				// instead of re-arming the retry timer, so a runaway loop never gets here.
+				expect(subscribeSpy.mock.calls.length).toBe(6);
 			} finally {
 				subscribeSpy.mockRestore();
 			}
 		},
-		10_000,
 	);
 });

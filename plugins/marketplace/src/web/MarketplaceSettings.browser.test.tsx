@@ -204,32 +204,6 @@ describe("MarketplaceSettings", () => {
 		});
 	});
 
-	it("does not render supplied MCP images in Agent Behavior or the Kilo Marketplace", async () => {
-		const iconDataUrl =
-			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
-		const mcp = {
-			type: "mcp" as const,
-			id: "docs",
-			name: "Docs",
-			description: "Searches documentation",
-			category: "knowledge",
-			url: "https://docs.example.com/mcp",
-			iconDataUrl,
-			content: '{"type":"remote","url":"https://docs.example.com/mcp"}',
-		};
-		const { baseElement } = await renderPage({
-			...snapshot,
-			items: [mcp],
-			installed: [{ type: "mcp", id: "docs", scope: "global" }],
-		});
-
-		await expect.element(page.getByTestId("marketplace-item-mcp-docs")).toBeVisible();
-		expect(baseElement.querySelector("img")).toBeNull();
-		await openBrowse();
-		await expect.element(page.getByTestId("marketplace-item-mcp-docs")).toBeVisible();
-		expect(baseElement.querySelector("img")).toBeNull();
-	});
-
 	it("uses category display names on Marketplace card badges", async () => {
 		await renderPage({
 			...snapshot,

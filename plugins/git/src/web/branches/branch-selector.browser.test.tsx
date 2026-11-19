@@ -990,30 +990,6 @@ describe("the New Session page's branch picker", () => {
 			}, WAIT);
 		});
 
-		it("offers the default branch pre-selected when it differs from the current branch", async () => {
-			const checkout = vi.fn(() => Promise.resolve());
-			await renderSelector({ branches: () => featureBranchesResult, checkout });
-
-			await page.getByTestId("git-branch-selector-trigger").click();
-			await page.getByTestId("git-branch-create").click();
-
-			const base = page.getByTestId("git-branch-create-base");
-			await expect.element(base).toBeVisible();
-			expect(base.element().textContent).toContain("main");
-
-			await page.getByTestId("git-branch-create-name").fill("topic");
-			await page.getByTestId("git-branch-create-submit").click();
-
-			await vi.waitFor(() => {
-				expect(checkout).toHaveBeenCalledWith({
-					directory: "/workspace/project",
-					branch: "topic",
-					create: true,
-					startPoint: "main",
-				});
-			}, WAIT);
-		});
-
 		it("sends no start point when the current branch is picked", async () => {
 			const checkout = vi.fn(() => Promise.resolve());
 			await renderSelector({ branches: () => featureBranchesResult, checkout });

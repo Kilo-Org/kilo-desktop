@@ -1,13 +1,13 @@
 import { definePlugin, type PluginEntry } from "@kilo-desktop/kernel";
 
-import { activateAutoApprove, type AutoApproveOptions } from "./auto-approve";
+import { activateAutoApprove } from "./auto-approve";
 import { activateChatPanes } from "./chat-panes";
 import { activateDrafts } from "./drafts";
 import { activateHtmlRender, type HtmlRenderOptions } from "./html-render";
 import { activateMediaViewers } from "./media-viewers";
 import { activatePromptQueues } from "./prompt-queues";
 
-export interface ChatMainOptions extends AutoApproveOptions, HtmlRenderOptions {}
+export type ChatMainOptions = HtmlRenderOptions;
 
 /**
  * kilo.chat in main: what every window's chat panes share, composed from
@@ -24,7 +24,7 @@ export interface ChatMainOptions extends AutoApproveOptions, HtmlRenderOptions {
 export function createChatMainEntry(options: ChatMainOptions = {}): PluginEntry {
 	return definePlugin({
 		activate(sdk) {
-			activateAutoApprove(sdk, options);
+			activateAutoApprove(sdk);
 			activatePromptQueues(sdk);
 			activateDrafts(sdk);
 			activateHtmlRender(sdk, options);

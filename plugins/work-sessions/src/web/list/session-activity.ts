@@ -21,10 +21,6 @@ export type SessionActivity = {
 	pendingQuestionIds: readonly string[];
 };
 
-export function createEmptySessionActivity(): SessionActivity {
-	return { pendingPermissionIds: [], pendingQuestionIds: [] };
-}
-
 function isWorkingStatus(status: SessionStatusType | undefined): boolean {
 	return status === "busy" || status === "retry";
 }

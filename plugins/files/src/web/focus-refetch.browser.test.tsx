@@ -31,8 +31,9 @@ describe("refetchOnWindowFocus", () => {
 		await vi.waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
 
 		stop();
+		const onFocus = vi.spyOn(queries.getQueryCache(), "onFocus");
 		window.dispatchEvent(new Event("focus"));
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(onFocus).not.toHaveBeenCalled();
 		expect(queryFn).toHaveBeenCalledTimes(2);
 	});
 

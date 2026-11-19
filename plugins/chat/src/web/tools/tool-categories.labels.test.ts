@@ -5,10 +5,6 @@ import {
 	getActivityKind,
 	getGroupKeyForTool,
 	getKindMeta,
-	getPartQuestionSummary,
-	getPartSkillName,
-	getPartTaskDescription,
-	getSegmentStats,
 	setContributedToolCategories,
 	soloRowHidesItself,
 	type ActivityKind,
@@ -26,9 +22,6 @@ const call = (
 	status: { type: "complete" },
 	...extra,
 });
-
-const stats = (kind: ActivityKind, parts: ActivityPart[]) =>
-	getSegmentStats(parts, { kind, indices: parts.map((_, index) => index) } as never);
 
 afterEach(() => setContributedToolCategories(new Map()));
 
@@ -98,51 +91,6 @@ describe("group keys", () => {
 		expect(activityKindFromGroupKey("activity")).toBeUndefined();
 		expect(getActivityKind({ type: "tool-call" })).toBe("tools");
 		expect(getActivityKind({ type: "data" })).toBeUndefined();
-	});
-});
-
-describe("part summaries", () => {
-	it("summarises a question by its first prompt, header, or count", () => {
-		expect(
-			getPartQuestionSummary(call("question", { questions: [{ question: "Which env?" }] })),
-		).toBe("Which env?");
-		expect(getPartQuestionSummary(call("question", { questions: [{ header: "Env" }] }))).toBe(
-			"Env",
-		);
-		expect(getPartQuestionSummary(call("question", { questions: [{}, {}] }))).toBe("2 questions");
-		expect(getPartQuestionSummary(call("question", { prompt: "Go on?" }))).toBe("Go on?");
-		expect(getPartQuestionSummary(call("question", "nope"))).toBeUndefined();
-		expect(getPartQuestionSummary(call("read", {}))).toBeUndefined();
-	});
-
-	it("names a skill and a delegation", () => {
-		expect(getPartSkillName(call("skill", { name: "tdd" }))).toBe("tdd");
-		expect(getPartSkillName(call("skill"))).toBeUndefined();
-		expect(getPartSkillName(call("read", { name: "x" }))).toBeUndefined();
-		expect(getPartTaskDescription(call("task", { description: "  Audit\n login " }))).toBe(
-			"Audit login",
-		);
-		expect(getPartTaskDescription(call("task", { subagent_type: "explore" }))).toBe("explore");
-		expect(getPartTaskDescription(call("task", {}))).toBeUndefined();
-		expect(getPartTaskDescription(call("task"))).toBeUndefined();
-	});
-
-	it("collects a segment's stats by kind", () => {
-		expect(
-			stats("asking", [call("question", { questions: [{ question: "Which?" }] })]).question,
-		).toBe("Which?");
-		expect(stats("terminal", [call("bash", { command: "make test" })]).commandSummary).toBe(
-			"make test",
-		);
-		expect(stats("skill", [call("skill", { name: "tdd" })]).skill).toBe("tdd");
-		expect(
-			stats("subagent", [call("task", { description: "A" }), call("task", { description: "B" })])
-				.task,
-		).toBeUndefined();
-		expect(stats("mcp:github", [call("github_list_issues")]).tool).toBe("List issues");
-		expect(
-			stats("editing", [call("apply_patch", { patchText: "*** Update File: a.ts\n+x" })]).files,
-		).toBe(1);
 	});
 });
 

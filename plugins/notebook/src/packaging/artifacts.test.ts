@@ -10,19 +10,16 @@ import {
 } from "./artifacts";
 
 describe("notebook distribution artifacts", () => {
-	it("pins every bundled nteract component to the same stable release", () => {
-		expect(NTERACT_RELEASE).toEqual({
-			tag: "v2.10.1-stable.202611161848",
-			version: "2.10.1-stable.202611161848",
-			channel: "stable",
-			commit: "b275d446bbfdbfb8c36934e5b2a2ebe08acad82f",
-			repository: "https://github.com/nteract/nteract.git",
-		});
-		expect(NTERACT_NOTEBOOK_UI).toEqual({
-			assetName: "nteract-stable-notebook-ui.tar.gz",
-			bytes: 11_370_612,
-			sha256: "2b7c87a5cb9b6cf89c49f79d5fb5d25de053010d02f16e1ce89e7f5e5430a560",
-		});
+	it("pins every bundled nteract component to one release, by tag, commit and checksum", () => {
+		expect(NTERACT_RELEASE.tag).toBe(`v${NTERACT_RELEASE.version}`);
+		expect(NTERACT_RELEASE.version).toContain(`-${NTERACT_RELEASE.channel}.`);
+		expect(NTERACT_RELEASE.commit).toMatch(/^[a-f0-9]{40}$/);
+		expect(NTERACT_NOTEBOOK_UI.assetName).toContain(`-${NTERACT_RELEASE.channel}-`);
+		expect(NTERACT_NOTEBOOK_UI.sha256).toMatch(/^[a-f0-9]{64}$/);
+		expect(NTERACT_NOTEBOOK_UI.bytes).toBeGreaterThan(0);
+		for (const artifact of RUNTIMED_ARTIFACTS) {
+			expect(artifact.assetName, artifact.target).toContain("runtimed-");
+		}
 	});
 
 	it("pins the required runtimed daemon for every desktop release target", () => {

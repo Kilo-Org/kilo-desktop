@@ -115,7 +115,7 @@ export function resolveApiKeyChange(apiKey: string | undefined): ApiKeyChange {
 }
 
 /** Image input follows the attachments switch; other modalities are kept as they were. */
-export function resolveModalities(
+function resolveModalities(
 	existing: ModelModalities | undefined,
 	images: boolean,
 ): ModelModalities | undefined {

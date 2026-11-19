@@ -67,9 +67,6 @@ export class ChatComposerPage {
 	// sr-only span ("Remove file"), not an aria-label attribute.
 	private readonly attachmentRemoveButton = () =>
 		this.attachmentRoots().getByRole("button", { name: "Remove file" });
-	private readonly attachmentErrorIcon = () =>
-		this.attachmentTile().locator(".aui-attachment-tile-error");
-	private readonly attachmentNameTooltip = () => getLocatorByRole("tooltip");
 	// Specs send one message per test, so strict mode throws rather than
 	// grabbing the wrong reply if a future spec sends more than once.
 	private readonly assistantMessage = () => this.thread().locator('[data-role="assistant"]');
@@ -183,10 +180,6 @@ export class ChatComposerPage {
 		await click(this.attachmentRemoveButton());
 	}
 
-	async hoverAttachment(): Promise<void> {
-		await this.attachmentTile().hover();
-	}
-
 	async verifySendDisabled(): Promise<void> {
 		await expectElementToBeDisabled(this.sendButton(), {
 			message: "Send should be disabled while the composer is empty",
@@ -229,27 +222,6 @@ export class ChatComposerPage {
 		await expectElementToBeVisible(
 			this.attachmentTile(),
 			"Composer should show an attachment tile",
-		);
-	}
-
-	/** Requires `hoverAttachment` first — the filename only renders inside the hover tooltip (attachment.tsx). */
-	async verifyHoveredAttachmentName(name: string): Promise<void> {
-		await expectElementToContainText(this.attachmentNameTooltip(), name, {
-			message: `Attachment tooltip should show the filename "${name}"`,
-		});
-	}
-
-	async verifyAttachmentErrored(): Promise<void> {
-		await expectElementToBeVisible(
-			this.attachmentErrorIcon(),
-			"Attachment should show its error state",
-		);
-	}
-
-	async verifyNoAttachmentErrored(): Promise<void> {
-		await expectElementToBeHidden(
-			this.attachmentErrorIcon(),
-			"Attachment should not show an error state",
 		);
 	}
 

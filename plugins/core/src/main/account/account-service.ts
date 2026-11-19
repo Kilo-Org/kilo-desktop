@@ -29,7 +29,7 @@ export const INITIAL_ACCOUNT: AccountState = {
 };
 
 /** The user-enterable code in the CLI's device sign-in instructions. */
-export function parseDeviceCode(instructions: string | undefined): string | undefined {
+function parseDeviceCode(instructions: string | undefined): string | undefined {
 	return instructions?.match(/code:\s*(\S+)/i)?.[1];
 }
 

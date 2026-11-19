@@ -50,6 +50,7 @@
 		]
 	},
 	"devDependencies": {
+		"@interfere/landmines": "^0.1.0",
 		"@kilo-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
 		"@types/node": "^26.0.0",

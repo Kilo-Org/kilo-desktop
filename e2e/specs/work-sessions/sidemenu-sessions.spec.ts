@@ -79,6 +79,17 @@ test.describe("Side menu with sessions @packaged", () => {
 		await sessionListPage.verifyNotListed("Discarded name");
 	});
 
+	// Committing the title it already had is a rename the list declines to
+	// make: the field closes and the row is left alone.
+	test("keeps the title when the new one repeats it", async ({ sessionListPage }) => {
+		await sessionListPage.startRename(SESSION);
+		await sessionListPage.typeRenameTitle(SESSION);
+		await sessionListPage.commitRename();
+
+		await sessionListPage.verifyRenameClosed();
+		await sessionListPage.verifyListed(SESSION);
+	});
+
 	test("keeps the old title when the new one is blank", async ({ sessionListPage }) => {
 		await sessionListPage.startRename(SESSION);
 		await sessionListPage.typeRenameTitle("   ");

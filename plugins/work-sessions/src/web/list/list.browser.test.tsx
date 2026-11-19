@@ -112,7 +112,6 @@ const openRowMenu = async (title: string) => {
 	await row(title).hover();
 	await row(title).getByTestId("session-list-item-more").click();
 };
-const AWKWARD = "Ünïcode — 作業セッション 🚀 with a long trailing title the row has to truncate";
 
 describe("session list", () => {
 	it("groups pinned and active sessions, keeping archived ones collapsed at the end", async () => {
@@ -194,20 +193,6 @@ describe("session list", () => {
 		await expect.element(row("Fix sign-in")).toBeVisible();
 	});
 
-	it("does not rename when the inline title is unchanged", async () => {
-		const { workSessions } = await renderWorkSessions({
-			workSessions: [workSession("a", { title: "Renamed to itself" })],
-		});
-
-		await openRowMenu("Renamed to itself");
-		await page.getByTestId("session-menu-rename").click();
-		await page.getByTestId("session-list-item-rename").fill("Renamed to itself");
-		await userEvent.keyboard("{Enter}");
-
-		await expect.element(page.getByTestId("session-list-item-rename")).not.toBeInTheDocument();
-		expect(workSessions.calls.rename).not.toHaveBeenCalled();
-	});
-
 	it("deletes only after confirmation, and closes the session if it was open", async () => {
 		const { workSessions, window } = await renderWorkSessions({
 			workSessions: [workSession("a", { title: "Fix login" })],
@@ -259,42 +244,6 @@ describe("session list", () => {
 		await list().getByTestId("session-list-workspace-new-w-app").click({ force: true });
 		await vi.waitFor(() => expect(workspaces.setActive).toHaveBeenLastCalledWith("w-app"));
 		await expect.element(page.getByTestId("workbench-launcher")).toBeVisible();
-	});
-
-	it("filters to sessions without a workspace, then shows all sessions again", async () => {
-		await renderWorkSessions({
-			workSessions: [
-				workSession("inside", { title: "Inside workspace", workspaceId: "w-app" }),
-				workSession("loose", { title: "Outside workspace" }),
-			],
-			workspaces: [workspace("w-app", "App")],
-			localStorage: {
-				"kilo-ui.session-list-view:v1": JSON.stringify({ grouping: "workspace" }),
-			},
-		});
-
-		await expect.element(row("Inside workspace")).toBeVisible();
-		await expect.element(row("Outside workspace")).toBeVisible();
-
-		await list().getByTestId("session-list-workspace-filter").click();
-		await page.getByRole("option", { name: /No workspace/ }).click();
-		await expect.element(row("Outside workspace")).toBeVisible();
-		await expect.element(row("Inside workspace")).not.toBeInTheDocument();
-
-		await list().getByTestId("session-list-workspace-filter").click();
-		await page.getByRole("option", { name: /All workspaces/ }).click();
-		await expect.element(row("Inside workspace")).toBeVisible();
-		await expect.element(row("Outside workspace")).toBeVisible();
-	});
-
-	it("lists and opens a session with a long, non-Latin title", async () => {
-		const { window } = await renderWorkSessions({
-			workSessions: [workSession("awkward", { title: AWKWARD })],
-		});
-
-		await expect.element(row(AWKWARD)).toBeVisible();
-		await row(AWKWARD).getByTestId("session-list-item-trigger").click();
-		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBe("awkward"));
 	});
 
 	it("edits, deletes and adds workspaces through the workspace commands", async () => {

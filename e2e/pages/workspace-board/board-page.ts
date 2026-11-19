@@ -9,7 +9,11 @@ import {
 } from "@anaconda/playwright-utils";
 import { getAllPages, getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect, type Locator, type Page } from "@playwright/test";
+
+import { sessionListData } from "../../testdata/work-sessions/session-list.js";
 import { runFromCommandPalette } from "../shell/command-palette.js";
+
+const SESSION_LIST = sessionListData.locators;
 
 /**
  * Page object for kilo.workspace-board's workspace board. Every step targets the
@@ -50,7 +54,7 @@ export class BoardPage {
 		// The row's timestamp slot only fades on hover rather than leaving the
 		// layer, so it can sit over the "…" trigger and swallow the click. The
 		// trigger is visible and stable; only the hit-target check is in the way.
-		await click(row.getByTestId("session-list-item-more"), { force: true });
+		await click(row.getByTestId(SESSION_LIST.itemMoreTestId), { force: true });
 		await pressLocatorKeyboard(
 			getLocatorByTestId("session-menu-kilo.workspace-board/add-to-board"),
 			"ArrowRight",
@@ -169,12 +173,12 @@ export class BoardPage {
 	}
 
 	private activeRow(): Locator {
-		return getLocator('[data-qa-id="session-list-item"][data-active="true"]');
+		return getLocator(`[data-qa-id="${SESSION_LIST.itemTestId}"][data-active="true"]`);
 	}
 
 	private sessionRow(): Locator {
 		return getLocator(
-			`[data-qa-id="session-list-item"][data-session-id="${this.requireSessionId()}"]`,
+			`[data-qa-id="${SESSION_LIST.itemTestId}"][data-session-id="${this.requireSessionId()}"]`,
 		);
 	}
 

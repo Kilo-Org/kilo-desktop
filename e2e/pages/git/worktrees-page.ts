@@ -24,6 +24,9 @@ import {
 	verifyNewSessionIn,
 	type KiloServerConnection,
 } from "../chat/agent-session.js";
+import { sessionListData } from "../../testdata/work-sessions/session-list.js";
+
+const SESSION_LIST = sessionListData.locators;
 
 const execFile = promisify(execFileCallback);
 
@@ -187,13 +190,13 @@ export class WorktreesPage {
 	async deleteSessionAndWorktree(title: string): Promise<void> {
 		const row = sessionListRow(title);
 		await row.hover();
-		await click(row.getByTestId("session-list-item-more"));
-		await click(getLocatorByTestId("session-menu-delete"));
+		await click(row.getByTestId(SESSION_LIST.itemMoreTestId));
+		await click(getLocatorByTestId(SESSION_LIST.menuDeleteTestId));
 		await expectElementToBeVisible(
-			getLocatorByTestId("session-delete-worktree-dialog"),
+			getLocatorByTestId(SESSION_LIST.deleteWorktreeDialogTestId),
 			"Deleting the last session in a worktree should ask about the worktree",
 		);
-		await click(getLocatorByTestId("session-delete-worktree-confirm"));
+		await click(getLocatorByTestId(SESSION_LIST.deleteWorktreeConfirmTestId));
 		await expectElementToBeHidden(row, { message: `"${title}" should leave the session list` });
 	}
 

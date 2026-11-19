@@ -67,6 +67,8 @@ export class WorktreesPage {
 		getLocatorByTestId(SESSION_LIST.deleteWorktreeDialogTestId);
 	private readonly deleteWorktreeConfirm = () =>
 		getLocatorByTestId(SESSION_LIST.deleteWorktreeConfirmTestId);
+	private readonly deleteWorktreeCancel = () =>
+		getLocatorByTestId(SESSION_LIST.deleteWorktreeCancelTestId);
 
 	// --- Steps and assertions ---
 
@@ -210,6 +212,29 @@ export class WorktreesPage {
 		);
 		await click(this.deleteWorktreeConfirm());
 		await expectElementToBeHidden(row, { message: `"${title}" should leave the session list` });
+	}
+
+	/**
+	 * Asks to delete the last session in its worktree and then cancels. The
+	 * dialog's other two choices both delete the session, so Cancel is the one
+	 * that has to leave the session and its worktree where they are.
+	 */
+	async cancelDeletingSessionAndWorktree(title: string): Promise<void> {
+		const row = sessionListRow(title);
+		await row.hover();
+		await click(this.rowMore(row));
+		await click(this.menuDelete());
+		await expectElementToBeVisible(
+			this.deleteWorktreeDialog(),
+			"Deleting the last session in a worktree should ask about the worktree",
+		);
+
+		await click(this.deleteWorktreeCancel());
+
+		await expectElementToBeHidden(this.deleteWorktreeDialog(), {
+			message: "Cancel should close the worktree question",
+		});
+		await expectElementToBeVisible(row, `"${title}" should still be listed after Cancel`);
 	}
 
 	/** The worktree folder and its `kilo/` branch are gone from the repository. */

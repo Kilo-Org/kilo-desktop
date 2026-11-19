@@ -46,6 +46,7 @@ export class SessionListPage {
 
 	private readonly renameInput = () => getLocatorByTestId(SESSION_LIST.itemRenameTestId);
 	private readonly activeRows = () => this.list().getByTestId(SESSION_LIST.itemTestId);
+	private readonly rowTitles = () => this.list().getByTestId(SESSION_LIST.itemTitleTestId);
 	private readonly archivedRow = (title: string): Locator =>
 		this.list().getByTestId(SESSION_LIST.archivedItemTestId).filter({ hasText: title });
 	private readonly rowTrigger = (title: string): Locator =>
@@ -61,6 +62,10 @@ export class SessionListPage {
 	private readonly menuArchive = () => getLocatorByTestId(SESSION_LIST.menuArchiveTestId);
 	private readonly menuDelete = () => getLocatorByTestId(SESSION_LIST.menuDeleteTestId);
 	private readonly deleteConfirm = () => getLocatorByTestId(SESSION_LIST.deleteConfirmTestId);
+	private readonly deleteCancel = () => getLocatorByTestId(SESSION_LIST.deleteCancelTestId);
+	private readonly deleteDialog = () => getLocatorByTestId(SESSION_LIST.deleteDialogTestId);
+	private readonly deleteChatPreview = () =>
+		getLocatorByTestId(SESSION_LIST.deleteChatPreviewTestId);
 	private readonly bulkRestore = () => getLocatorByTestId(SESSION_LIST.bulkRestoreTestId);
 	private readonly bulkArchive = () => getLocatorByTestId(SESSION_LIST.bulkArchiveTestId);
 	private readonly breadcrumb = () => getLocatorByTestId(SESSION_LIST.breadcrumbTestId);
@@ -221,9 +226,42 @@ export class SessionListPage {
 	}
 
 	async scrollToBottom(): Promise<void> {
-		await this.list()
-			.getByTestId(SESSION_LIST.inboxTestId)
-			.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+		await this.inbox().evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+	}
+
+	/**
+	 * The listed titles, in the order the list shows them. The library has no
+	 * ordered-text assertion, so this uses Playwright's, as the focus
+	 * assertion above does. Exact titles: the assertion also pins how many
+	 * rows are listed.
+	 */
+	async verifyRowOrder(titles: readonly string[]): Promise<void> {
+		await expect(
+			this.rowTitles(),
+			`The list should show ${titles.join(", ")} in that order`,
+		).toHaveText([...titles]);
+	}
+
+	/** Asks to delete a session, leaving the confirmation open. */
+	async openDeleteDialog(title: string): Promise<void> {
+		await this.openRowMenu(title);
+		await click(this.menuDelete());
+		await expectElementToBeVisible(this.deleteDialog(), "Deleting a session should ask first");
+	}
+
+	/** The confirmation names the session it would delete, so a stray click is visible. */
+	async verifyDeleteDialogNames(title: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.deleteChatPreview().getByText(title, { exact: true }),
+			`The delete confirmation should name ${title}`,
+		);
+	}
+
+	async cancelDelete(): Promise<void> {
+		await click(this.deleteCancel());
+		await expectElementToBeHidden(this.deleteDialog(), {
+			message: "Cancel should close the delete confirmation",
+		});
 	}
 
 	async verifyListed(title: string): Promise<void> {

@@ -338,14 +338,19 @@ describe("GitDiffSidebar tree search", () => {
 
 describe("GitDiffSidebar tree streaming", () => {
 	it("adds streamed files to the tree incrementally", async () => {
-		stubFetch(() => new Response(delayedFileResponseStream([FIRST_FILE, SECOND_FILE])));
+		const patch = controlledPatchStream();
+		stubFetch(() => new Response(patch.stream));
 		await renderView();
 
+		// The stream parser holds the last file until the next header or the
+		// close, so second.txt cannot reach the tree before close().
+		patch.enqueue(FIRST_FILE + SECOND_FILE);
 		await waitForTreePath("first.txt");
 		expect(
 			treeHost()?.shadowRoot?.querySelector('[data-item-path="second.txt"]') ?? null,
 		).toBeNull();
 
+		patch.close();
 		await waitForTreePath("second.txt");
 		await vi.waitFor(() => {
 			const statsText = document.querySelector('[data-qa-id="git-diff-stats"]')?.textContent ?? "";

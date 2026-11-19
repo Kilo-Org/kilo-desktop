@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ImageOffIcon } from "lucide-react";
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 
 import { resolvePathInFolders } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
@@ -46,21 +46,19 @@ function ViewableImage({
 }) {
 	const [loaded, setLoaded] = useState<string | null>(null);
 	const [failed, setFailed] = useState<string | null>(null);
-	const input = useMemo<LightboxItemInput | null>(
-		() => (loaded === src ? { kind: "image", src, alt, ...(filename ? { filename } : {}) } : null),
-		[loaded, src, alt, filename],
-	);
-	const viewer = useLightboxItem(input);
+	const input: LightboxItemInput | null =
+		loaded === src ? { kind: "image", src, alt, ...(filename ? { filename } : {}) } : null;
+	const { ref: viewerRef, open: openViewer, lightbox, available } = useLightboxItem(input);
 	if (failed === src) return <Unavailable name={filename ?? alt} />;
 	const onKeyDown = (event: KeyboardEvent<HTMLImageElement>) => {
 		if (event.key !== "Enter" && event.key !== " ") return;
 		event.preventDefault();
-		viewer.open();
+		openViewer();
 	};
 	return (
 		<>
 			<img
-				ref={viewer.ref}
+				ref={viewerRef}
 				src={src}
 				alt={alt}
 				draggable={false}
@@ -68,18 +66,18 @@ function ViewableImage({
 				className={cn(
 					"border-border-subtle bg-muted/30 block w-auto rounded-lg border object-contain",
 					IMAGE_CLASS[size],
-					viewer.available &&
+					available &&
 						"focus-visible:ring-ring/50 cursor-zoom-in outline-none focus-visible:ring-3",
 				)}
-				role={viewer.available ? "button" : undefined}
-				tabIndex={viewer.available ? 0 : undefined}
-				aria-label={viewer.available ? `Open ${alt} in viewer` : undefined}
+				role={available ? "button" : undefined}
+				tabIndex={available ? 0 : undefined}
+				aria-label={available ? `Open ${alt} in viewer` : undefined}
 				onLoad={() => setLoaded(src)}
 				onError={() => setFailed(src)}
-				onClick={viewer.available ? viewer.open : undefined}
-				onKeyDown={viewer.available ? onKeyDown : undefined}
+				onClick={available ? openViewer : undefined}
+				onKeyDown={available ? onKeyDown : undefined}
 			/>
-			{viewer.lightbox}
+			{lightbox}
 		</>
 	);
 }
@@ -127,10 +125,7 @@ function WorkspaceImage({
 }) {
 	const { connection } = useChatConnection();
 	const folders = useChatMarkdownContext()?.workspaceFolders;
-	const target = useMemo(
-		() => (folders ? resolvePathInFolders(folders, path) : null),
-		[folders, path],
-	);
+	const target = folders ? resolvePathInFolders(folders, path) : null;
 	const image = useQuery({
 		queryKey: [
 			"kilo.chat",

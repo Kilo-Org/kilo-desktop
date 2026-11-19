@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 
 import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -13,7 +13,7 @@ import {
 	MCP_APP_SHELL_READY_MESSAGE,
 	clampHtmlRenderHeight,
 } from "../../contracts";
-import { useDiffTheme } from "../tools/diff-theme";
+import { useDiffTheme, type DiffTheme } from "../tools/diff-theme";
 import {
 	htmlRenderThemeMessage,
 	injectHtmlRenderBootstrap,
@@ -100,10 +100,13 @@ function confirmOpenLink(
 export function useHtmlRenderTheme(): HtmlRenderTheme {
 	const appearance = useDiffTheme();
 	const [theme, setTheme] = useState(() => readHtmlRenderTheme(appearance.mode));
+	// The shell applies the new theme's variables after notifying, so read them
+	// on the next frame. A new Shiki theme restyles them too, without a new mode.
+	const readThemeNextFrame = useEffectEvent((mode: DiffTheme["mode"], _shiki: string) =>
+		requestAnimationFrame(() => setTheme(readHtmlRenderTheme(mode))),
+	);
 	useEffect(() => {
-		// The shell applies the new theme's variables after notifying, so read
-		// them on the next frame.
-		const frame = requestAnimationFrame(() => setTheme(readHtmlRenderTheme(appearance.mode)));
+		const frame = readThemeNextFrame(appearance.mode, appearance.shiki);
 		return () => cancelAnimationFrame(frame);
 	}, [appearance.mode, appearance.shiki]);
 	return theme;
@@ -144,32 +147,35 @@ export function HtmlRenderFrame({
 	const os = useDomainObject(KernelOs);
 	const linkPromptId = useId();
 	const theme = useHtmlRenderTheme();
-	const themeRef = useRef(theme);
-	themeRef.current = theme;
 	const iframeRef = useRef<HTMLIFrameElement>(null);
-	const shellSrc = useMemo(() => htmlRenderShellSrc(window.location), []);
+	const [shellSrc] = useState(() => htmlRenderShellSrc(window.location));
 	const shellReady = useRef(false);
 	const pageDelivered = useRef(false);
-	const [shellError, setShellError] = useState(false);
+	// The page whose shell never reported ready; a new page clears it.
+	const [failedPage, setFailedPage] = useState<string | null>(null);
+	const shellError = failedPage === html;
 	const [contentHeight, setContentHeight] = useState(() =>
 		heightCacheKey === undefined ? undefined : reportedHeights.get(heightCacheKey),
 	);
-	const [blobUrl, setBlobUrl] = useState<string | null>(null);
+	// The page is handed over once, themed as the app is at that moment.
+	const bootstrapPage = useEffectEvent((page: string) => injectHtmlRenderBootstrap(page, theme));
 
+	// Without the shell the page loads from a blob: URL, which lives exactly as
+	// long as this effect, so it is pointed at imperatively.
 	useEffect(() => {
-		if (shellSrc) return;
-		const page = injectHtmlRenderBootstrap(html, themeRef.current);
+		const iframe = iframeRef.current;
+		if (shellSrc || !iframe) return;
+		const page = bootstrapPage(html);
 		const url = URL.createObjectURL(new Blob([page], { type: "text/html" }));
-		setBlobUrl(url);
+		iframe.src = url;
 		return () => URL.revokeObjectURL(url);
 	}, [html, shellSrc]);
 
 	useEffect(() => {
 		if (!shellSrc) return;
 		shellReady.current = false;
-		setShellError(false);
 		const timer = setTimeout(() => {
-			if (!shellReady.current) setShellError(true);
+			if (!shellReady.current) setFailedPage(html);
 		}, SHELL_READY_TIMEOUT_MS);
 		return () => clearTimeout(timer);
 	}, [html, shellSrc]);
@@ -185,7 +191,7 @@ export function HtmlRenderFrame({
 				// (e.g. the widget shell, under a looser policy).
 				if (pageDelivered.current) return;
 				pageDelivered.current = true;
-				const page = injectHtmlRenderBootstrap(html, themeRef.current);
+				const page = bootstrapPage(html);
 				frame.postMessage({ type: MCP_APP_SHELL_HTML_MESSAGE, html: page }, "*");
 				return;
 			}
@@ -213,8 +219,6 @@ export function HtmlRenderFrame({
 	if (shellError) {
 		return <p className="text-muted-foreground py-2 text-sm">This page failed to load.</p>;
 	}
-	const src = shellSrc ?? blobUrl;
-	if (!src) return null;
 
 	const height =
 		fit === "content"
@@ -223,7 +227,7 @@ export function HtmlRenderFrame({
 	return (
 		<iframe
 			ref={iframeRef}
-			src={src}
+			src={shellSrc}
 			sandbox="allow-scripts"
 			referrerPolicy="no-referrer"
 			title={title}

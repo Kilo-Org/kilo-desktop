@@ -40,7 +40,7 @@ Key rules for agents changing this repo:
 ## Kernel API entry points
 
 - [@kilo-desktop/kernel](packages/kernel/src/index.ts): `definePlugin`, `defineExtensionPoint`, `defineDecisionExtensionPoint`, `implementation`, `defineDomainObject`, `method`, `defineObjectType`, `ref`, `KernelError`, `mainHost`, kernel extension points (`KernelCommand`, `KernelService`, `KernelQuit`, `KernelWindowView`, `KernelFlag`, …) and domain objects (`KernelApp`, `KernelWindows`, `KernelIdentity`, `KernelFlags`, `KernelTelemetry`, …)
-- [@kilo-desktop/kernel/web](packages/kernel/src/web/index.ts): React bindings — `useSdk`, `useExtensions`, `useExclusive`, `useDomainObject`, `useDomainObjectState`, `useContextKey`, `RenderContribution`, `useDragSource`, `useDropTarget`
+- [@kilo-desktop/kernel/web](packages/kernel/src/web/index.ts): React bindings — `useSdk`, `useExtensions`, `useExclusive`, `useDomainObject`, `useDomainObjectState`, `useContextKey`, `RenderContribution`, `dragSourceProps`, `useDropTarget`
 - [@kilo-desktop/kernel/main](packages/kernel/src/main/index.ts): the main-process kernel and service supervisor (host use)
 - [@kilo-desktop/kernel/testing](packages/kernel/src/testing/index.ts): `createTestKernelPair`, `createTestHost`, `createMemoryStorage`
 - [@kilo-desktop/kernel/testing/plugin-host](packages/kernel/src/testing/plugin-host.tsx): `createPluginHost` → `renderSlot`, `invoke`

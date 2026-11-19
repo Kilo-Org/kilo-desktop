@@ -1,4 +1,3 @@
-import { memo, useMemo } from "react";
 import { DownloadIcon, Maximize2Icon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -25,13 +24,10 @@ function HtmlRenderView({
 	cacheKey,
 }: HtmlRenderInput & { readonly cacheKey: string }) {
 	const saveToWorkspace = useSaveHtmlPage();
-	const lightboxInput = useMemo<LightboxItemInput>(
-		() => ({ kind: "page", title, html }),
-		[title, html],
-	);
-	const viewer = useLightboxItem(lightboxInput);
+	const lightboxInput: LightboxItemInput = { kind: "page", title, html };
+	const { ref: viewerRef, open: openViewer, lightbox } = useLightboxItem(lightboxInput);
 	return (
-		<div ref={viewer.ref} className="group/html-render my-3" data-qa-id="kilo-html-render">
+		<div ref={viewerRef} className="group/html-render my-3" data-qa-id="kilo-html-render">
 			<HtmlRenderFrame
 				html={html}
 				title={title}
@@ -57,12 +53,12 @@ function HtmlRenderView({
 					size="icon-xs"
 					aria-label={`Open ${title} in viewer`}
 					data-qa-id="kilo-html-render-open"
-					onClick={viewer.open}
+					onClick={openViewer}
 				>
 					<Maximize2Icon />
 				</Button>
 			</div>
-			{viewer.lightbox}
+			{lightbox}
 		</div>
 	);
 }
@@ -70,7 +66,7 @@ function HtmlRenderView({
 type HtmlRenderPartProps = Pick<ToolCallView, "toolCallId" | "args" | "status" | "result">;
 
 /** The agent's page for one `html_render` call, or its loading/error state. */
-export const HtmlRenderPart = memo(({ toolCallId, args, status, result }: HtmlRenderPartProps) => {
+export const HtmlRenderPart = ({ toolCallId, args, status, result }: HtmlRenderPartProps) => {
 	const page = readHtmlRenderArgs(args);
 	if (status.type === "complete" && page) {
 		return <HtmlRenderView key={toolCallId} cacheKey={toolCallId} {...page} />;
@@ -88,7 +84,7 @@ export const HtmlRenderPart = memo(({ toolCallId, args, status, result }: HtmlRe
 			</span>
 		</div>
 	);
-});
+};
 HtmlRenderPart.displayName = "HtmlRenderPart";
 
 /**

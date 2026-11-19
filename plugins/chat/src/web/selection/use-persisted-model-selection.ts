@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import type { ModelPreferences } from "@kilo-desktop/plugin-core/contracts";
 
@@ -220,17 +220,9 @@ export function usePersistedModelSelection(
 			: (rememberedEffort(preferences, agent, defaultModel) ??
 				(sameModel(defaultModel, configuredModel) ? agentDefault?.effort : undefined))
 		: undefined;
-	const defaultSelection = useMemo<SelectionState>(
-		() =>
-			defaultModel
-				? {
-						...DEFAULT_SELECTION,
-						modelOverride: defaultModel,
-						effort: defaultEffort,
-					}
-				: DEFAULT_SELECTION,
-		[defaultEffort, defaultModel],
-	);
+	const defaultSelection: SelectionState = defaultModel
+		? { ...DEFAULT_SELECTION, modelOverride: defaultModel, effort: defaultEffort }
+		: DEFAULT_SELECTION;
 	const draftSelection = draftSelections[draftScope] ?? defaultSelection;
 	const chatSelection = threadId === undefined ? undefined : chatSelections[scope];
 	const awaitingKilo =
@@ -263,119 +255,96 @@ export function usePersistedModelSelection(
 	// a resolved model with no efforts must clear the previous model's list.
 	const efforts = resolvedEntry ? normalizeEfforts(resolvedEntry.efforts) : selection.efforts;
 
-	const setModel = useCallback(
-		(next: KiloModelRef) => {
-			if (opensUnknownChat) return;
-			const entry = catalogEntry(catalog, next);
-			const nextEffort = entry
-				? (preserveEffort(selection.effort, normalizeEfforts(entry.efforts)) ??
-					rememberedEffort(preferences, agent, next))
-				: selection.effort;
-			store.update((current) => {
-				const active = current[scope] ?? selection;
+	const setModel = (next: KiloModelRef) => {
+		if (opensUnknownChat) return;
+		const entry = catalogEntry(catalog, next);
+		const nextEffort = entry
+			? (preserveEffort(selection.effort, normalizeEfforts(entry.efforts)) ??
+				rememberedEffort(preferences, agent, next))
+			: selection.effort;
+		store.update((current) => {
+			const active = current[scope] ?? selection;
+			const nextName = entry?.name ?? active.name;
+			const nextEfforts = entry ? normalizeEfforts(entry.efforts) : active.efforts;
+			return {
+				...current,
+				[scope]: {
+					...active,
+					modelOverride: next,
+					name: nextName,
+					effort: nextEffort,
+					efforts: nextEfforts,
+					dirty: true,
+				},
+			};
+		});
+		if (threadId === undefined && agent) onRemember?.(agent, next, nextEffort);
+		if (threadId !== undefined) onRecent?.(next);
+	};
+
+	const setEffort = (next: string) => {
+		if (opensUnknownChat) return;
+		const activeModel =
+			resolveCatalogModel(catalog, selection.modelOverride) ?? pickDefaultModel(catalog);
+		store.update((current) => {
+			const active = current[scope] ?? selection;
+			if (activeModel) {
+				const entry = catalogEntry(catalog, activeModel);
 				const nextName = entry?.name ?? active.name;
 				const nextEfforts = entry ? normalizeEfforts(entry.efforts) : active.efforts;
 				return {
 					...current,
 					[scope]: {
 						...active,
-						modelOverride: next,
+						effort: next,
 						name: nextName,
-						effort: nextEffort,
 						efforts: nextEfforts,
 						dirty: true,
 					},
 				};
-			});
-			if (threadId === undefined && agent) onRemember?.(agent, next, nextEffort);
-			if (threadId !== undefined) onRecent?.(next);
-		},
-		[
-			agent,
-			catalog,
-			onRecent,
-			onRemember,
-			opensUnknownChat,
-			preferences,
-			scope,
-			selection,
-			store,
-			threadId,
-		],
-	);
-
-	const setEffort = useCallback(
-		(next: string) => {
-			if (opensUnknownChat) return;
-			const activeModel =
-				resolveCatalogModel(catalog, selection.modelOverride) ?? pickDefaultModel(catalog);
-			store.update((current) => {
-				const active = current[scope] ?? selection;
-				if (activeModel) {
-					const entry = catalogEntry(catalog, activeModel);
-					const nextName = entry?.name ?? active.name;
-					const nextEfforts = entry ? normalizeEfforts(entry.efforts) : active.efforts;
-					return {
-						...current,
-						[scope]: {
-							...active,
-							effort: next,
-							name: nextName,
-							efforts: nextEfforts,
-							dirty: true,
-						},
-					};
-				}
-				return { ...current, [scope]: { ...active, effort: next, dirty: true } };
-			});
-			if (threadId === undefined && agent && activeModel) onRemember?.(agent, activeModel, next);
-		},
-		[agent, catalog, onRemember, opensUnknownChat, scope, selection, store, threadId],
-	);
-	const hydrateThreadModel = useCallback(
-		(id: string, next: { agent: string; model: KiloModelRef; effort?: string }) => {
-			const hydratedScope = `${id}:${next.agent}`;
-			chats.models.update((current) => {
-				const existing = current[hydratedScope];
-				const matches =
-					existing?.modelOverride?.providerID === next.model.providerID &&
-					existing.modelOverride.modelID === next.model.modelID &&
-					existing.effort === next.effort;
-				if (existing?.dirty && !matches) return current;
-				if (matches && !existing.dirty) return current;
-				return {
-					...current,
-					[hydratedScope]: {
-						modelOverride: next.model,
-						name: undefined,
-						effort: next.effort,
-						efforts: undefined,
-						dirty: false,
-					},
-				};
-			});
-			chats.loaded.update(markLoaded(id));
-		},
-		[chats],
-	);
-	/** Kilo's session was read but records no model: the chat starts from the defaults. */
-	const markThreadLoaded = useCallback(
-		(id: string) => chats.loaded.update(markLoaded(id)),
-		[chats],
-	);
-	const promoteDraftModel = useCallback(
-		(id: string) => {
-			const draft = drafts.getSnapshot()[draftScope];
-			chats.models.update((current) => ({
+			}
+			return { ...current, [scope]: { ...active, effort: next, dirty: true } };
+		});
+		if (threadId === undefined && agent && activeModel) onRemember?.(agent, activeModel, next);
+	};
+	const hydrateThreadModel = (
+		id: string,
+		next: { agent: string; model: KiloModelRef; effort?: string },
+	) => {
+		const hydratedScope = `${id}:${next.agent}`;
+		chats.models.update((current) => {
+			const existing = current[hydratedScope];
+			const matches =
+				existing?.modelOverride?.providerID === next.model.providerID &&
+				existing.modelOverride.modelID === next.model.modelID &&
+				existing.effort === next.effort;
+			if (existing?.dirty && !matches) return current;
+			if (matches && !existing.dirty) return current;
+			return {
 				...current,
-				[`${id}:${agent}`]: draft ?? { ...defaultSelection, dirty: true },
-			}));
-		},
-		[agent, chats, defaultSelection, draftScope, drafts],
-	);
-	const resetDraftModel = useCallback(() => {
+				[hydratedScope]: {
+					modelOverride: next.model,
+					name: undefined,
+					effort: next.effort,
+					efforts: undefined,
+					dirty: false,
+				},
+			};
+		});
+		chats.loaded.update(markLoaded(id));
+	};
+	/** Kilo's session was read but records no model: the chat starts from the defaults. */
+	const markThreadLoaded = (id: string) => chats.loaded.update(markLoaded(id));
+	const promoteDraftModel = (id: string) => {
+		const draft = drafts.getSnapshot()[draftScope];
+		chats.models.update((current) => ({
+			...current,
+			[`${id}:${agent}`]: draft ?? { ...defaultSelection, dirty: true },
+		}));
+	};
+	const resetDraftModel = () => {
 		drafts.update((current) => (Object.keys(current).length === 0 ? current : {}));
-	}, [drafts]);
+	};
 
 	return {
 		model,

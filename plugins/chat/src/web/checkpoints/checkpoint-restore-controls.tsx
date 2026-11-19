@@ -80,9 +80,8 @@ export const CheckpointRestoreControls: FC = () => {
 			aui.thread.composer().setText("");
 		} catch {
 			toast.error("Could not restore the reverted messages.");
-		} finally {
-			setIsUndoing(false);
 		}
+		setIsUndoing(false);
 	};
 
 	return (

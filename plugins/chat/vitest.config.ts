@@ -29,7 +29,10 @@ export default defineConfig({
 				},
 			},
 			{
-				plugins: [react(), tailwindcss()],
+				plugins: [
+					react({ compiler: true, exclude: [/\/node_modules\//, /\/\.vitest\//] }),
+					tailwindcss(),
+				],
 				assetsInclude: ["**/*.lottie"],
 				define: {
 					"import.meta.env.KILO_PERF_PROFILE": JSON.stringify(process.env.KILO_PERF_PROFILE ?? ""),

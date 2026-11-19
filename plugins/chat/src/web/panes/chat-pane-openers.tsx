@@ -1,5 +1,6 @@
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -36,6 +37,52 @@ function reportOpenFailure(error: unknown): void {
 	});
 }
 
+interface ViewerPaneTarget {
+	readonly panes: DomainObjectHandle<typeof Panes>;
+	readonly viewers: DomainObjectHandle<typeof MediaViewers>;
+	readonly workSessionId: string;
+	readonly chatId: string | null;
+}
+
+/** Shows `items` in the chat's Viewer pane on `itemId`; false when it could not. */
+async function showInViewerPane(
+	{ panes, viewers, workSessionId, chatId }: ViewerPaneTarget,
+	items: Parameters<OpenMediaPane>[0],
+	itemId: string,
+): Promise<boolean> {
+	const paneId = mediaPaneId(chatId);
+	const key = mediaViewerKey(workSessionId, paneId);
+	try {
+		const shown = await prepareViewerItems(items, itemId);
+		const item = shown.find((candidate) => candidate.id === itemId);
+		if (!item) return false;
+		const { revision } = await viewers.methods.show({
+			workSessionId,
+			paneId,
+			items: shown,
+		});
+		handOffViewerItems(key, revision, shown);
+		try {
+			await panes.methods.open({
+				workSessionId,
+				kind: MEDIA_PANE_KIND,
+				paneId,
+				title: mediaItemTitle(item),
+				iconKey: item.kind,
+				metadata: { [MEDIA_ITEM_METADATA_KEY]: item.id },
+			});
+		} catch (error) {
+			dropViewerHandoff(key);
+			await viewers.methods.discard({ workSessionId, paneId }).catch(() => undefined);
+			throw error;
+		}
+		return true;
+	} catch {
+		// The caller shows the item in a dialog instead.
+		return false;
+	}
+}
+
 /**
  * Lets a transcript open its chat's plan (the work session's one Plan pane, on the
  * revision clicked), its subagents (one Subagent pane per child chat) and its
@@ -54,78 +101,38 @@ export function ChatPaneOpeners({
 }) {
 	const panes = useDomainObject(Panes);
 	const viewers = useDomainObject(MediaViewers);
-	const openPlan = useMemo<OpenPlanPane | null>(
-		() =>
-			panes && chatId && workSessionId
-				? (anchors) =>
-						void panes.methods
-							.open({
-								workSessionId,
-								kind: PLAN_PANE_KIND,
-								title: "Plan",
-								object: chatPaneObject(chatId),
-								metadata: planPaneMetadata(anchors),
-							})
-							.catch(reportOpenFailure)
-				: null,
-		[chatId, panes, workSessionId],
-	);
-	const openSubagent = useMemo<OpenSubagentPane | null>(
-		() =>
-			panes && workSessionId
-				? (childSessionId, title) =>
-						void panes.methods
-							.open({
-								workSessionId,
-								kind: SUBAGENT_PANE_KIND,
-								paneId: subagentPaneId(childSessionId),
-								title,
-								object: chatPaneObject(childSessionId),
-								metadata: subagentPaneMetadata(chatId),
-							})
-							.catch(reportOpenFailure)
-				: null,
-		[chatId, panes, workSessionId],
-	);
-	const openMedia = useMemo<OpenMediaPane | null>(
-		() =>
-			panes && viewers && workSessionId
-				? async (items, itemId) => {
-						const paneId = mediaPaneId(chatId);
-						const key = mediaViewerKey(workSessionId, paneId);
-						try {
-							const shown = await prepareViewerItems(items, itemId);
-							const item = shown.find((candidate) => candidate.id === itemId);
-							if (!item) return false;
-							const { revision } = await viewers.methods.show({
-								workSessionId,
-								paneId,
-								items: shown,
-							});
-							handOffViewerItems(key, revision, shown);
-							try {
-								await panes.methods.open({
-									workSessionId,
-									kind: MEDIA_PANE_KIND,
-									paneId,
-									title: mediaItemTitle(item),
-									iconKey: item.kind,
-									metadata: { [MEDIA_ITEM_METADATA_KEY]: item.id },
-								});
-							} catch (error) {
-								dropViewerHandoff(key);
-								await viewers.methods.discard({ workSessionId, paneId }).catch(() => undefined);
-								throw error;
-							}
-							return true;
-						} catch {
-							// The caller shows the item in a dialog instead.
-							return false;
-						}
-					}
-				: null,
-		[chatId, panes, workSessionId, viewers],
-	);
+	const openPlan: OpenPlanPane | null =
+		panes && chatId && workSessionId
+			? (anchors) =>
+					void panes.methods
+						.open({
+							workSessionId,
+							kind: PLAN_PANE_KIND,
+							title: "Plan",
+							object: chatPaneObject(chatId),
+							metadata: planPaneMetadata(anchors),
+						})
+						.catch(reportOpenFailure)
+			: null;
+	const openSubagent: OpenSubagentPane | null =
+		panes && workSessionId
+			? (childSessionId, title) =>
+					void panes.methods
+						.open({
+							workSessionId,
+							kind: SUBAGENT_PANE_KIND,
+							paneId: subagentPaneId(childSessionId),
+							title,
+							object: chatPaneObject(childSessionId),
+							metadata: subagentPaneMetadata(chatId),
+						})
+						.catch(reportOpenFailure)
+			: null;
+	const openMedia: OpenMediaPane | null =
+		panes && viewers && workSessionId
+			? (items, itemId) =>
+					showInViewerPane({ panes, viewers, workSessionId, chatId }, items, itemId)
+			: null;
 	return (
 		<OpenPlanPaneContext.Provider value={openPlan}>
 			<OpenSubagentPaneContext.Provider value={openSubagent}>

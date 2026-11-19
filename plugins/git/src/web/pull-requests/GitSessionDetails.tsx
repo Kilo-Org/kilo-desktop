@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLinkIcon, GitBranchIcon, GitPullRequestIcon } from "lucide-react";
-import { useCallback } from "react";
 
 import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -19,10 +18,7 @@ import { branchesQuery, repositoryTypeQuery } from "../shared/repository-queries
 /** Opens a URL in the person's browser through kernel/os; failures are ignored. */
 export function useOpenExternal(): (url: string) => void {
 	const os = useDomainObject(KernelOs);
-	return useCallback(
-		(url: string) => void os?.methods.openExternal({ url }).catch(() => undefined),
-		[os],
-	);
+	return (url: string) => void os?.methods.openExternal({ url }).catch(() => undefined);
 }
 
 /**

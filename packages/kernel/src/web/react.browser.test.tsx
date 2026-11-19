@@ -8,7 +8,7 @@ import { defineObjectType, ref, type ObjectRef } from "../object-type";
 import { defineExtensionPoint } from "../extension-point";
 import type { PluginSdk } from "../sdk";
 import { createTestKernelPair, testPlugin } from "../testing";
-import { useDragSource, useDropTarget } from "./dnd";
+import { dragSourceProps, useDropTarget } from "./dnd";
 import {
 	KernelProvider,
 	useContextKey,
@@ -163,7 +163,7 @@ describe("useDomainObjectState with an equality check", () => {
 
 describe("drag and drop hooks", () => {
 	function DragAndDrop({ onDrop }: { readonly onDrop: (refs: ObjectRef[]) => void }) {
-		const source = useDragSource([ref(Session, "s1")]);
+		const source = dragSourceProps([ref(Session, "s1")]);
 		const target = useDropTarget({ accepts: [Session], onDrop });
 		return (
 			<div>
@@ -204,7 +204,7 @@ describe("drag and drop hooks", () => {
 		const onOver = vi.fn();
 		const onLeave = vi.fn();
 		function Target() {
-			const source = useDragSource([ref(Session, "s1")]);
+			const source = dragSourceProps([ref(Session, "s1")]);
 			const target = useDropTarget({ accepts: [Session], onDrop: () => {}, onOver, onLeave });
 			return (
 				<div>
@@ -242,7 +242,7 @@ describe("drag and drop hooks", () => {
 	it("offers nothing from a disabled source", async () => {
 		function Source() {
 			return (
-				<div data-qa-id="source" {...useDragSource([ref(Session, "s1")], { disabled: true })}>
+				<div data-qa-id="source" {...dragSourceProps([ref(Session, "s1")], { disabled: true })}>
 					Session
 				</div>
 			);

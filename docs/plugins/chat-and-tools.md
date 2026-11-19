@@ -139,15 +139,26 @@ Buttons, menus, popovers or your own view in the composer:
 A `kind: "action"` with a `command` needs no code: clicking runs the
 command. Otherwise implement it:
 
-| `kind`    | Implementation                                           |
-| --------- | -------------------------------------------------------- |
-| `action`  | `{ kind, useButton?(context), run?(context) }`           |
-| `menu`    | `{ kind, useMenu(context) → { items, value?, select } }` |
-| `popover` | `{ kind, useTrigger?(context), Content }`                |
-| `view`    | `{ kind, Component }` drawn as-is (a branch label)       |
+| `kind`    | Implementation                                             |
+| --------- | ---------------------------------------------------------- |
+| `action`  | `{ kind, Button?, run?(context) }`                         |
+| `menu`    | `{ kind, Menu }`, handing over `{ items, value?, select }` |
+| `popover` | `{ kind, Trigger?, Content }`                              |
+| `view`    | `{ kind, Component }` drawn as-is (a branch label)         |
 
-`use…` functions run as hooks while the composer shows, so they can read
-your domain objects. `context` has `workSessionId` (null on the New Session
+`Button`, `Menu` and `Trigger` are components the composer renders while
+the action shows, with `{ context, children }`: read your domain objects
+with hooks and return `children(value)` — the button's label, icon and
+state (or the menu) — and the composer draws it:
+
+```tsx
+function SyncButton({ children }: ComposerActionStateProps<ComposerActionButton>) {
+	const syncing = useDomainObjectState(Sync, (state) => state.running);
+	return children({ icon: RefreshCwIcon, busy: syncing });
+}
+```
+
+`context` has `workSessionId` (null on the New Session
 page, where the first send creates the work session), `chatId` (null for a
 draft), `directory`, `workspaceId` and `workspaceFolders`. Slots: `toolbar`,
 `toolbar-end` (before send), `footer` (under a chat's composer in a work

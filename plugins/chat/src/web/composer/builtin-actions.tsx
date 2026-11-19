@@ -1,20 +1,24 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { PlusIcon } from "lucide-react";
 
-import type { ComposerActionButton, ComposerActionImplementation } from "../../contracts";
+import type {
+	ComposerActionButton,
+	ComposerActionImplementation,
+	ComposerActionStateProps,
+} from "../../contracts";
 import { agentAction } from "../selection/kilo-agent-selector";
 import { approvalAction } from "../selection/kilo-approval-selector";
-import { KiloModelSelectorContent, useKiloModelTrigger } from "../selection/kilo-model-selector";
+import { KiloModelSelectorContent, KiloModelTrigger } from "../selection/kilo-model-selector";
 import {
 	unavailableFoldersDraftAction,
 	unavailableFoldersFooterAction,
 } from "./unavailable-folders";
 
 /** Opens the file picker and adds the chosen files to the composer, as assistant-ui's button does. */
-function useAttachButton(): ComposerActionButton {
+function AttachButton({ children }: ComposerActionStateProps<ComposerActionButton>) {
 	const aui = useAui();
 	const editing = useAuiState((s) => s.composer.isEditing);
-	return {
+	return children({
 		icon: PlusIcon,
 		tooltip: "Add attachment",
 		disabled: !editing,
@@ -36,7 +40,7 @@ function useAttachButton(): ComposerActionButton {
 			input.oncancel = () => input.remove();
 			input.click();
 		},
-	};
+	});
 }
 
 /**
@@ -44,9 +48,9 @@ function useAttachButton(): ComposerActionButton {
  * point like anyone's (their manifest entries give slot, kind and order).
  */
 export const BUILTIN_COMPOSER_ACTIONS: Readonly<Record<string, ComposerActionImplementation>> = {
-	attach: { kind: "action", useButton: useAttachButton },
+	attach: { kind: "action", Button: AttachButton },
 	agent: agentAction,
-	model: { kind: "popover", useTrigger: useKiloModelTrigger, Content: KiloModelSelectorContent },
+	model: { kind: "popover", Trigger: KiloModelTrigger, Content: KiloModelSelectorContent },
 	approval: approvalAction,
 	"unavailable-folders": unavailableFoldersFooterAction,
 	"unavailable-folders-draft": unavailableFoldersDraftAction,

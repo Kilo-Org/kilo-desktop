@@ -135,13 +135,26 @@ export function withRepositoryQueries<TProps extends object>(
 	queries: QueryClient,
 	Component: ComponentType<TProps>,
 ): ComponentType<TProps> {
-	function WithRepositoryQueries(props: TProps) {
-		return (
-			<QueryClientProvider client={queries}>
-				<Component {...props} />
-			</QueryClientProvider>
-		);
-	}
-	WithRepositoryQueries.displayName = `WithRepositoryQueries(${Component.displayName ?? Component.name})`;
-	return WithRepositoryQueries;
+	return Object.assign(
+		(props: TProps) => (
+			<RepositoryQueriesBoundary queries={queries} component={Component} componentProps={props} />
+		),
+		{ displayName: `WithRepositoryQueries(${Component.displayName ?? Component.name})` },
+	);
+}
+
+function RepositoryQueriesBoundary<TProps extends object>({
+	queries,
+	component: Component,
+	componentProps,
+}: {
+	readonly queries: QueryClient;
+	readonly component: ComponentType<TProps>;
+	readonly componentProps: TProps;
+}) {
+	return (
+		<QueryClientProvider client={queries}>
+			<Component {...componentProps} />
+		</QueryClientProvider>
+	);
 }

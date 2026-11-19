@@ -1,12 +1,4 @@
-import {
-	Fragment,
-	useCallback,
-	useMemo,
-	useRef,
-	useState,
-	type DragEvent,
-	type ReactNode,
-} from "react";
+import { Fragment, useRef, useState, type DragEvent, type ReactNode } from "react";
 
 import { useDomainObjectState, useDropTarget } from "@kilo-desktop/kernel/web";
 import {
@@ -47,21 +39,15 @@ export function BoardView({ focus, openWorkSession, detached, renderers }: WorkS
 	const sessions = useDomainObjectState(WorkSessions, selectSessions) ?? NO_SESSIONS;
 	const workspaces = useDomainObjectState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	const naming = useSignal(columnToName);
-	const sessionsById = useMemo(
-		() => new Map(sessions.map((session) => [session.id, session])),
-		[sessions],
-	);
-	const columns = useMemo(
-		() => resolveColumns(board, sessionsById, focus),
-		[board, focus, sessionsById],
-	);
-	const reorder = useColumnReorder(columns);
-	const onNamingStarted = useCallback(() => columnToName.set(null), []);
+	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+	const columns = resolveColumns(board, sessionsById, focus);
+	const { stripRef, ...reorder } = useColumnReorder(columns);
+	const onNamingStarted = () => columnToName.set(null);
 
 	return (
 		<div data-qa-id="workspace-board" className="flex h-full min-h-0 flex-col">
 			<div
-				ref={reorder.stripRef}
+				ref={stripRef}
 				data-board-columns
 				{...reorder.stripProps}
 				// A size container, so columns can cap their cards at the strip's height (cqh).

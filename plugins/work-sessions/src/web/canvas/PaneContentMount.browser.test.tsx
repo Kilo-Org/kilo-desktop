@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -12,13 +12,12 @@ import {
 describe("PaneContentMount", () => {
 	it("reattaches a remounted host to a target that stayed mounted", async () => {
 		function Harness() {
-			const parkingRef = useRef<HTMLDivElement>(null);
-			const [registry] = useState(() => createPaneContentMountRegistry(parkingRef));
+			const [registry] = useState(createPaneContentMountRegistry);
 			const [showContent, setShowContent] = useState(true);
 
 			return (
 				<>
-					<div ref={parkingRef} hidden />
+					<div ref={(element) => registry.setParking(element)} hidden />
 					<button type="button" onClick={() => setShowContent((shown) => !shown)}>
 						Toggle content
 					</button>

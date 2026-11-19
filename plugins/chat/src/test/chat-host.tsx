@@ -5,7 +5,7 @@
 // memory, and the window's `window` object), and kilo.chat's panes rendered
 // as kilo.work-sessions' canvas renders them.
 import { render } from "@testing-library/react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { vi } from "vitest";
 
 import { KernelClipboard, type DomainObjectState, type PluginEntry } from "@kilo-desktop/kernel";
@@ -239,10 +239,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	function Canvas({ kernel }: { kernel: typeof renderer }) {
 		const state = useDomainObjectState(
 			Panes,
-			useCallback(
-				(value: DomainObjectState<typeof Panes>) => value.byWorkSession[initialWorkSession.id],
-				[],
-			),
+			(value: DomainObjectState<typeof Panes>) => value.byWorkSession[initialWorkSession.id],
 		);
 		const kinds = kernel.extensions.list(PaneKind);
 		return (
@@ -276,7 +273,11 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const starterCalls = { open: vi.fn<(workSessionId: string) => void>(), start: vi.fn() };
 	let starterFocusRequest = 0;
 	/** The New Session page around kilo.chat's starter, starting work sessions as kilo.work-sessions does. */
-	function Starter({ isolation, holdStart }: NonNullable<ChatHostOptions["starter"]>) {
+	function Starter({
+		isolation,
+		holdStart,
+		focusRequest,
+	}: NonNullable<ChatHostOptions["starter"]> & { focusRequest: number }) {
 		const [starting, setStarting] = useState(false);
 		const contribution = renderer.extensions.list(WorkSessionStarter)[0];
 		if (!contribution?.implementation) return null;
@@ -302,7 +303,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		return (
 			<RenderContribution<WorkSessionStarterProps>
 				contribution={contribution}
-				props={{ workspaceId, directory, starting, start, focusRequest: starterFocusRequest }}
+				props={{ workspaceId, directory, starting, start, focusRequest }}
 			/>
 		);
 	}
@@ -311,7 +312,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const tree = () => (
 		<KernelProvider kernel={renderer}>
 			{options.starter ? (
-				<Starter {...options.starter} />
+				<Starter {...options.starter} focusRequest={starterFocusRequest} />
 			) : ownsCanvas ? (
 				<Canvas kernel={renderer} />
 			) : null}

@@ -1,7 +1,17 @@
-import { useMemo, useRef, useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 
-import { KernelCommand, KernelKeybindings, type CommandContribution } from "@kilo-desktop/kernel";
-import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
+import {
+	KernelCommand,
+	KernelKeybindings,
+	type CommandContribution,
+	type KeybindingResolution,
+} from "@kilo-desktop/kernel";
+import {
+	useDomainObject,
+	useDomainObjectState,
+	useKernel,
+	type RendererKernel,
+} from "@kilo-desktop/kernel/web";
 
 const EMPTY_OVERRIDES: Readonly<Record<string, string | null>> = {};
 const selectOverrides = (state: { overrides: Readonly<Record<string, string | null>> }) =>
@@ -29,16 +39,24 @@ export function useDeclaredCommands(): readonly CommandContribution[] {
 	);
 }
 
+/**
+ * The kernel resolves from its own state; `commands` and `overrides` are taken
+ * only to key memoization on what that state is derived from.
+ */
+function resolveKeybindings(
+	keyboard: RendererKernel["keyboard"],
+	_commands: readonly CommandContribution[],
+	_overrides: Readonly<Record<string, string | null>>,
+): KeybindingResolution {
+	return keyboard.resolution();
+}
+
 /** Commands, the user's overrides and the effective bindings they produce. */
 export function useShortcuts() {
 	const kernel = useKernel();
 	const commands = useDeclaredCommands();
 	const keybindings = useDomainObject(KernelKeybindings);
 	const overrides = useDomainObjectState(KernelKeybindings, selectOverrides) ?? EMPTY_OVERRIDES;
-	const resolution = useMemo(
-		() => kernel.keyboard.resolution(),
-		// Recomputed whenever commands or overrides change.
-		[kernel, commands, overrides],
-	);
+	const resolution = resolveKeybindings(kernel.keyboard, commands, overrides);
 	return { commands, overrides, resolution, keybindings, platform: kernel.keyboard.platform };
 }

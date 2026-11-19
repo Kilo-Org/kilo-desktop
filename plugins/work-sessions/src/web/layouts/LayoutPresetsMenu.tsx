@@ -224,8 +224,11 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 
 	function openSave(preset?: LayoutPreset) {
 		action.setError(null);
+		if (!panes) {
+			action.setError("This session's panes are unavailable.");
+			return;
+		}
 		try {
-			if (!panes) throw new Error("This session's panes are unavailable.");
 			const current = captureLayoutTemplate(sessionPanesOf(panes, workSession.id), kinds);
 			if (current.template.slots.length === 0) {
 				action.setError("No reusable panes to save. Open a pane with + first.");
@@ -255,19 +258,6 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 		return pane.object !== undefined && openerFor(sdk, pane.object) !== undefined;
 	}
 
-	/** Applies a preset, first asking when it would close panes it has no slot for. */
-	function apply(preset: LayoutPreset) {
-		if (!panes) return;
-		const { unplaced } = planLayoutTemplate(
-			preset.template,
-			sessionPanesOf(panes, workSession.id),
-			kinds,
-			{ closed: closedChats() },
-		);
-		if (unplaced.length > 0) setConfirming({ preset, closing: unplaced });
-		else applyNow(preset);
-	}
-
 	function applyNow(preset: LayoutPreset, onApplied?: () => void) {
 		if (!panes) return;
 		action.run(
@@ -284,6 +274,19 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 				track("layout-preset-applied");
 			},
 		);
+	}
+
+	/** Applies a preset, first asking when it would close panes it has no slot for. */
+	function apply(preset: LayoutPreset) {
+		if (!panes) return;
+		const { unplaced } = planLayoutTemplate(
+			preset.template,
+			sessionPanesOf(panes, workSession.id),
+			kinds,
+			{ closed: closedChats() },
+		);
+		if (unplaced.length > 0) setConfirming({ preset, closing: unplaced });
+		else applyNow(preset);
 	}
 
 	function closeSave() {

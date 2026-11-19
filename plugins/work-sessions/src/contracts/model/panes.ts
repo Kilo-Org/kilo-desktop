@@ -96,6 +96,12 @@ export const openPaneInputSchema = z.object({
 	 * pane, so the chat stays in view).
 	 */
 	placement: z.enum(["tab", "group"]).optional(),
+	/**
+	 * With `tab`, the group the tab joins instead of the active pane's (a
+	 * group's own "+"). Placing it here rather than moving it after it opens
+	 * keeps the canvas from showing it in a column of its own for a frame.
+	 */
+	groupId: z.string().min(1).optional(),
 });
 export type OpenPaneInput = z.input<typeof openPaneInputSchema>;
 

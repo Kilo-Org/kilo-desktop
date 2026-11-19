@@ -1,3 +1,4 @@
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { LexicalComposerInput } from "@assistant-ui/react-lexical";
@@ -15,7 +16,6 @@ import {
 	type FC,
 	type KeyboardEvent,
 	type Ref,
-	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -55,18 +55,16 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	onEnter,
 	style,
 }) => {
-	// Stable, so a re-render doesn't detach and re-attach it (and set the label again).
-	const attachInput = useCallback(
-		(node: HTMLDivElement | null) => {
-			if (typeof ref === "function") ref(node);
-			else if (ref) ref.current = node;
-			node?.querySelector("[contenteditable]")?.setAttribute("aria-label", "Message input");
-		},
-		[ref],
-	);
+	const editorGeneration = useEditorGeneration();
+	// Cached on `ref`, so a re-render doesn't detach and re-attach it (and set the label again).
+	const attachInput = (node: HTMLDivElement | null) => {
+		if (typeof ref === "function") ref(node);
+		else if (ref) ref.current = node;
+		node?.querySelector("[contenteditable]")?.setAttribute("aria-label", "Message input");
+	};
 	return (
 		<LexicalComposerInput
-			key={useEditorGeneration()}
+			key={editorGeneration}
 			ref={attachInput}
 			formatter={formatter}
 			directiveChip={KiloDirectiveChip}
@@ -210,8 +208,7 @@ function SteerQueueOnEnterPlugin({
 
 function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
 	const [editor] = useLexicalComposerContext();
-	const latest = useRef(onEnter);
-	latest.current = onEnter;
+	const latest = useLatestRef(onEnter);
 	useEffect(
 		() =>
 			editor.registerCommand(
@@ -226,7 +223,7 @@ function EnterOverridePlugin({ onEnter }: { onEnter: () => boolean }) {
 				},
 				COMMAND_PRIORITY_CRITICAL,
 			),
-		[editor],
+		[editor, latest],
 	);
 	return null;
 }

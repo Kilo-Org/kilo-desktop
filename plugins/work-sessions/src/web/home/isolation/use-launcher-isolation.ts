@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { useContextKey, useDomainObject } from "@kilo-desktop/kernel/web";
 import { WorkSessions, type IsolationOptions, type WorkSessionIsolation } from "../../../contracts";
@@ -51,22 +51,30 @@ export function useLauncherIsolation(workspaceId: string | null): LauncherIsolat
 	const vcs = useContextKey(HAS_VCS_KEY);
 	const [loaded, setLoaded] = useState<{ workspaceId: string; options: IsolationOptions | null }>();
 	const [picked, setPicked] = useState<Record<string, WorkSessionIsolation>>({});
-	const [generation, setGeneration] = useState(0);
-	const reload = useCallback(() => setGeneration((value) => value + 1), []);
 	const loading = useRef<{ workspaceId: string; options: Promise<IsolationOptions | null> }>(null);
+
+	// Only the latest request may land, so a reload or workspace switch drops
+	// any answer still in flight.
+	const load = (methods: NonNullable<typeof sessions>["methods"], id: string) => {
+		const request = methods.isolationOptions({ workspaceId: id }).catch(() => null);
+		const entry = { workspaceId: id, options: request };
+		loading.current = entry;
+		void request.then((options) => {
+			if (loading.current === entry) setLoaded({ workspaceId: id, options });
+		});
+	};
+	const reload = () => {
+		if (sessions && vcs && workspaceId) load(sessions.methods, workspaceId);
+	};
+	const loadSelected = useEffectEvent(load);
 
 	useEffect(() => {
 		if (!sessions || !vcs || !workspaceId) return;
-		let current = true;
-		const request = sessions.methods.isolationOptions({ workspaceId }).catch(() => null);
-		loading.current = { workspaceId, options: request };
-		void request.then((options) => {
-			if (current) setLoaded({ workspaceId, options });
-		});
+		loadSelected(sessions.methods, workspaceId);
 		return () => {
-			current = false;
+			loading.current = null;
 		};
-	}, [sessions, vcs, workspaceId, generation]);
+	}, [sessions, vcs, workspaceId]);
 
 	useEffect(() => {
 		globalThis.addEventListener("focus", reload);
@@ -86,14 +94,11 @@ export function useLauncherIsolation(workspaceId: string | null): LauncherIsolat
 					pending: loaded.workspaceId !== workspaceId,
 				}
 			: null;
-	const change = useCallback(
-		(next: WorkSessionIsolation, remember?: IsolationMode) => {
-			if (!workspaceId) return;
-			setPicked((current) => ({ ...current, [workspaceId]: next }));
-			if (remember) rememberIsolationMode(workspaceId, remember);
-		},
-		[workspaceId],
-	);
+	const change = (next: WorkSessionIsolation, remember?: IsolationMode) => {
+		if (!workspaceId) return;
+		setPicked((current) => ({ ...current, [workspaceId]: next }));
+		if (remember) rememberIsolationMode(workspaceId, remember);
+	};
 	// A start right after switching workspace must not go out without the new workspace's isolation.
 	const resolve = async (): Promise<WorkSessionIsolation | null> => {
 		if (!vcs || !workspaceId || loaded?.workspaceId === workspaceId) return value;

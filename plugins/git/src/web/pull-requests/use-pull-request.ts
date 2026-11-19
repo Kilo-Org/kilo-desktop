@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback } from "react";
 
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import {
@@ -23,11 +22,8 @@ export function useWorkSessionDirectory(workSession: WorkSession): string | null
 
 /** The last pull request lookup for `directory`. */
 export function usePullRequestEntry(directory: string | null): PullRequestEntry | undefined {
-	const select = useCallback(
-		(state: { byDirectory: Readonly<Record<string, PullRequestEntry>> }) =>
-			directory ? state.byDirectory[directory] : undefined,
-		[directory],
-	);
+	const select = (state: { byDirectory: Readonly<Record<string, PullRequestEntry>> }) =>
+		directory ? state.byDirectory[directory] : undefined;
 	return useDomainObjectState(PullRequests, select);
 }
 

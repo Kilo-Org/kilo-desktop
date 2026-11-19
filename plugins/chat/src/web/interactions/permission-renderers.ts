@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import type { Contribution } from "@kilo-desktop/kernel";
 import { useExtensions } from "@kilo-desktop/kernel/web";
 import { Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
@@ -98,10 +96,7 @@ export function questionOptionWarnings(
 /** The window's permission renderers. */
 export function usePermissionRenderers(): readonly PermissionRendererContribution[] {
 	const contributions = useExtensions(PermissionRenderer);
-	return useMemo(
-		() => contributions.filter((contribution) => contribution.implementation !== undefined),
-		[contributions],
-	);
+	return contributions.filter((contribution) => contribution.implementation !== undefined);
 }
 
 /**

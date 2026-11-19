@@ -4,7 +4,7 @@
 import { type CodeViewItem, processFile } from "@pierre/diffs";
 import { type CodeViewHandle, useStableCallback } from "@pierre/diffs/react";
 import useLatest from "react-use/esm/useLatest.js";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type RefObject } from "react";
 
 import { PATCH_BYTE_LENGTH_HEADER } from "../../contracts";
 import {
@@ -181,15 +181,17 @@ export function usePatchLoader({
 	// bulk updates and refresh commits. Deleted-file diffs initialize
 	// collapsed by default, so the overwrite is unconditional — otherwise
 	// they would stay collapsed even in expanded mode.
-	const prepareItemsForViewer = (items: readonly CodeViewItem<undefined>[]): void => {
-		const targetCollapsed = collapseModeRef.current === "collapsed";
-		for (const item of items) {
-			livePatchKeysRef.current.set(item.id, rawPatchKey(item));
-			if (item.type === "diff") {
-				item.collapsed = targetCollapsed;
+	const prepareItemsForViewer = useEffectEvent(
+		(items: readonly CodeViewItem<undefined>[]): void => {
+			const targetCollapsed = collapseModeRef.current === "collapsed";
+			for (const item of items) {
+				livePatchKeysRef.current.set(item.id, rawPatchKey(item));
+				if (item.type === "diff") {
+					item.collapsed = targetCollapsed;
+				}
 			}
-		}
-	};
+		},
+	);
 
 	const applyCollapseModeToLoaded = useStableCallback((mode: "expanded" | "collapsed") => {
 		const targetCollapsed = mode === "collapsed";
@@ -273,7 +275,7 @@ export function usePatchLoader({
 			const requestId = ++requestIdRef.current;
 			const isCurrentRequest = () => requestIdRef.current === requestId && !signal.aborted;
 
-			try {
+			const stream = async (): Promise<void> => {
 				if (inPlace) {
 					// In-place refresh: nothing resets — the current diff, empty
 					// state or error panel stays on screen until the commit.
@@ -455,8 +457,8 @@ export function usePatchLoader({
 							livePatchKeysRef.current.set(itemIdRename.newId, rawKey);
 						}
 					}
-					pendingPublishFileCount++;
-					pendingTreePublishFileCount++;
+					pendingPublishFileCount += 1;
+					pendingTreePublishFileCount += 1;
 					if (performance.now() - lastWorkYieldTime >= STREAM_WORK_BUDGET_MS) {
 						await publishPendingData();
 					} else {
@@ -513,7 +515,9 @@ export function usePatchLoader({
 				setRefreshError(null);
 				setDiffStats({ ...accumulator.diffStats });
 				setLoadState("ready");
-			} catch (error) {
+			};
+
+			const fail = (error: unknown) => {
 				if (!isCurrentRequest()) {
 					return;
 				}
@@ -534,13 +538,17 @@ export function usePatchLoader({
 				setTreeSource(null);
 				setTreeSourceDirectory(null);
 				setDiffStats(null);
-			} finally {
-				// An aborted load (folder switch, unmount) must not clobber
-				// the flags of the load that superseded it.
-				if (isCurrentRequest()) {
-					setRefreshing(false);
-				}
-			}
+			};
+
+			await stream()
+				.catch(fail)
+				.finally(() => {
+					// An aborted load (folder switch, unmount) must not clobber
+					// the flags of the load that superseded it.
+					if (isCurrentRequest()) {
+						setRefreshing(false);
+					}
+				});
 		};
 
 		queueRefreshRef.current = () => throttler.queue((signal) => load(signal, true));
@@ -549,7 +557,7 @@ export function usePatchLoader({
 		return () => {
 			throttler.dispose();
 		};
-	}, [unlimited, viewerRef, workspaceDirectory]);
+	}, [collapseModeRef, loadStateRef, unlimited, viewerRef, workspaceDirectory]);
 
 	// A disposed throttler (folder switch, unmount) rejects the queue call;
 	// the superseding load owns the view by then, so there is nothing to do.

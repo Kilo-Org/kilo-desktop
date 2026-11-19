@@ -1,6 +1,6 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { CircleCheckIcon, CircleSlashIcon, ShieldCheckIcon } from "lucide-react";
-import { useCallback, useEffect, useState, type FC, type ReactNode } from "react";
+import { useEffect, useState, type FC, type ReactNode } from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -26,7 +26,7 @@ import {
 const CONTINUE_AFTER_SIGN_IN = "I've signed in. Please continue.";
 const continueWithoutSignIn = (toolsLabel: string) =>
 	`I'd rather not sign in for now. Please continue without ${toolsLabel}.`;
-const useToolsAgain = (toolsLabel: string) =>
+const toolsAgainMessage = (toolsLabel: string) =>
 	`I've signed in, so please use ${toolsLabel} again instead of running the equivalent ` +
 	"commands in the terminal.";
 
@@ -142,15 +142,13 @@ function useSignInTool(toolName: string): SignInTool | undefined {
  */
 function useToolSignInDecline(scope: string): { declined: boolean; decline: () => void } {
 	const chats = useDomainObject(Chats);
-	const selectDeclined = useCallback(
-		(state: DomainObjectState<typeof Chats>) => state.declinedSignInTools.includes(scope),
-		[scope],
-	);
+	const selectDeclined = (state: DomainObjectState<typeof Chats>) =>
+		state.declinedSignInTools.includes(scope);
 	const declined = useDomainObjectState(Chats, selectDeclined) ?? false;
-	const decline = useCallback(() => {
+	const decline = () => {
 		// A failed decline leaves the tools listed; the agent was still told to go without them.
 		void chats?.methods.declineSignInTools({ pluginId: scope }).catch(() => undefined);
-	}, [chats, scope]);
+	};
 	return { declined, decline };
 }
 
@@ -201,7 +199,9 @@ const RefusedToolCall: FC<{
 	useEffect(() => {
 		const followUp = pendingFollowUps.get(toolCallId);
 		if (!followUp || isRunning) return;
+		// Each follow-up waits for its answer to land: signed in and ready, or declined.
 		if (followUp === "after-sign-in" && !ready) return;
+		if (followUp === "without-sign-in" && !declined) return;
 		pendingFollowUps.delete(toolCallId);
 		aui
 			.thread()
@@ -210,7 +210,6 @@ const RefusedToolCall: FC<{
 					? CONTINUE_AFTER_SIGN_IN
 					: continueWithoutSignIn(prompt.toolsLabel),
 			);
-		// `declined` and `ready` are what change once the person has answered.
 	}, [aui, declined, isRunning, prompt.toolsLabel, ready, toolCallId]);
 
 	useEffect(() => {
@@ -333,7 +332,7 @@ const SignInDeclinedNote: FC<{ toolsLabel: string }> = ({ toolsLabel }) => {
 						type="button"
 						size="sm"
 						onClick={() => {
-							aui.thread().append(useToolsAgain(toolsLabel));
+							aui.thread().append(toolsAgainMessage(toolsLabel));
 						}}
 						data-qa-id="kilo-tool-signin-use-tools"
 					>

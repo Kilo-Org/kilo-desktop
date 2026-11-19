@@ -1,4 +1,4 @@
-import { useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 
 import {
 	KernelProvider,
@@ -52,10 +52,7 @@ export function useSessionRowState(session: WorkSession): {
 } {
 	const chats = useChats();
 	const visits = useLastVisits();
-	const activity = useMemo(
-		() => sessionActivities([session], chats)[session.id] ?? activityOfSession(session),
-		[chats, session],
-	);
+	const activity = sessionActivities([session], chats)[session.id] ?? activityOfSession(session);
 	return { activity, rowState: deriveSessionRowState(activity, lastVisitedOf(visits, session)) };
 }
 
@@ -203,15 +200,24 @@ function SessionMenuRenderer({
 function asWorkSessions<TProps extends object>(
 	Inner: ComponentType<TProps>,
 ): ComponentType<TProps> {
-	function AsWorkSessions(props: TProps) {
-		return (
-			<KernelProvider kernel={useKernel()} as={WORK_SESSIONS_PLUGIN_ID}>
-				<Inner {...props} />
-			</KernelProvider>
-		);
-	}
-	AsWorkSessions.displayName = `AsWorkSessions(${Inner.displayName ?? Inner.name})`;
-	return AsWorkSessions;
+	return Object.assign(
+		(props: TProps) => <WorkSessionsBoundary component={Inner} componentProps={props} />,
+		{ displayName: `AsWorkSessions(${Inner.displayName ?? Inner.name})` },
+	);
+}
+
+function WorkSessionsBoundary<TProps extends object>({
+	component: Inner,
+	componentProps,
+}: {
+	readonly component: ComponentType<TProps>;
+	readonly componentProps: TProps;
+}) {
+	return (
+		<KernelProvider kernel={useKernel()} as={WORK_SESSIONS_PLUGIN_ID}>
+			<Inner {...componentProps} />
+		</KernelProvider>
+	);
 }
 
 /** How a session looks, handed to every sessions view (`SessionsViewProps.renderers`). */

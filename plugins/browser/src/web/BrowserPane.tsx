@@ -10,8 +10,8 @@ import {
 	RotateCcwIcon,
 } from "lucide-react";
 import {
-	useCallback,
 	useEffect,
+	useEffectEvent,
 	useLayoutEffect,
 	useRef,
 	useState,
@@ -112,7 +112,7 @@ function BrowserPageView({
 	const key = pageKey(workSessionId, paneId);
 	const state = useDomainObjectState(
 		BrowserPages,
-		useCallback((all: DomainObjectState<typeof BrowserPages>) => all.pages[key], [key]),
+		(all: DomainObjectState<typeof BrowserPages>) => all.pages[key],
 	);
 	const restoredUrl = paneUrl(pane);
 	const initialUrlRef = useRef(restoredUrl);
@@ -193,9 +193,14 @@ function BrowserPageView({
 		};
 	}, [guestLease, hasUrl, state?.failure, visible]);
 
-	useEffect(() => {
+	const [draftSource, setDraftSource] = useState<{
+		readonly focused: boolean;
+		readonly state: typeof state;
+	}>({ focused: false, state: undefined });
+	if (draftSource.focused !== focused || draftSource.state !== state) {
+		setDraftSource({ focused, state });
 		if (!focused && state) setDraft(state.url);
-	}, [focused, state]);
+	}
 
 	useEffect(() => {
 		let cancelled = false;
@@ -230,56 +235,57 @@ function BrowserPageView({
 		[pages, paneId, workSessionId],
 	);
 
-	const attach = useCallback(
-		function attemptAttachment() {
-			const webview = webviewRef.current;
-			if (!webview) return;
-			try {
-				const webContentsId = webview.getWebContentsId();
-				if (!Number.isInteger(webContentsId) || webContentsId <= 0) return;
-				if (attachedIdRef.current === webContentsId) {
-					if (!attachmentReadyRef.current) attachmentRetryPendingRef.current = true;
-					return;
-				}
-				attachedIdRef.current = webContentsId;
-				attachmentRetryPendingRef.current = false;
-				attachmentReadyRef.current = false;
-				setAttachmentReady(false);
-				void pages.methods
-					.attach({ workSessionId, paneId, webContentsId })
-					.then(() => {
-						if (attachedIdRef.current !== webContentsId) return;
-						attachmentRetryPendingRef.current = false;
-						attachmentReadyRef.current = true;
-						setAttachmentReady(true);
-						const pendingUrl = pendingUrlRef.current;
-						if (!pendingUrl) return;
-						pendingUrlRef.current = undefined;
-						return pages.methods.navigate({ workSessionId, paneId, url: pendingUrl });
-					})
-					.catch((cause: unknown) => {
-						if (attachedIdRef.current !== webContentsId) return;
-						attachmentReadyRef.current = false;
-						setAttachmentReady(false);
-						attachedIdRef.current = undefined;
-						if (attachmentRetryPendingRef.current) {
-							attachmentRetryPendingRef.current = false;
-							queueMicrotask(attemptAttachment);
-							return;
-						}
-						setError(message(cause, "Unable to attach browser tab."));
-					});
-			} catch {
-				// The guest has not attached yet; did-attach and dom-ready retry.
+	const attach = useEffectEvent(function attemptAttachment() {
+		const webview = webviewRef.current;
+		if (!webview) return;
+		try {
+			const webContentsId = webview.getWebContentsId();
+			if (!Number.isInteger(webContentsId) || webContentsId <= 0) return;
+			if (attachedIdRef.current === webContentsId) {
+				if (!attachmentReadyRef.current) attachmentRetryPendingRef.current = true;
+				return;
 			}
-		},
-		[pages, paneId, workSessionId],
-	);
-	const closeMenu = useCallback(() => setMenuOpen(false), []);
+			attachedIdRef.current = webContentsId;
+			attachmentRetryPendingRef.current = false;
+			attachmentReadyRef.current = false;
+			setAttachmentReady(false);
+			void pages.methods
+				.attach({ workSessionId, paneId, webContentsId })
+				.then(() => {
+					if (attachedIdRef.current !== webContentsId) return;
+					attachmentRetryPendingRef.current = false;
+					attachmentReadyRef.current = true;
+					setAttachmentReady(true);
+					const pendingUrl = pendingUrlRef.current;
+					if (!pendingUrl) return;
+					pendingUrlRef.current = undefined;
+					return pages.methods.navigate({ workSessionId, paneId, url: pendingUrl });
+				})
+				.catch((cause: unknown) => {
+					if (attachedIdRef.current !== webContentsId) return;
+					attachmentReadyRef.current = false;
+					setAttachmentReady(false);
+					attachedIdRef.current = undefined;
+					if (attachmentRetryPendingRef.current) {
+						attachmentRetryPendingRef.current = false;
+						queueMicrotask(attemptAttachment);
+						return;
+					}
+					setError(message(cause, "Unable to attach browser tab."));
+				});
+		} catch {
+			// The guest has not attached yet; did-attach and dom-ready retry.
+		}
+	});
 	useLayoutEffect(() => {
 		const webview = guestLease?.webview;
 		if (!webview || !partition) return;
 		let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+		let subscribed = true;
+		const onAttachable = () => {
+			if (subscribed) attach();
+		};
+		const closeMenu = () => setMenuOpen(false);
 		const recover = () => {
 			if (crashCountRef.current >= 3) {
 				setError("The browser process stopped repeatedly. Close and reopen this tab to retry.");
@@ -288,19 +294,21 @@ function BrowserPageView({
 			crashCountRef.current += 1;
 			recoveryTimer = setTimeout(() => webview.reload(), 250 * crashCountRef.current);
 		};
-		webview.addEventListener("did-attach", attach);
-		webview.addEventListener("dom-ready", attach);
+		webview.addEventListener("did-attach", onAttachable);
+		webview.addEventListener("dom-ready", onAttachable);
 		webview.addEventListener("focus", closeMenu);
 		webview.addEventListener("render-process-gone", recover);
-		attach();
+		// A reused guest is already attached and fires no event; probe it before paint.
+		queueMicrotask(onAttachable);
 		return () => {
+			subscribed = false;
 			if (recoveryTimer) clearTimeout(recoveryTimer);
-			webview.removeEventListener("did-attach", attach);
-			webview.removeEventListener("dom-ready", attach);
+			webview.removeEventListener("did-attach", onAttachable);
+			webview.removeEventListener("dom-ready", onAttachable);
 			webview.removeEventListener("focus", closeMenu);
 			webview.removeEventListener("render-process-gone", recover);
 		};
-	}, [attach, closeMenu, guestLease, partition]);
+	}, [guestLease, partition]);
 
 	const submit = (event: FormEvent) => {
 		event.preventDefault();

@@ -1,0 +1,25 @@
+{
+	"name": "@kilo-desktop/oxlint-plugin",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Kilo Desktop's own oxlint rules (React Compiler coverage), loaded through jsPlugins in .oxlintrc.json",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"devDependencies": {
+		"@oxlint/plugins": "^1.93.0",
+		"@types/node": "^26.0.0",
+		"@vitest/coverage-v8": "catalog:",
+		"oxlint": "^1.93.0",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

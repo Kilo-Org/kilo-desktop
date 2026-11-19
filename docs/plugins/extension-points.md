@@ -98,9 +98,10 @@ they are.
 
 **Example: a status bar item.** A `view` (your component as it is), an
 `action` (a button running `run` or the entry's `command`) or a `popover` (a
-button opening your `Content` above the bar). `useTrigger` runs as a hook
-while the item shows and returns its label, icon, `tone` (`warning`,
-`error`) or `hidden`. Items sit at the bar's `start` (about the app or
+button opening your `Content` above the bar). kilo.shell renders your
+`Trigger` component while the item shows; it reads your state with hooks and
+returns `children({ label, icon, tone, hidden })` (`tone`: `warning`,
+`error`), which the bar draws as the button. Items sit at the bar's `start` (about the app or
 workspace: a server, sync) or `end` (about the open session) by `priority`.
 The bar shows only while an item renders, so gate rarely-useful items with
 `when` or `hidden` rather than rendering an empty label.
@@ -115,7 +116,7 @@ The bar shows only while an item renders, so gate rarely-useful items with
 ```ts
 sdk.extensions.implement(StatusBarItem, "server", {
 	kind: "popover",
-	useTrigger: () => ({ icon: ServerIcon, label: "Server ready" }),
+	Trigger: ({ children }) => children({ icon: ServerIcon, label: "Server ready" }),
 	Content: ({ close }) => <ServerDetails onDone={close} />,
 });
 ```

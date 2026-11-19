@@ -151,7 +151,8 @@ export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 				</div>
 			</div>
 			{showDiagram ? (
-				// Pointer shortcut only: the Expand button is the keyboard path.
+				// Pointer shortcut only: the Expand button is the keyboard and screen reader path.
+				// react-doctor-disable-next-line react-doctor/click-events-have-key-events, react-doctor/no-static-element-interactions
 				<div
 					ref={lightboxRef}
 					className={cn(lightboxAvailable && "cursor-zoom-in")}

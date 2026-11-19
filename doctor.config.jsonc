@@ -1,0 +1,25 @@
+// React Doctor (https://react.doctor). Run: npx react-doctor@latest --verbose
+// Rules are off only where they conflict with this repo's conventions; real
+// exceptions elsewhere carry an inline `react-doctor-disable-next-line` with a reason.
+{
+	"$schema": "https://react.doctor/schema/config.json",
+	"rules": {
+		// React Compiler memoizes every renderer component and `pnpm lint`
+		// (scripts/check-react-compiler.mjs) fails if it skips one, so "rebuilt every
+		// render" dependencies are stable.
+		"react-doctor/exhaustive-deps": "off",
+		// Plugin modules export hooks, contexts and contracts beside their components
+		// by design; the only cost is a full reload instead of Fast Refresh in dev.
+		"react-doctor/only-export-components": "off",
+		// Size metrics, not defects; components are split when they need to change.
+		"react-doctor/no-high-complexity-react-function": "off",
+		"react-doctor/no-giant-component": "off",
+		// The Electron renderer loads its bundle from disk, and the composer queue's
+		// `Reorder` needs the full motion bundle anyway, so LazyMotion saves nothing.
+		"react-doctor/use-lazy-motion": "off",
+	},
+	"ignore": {
+		// Vitest's dependency cache is gitignored, but React Doctor still scans it.
+		"files": ["**/.vitest/**"],
+	},
+}

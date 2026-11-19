@@ -67,6 +67,7 @@ export function useLauncherIsolation(workspaceId: string | null): LauncherIsolat
 		if (sessions && vcs && workspaceId) load(sessions.methods, workspaceId);
 	};
 	const loadSelected = useEffectEvent(load);
+	const reloadOnFocus = useEffectEvent(reload);
 
 	useEffect(() => {
 		if (!sessions || !vcs || !workspaceId) return;
@@ -77,9 +78,10 @@ export function useLauncherIsolation(workspaceId: string | null): LauncherIsolat
 	}, [sessions, vcs, workspaceId]);
 
 	useEffect(() => {
-		globalThis.addEventListener("focus", reload);
-		return () => globalThis.removeEventListener("focus", reload);
-	}, [reload]);
+		const onFocus = () => reloadOnFocus();
+		globalThis.addEventListener("focus", onFocus);
+		return () => globalThis.removeEventListener("focus", onFocus);
+	}, []);
 
 	const valueFor = (id: string, from: IsolationOptions) =>
 		picked[id] ?? seeded(from, readIsolationMode(id));

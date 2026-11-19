@@ -1473,6 +1473,8 @@ function InstallDialog({
 			const succeeded: string[] = [];
 			for (const destination of destinations) {
 				try {
+					// Sequential on purpose: parallel installs would race on shared Kilo config.
+					// react-doctor-disable-next-line react-doctor/async-await-in-loop
 					await install.mutateAsync(destination.input);
 					track(
 						MARKETPLACE_TELEMETRY_EVENTS.itemInstalled,
@@ -1502,6 +1504,15 @@ function InstallDialog({
 			);
 			setOutcome({ failed, succeeded });
 		})();
+	};
+	const selectedWorkspaceIds = new Set(workspaceIds);
+	const toggleWorkspace = (workspaceId: string) => {
+		setGlobalSelected(false);
+		setWorkspaceIds((current) =>
+			current.includes(workspaceId)
+				? current.filter((id) => id !== workspaceId)
+				: [...current, workspaceId],
+		);
 	};
 
 	return (
@@ -1576,15 +1587,8 @@ function InstallDialog({
 														key={target.id}
 														value={`${target.name} ${target.directory}`}
 														disabled={installedHere}
-														data-checked={workspaceIds.includes(target.id)}
-														onSelect={() => {
-															setGlobalSelected(false);
-															setWorkspaceIds((current) =>
-																current.includes(target.id)
-																	? current.filter((id) => id !== target.id)
-																	: [...current, target.id],
-															);
-														}}
+														data-checked={selectedWorkspaceIds.has(target.id)}
+														onSelect={() => toggleWorkspace(target.id)}
 														data-qa-id={`marketplace-install-workspace-option-${target.id}`}
 													>
 														<FolderIcon

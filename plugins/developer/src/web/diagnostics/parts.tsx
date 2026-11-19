@@ -86,6 +86,8 @@ export function Details({
 						</dt>
 						<dd className="flex min-w-0 flex-col gap-1 break-words">
 							{groupValues(item.values).map((group, index) => (
+								// Groups are derived fresh from static detail values and hold no state.
+								// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 								<ValueGroup key={index} values={group} />
 							))}
 						</dd>
@@ -172,6 +174,8 @@ function RowColumns({
 		<div className={cn("grid min-w-0 flex-1 items-baseline gap-3", columnsClassName)}>
 			<span className="truncate text-sm font-medium">{title}</span>
 			{rest.map((column, index) => (
+				// Columns are positional, display-only and never reorder.
+				// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 				<span key={index} className="text-muted-foreground truncate text-xs">
 					{column}
 				</span>

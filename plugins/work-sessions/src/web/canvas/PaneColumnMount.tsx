@@ -41,9 +41,13 @@ export function PaneColumnMount({
 		const container = containerRef.current;
 		if (!container) return;
 		placeHost(container, host, order);
+		// The container ref only exists after commit, so readiness cannot be derived during render.
+		// react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
 		setReady(true);
 	}, [containerRef, host, order]);
 
+	// onReady must run after the commit that portals the children, so the parent sees mounted content.
+	// react-doctor-disable-next-line react-doctor/no-effect-chain
 	useLayoutEffect(() => {
 		if (ready) onReady();
 	}, [ready, onReady]);

@@ -148,6 +148,9 @@ function defaultQueryVersion(executable: string): Promise<string> {
 function listPresetPids(presetPath: string): Promise<number[]> {
 	if (process.platform === "win32") return Promise.resolve([]);
 	return new Promise((resolve) => {
+		// `presetPath` is an app-owned file path passed as one argv entry to a fixed
+		// binary with no shell, so it is matched as data, never executed.
+		// react-doctor-disable-next-line react-doctor/import-metadata-execution-risk
 		execFile("pgrep", ["-f", presetPath], { windowsHide: true }, (error, stdout) => {
 			if (error || !stdout.trim()) {
 				resolve([]);
@@ -173,8 +176,10 @@ function processName(pid: number): Promise<string> {
 
 async function reclaimStaleRouters(presetPath: string, logger: RouterLogger): Promise<void> {
 	const pids = await listPresetPids(presetPath);
-	for (const pid of pids) {
-		const name = await processName(pid);
+	const processes = await Promise.all(
+		pids.map(async (pid) => ({ pid, name: await processName(pid) })),
+	);
+	for (const { pid, name } of processes) {
 		if (!name.endsWith("llama-server")) continue;
 		logger.warn(`Stopping leftover llama-server (pid ${String(pid)}).`);
 		try {

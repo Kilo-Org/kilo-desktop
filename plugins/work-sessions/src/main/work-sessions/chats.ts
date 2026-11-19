@@ -144,6 +144,8 @@ export function followChats(
 		void (async () => {
 			let linked = 0;
 			for (const link of copyChatLinks(all)) {
+				// Links write the repository's shared Agent Manager state; one at a time avoids racing writes.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				if (await linkAgentManager(sdk, link)) linked += 1;
 			}
 			if (linked > 0) {

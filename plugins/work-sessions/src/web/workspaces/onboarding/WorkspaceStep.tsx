@@ -87,12 +87,12 @@ export function WorkspacePreview({
 						<motion.div
 							key={pill.key}
 							className={cn(
-								"bg-foreground/5 absolute left-0 flex items-center gap-2 rounded-full px-3.5 text-xs",
+								"bg-foreground/5 absolute top-0 left-0 flex items-center gap-2 rounded-full px-3.5 text-xs",
 								pill.placeholder ? "text-muted-foreground" : "text-foreground/80",
 							)}
 							style={{ width: FLOW.pillWidth, height: FLOW.pillHeight }}
-							initial={{ opacity: 0, x: -8, top: pill.y }}
-							animate={{ opacity: 1, x: 0, top: pill.y }}
+							initial={{ opacity: 0, x: -8, y: pill.y }}
+							animate={{ opacity: 1, x: 0, y: pill.y }}
 							exit={{ opacity: 0, x: -8 }}
 							transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
 						>

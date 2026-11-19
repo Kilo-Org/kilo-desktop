@@ -69,9 +69,12 @@ interface Adoption {
 export async function activateStorage(sdk: PluginSdk): Promise<void> {
 	const readLegacy = legacyFileReader(mainHost(sdk).storage.dir);
 	const adoption = adoptionStore(sdk);
+	const alreadyAdopted = new Set(adoption.snapshot().adopted);
 	for (const step of adoptions(sdk)) {
-		if (adoption.snapshot().adopted.includes(step.source)) continue;
+		if (alreadyAdopted.has(step.source)) continue;
 		try {
+			// A few small files read once at launch; in order, so the adopted log keeps the declared order.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			const raw = await readLegacy(step.pluginId, step.namespace);
 			if (raw !== null && raw !== undefined) step.adopt(raw);
 			markAdopted(adoption, step.source);

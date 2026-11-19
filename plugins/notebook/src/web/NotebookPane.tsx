@@ -354,6 +354,7 @@ function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 				// Sandboxing this application frame while granting both scripts and its own
 				// origin would add no boundary and would interfere with browser capabilities
 				// the notebook shell legitimately uses.
+				// react-doctor-disable-next-line react-doctor/iframe-missing-sandbox
 				<iframe
 					ref={frameRef}
 					src={frameSrc}

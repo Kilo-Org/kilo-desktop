@@ -24,6 +24,8 @@ export function NotificationToasts() {
 	const notifications = useDomainObject(Notifications);
 	const windowId = useKernel().window.id;
 	const run = useRunAction();
+	// The domain object's `on` returns its unsubscribe, which the effect returns.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!notifications) return;
 		return notifications.on("toast", ({ windowId: target, level, title, description, action }) => {

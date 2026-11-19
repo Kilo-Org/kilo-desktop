@@ -22,6 +22,9 @@ const SESSION_LIST = sessionListData.locators;
  * could be a leftover from another run.
  */
 export class BoardPage {
+	private readonly rowMore = (row: Locator): Locator =>
+		row.getByTestId(SESSION_LIST.itemMoreTestId);
+
 	private sessionId: string | undefined;
 	private boardWindow: Page | undefined;
 
@@ -54,7 +57,7 @@ export class BoardPage {
 		// The row's timestamp slot only fades on hover rather than leaving the
 		// layer, so it can sit over the "…" trigger and swallow the click. The
 		// trigger is visible and stable; only the hit-target check is in the way.
-		await click(row.getByTestId(SESSION_LIST.itemMoreTestId), { force: true });
+		await click(this.rowMore(row), { force: true });
 		await pressLocatorKeyboard(
 			getLocatorByTestId("session-menu-kilo.workspace-board/add-to-board"),
 			"ArrowRight",

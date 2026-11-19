@@ -33,18 +33,35 @@ export class SessionListPage {
 
 	private readonly list = () => getLocatorByTestId(SESSION_LIST.listTestId);
 	private readonly row = (title: string): Locator =>
-		this.list()
-			.getByTestId(/^session-list-(archived-)?item$/)
-			.filter({ hasText: title });
+		this.list().getByTestId(SESSION_LIST.itemTestIdPattern).filter({ hasText: title });
 	/**
 	 * The row only while it is active. `row` matches the archived variant too,
 	 * so it stays "visible" once the Archived shelf is expanded — which makes
 	 * any "it left the list" assertion depend on the shelf's state.
 	 */
 	private readonly activeRow = (title: string): Locator =>
-		this.list().getByTestId(SESSION_LIST.itemTestId).filter({ hasText: title });
+		this.activeRows().filter({ hasText: title });
 
 	private readonly renameInput = () => getLocatorByTestId(SESSION_LIST.itemRenameTestId);
+	private readonly activeRows = () => this.list().getByTestId(SESSION_LIST.itemTestId);
+	private readonly archivedRow = (title: string): Locator =>
+		this.list().getByTestId(SESSION_LIST.archivedItemTestId).filter({ hasText: title });
+	private readonly rowTrigger = (title: string): Locator =>
+		this.row(title).getByTestId(SESSION_LIST.itemTriggerTestId);
+	private readonly rowMore = (title: string): Locator =>
+		this.row(title).getByTestId(SESSION_LIST.itemMoreTestId);
+	private readonly inbox = () => this.list().getByTestId(SESSION_LIST.inboxTestId);
+	private readonly virtualList = () => this.list().getByTestId(SESSION_LIST.virtualListTestId);
+	private readonly pinnedShelf = () => this.list().getByTestId(SESSION_LIST.pinnedToggleTestId);
+	private readonly archivedShelf = () => this.list().getByTestId(SESSION_LIST.archivedToggleTestId);
+	private readonly menuPin = () => getLocatorByTestId(SESSION_LIST.menuPinTestId);
+	private readonly menuRename = () => getLocatorByTestId(SESSION_LIST.menuRenameTestId);
+	private readonly menuArchive = () => getLocatorByTestId(SESSION_LIST.menuArchiveTestId);
+	private readonly menuDelete = () => getLocatorByTestId(SESSION_LIST.menuDeleteTestId);
+	private readonly deleteConfirm = () => getLocatorByTestId(SESSION_LIST.deleteConfirmTestId);
+	private readonly bulkRestore = () => getLocatorByTestId(SESSION_LIST.bulkRestoreTestId);
+	private readonly bulkArchive = () => getLocatorByTestId(SESSION_LIST.bulkArchiveTestId);
+	private readonly breadcrumb = () => getLocatorByTestId(SESSION_LIST.breadcrumbTestId);
 
 	/** Opens the New Session page and starts an empty session from it. */
 	async startSessionFromNewSessionPage(): Promise<void> {
@@ -94,7 +111,7 @@ export class SessionListPage {
 	/** Starts an inline rename from the row menu, leaving the field open. */
 	async startRename(title: string): Promise<void> {
 		await this.openRowMenu(title);
-		await click(getLocatorByTestId(SESSION_LIST.menuRenameTestId));
+		await click(this.menuRename());
 		await expectElementToBeVisible(this.renameInput(), "The rename field should open");
 	}
 
@@ -118,7 +135,7 @@ export class SessionListPage {
 
 	/** Adds a row to the selection without opening it. */
 	async selectWithMetaClick(title: string): Promise<void> {
-		await click(this.row(title).getByTestId(SESSION_LIST.itemTriggerTestId), {
+		await click(this.rowTrigger(title), {
 			modifiers: ["Meta"],
 		});
 	}
@@ -135,18 +152,18 @@ export class SessionListPage {
 	}
 
 	async restoreSelection(): Promise<void> {
-		await click(getLocatorByTestId(SESSION_LIST.bulkRestoreTestId));
+		await click(this.bulkRestore());
 	}
 
 	async verifyBulkArchiveAbsent(): Promise<void> {
-		await expectElementToBeHidden(getLocatorByTestId(SESSION_LIST.bulkArchiveTestId), {
+		await expectElementToBeHidden(this.bulkArchive(), {
 			message: "An already-archived selection should not offer Archive",
 		});
 	}
 
 	/** How many rows the virtualized list is holding in the DOM right now. */
 	async mountedRowCount(): Promise<number> {
-		return getLocatorCount(this.list().getByTestId(SESSION_LIST.itemTestId));
+		return getLocatorCount(this.activeRows());
 	}
 
 	async verifyFewerRowsMountedThan(total: number): Promise<void> {
@@ -170,7 +187,7 @@ export class SessionListPage {
 	}
 
 	async focusRow(title: string): Promise<void> {
-		await focus(this.row(title).getByTestId(SESSION_LIST.itemTriggerTestId));
+		await focus(this.rowTrigger(title));
 	}
 
 	async pressArrowDown(times: number): Promise<void> {
@@ -182,10 +199,7 @@ export class SessionListPage {
 	// The library has no focus assertion, so this uses Playwright's, as the
 	// chat find page object does.
 	async verifyRowFocused(title: string): Promise<void> {
-		await expect(
-			this.row(title).getByTestId(SESSION_LIST.itemTriggerTestId),
-			`${title} should hold the focus`,
-		).toBeFocused();
+		await expect(this.rowTrigger(title), `${title} should hold the focus`).toBeFocused();
 	}
 
 	/**
@@ -194,8 +208,8 @@ export class SessionListPage {
 	 * pixel have no wrapper in the library.
 	 */
 	async verifyRowListTallerThanViewport(): Promise<void> {
-		const rows = await this.list().getByTestId(SESSION_LIST.virtualListTestId).boundingBox();
-		const inbox = await this.list().getByTestId(SESSION_LIST.inboxTestId).boundingBox();
+		const rows = await this.virtualList().boundingBox();
+		const inbox = await this.inbox().boundingBox();
 		expect(
 			rows?.height ?? 0,
 			"The row list should span more than the visible inbox",
@@ -214,14 +228,14 @@ export class SessionListPage {
 
 	async verifyOpen(title: string | RegExp): Promise<void> {
 		await expectElementToBeVisible(
-			getLocatorByTestId(SESSION_LIST.breadcrumbTestId).getByText(title, { exact: true }),
+			this.breadcrumb().getByText(title, { exact: true }),
 			`The header should name ${title}`,
 		);
 	}
 
 	/** Opens another session from its row in the list. */
 	async switchTo(title: string): Promise<void> {
-		await click(this.row(title).getByTestId(SESSION_LIST.itemTriggerTestId));
+		await click(this.rowTrigger(title));
 		await this.verifyOpen(title);
 	}
 
@@ -231,33 +245,25 @@ export class SessionListPage {
 		await expectElementToBeVisible(this.list(), "The session list should show after a reload");
 	}
 
-	private async openMenu(title: string): Promise<void> {
-		await this.row(title).hover();
-		await click(this.row(title).getByTestId(SESSION_LIST.itemMoreTestId));
-	}
-
 	async rename(from: string, to: string): Promise<void> {
-		await this.openMenu(from);
-		await click(getLocatorByTestId(SESSION_LIST.menuRenameTestId));
-		await fill(getLocatorByTestId(SESSION_LIST.itemRenameTestId), to);
+		await this.openRowMenu(from);
+		await click(this.menuRename());
+		await fill(this.renameInput(), to);
 		await pressPageKeyboard("Enter");
 		await this.verifyListed(to);
 	}
 
 	async pin(title: string): Promise<void> {
-		await this.openMenu(title);
-		await click(getLocatorByTestId(SESSION_LIST.menuPinTestId));
-		await expectElementToBeVisible(
-			this.list().getByTestId(SESSION_LIST.pinnedToggleTestId),
-			"A pinned session should sit under Pinned",
-		);
+		await this.openRowMenu(title);
+		await click(this.menuPin());
+		await expectElementToBeVisible(this.pinnedShelf(), "A pinned session should sit under Pinned");
 	}
 
 	/** The same menu entry unpins; it reads "Unpin" once the session is pinned. */
 	async unpin(title: string): Promise<void> {
-		await this.openMenu(title);
-		await click(getLocatorByTestId(SESSION_LIST.menuPinTestId));
-		await expectElementToBeHidden(this.list().getByTestId(SESSION_LIST.pinnedToggleTestId), {
+		await this.openRowMenu(title);
+		await click(this.menuPin());
+		await expectElementToBeHidden(this.pinnedShelf(), {
 			message: "Unpinning the only pinned session should drop the Pinned shelf",
 		});
 	}
@@ -267,7 +273,7 @@ export class SessionListPage {
 	 * the same modifier the list uses to extend a selection with the keyboard.
 	 */
 	async selectWithShiftClick(title: string): Promise<void> {
-		await click(this.row(title).getByTestId(SESSION_LIST.itemTriggerTestId), {
+		await click(this.rowTrigger(title), {
 			modifiers: ["Shift"],
 		});
 	}
@@ -286,26 +292,17 @@ export class SessionListPage {
 	 */
 	async openRowMenu(title: string): Promise<void> {
 		await hover(this.row(title));
-		await click(this.row(title).getByTestId(SESSION_LIST.itemMoreTestId), { force: true });
+		await click(this.rowMore(title), { force: true });
 	}
 
 	async verifyRowMenuOffersSessionActions(): Promise<void> {
-		await expectElementToBeVisible(
-			getLocatorByTestId(SESSION_LIST.menuPinTestId),
-			"The row menu should offer Pin",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId(SESSION_LIST.menuRenameTestId),
-			"The row menu should offer Rename",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId(SESSION_LIST.menuDeleteTestId),
-			"The row menu should offer Delete",
-		);
+		await expectElementToBeVisible(this.menuPin(), "The row menu should offer Pin");
+		await expectElementToBeVisible(this.menuRename(), "The row menu should offer Rename");
+		await expectElementToBeVisible(this.menuDelete(), "The row menu should offer Delete");
 	}
 
 	async verifyRowMenuClosed(): Promise<void> {
-		await expectElementToBeHidden(getLocatorByTestId(SESSION_LIST.menuRenameTestId), {
+		await expectElementToBeHidden(this.menuRename(), {
 			message: "The row menu should be closed",
 		});
 	}
@@ -317,7 +314,7 @@ export class SessionListPage {
 	 * runs after either outcome.
 	 */
 	async deleteAnywhere(title: string): Promise<void> {
-		const archivedToggle = this.list().getByTestId(SESSION_LIST.archivedToggleTestId);
+		const archivedToggle = this.archivedShelf();
 		if (
 			(await isElementVisible(archivedToggle)) &&
 			(await getAttribute(archivedToggle, "aria-expanded")) !== "true"
@@ -325,8 +322,8 @@ export class SessionListPage {
 			await click(archivedToggle);
 		}
 		await this.openRowMenu(title);
-		await click(getLocatorByTestId(SESSION_LIST.menuDeleteTestId));
-		await click(getLocatorByTestId(SESSION_LIST.deleteConfirmTestId));
+		await click(this.menuDelete());
+		await click(this.deleteConfirm());
 		await expectElementToBeHidden(this.row(title), {
 			message: `${title} should leave the list once deleted`,
 		});
@@ -335,14 +332,14 @@ export class SessionListPage {
 	/** The row as it renders on the Archived shelf, which must be expanded first. */
 	async verifyArchivedListed(title: string): Promise<void> {
 		await expectElementToBeVisible(
-			this.list().getByTestId(SESSION_LIST.archivedItemTestId).filter({ hasText: title }),
+			this.archivedRow(title),
 			`${title} should be listed on the Archived shelf`,
 		);
 	}
 
 	async archive(title: string): Promise<void> {
-		await this.openMenu(title);
-		await click(getLocatorByTestId(SESSION_LIST.menuArchiveTestId));
+		await this.openRowMenu(title);
+		await click(this.menuArchive());
 		await expectElementToBeHidden(this.activeRow(title), {
 			message: "An archived session should leave the active list",
 		});
@@ -350,13 +347,13 @@ export class SessionListPage {
 
 	/** Deletes an archived session, expanding the Archived shelf first when it is collapsed. */
 	async delete(title: string): Promise<void> {
-		const archivedToggle = this.list().getByTestId(SESSION_LIST.archivedToggleTestId);
+		const archivedToggle = this.archivedShelf();
 		if ((await getAttribute(archivedToggle, "aria-expanded")) !== "true") {
 			await click(archivedToggle);
 		}
-		await this.openMenu(title);
-		await click(getLocatorByTestId(SESSION_LIST.menuDeleteTestId));
-		await click(getLocatorByTestId(SESSION_LIST.deleteConfirmTestId));
+		await this.openRowMenu(title);
+		await click(this.menuDelete());
+		await click(this.deleteConfirm());
 		await expectElementToBeHidden(this.row(title), {
 			message: "A deleted session should leave the list",
 		});

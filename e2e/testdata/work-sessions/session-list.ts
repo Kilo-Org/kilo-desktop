@@ -39,6 +39,13 @@ export const sessionListData = {
 		workspaceFilterTestId: "session-list-workspace-filter",
 		workspaceAllCommandTestId: "workspace-all-command",
 		workspaceUnscopedCommandTestId: "workspace-unscoped-command",
+		workspaceFilterUnavailableIndicatorTestId: "workspace-filter-unavailable-folders-indicator",
+		workspaceFormDialogTestId: "workspace-form-dialog",
+		navigationTestId: "session-list-navigation",
+		newSessionTestId: "new-chat",
+		groupingHeaderTestId: "session-list-grouping-header",
+		searchScopeAllTestId: "session-search-filter-all",
+		searchScopeWorkspacesTestId: "session-search-filter-workspaces",
 	},
 	/** The filter's own accessible name, which has no test id of its own. */
 	workspaceFilterLabel: "Filter by workspace",

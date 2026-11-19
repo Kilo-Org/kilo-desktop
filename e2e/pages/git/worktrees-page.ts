@@ -12,7 +12,7 @@ import {
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
-import { expect } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 
 import {
 	kiloServerConnection,
@@ -57,6 +57,14 @@ export class WorktreesPage {
 	private readonly isolation = () =>
 		getLocatorByTestId("launcher-location").getByTestId("launcher-isolation");
 	private readonly modeTrigger = () => this.isolation().getByTestId("git-draft-mode-trigger");
+	// The session list's own locators, from its centralized definitions.
+	private readonly rowMore = (row: Locator): Locator =>
+		row.getByTestId(SESSION_LIST.itemMoreTestId);
+	private readonly menuDelete = () => getLocatorByTestId(SESSION_LIST.menuDeleteTestId);
+	private readonly deleteWorktreeDialog = () =>
+		getLocatorByTestId(SESSION_LIST.deleteWorktreeDialogTestId);
+	private readonly deleteWorktreeConfirm = () =>
+		getLocatorByTestId(SESSION_LIST.deleteWorktreeConfirmTestId);
 
 	/** The New Session page in a new workspace for the repository. */
 	async openNewSession(repoPath: string, name: string): Promise<void> {
@@ -190,13 +198,13 @@ export class WorktreesPage {
 	async deleteSessionAndWorktree(title: string): Promise<void> {
 		const row = sessionListRow(title);
 		await row.hover();
-		await click(row.getByTestId(SESSION_LIST.itemMoreTestId));
-		await click(getLocatorByTestId(SESSION_LIST.menuDeleteTestId));
+		await click(this.rowMore(row));
+		await click(this.menuDelete());
 		await expectElementToBeVisible(
-			getLocatorByTestId(SESSION_LIST.deleteWorktreeDialogTestId),
+			this.deleteWorktreeDialog(),
 			"Deleting the last session in a worktree should ask about the worktree",
 		);
-		await click(getLocatorByTestId(SESSION_LIST.deleteWorktreeConfirmTestId));
+		await click(this.deleteWorktreeConfirm());
 		await expectElementToBeHidden(row, { message: `"${title}" should leave the session list` });
 	}
 

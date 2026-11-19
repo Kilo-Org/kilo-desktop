@@ -2,9 +2,11 @@ import { z } from "zod";
 
 import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
+import { terminalProfileSchema, terminalSettingsSchema } from "./profiles";
 import { MAX_TERMINAL_READ_LINES, terminalReadoutSchema } from "./session";
 
 export * from "./frame";
+export * from "./profiles";
 export * from "./session";
 
 /**
@@ -62,13 +64,25 @@ export const terminalExitedSchema = terminalTarget.extend({
 });
 export type TerminalExited = z.output<typeof terminalExitedSchema>;
 
-/** The terminals open in each work session; absent where shells can't run (the browser). */
+/**
+ * The terminals open in each work session, and the shells new ones run;
+ * absent where shells can't run (the browser).
+ */
 export const Terminals = defineDomainObject({
 	id: "kilo.terminal/terminals",
 	home: "main",
-	description: "The terminals in each work session: list, read and close them.",
-	state: z.object({}),
+	description:
+		"The terminals in each work session: list, read and close them; and the shell profiles new ones run.",
+	state: z.object({
+		/** The shells found on this machine and the person's own profiles (empty until detection settles). */
+		profiles: z.array(terminalProfileSchema),
+		settings: terminalSettingsSchema,
+	}),
 	methods: {
+		/** Saves terminal settings; they apply the next time a shell starts. */
+		updateSettings: method(terminalSettingsSchema.partial(), terminalSettingsSchema),
+		/** Looks for installed shells again (after installing one). */
+		refreshProfiles: method(z.undefined(), z.array(terminalProfileSchema)),
 		/** The work session's terminal panes, in tab order. */
 		list: method(
 			z.object({ workSessionId: terminalTarget.shape.workSessionId }),

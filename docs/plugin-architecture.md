@@ -1259,7 +1259,9 @@ with contributors today; candidate points are in the extensibility map (§7).
 │ ● kilo.sessions/pane-kind ............. Terminal (launcher and "+", kept alive)
 │   kilo.agent/tool ................ open, list, read
 │   kernel/command ................. new terminal · clear (⌘K while focused)
-│ ◆ terminals (list, read, close; event exited)   context key: terminalFocused
+│   kilo.shell/settings-section .... Terminal (default shell, custom profiles)
+│ ◆ terminals (list, read, close; event exited; shell profiles and settings)
+│   context key: terminalFocused
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.browser ────────────────────────────────────────────────────────────────
@@ -1561,7 +1563,7 @@ would replace it if a kind ever needs something other than show-or-open.
 | kilo.git             | `forge`                  | A    | Next   | Hosting providers: PR status, create PR, checks                          | git (GitHub); _ext_ GitLab, Bitbucket, Azure DevOps                              |
 | kilo.git             | `commit-check`           | D    | Later  | Proceed / reject before commit or push                                   | _ext_ secret scanner, test gate                                                  |
 | kilo.git             | `changes-file-action`    | A    | Next   | Actions on a file in the Changes pane (copy path, open file built in)    | files (external editor); git (discard, reveal in Finder); chat (to composer)     |
-| kilo.terminal        | `terminal-profile`       | A    | Next   | Shell profiles in the launcher and "+" menu                              | terminal (default shell); environments (activated conda env); agent (Kilo CLI)   |
+| kilo.terminal        | `terminal-profile`       | A    | Next   | Shell profiles in Settings → Terminal; later the launcher and "+" menu   | terminal (detected, custom); environments (conda env); agent (Kilo CLI)          |
 | kilo.terminal        | `terminal-env`           | A    | Next   | Environment variables for new terminals                                  | local-inference (`OPENAI_BASE_URL` → local server); environments (activation)    |
 | kilo.terminal        | `terminal-link`          | A    | Later  | Custom link matchers in output (paths and URLs go to openers by default) | git (commit SHAs); _ext_ issue keys                                              |
 | kilo.browser         | `browser-toolbar-action` | A    | Next   | Browser pane toolbar actions                                             | chat (annotate & send to agent, screenshot to composer)                          |

@@ -8,6 +8,7 @@ import type { KernelPort } from "@kilo-desktop/kernel";
 import { TERMINAL_PROTOCOL_VERSION, type TerminalConnectionArgs } from "../../contracts/session.js";
 import { historyPath } from "./history.js";
 import type { PtyAdapter, PtyExitEvent, PtyProcess, PtySpawnOptions } from "./pty.js";
+import type { ShellCandidate } from "./shell-launch.js";
 import { TerminalSessionManager } from "./TerminalSessionManager.js";
 
 class FakePort implements KernelPort {
@@ -92,6 +93,7 @@ async function setup(
 			exit: { exitCode: number | null; exitSignal: number | null },
 		) => void;
 		onLabelChanged?: (identity: { sessionId: string; terminalId: string }, label: string) => void;
+		resolveLaunch?: () => Promise<readonly ShellCandidate[]>;
 	} = {},
 ) {
 	const storageDir = await mkdtemp(path.join(os.tmpdir(), "terminal-plugin-"));
@@ -119,6 +121,7 @@ async function setup(
 		...(options.logger ? { logger: options.logger } : {}),
 		...(options.onSessionExited ? { onSessionExited: options.onSessionExited } : {}),
 		...(options.onLabelChanged ? { onLabelChanged: options.onLabelChanged } : {}),
+		...(options.resolveLaunch ? { resolveLaunch: options.resolveLaunch } : {}),
 	});
 	const args: TerminalConnectionArgs = {
 		protocolVersion: TERMINAL_PROTOCOL_VERSION,
@@ -437,5 +440,87 @@ describe("TerminalSessionManager", () => {
 		await manager.close(args, true);
 
 		expect(processes[0]!.kills).toEqual([undefined, undefined]);
+	});
+});
+
+describe("TerminalSessionManager shell profiles", () => {
+	it("spawns exactly the shell and args the launch list starts with", async () => {
+		const { args, manager, spawn } = await setup({
+			resolveLaunch: async () => [
+				{ shell: "/opt/homebrew/bin/fish", args: ["-l"] },
+				{ shell: "/bin/sh", args: [] },
+			],
+		});
+		await manager.attach(new FakePort(), args);
+		expect(spawn).toHaveBeenCalledOnce();
+		expect(spawn.mock.calls[0]![0]).toMatchObject({
+			shell: "/opt/homebrew/bin/fish",
+			args: ["-l"],
+			cwd: "/workspace",
+		});
+		await manager.dispose();
+	});
+
+	it("applies a profile's environment without letting it break the terminal's own", async () => {
+		const { args, manager, spawn } = await setup({
+			resolveLaunch: async () => [
+				{
+					shell: "/bin/zsh",
+					args: [],
+					env: { ZDOTDIR: "/tmp/z", SHELL: null, ELECTRON_RUN_AS_NODE: "1", TERM: "dumb" },
+				},
+			],
+		});
+		await manager.attach(new FakePort(), args);
+		expect(spawn.mock.calls[0]![0].env).toEqual({
+			ZDOTDIR: "/tmp/z",
+			TERM: "xterm-256color",
+			COLORTERM: "truecolor",
+			TERM_PROGRAM: "Kilo Desktop",
+		});
+		await manager.dispose();
+	});
+
+	it("reads the launch list again when the shell restarts", async () => {
+		let shell = "/bin/zsh";
+		const { args, manager, spawn } = await setup({
+			resolveLaunch: async () => [{ shell, args: [] }],
+		});
+		const port = new FakePort();
+		await manager.attach(port, args);
+		shell = "/opt/homebrew/bin/fish";
+		port.send({ type: "restart", requestId: "restart-1" });
+		await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));
+		expect(spawn.mock.calls.map(([options]) => options.shell)).toEqual([
+			"/bin/zsh",
+			"/opt/homebrew/bin/fish",
+		]);
+		await manager.dispose();
+	});
+
+	it("reports an error when there is no shell to launch", async () => {
+		const { args, manager, spawn } = await setup({ resolveLaunch: async () => [] });
+		const port = new FakePort();
+		await manager.attach(port, args);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(port.messages).toContainEqual({ type: "status", status: "error" });
+		expect(port.messages).toContainEqual({
+			type: "error",
+			message: "Could not start a shell: No supported shell could be started.",
+		});
+	});
+
+	it("reports an error when the launch list can't be read", async () => {
+		const { args, manager } = await setup({
+			resolveLaunch: async () => {
+				throw new Error("settings unreadable");
+			},
+		});
+		const port = new FakePort();
+		await manager.attach(port, args);
+		expect(port.messages).toContainEqual({
+			type: "error",
+			message: "Could not start a shell: settings unreadable",
+		});
 	});
 });

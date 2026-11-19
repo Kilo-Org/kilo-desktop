@@ -1,9 +1,10 @@
-// Test host for the terminal pane: main and a window linked in memory, with
-// stand-ins (their real manifests and contracts) for kilo.work-sessions'
-// panes and window (with `workSessionActive` / `paneTargetActive`),
-// kilo.shell's theme, and kilo.terminal's `terminals` and shell port in main;
-// kilo.core is present for its manifest. The pane renders as
-// kilo.work-sessions' canvas renders it.
+// Test host for the terminal pane and its settings page: main and a window
+// linked in memory, with stand-ins (their real manifests and contracts) for
+// kilo.work-sessions' panes and window (with `workSessionActive` /
+// `paneTargetActive`), kilo.shell's theme, and kilo.terminal's `terminals`
+// and shell port in main; kilo.core is present for its manifest. The pane
+// renders as kilo.work-sessions' canvas renders it, the settings page as
+// kilo.shell's Settings renders a section.
 import { cleanup, render } from "@testing-library/react";
 import { vi } from "vitest";
 
@@ -12,13 +13,19 @@ import {
 	type DomainObjectProvider,
 	type DomainObjectState,
 	type PluginEntry,
+	type PluginSdk,
 } from "@kilo-desktop/kernel";
 import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
-import { SHELL_DEFINITIONS, Theme } from "@kilo-desktop/plugin-shell/contracts";
+import {
+	SettingsSection,
+	SHELL_DEFINITIONS,
+	Theme,
+	type SettingsSectionImplementation,
+} from "@kilo-desktop/plugin-shell/contracts";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
 	EMPTY_WORK_SESSION_PANES,
@@ -30,9 +37,17 @@ import {
 	type PaneImplementation,
 	type PaneProps,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { SettingsSectionProvider } from "@kilo-desktop/ui/components/settings-page-header";
 
 import manifest from "../../plugin.json";
-import { TERMINAL_DEFINITIONS, TERMINAL_PROTOCOL_VERSION, Terminals } from "../contracts";
+import {
+	DEFAULT_TERMINAL_SETTINGS,
+	TERMINAL_DEFINITIONS,
+	TERMINAL_PROTOCOL_VERSION,
+	Terminals,
+	type TerminalProfile,
+	type TerminalSettings,
+} from "../contracts";
 import { terminalWebEntry } from "../web";
 
 export type ThemeState = DomainObjectState<typeof Theme>;
@@ -68,19 +83,138 @@ export async function renderTerminalHost(
 ) {
 	cleanup();
 	const opened = vi.fn((_args: unknown) => undefined);
-	const openPane = vi.fn((_input: unknown) => undefined);
-	const windowOpenPane = vi.fn((_input: { kind: string }) => undefined);
-	let theme!: DomainObjectProvider<typeof Theme>;
-
 	const terminalMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domainObjects.provide(Terminals, {
-				initialState: {},
-				methods: { list: () => [], read: () => null, close: () => undefined },
-			});
+			provideTerminals(sdk);
 			sdk.ports.handle("session", (_port, args) => opened(args));
 		},
 	});
+	const { main, renderer, openPane, windowOpenPane, theme } = await bootTerminalPair(
+		terminalMain,
+		options,
+	);
+
+	const contribution = renderer.extensions
+		.list(PaneKind)
+		.find((candidate) => candidate.key === "kilo.terminal/terminal")!;
+	const element = (next: Partial<PaneProps>) => (
+		<KernelProvider kernel={renderer}>
+			<RenderContribution
+				contribution={contribution}
+				props={{
+					workSessionId: "wses_1",
+					pane: terminalPane(),
+					workspaceId: null,
+					directory: null,
+					visible: true,
+					...next,
+				}}
+				select={(implementation: PaneImplementation) => implementation.component}
+			/>
+		</KernelProvider>
+	);
+	const view = render(element(props));
+	return {
+		main,
+		renderer,
+		opened,
+		openPane,
+		windowOpenPane,
+		contribution,
+		setTheme: (next: ThemeState) => theme()?.setState(next),
+		rerender: (next: Partial<PaneProps>) => view.rerender(element(next)),
+		unmount: view.unmount,
+		sdk: renderer.sdkFor("kilo.terminal"),
+	};
+}
+
+type SettingsPatch = Partial<TerminalSettings>;
+
+export interface TerminalSettingsHostOptions {
+	readonly profiles?: TerminalProfile[];
+	readonly settings?: TerminalSettings;
+	/** Leaves kilo.terminal's main entry out, as in the browser. */
+	readonly withoutMain?: boolean;
+	/** Replaces saving (to fail it); the stand-in otherwise merges the patch into its state. */
+	readonly updateSettings?: (patch: SettingsPatch) => TerminalSettings;
+}
+
+/** Renders the Terminal settings page as Settings does, over a stand-in `terminals` in main. */
+export async function renderTerminalSettings(options: TerminalSettingsHostOptions = {}) {
+	cleanup();
+	let terminals!: DomainObjectProvider<typeof Terminals>;
+	const updateSettings = vi.fn((patch: SettingsPatch) => {
+		if (options.updateSettings) return options.updateSettings(patch);
+		const current = terminals.state.settings;
+		const settings: TerminalSettings = {
+			defaultProfileId:
+				patch.defaultProfileId === undefined ? current.defaultProfileId : patch.defaultProfileId,
+			customProfiles: patch.customProfiles ?? current.customProfiles,
+		};
+		terminals.setState({ ...terminals.state, settings });
+		return settings;
+	});
+	const refreshProfiles = vi.fn(() => terminals.state.profiles);
+	const terminalMain: PluginEntry = definePlugin({
+		activate(sdk) {
+			terminals = provideTerminals(sdk, {
+				profiles: options.profiles ?? [],
+				settings: options.settings ?? DEFAULT_TERMINAL_SETTINGS,
+				updateSettings,
+				refreshProfiles,
+			});
+		},
+	});
+	const { renderer } = await bootTerminalPair(terminalMain, options);
+	const section = renderer.extensions
+		.list(SettingsSection)
+		.find((candidate) => candidate.key === "kilo.terminal/terminal")!;
+	const Component = (section.implementation as SettingsSectionImplementation).component;
+	const view = render(
+		<KernelProvider kernel={renderer}>
+			<SettingsSectionProvider
+				value={{
+					title: section.metadata.title,
+					...(section.metadata.description ? { description: section.metadata.description } : {}),
+				}}
+			>
+				<Component />
+			</SettingsSectionProvider>
+		</KernelProvider>,
+	);
+	return { ...view, renderer, updateSettings, refreshProfiles };
+}
+
+interface TerminalsStandIn {
+	readonly profiles: TerminalProfile[];
+	readonly settings: TerminalSettings;
+	readonly updateSettings: (patch: SettingsPatch) => TerminalSettings;
+	readonly refreshProfiles: () => TerminalProfile[];
+}
+
+function provideTerminals(sdk: PluginSdk, standIn?: TerminalsStandIn) {
+	return sdk.domainObjects.provide(Terminals, {
+		initialState: {
+			profiles: standIn?.profiles ?? [],
+			settings: standIn?.settings ?? DEFAULT_TERMINAL_SETTINGS,
+		},
+		methods: {
+			list: () => [],
+			read: () => null,
+			close: () => undefined,
+			updateSettings: (patch) =>
+				standIn ? standIn.updateSettings(patch as SettingsPatch) : DEFAULT_TERMINAL_SETTINGS,
+			refreshProfiles: () => standIn?.refreshProfiles() ?? [],
+		},
+	});
+}
+
+/** The kernel pair with every stand-in, and kilo.terminal's real web entry. */
+async function bootTerminalPair(terminalMain: PluginEntry, options: TerminalHostOptions) {
+	const openPane = vi.fn((_input: unknown) => undefined);
+	const windowOpenPane = vi.fn((_input: { kind: string }) => undefined);
+	let theme: DomainObjectProvider<typeof Theme> | undefined;
+
 	const workSessionsMain: PluginEntry = definePlugin({
 		activate(sdk) {
 			const panes: DomainObjectProvider<typeof Panes> = sdk.domainObjects.provide(Panes, {
@@ -153,39 +287,7 @@ export async function renderTerminalHost(
 			{ manifest, definitions: TERMINAL_DEFINITIONS, entry: terminalWebEntry },
 		],
 	});
-
-	const contribution = renderer.extensions
-		.list(PaneKind)
-		.find((candidate) => candidate.key === "kilo.terminal/terminal")!;
-	const element = (next: Partial<PaneProps>) => (
-		<KernelProvider kernel={renderer}>
-			<RenderContribution
-				contribution={contribution}
-				props={{
-					workSessionId: "wses_1",
-					pane: terminalPane(),
-					workspaceId: null,
-					directory: null,
-					visible: true,
-					...next,
-				}}
-				select={(implementation: PaneImplementation) => implementation.component}
-			/>
-		</KernelProvider>
-	);
-	const view = render(element(props));
-	return {
-		main,
-		renderer,
-		opened,
-		openPane,
-		windowOpenPane,
-		contribution,
-		setTheme: (next: ThemeState) => theme.setState(next),
-		rerender: (next: Partial<PaneProps>) => view.rerender(element(next)),
-		unmount: view.unmount,
-		sdk: renderer.sdkFor("kilo.terminal"),
-	};
+	return { main, renderer, openPane, windowOpenPane, theme: () => theme };
 }
 
 /**

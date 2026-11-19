@@ -26,7 +26,7 @@ to come back to.
 | 4    | `kilo.chat`            | Built (`04a00522`) | The chat pane end to end: transcript, composer, model picker over `kilo.core/models`, permission and question cards, plan/subagent/media panes, HTML render, MCP apps; chat panes and tab status from main. [Settled](#what-building-step-4-settled)                                                                                                                         |
 | 5    | `kilo.git`             | Built (`fb071b92`) | Repository, `vcs` contribution (isolation is back), patch protocol, pull requests, branch namer, `changes_open`; Changes pane, branch pickers, repository actions, PR decorations and facet; four e2e specs restored. [Settled](#what-building-step-5-settled)                                                                                                               |
 | 6    | `kilo.files`           | Built (`b40bc549`) | Documents (list, read, save, git status, external editors), `open` tool, file pane titles; Files pane (explorer, editor, table viewer), `@` mentions, file links; files and table-viewer e2e specs restored. [Settled](#what-building-step-6-settled)                                                                                                                        |
-| 7    | `kilo.terminal`        | Built (`ed1a9e3f`) | Shells over node-pty, saved history and origin import, `terminals`, agent tools (offered to external apps, as origin); terminal pane, embedded ghostty frame, commands; node-pty and frame packaging; terminal e2e and the external-apps tool check restored. [Settled](#what-building-step-7-settled)                                                                       |
+| 7    | `kilo.terminal`        | Built (`ed1a9e3f`) | Shells over node-pty, saved history and origin import, `terminals`, agent tools (offered to external apps, as origin); terminal pane, embedded ghostty frame, commands; node-pty and frame packaging; terminal e2e and the external-apps tool check restored. Since: shell profiles in Settings → Terminal. [Settled](#what-building-step-7-settled)                         |
 | 8    | `kilo.browser`         | Built (`c780d164`) | Pages (guest attach, navigation, page commands; lookup by pane), `open` tool, local HTML files; Browser pane, web links; browser and loopback-guard e2e restored. [Settled](#what-building-step-8-settled)                                                                                                                                                                   |
 | 9    | `kilo.notebook`        | Built (`b13f0b9a`) | runtimed daemon and peer auth, notebooks, trust and telemetry, workspace environment, panes and tools; Kilo plugin as an agent extension with its env through the new `kilo.core/server-env`; Notebook pane, settings, sign-in gate; runtimed, `@runtimed/node`, koffi, native setup action and CI restored; notebook e2e restored. [Settled](#what-building-step-9-settled) |
 | 10   | `kilo.marketplace`     | Built (`308d302c`) | Marketplace over Kilo's Marketplace API across workspaces (list, install, remove, MCP sign-in, launch-command checks); built-in MCP servers from `kilo.core/mcp-server` contributions; Agent Behavior settings page; marketplace e2e restored. [Settled](#what-building-step-10-settled)                                                                                     |     |
@@ -801,7 +801,8 @@ files inside workspace folders, as origin had it).
 ### Step 7 — `kilo.terminal`
 
 **Offers:** domain object `kilo.terminal/terminals` (list, read and close a
-work session's terminals; an `exited` event). Context key
+work session's terminals; an `exited` event; shell profiles and terminal
+settings, `updateSettings`, `refreshProfiles`). Context key
 `terminalFocused`.
 
 | Contributes to                 | Contributions                         |
@@ -809,6 +810,7 @@ work session's terminals; an `exited` event). Context key
 | `kilo.work-sessions/pane-kind` | `terminal`                            |
 | `kilo.core/tool`               | `open`, `list`, `read`                |
 | `kernel/command`               | `open`, `new`, `clear` (origin's ids) |
+| `kilo.shell/settings-section`  | `terminal`                            |
 
 #### What building step 7 settled
 
@@ -832,6 +834,15 @@ work session's terminals; an `exited` event). Context key
 - **Tests.** `src/main/test-boot.ts` boots main and a window on real kernels;
   `src/test/terminal-host.tsx` is origin's host over v2 stand-ins. e2e: the
   terminal spec restored with origin's tags.
+- **Shell profiles (after step 7, new in v2).** Settings → Terminal picks the
+  default shell from those detected (VS Code's detection, ported to
+  `src/main/profiles/` with the platform injected) and the person's own
+  profiles. Main resolves every shell to an absolute path before node-pty
+  spawns it, which also skips a missing `$SHELL` instead of starting a shell
+  that exits at once. The frame protocol is unchanged: the default is read at
+  each shell start, never sent by a frame. Follow-ups: a per-pane profile
+  picker (needs a protocol version), Cygwin/MSYS2 detection with an
+  unsafe-path prompt, and the `terminal-profile` point for other plugins.
 
 ### Step 8 — `kilo.browser`
 

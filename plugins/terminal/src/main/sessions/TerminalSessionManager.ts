@@ -21,6 +21,7 @@ import {
 	resolveShellCandidates,
 	spawnFirstAvailableShell,
 	terminalEnvironment,
+	type ShellCandidate,
 } from "./shell-launch.js";
 
 interface Subscriber {
@@ -62,6 +63,11 @@ export interface TerminalSessionManagerOptions {
 	 * waits for the login shell's PATH and locale rather than living without.
 	 */
 	readonly environmentReady?: () => Promise<void>;
+	/**
+	 * The shells to try, best first, read at every start (so a changed default
+	 * applies on restart). Without it, the platform's fallback shells are tried.
+	 */
+	readonly resolveLaunch?: () => Promise<readonly ShellCandidate[]>;
 	readonly platform?: NodeJS.Platform;
 	readonly env?: NodeJS.ProcessEnv;
 	readonly persistDebounceMs?: number;
@@ -87,7 +93,9 @@ export interface TerminalExit {
  * explicit cwd can replace it. Label changes are reported once per distinct
  * label so the pane title follows them. The manager is the only layer allowed
  * to spawn, inspect, or signal PTYs; explicit close and app teardown share the
- * same lifecycle.
+ * same lifecycle. Which shell a start spawns is asked of `resolveLaunch` each
+ * time (the person's default profile can change between starts); it never
+ * comes from a renderer.
  * Accepted input is sequenced by the session so renderer reconnects retain a
  * monotonic acknowledgement boundary. Pending session creation is coordinated
  * with close and teardown so a delayed attachment cannot resurrect a terminal
@@ -103,6 +111,7 @@ export class TerminalSessionManager {
 	readonly #storageDir: string;
 	readonly #resolveCwd: (cwd?: string) => Promise<string>;
 	readonly #environmentReady: () => Promise<void>;
+	readonly #resolveLaunch: (() => Promise<readonly ShellCandidate[]>) | undefined;
 	readonly #platform: NodeJS.Platform;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #persistDebounceMs: number;
@@ -121,6 +130,7 @@ export class TerminalSessionManager {
 		this.#storageDir = options.storageDir;
 		this.#resolveCwd = options.resolveCwd;
 		this.#environmentReady = options.environmentReady ?? (() => Promise.resolve());
+		this.#resolveLaunch = options.resolveLaunch;
 		this.#platform = options.platform ?? process.platform;
 		this.#env = options.env ?? process.env;
 		this.#persistDebounceMs = options.persistDebounceMs ?? 40;
@@ -408,6 +418,9 @@ export class TerminalSessionManager {
 	async #start(session: Session): Promise<boolean> {
 		await this.#environmentReady();
 		try {
+			const candidates = this.#resolveLaunch
+				? await this.#resolveLaunch()
+				: resolveShellCandidates(this.#platform, this.#env);
 			const process = spawnFirstAvailableShell(
 				this.#adapter,
 				{
@@ -416,7 +429,7 @@ export class TerminalSessionManager {
 					rows: session.rows,
 					env: terminalEnvironment(this.#env),
 				},
-				resolveShellCandidates(this.#platform, this.#env),
+				candidates,
 			);
 			session.process = process;
 			session.status = "running";

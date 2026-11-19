@@ -20,12 +20,15 @@ import {
 	Terminals,
 	type TerminalConnectionArgs,
 	type TerminalIdentity,
+	type TerminalProfile,
 	type TerminalReadout,
 } from "../contracts";
 import { implementTerminalTools } from "./agent-tools";
 import { createTerminalCwdResolver } from "./cwd";
 import { importOriginHistory } from "./import-origin";
 import { createTerminalPortHandler } from "./port";
+import { ProfileService, type ShellDiscovery } from "./profiles/ProfileService";
+import type { ShellCandidate } from "./sessions/shell-launch";
 import type { TerminalExit } from "./sessions/TerminalSessionManager";
 import {
 	KnownTerminalPanes,
@@ -47,6 +50,8 @@ export interface TerminalManagerDeps {
 	readonly storageDir: string;
 	/** Settles once the process environment is complete; shells start after it. */
 	readonly environmentReady: () => Promise<void>;
+	/** The shells a start tries, best first: the default profile, then automatic ones. */
+	readonly resolveLaunch: () => Promise<readonly ShellCandidate[]>;
 	readonly resolveCwd: (cwd?: string) => Promise<string>;
 	readonly onSessionExited: (identity: TerminalIdentity, exit: TerminalExit) => void;
 	readonly onLabelChanged: (identity: TerminalIdentity, label: string) => void;
@@ -55,6 +60,8 @@ export interface TerminalManagerDeps {
 
 export interface TerminalMainOptions {
 	readonly createManager: (deps: TerminalManagerDeps) => TerminalManagerLike;
+	/** How shells are found on this machine (canned in tests). */
+	readonly shells: ShellDiscovery;
 	/** Where terminals start when no folder is asked for. */
 	readonly homeDirectory?: string;
 	/** Origin's storage folder, whose transcripts are imported once. */
@@ -77,7 +84,9 @@ interface Persisted extends Record<string, unknown> {
  * pane; its label becomes the pane's title. Frames stream over the `session`
  * port, which waits for origin's transcripts to be imported (once, retried on
  * failure) so a reconnecting pane finds its history. Its agent tools open,
- * list and read the calling chat's work session's terminals.
+ * list and read the calling chat's work session's terminals. Shell profiles
+ * (detected shells, the person's own, the default) live in `terminals`' state;
+ * detection warms at activation and every shell start asks for the default.
  */
 export function createTerminalMainEntry(options: TerminalMainOptions): PluginEntry {
 	return definePlugin({
@@ -103,11 +112,43 @@ export function createTerminalMainEntry(options: TerminalMainOptions): PluginEnt
 				return manager.read(terminalIdentityOf(workSessionId, pane), lines);
 			};
 
+			const profiles = new ProfileService({
+				storage: host.storage,
+				discovery: options.shells,
+				ready: () => environmentReady(sdk),
+				logger: sdk.logger,
+			});
+			let disposed = false;
+			sdk.onDispose(() => {
+				disposed = true;
+			});
+			// Detection runs can overlap (a rescan while warming up); only the latest is published.
+			let detectionRun = 0;
+			const publishProfiles = (detection: Promise<TerminalProfile[]>) => {
+				const run = ++detectionRun;
+				return detection.then((list) => {
+					if (run === detectionRun && !disposed)
+						terminals.setState({ ...terminals.state, profiles: list });
+					return list;
+				});
+			};
+			const warnDetectionFailed = (error: unknown) =>
+				sdk.logger.warn(
+					`Could not detect the installed shells: ${error instanceof Error ? error.message : String(error)}`,
+				);
+
 			const terminals: DomainObjectProvider<typeof Terminals> = sdk.domainObjects.provide(
 				Terminals,
 				{
-					initialState: {},
+					initialState: { profiles: [], settings: profiles.settings() },
 					methods: {
+						updateSettings: (patch) => {
+							const settings = profiles.updateSettings(patch);
+							terminals.setState({ ...terminals.state, settings });
+							void publishProfiles(profiles.profiles()).catch(warnDetectionFailed);
+							return settings;
+						},
+						refreshProfiles: () => publishProfiles(profiles.refresh()),
 						list: ({ workSessionId }) => listTerminals(workSessionId),
 						read: ({ workSessionId, terminalId, lines }) =>
 							readTerminal(workSessionId, terminalId, lines ?? DEFAULT_TERMINAL_READ_LINES),
@@ -131,9 +172,12 @@ export function createTerminalMainEntry(options: TerminalMainOptions): PluginEnt
 					sdk.logger.warn("Could not close a terminal.", error);
 				});
 
+			void publishProfiles(profiles.profiles()).catch(warnDetectionFailed);
+
 			const manager = options.createManager({
 				storageDir: host.storage.dir,
 				environmentReady: () => environmentReady(sdk),
+				resolveLaunch: () => profiles.resolveLaunch(),
 				resolveCwd: createTerminalCwdResolver(
 					() => sdk.domainObjects.get(Workspaces),
 					options.homeDirectory,

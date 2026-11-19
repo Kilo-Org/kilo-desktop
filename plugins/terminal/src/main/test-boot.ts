@@ -36,6 +36,7 @@ import manifest from "../../plugin.json";
 import { TERMINAL_DEFINITIONS, Terminals } from "../contracts";
 import type { TerminalReadout } from "../contracts/session";
 import { createTerminalMainEntry, type TerminalManagerDeps } from "./entry";
+import type { ShellDiscovery } from "./profiles/ProfileService";
 import type { TerminalSessionManager } from "./sessions/TerminalSessionManager";
 
 const directories: string[] = [];
@@ -213,7 +214,14 @@ export interface BootOptions {
 	/** Leaves kilo.core out. */
 	readonly withoutCore?: boolean;
 	readonly logger?: KernelLogger;
+	/** Canned shell discovery, so activation never probes the machine running the tests. */
+	readonly shells?: ShellDiscovery;
 }
+
+const NO_SHELLS: ShellDiscovery = {
+	detect: async () => [],
+	automatic: async () => [{ shell: "/bin/sh", args: [] }],
+};
 
 /** kilo.terminal's main entry with its stand-ins, and a window. */
 export async function bootTerminalMain(options: BootOptions = {}) {
@@ -229,6 +237,7 @@ export async function bootTerminalMain(options: BootOptions = {}) {
 			fake.deps = deps;
 			return options.manager?.(deps) ?? fake;
 		},
+		shells: options.shells ?? NO_SHELLS,
 		homeDirectory: os.tmpdir(),
 		...(options.originStorageDir ? { originStorageDir: () => options.originStorageDir! } : {}),
 	});

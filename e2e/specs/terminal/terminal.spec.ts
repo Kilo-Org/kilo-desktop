@@ -35,4 +35,15 @@ test.describe("Terminal @smoke @packaged", () => {
 
 		await terminalPage.exit(second);
 	});
+
+	test("chooses the shell new terminals run in Settings", async ({
+		appShellPage,
+		terminalSettingsPage,
+	}) => {
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await terminalSettingsPage.open();
+		await terminalSettingsPage.verifyDefaultShell("Automatic");
+		await terminalSettingsPage.verifyAutomaticOffered();
+	});
 });

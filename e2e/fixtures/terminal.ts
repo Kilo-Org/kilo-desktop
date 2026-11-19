@@ -4,10 +4,12 @@ import path from "node:path";
 
 import { MainProcessErrors } from "../pages/terminal/main-process-errors.js";
 import { TerminalPage } from "../pages/terminal/terminal-page.js";
+import { TerminalSettingsPage } from "../pages/terminal/terminal-settings-page.js";
 import { removePathAfterAppStops, test as shellTest } from "./shell.js";
 
 type TerminalFixtures = {
 	terminalPage: TerminalPage;
+	terminalSettingsPage: TerminalSettingsPage;
 	terminalWorkspace: { path: string; name: string };
 	mainProcessErrors: MainProcessErrors;
 };
@@ -31,6 +33,10 @@ export const test = shellTest.extend<TerminalFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	terminalPage: async ({}, use) => {
 		await use(new TerminalPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	terminalSettingsPage: async ({}, use) => {
+		await use(new TerminalSettingsPage());
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	terminalWorkspace: async ({}, use) => {

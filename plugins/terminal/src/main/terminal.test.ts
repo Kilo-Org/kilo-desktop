@@ -11,7 +11,7 @@ import {
 	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import type { TerminalExited } from "../contracts";
+import type { CustomTerminalProfile, TerminalExited, TerminalProfile } from "../contracts";
 import { TERMINAL_PROTOCOL_VERSION, type TerminalReadout } from "../contracts/session";
 import { historyPath } from "./sessions/history";
 import type { PtyExitEvent, PtyProcess } from "./sessions/pty";
@@ -512,5 +512,88 @@ describe("kilo.terminal's agent tools", () => {
 				"Terminal tools require an originating Kilo chat session",
 			);
 		}
+	});
+});
+
+describe("kilo.terminal shell profiles", () => {
+	const FISH: TerminalProfile = {
+		id: "detected:fish",
+		label: "fish",
+		path: "/opt/homebrew/bin/fish",
+		args: [],
+		source: "detected",
+		available: true,
+	};
+
+	function shells(found: TerminalProfile[] = [FISH]) {
+		return {
+			detect: vi.fn(async (_custom: readonly CustomTerminalProfile[]) => found),
+			automatic: vi.fn(async () => [{ shell: "/bin/sh", args: [] }]),
+		};
+	}
+
+	it("publishes the detected profiles and the settings once activated", async () => {
+		const { terminals } = await boot({ shells: shells() });
+
+		await vi.waitFor(() => expect(terminals.getState().profiles).toEqual([FISH]));
+		expect(terminals.getState().settings).toEqual({ defaultProfileId: null, customProfiles: [] });
+	});
+
+	it("saves settings and publishes them, listing a custom profile whose shell is missing", async () => {
+		const { terminals } = await boot({ shells: shells() });
+		const settings = {
+			defaultProfileId: "nu",
+			customProfiles: [{ id: "nu", label: "Nushell", path: "/nowhere/nu" }],
+		};
+
+		await expect(terminals.methods.updateSettings(settings)).resolves.toEqual(settings);
+		expect(terminals.getState().settings).toEqual(settings);
+		await vi.waitFor(() =>
+			expect(terminals.getState().profiles).toEqual([
+				FISH,
+				{
+					id: "nu",
+					label: "Nushell",
+					path: "/nowhere/nu",
+					args: [],
+					source: "custom",
+					available: false,
+				},
+			]),
+		);
+	});
+
+	it("detects again on request", async () => {
+		const discovery = shells();
+		const { terminals } = await boot({ shells: discovery });
+		await vi.waitFor(() => expect(discovery.detect).toHaveBeenCalledTimes(1));
+		const ZSH = { ...FISH, id: "detected:zsh", label: "zsh", path: "/bin/zsh" };
+		discovery.detect.mockResolvedValue([FISH, ZSH]);
+
+		await expect(terminals.methods.refreshProfiles(undefined)).resolves.toEqual([FISH, ZSH]);
+		expect(terminals.getState().profiles).toEqual([FISH, ZSH]);
+	});
+
+	it("starts shells with the default profile first", async () => {
+		const { fake, terminals } = await boot({ shells: shells() });
+
+		await expect(fake.deps!.resolveLaunch()).resolves.toEqual([{ shell: "/bin/sh", args: [] }]);
+		await terminals.methods.updateSettings({ defaultProfileId: "detected:fish" });
+		await expect(fake.deps!.resolveLaunch()).resolves.toEqual([
+			{ shell: "/opt/homebrew/bin/fish", args: [] },
+			{ shell: "/bin/sh", args: [] },
+		]);
+	});
+
+	it("warns, and keeps working, when detection fails", async () => {
+		const { logger, warnings } = recordingLogger();
+		const discovery = shells();
+		discovery.detect.mockRejectedValue(new Error("probe crashed"));
+		const { terminals } = await boot({ shells: discovery, logger });
+
+		await vi.waitFor(() =>
+			expect(warnings.some(([message]) => String(message).includes("probe crashed"))).toBe(true),
+		);
+		expect(terminals.getState().profiles).toEqual([]);
 	});
 });

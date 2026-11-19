@@ -46,6 +46,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 		contentTestId: "notebook-settings",
 	},
 	{ id: "notifications", title: "Notifications" },
+	{ id: "terminal", title: "Terminal", contentTestId: "terminal-settings" },
 	{ id: "privacy", title: "Privacy" },
 	{ id: "ai-providers", title: "AI Providers" },
 	{ id: "kilo-marketplace", title: "Agent Behavior" },

@@ -1,10 +1,13 @@
 import path from "node:path";
 
+import type { TerminalProfileEnv } from "../../contracts/profiles.js";
 import type { PtyAdapter, PtyProcess } from "./pty.js";
 
 export interface ShellCandidate {
 	readonly shell: string;
 	readonly args: readonly string[];
+	/** Variables the shell's profile adds (null unsets one). */
+	readonly env?: TerminalProfileEnv;
 }
 
 const TERMINAL_ENV_BLOCKLIST = new Set([
@@ -69,12 +72,37 @@ export function terminalEnvironment(env: NodeJS.ProcessEnv): Record<string, stri
 	return result;
 }
 
+/**
+ * The environment with a profile's variables applied (null unsets one). Apply
+ * it before `terminalEnvironment`, which then strips desktop-only variables
+ * and sets TERM, so no profile can undo either.
+ */
+export function applyProfileEnv(
+	env: NodeJS.ProcessEnv,
+	profileEnv: TerminalProfileEnv | undefined,
+): NodeJS.ProcessEnv {
+	if (!profileEnv) return env;
+	const result: NodeJS.ProcessEnv = { ...env };
+	for (const [key, value] of Object.entries(profileEnv)) {
+		if (value === null) delete result[key];
+		else result[key] = value;
+	}
+	return result;
+}
+
 function isRetryableSpawnError(error: unknown): boolean {
 	const message =
 		error instanceof Error ? `${error.message} ${String(error.cause ?? "")}` : String(error);
 	return /enoent|not found|no such file|posix_spawnp failed/i.test(message);
 }
 
+/**
+ * Spawns the first candidate that starts. `options.env` is the terminal's
+ * environment; a candidate's profile variables are applied over it. Main checks
+ * that candidates exist beforehand; falling through here is a backstop for
+ * spawn errors that still name a missing file (Windows reports them; POSIX
+ * shells that fail to exec exit instead).
+ */
 export function spawnFirstAvailableShell(
 	adapter: PtyAdapter,
 	options: Omit<Parameters<PtyAdapter["spawn"]>[0], "shell" | "args">,
@@ -82,8 +110,11 @@ export function spawnFirstAvailableShell(
 ): PtyProcess {
 	let lastError: unknown;
 	for (const item of candidates) {
+		const env = item.env
+			? terminalEnvironment(applyProfileEnv(options.env, item.env))
+			: options.env;
 		try {
-			return adapter.spawn({ ...options, shell: item.shell, args: item.args });
+			return adapter.spawn({ ...options, env, shell: item.shell, args: item.args });
 		} catch (error) {
 			lastError = error;
 			if (!isRetryableSpawnError(error)) throw error;

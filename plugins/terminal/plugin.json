@@ -13,7 +13,8 @@
 		"kilo.work-sessions/panes": "optional",
 		"kilo.work-sessions/window": "optional",
 		"kilo.work-sessions/pane-kind": "optional",
-		"kilo.shell/theme": "optional"
+		"kilo.shell/theme": "optional",
+		"kilo.shell/settings-section": "optional"
 	},
 	"permissions": {
 		"embeddedHosts": ["terminal"]
@@ -29,7 +30,7 @@
 		{
 			"id": "terminals",
 			"home": "main",
-			"description": "The terminals in each work session: list, read and close them."
+			"description": "The terminals in each work session: list, read and close them; and the shell profiles new ones run."
 		}
 	],
 	"contributes": {
@@ -79,6 +80,13 @@
 					"when": {
 						"all": ["kilo.terminal/terminalFocused"]
 					}
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "terminal",
+					"title": "Terminal",
+					"description": "Choose the shell new terminals run."
 				}
 			],
 			"kilo.core/tool": [

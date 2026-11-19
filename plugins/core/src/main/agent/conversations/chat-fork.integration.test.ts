@@ -33,7 +33,15 @@ const kiloExecutable = bundledKiloExecutable();
 
 interface SyncPayload {
 	readonly type?: string;
+	readonly properties?: { readonly sessionID?: string };
 	readonly syncEvent?: { readonly type?: string; readonly aggregateID?: string };
+}
+
+interface EventSubscription {
+	/** Every `sync` copy of a message event the stream delivered. */
+	readonly messageSyncs: SyncPayload[];
+	/** Every chat any event on the stream was about. */
+	readonly chatIds: Set<string>;
 }
 
 /**
@@ -110,34 +118,52 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 		});
 	}
 
-	/**
-	 * Every `sync` copy of a message event the stream delivers, with or without
-	 * the skip header. Resolves once the stream is live (its first event), so
-	 * nothing sent after it is missed.
-	 */
-	async function syncCopies(skipForkSync: boolean): Promise<SyncPayload[]> {
-		const seen: SyncPayload[] = [];
-		const subscription = await sdk().global.event({
+	/** The global event stream, with or without the fork-sync skip header. */
+	async function subscribe(skipForkSync: boolean): Promise<EventSubscription> {
+		const subscription: EventSubscription = { messageSyncs: [], chatIds: new Set() };
+		const response = await sdk().global.event({
 			signal: streams.signal,
 			...(skipForkSync ? { headers: { "x-kilo-sse-skip-fork-sync": "1" } } : {}),
 		});
-		let live!: () => void;
-		const connected = new Promise<void>((resolve) => (live = resolve));
 		void (async () => {
 			try {
-				for await (const event of subscription.stream as AsyncIterable<{ payload?: SyncPayload }>) {
-					live();
+				for await (const event of response.stream as AsyncIterable<{ payload?: SyncPayload }>) {
 					const payload = event.payload;
+					const chatId = payload?.syncEvent?.aggregateID ?? payload?.properties?.sessionID;
+					if (chatId) subscription.chatIds.add(chatId);
 					if (payload?.type === "sync" && payload.syncEvent?.type?.startsWith("message.")) {
-						seen.push(payload);
+						subscription.messageSyncs.push(payload);
 					}
 				}
 			} catch {
 				// Aborted when the test ends.
 			}
 		})();
-		await connected;
-		return seen;
+		return subscription;
+	}
+
+	/**
+	 * Resolves once every subscription's server-side bus listener is attached,
+	 * so nothing emitted after it is missed. `server.connected` cannot prove
+	 * that: the CLI sends it ahead of the lazily subscribed bus stream, so
+	 * events right after it can be dropped on a slow machine. A probe chat each
+	 * stream reports can, and is retried until one lands after the listeners.
+	 */
+	async function untilLive(...subscriptions: EventSubscription[]): Promise<void> {
+		const kilo = createKiloChatClient(connection);
+		const probes: string[] = [];
+		await expect
+			.poll(
+				async () => {
+					const reported = probes.some((id) =>
+						subscriptions.every(({ chatIds }) => chatIds.has(id)),
+					);
+					if (!reported) probes.push((await kilo.createChat(project, {})).id);
+					return reported;
+				},
+				{ timeout: 10_000, interval: 250 },
+			)
+			.toBe(true);
 	}
 
 	async function sendWithoutReply(chatId: string, text: string): Promise<string> {
@@ -168,8 +194,9 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 		const source = await kilo.createChat(project, { metadata: stamp, permission: rules });
 		await sendWithoutReply(source.id, "Fix the login");
 		const second = await sendWithoutReply(source.id, "Now the signup");
-		const withHeader = await syncCopies(true);
-		const withoutHeader = await syncCopies(false);
+		const withHeader = await subscribe(true);
+		const withoutHeader = await subscribe(false);
+		await untilLive(withHeader, withoutHeader);
 
 		const fork = await kilo.forkChat(project, source.id, second);
 
@@ -182,8 +209,10 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled Kilo CLI", () =>
 		await kilo.updateChat(project, fork.id, { permission: rules });
 		expect(await kilo.getChatPermission(project, fork.id)).toEqual(rules);
 
-		await expect.poll(() => withoutHeader.length).toBeGreaterThan(0);
-		expect(withHeader).toEqual([]);
+		await expect
+			.poll(() => withoutHeader.messageSyncs.length, { timeout: 10_000 })
+			.toBeGreaterThan(0);
+		expect(withHeader.messageSyncs).toEqual([]);
 	});
 
 	it("keeps a fork's hidden note as a synthetic part that starts no turn", async () => {

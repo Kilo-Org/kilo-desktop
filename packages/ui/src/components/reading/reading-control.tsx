@@ -129,7 +129,7 @@ export function ReadingControl(props: ReadingControlProps) {
 					aria-label="Reading settings"
 					data-qa-id={`${qaId}-trigger`}
 					className={cn(
-						"bg-popover text-muted-foreground hover:text-foreground border-border-subtle inline-flex size-9 shrink-0 items-center justify-center rounded-full border font-serif text-[15px] leading-none shadow-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-muted data-popup-open:text-foreground data-popup-open:shadow-inner",
+						"bg-popover text-muted-foreground hover:text-foreground border-border-subtle inline-flex size-9 shrink-0 items-center justify-center rounded-full border font-sans font-semibold text-[15px] leading-none shadow-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-muted data-popup-open:text-foreground data-popup-open:shadow-inner",
 						className,
 					)}
 				>

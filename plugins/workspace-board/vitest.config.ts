@@ -38,7 +38,10 @@ export default defineConfig({
 				},
 			},
 			{
-				plugins: [react(), tailwindcss()],
+				plugins: [
+					react({ compiler: true, exclude: [/\/node_modules\//, /\/\.vitest\//] }),
+					tailwindcss(),
+				],
 				resolve: { dedupe: ["react", "react-dom"] },
 				// Pre-bundle every dep discovered during a run so Vite never
 				// re-optimizes mid-run ("Vitest failed to find the current suite").

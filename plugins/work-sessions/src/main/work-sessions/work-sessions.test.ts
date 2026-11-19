@@ -5,11 +5,14 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { NotificationContent } from "@kilo-desktop/plugin-shell/contracts";
+
 import type { WorkSession } from "../../contracts";
 import {
 	bootWorkSessions,
 	chat,
 	FakeCore,
+	fakeShell,
 	storageWithWorkspaces,
 	type BootOptions,
 } from "../test-boot";
@@ -181,6 +184,35 @@ describe("creating chats", () => {
 		await expect(workSessions.methods.createChat({ id: "wses_gone" })).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});
+	});
+});
+
+describe("forking chats", () => {
+	it("forks one of its chats and lists the fork as soon as it returns", async () => {
+		const { workSessions, core, byId } = await boot();
+		const { id } = await workSessions.methods.create({ workspaceId: "w1" });
+		const source = await workSessions.methods.createChat({ id });
+		await vi.waitFor(() => expect(byId(id)?.chatIds).toEqual([source.id]));
+
+		const fork = await workSessions.methods.forkChat({
+			id,
+			chatId: source.id,
+			messageId: "msg_2",
+		});
+
+		expect(core.forked).toEqual([{ id: source.id, messageId: "msg_2" }]);
+		expect(fork.workSessionId).toBe(id);
+		expect(byId(id)?.chatIds).toEqual([source.id, fork.id]);
+	});
+
+	it("refuses a chat that isn't in the work session, without forking it", async () => {
+		const { workSessions, core } = await boot();
+		const { id } = await workSessions.methods.create({ workspaceId: "w1" });
+
+		await expect(
+			workSessions.methods.forkChat({ id, chatId: "ses_elsewhere", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "NOT_FOUND" });
+		expect(core.forked).toEqual([]);
 	});
 });
 
@@ -560,11 +592,15 @@ describe("importing origin's work sessions", () => {
 		expect(unreadable.list()).toEqual([]);
 	});
 
-	it("imports nothing when better-sqlite3 can't load, without failing activation", async () => {
+	it("retries next launch when better-sqlite3 can't load, and tells the person", async () => {
+		const storage = storageWithWorkspaces();
 		const database = await originDatabase([{ id: "wses_old", chats: [] }]);
 		const warnings: string[] = [];
+		const notices = new Map<string, NotificationContent>();
 
 		const { list, kernel } = await boot({
+			storage,
+			plugins: [fakeShell(notices)],
 			originDatabase: database,
 			logger: {
 				debug: () => {},
@@ -581,12 +617,88 @@ describe("importing origin's work sessions", () => {
 				}),
 			},
 		});
-		await settle();
+		await vi.waitFor(() => expect(notices.get("origin-import-failed")?.level).toBe("warning"));
 
 		expect(kernel.pluginState("kilo.work-sessions")).toBe("active");
 		expect(list()).toEqual([]);
+		expect(storage.saved.get("work-sessions")).not.toMatchObject({ importedFromOrigin: true });
 		expect(warnings.filter((warning) => warning.includes("better-sqlite3"))).toHaveLength(1);
 		expect(warnings.filter((warning) => warning.startsWith("error"))).toEqual([]);
+
+		const relaunched = await boot({ storage, originDatabase: database });
+
+		await vi.waitFor(() => expect(relaunched.byId("wses_old")).toBeDefined());
+	});
+
+	describe("for a person a release marked imported without reading origin", () => {
+		const saved = (id: string, chatIds: string[], overrides: Partial<WorkSession> = {}) => ({
+			id,
+			title: `Chat ${chatIds[0] ?? id}`,
+			titleSource: "chat" as const,
+			pinned: false,
+			archived: false,
+			archiveChangedAt: 100,
+			workspaceId: null,
+			branch: null,
+			directory: "/projects/app",
+			chatIds,
+			createdAt: 100,
+			updatedAt: 200,
+			...overrides,
+		});
+		const markedImported = (workSessions: WorkSession[]) => {
+			const storage = storageWithWorkspaces();
+			storage.saved.set("work-sessions", {
+				workSessions,
+				importedFromOrigin: true,
+				originArchivesReopened: true,
+			});
+			return storage;
+		};
+
+		it("brings origin's work sessions over once, folding the chats adopted meanwhile", async () => {
+			const storage = markedImported([
+				saved("wses_adopted", ["ses_a"], { title: "Mine", titleSource: "user" }),
+			]);
+			const database = await originDatabase([{ id: "wses_old", chats: ["ses_a", "ses_b"] }]);
+
+			const first = await boot({
+				storage,
+				core: withChats(chat("ses_a"), chat("ses_b")),
+				originDatabase: database,
+			});
+
+			await vi.waitFor(() =>
+				expect(first.list()).toEqual([
+					expect.objectContaining({ id: "wses_old", title: "Mine", chatIds: ["ses_a", "ses_b"] }),
+				]),
+			);
+			await first.workSessions.methods.remove({ id: "wses_old" });
+
+			const second = await boot({ storage, core: withChats(), originDatabase: database });
+			await settle();
+
+			expect(second.list()).toEqual([]);
+		});
+
+		it("leaves them alone when some of origin's work sessions are already here", async () => {
+			const storage = markedImported([saved("wses_kept", ["ses_a"])]);
+			const database = await originDatabase([
+				{ id: "wses_kept", chats: ["ses_a"] },
+				{ id: "wses_deleted", chats: ["ses_b"] },
+			]);
+
+			const { list } = await boot({
+				storage,
+				core: withChats(chat("ses_a")),
+				originDatabase: database,
+			});
+			await vi.waitFor(() =>
+				expect(storage.saved.get("work-sessions")).toMatchObject({ originImportVerified: true }),
+			);
+
+			expect(list().map((workSession) => workSession.id)).toEqual(["wses_kept"]);
+		});
 	});
 
 	it("puts each chat in exactly one work session when origin is read a launch after a failed read", async () => {

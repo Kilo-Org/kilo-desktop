@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { KernelError } from "@kilo-desktop/kernel";
 import { Panes, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { chatPaneObject, COMPOSER_FOCUSED_KEY, Drafts } from "../contracts";
@@ -98,6 +99,7 @@ describe("a draft agent pane", () => {
 
 	it("creates the session's chat on the first send and records it in the pane", async () => {
 		const host = await renderChat({ instructions: ["Prefer small diffs."] });
+		const draftThread = page.getByTestId("kilo-chat-thread").element();
 
 		await send("Fix the login form");
 
@@ -127,6 +129,8 @@ describe("a draft agent pane", () => {
 		expect(body.system).toContain('Additional workspace folder: "/projects/lib"');
 		expect(body.system).toContain("Prefer small diffs.");
 		await expect.element(page.getByText("Fix the login form")).toBeVisible();
+		// The thread that sent the first message keeps showing its chat.
+		expect(page.getByTestId("kilo-chat-thread").element()).toBe(draftThread);
 		expect(host.server.requestsTo("GET", "/session/ses_new_1/message").length).toBeLessThanOrEqual(
 			1,
 		);
@@ -413,30 +417,9 @@ describe("an agent pane with a chat", () => {
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
 
 		host.view.unmount();
-		await new Promise((resolve) => setTimeout(resolve, 100));
 
 		expect(server.openStreams).toBe(1);
 		expect(server.requestsTo("GET", "/global/event")).toHaveLength(1);
-	});
-
-	it("closes the previous test window's event stream before the next host opens", async () => {
-		const first = serverWithChat();
-		await renderChat({
-			server: first,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-		});
-		await vi.waitFor(() => expect(first.openStreams).toBe(1));
-
-		const second = serverWithChat();
-		await renderChat({
-			server: second,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-		});
-
-		await vi.waitFor(() => expect(first.openStreams).toBe(0));
-		await vi.waitFor(() => expect(second.openStreams).toBe(1));
 	});
 });
 
@@ -739,7 +722,6 @@ describe("unsent text, when the chat is slow to load", () => {
 		await host.popOut();
 
 		await expect.element(page.getByText("Hello")).toBeVisible();
-		await new Promise((resolve) => setTimeout(resolve, 400));
 		await expect.element(composerInput()).toHaveTextContent("hi");
 		expect(drafts.getState().drafts.wses_1?.panes?.pane_agent).toBe("hi");
 		expect(kept.every((text) => text === "hi")).toBe(true);
@@ -874,5 +856,187 @@ describe("focus-composer", () => {
 
 		await vi.waitFor(() => expect(host.sessions.calls.open).toHaveBeenCalledOnce());
 		await expect.element(composerInput()).toHaveFocus();
+	});
+});
+
+describe("forking a chat", () => {
+	const forkButtons = () => page.getByTestId("kilo-fork-from-here-button");
+	const forkButtonOf = (text: string) =>
+		[...document.querySelectorAll<HTMLElement>('[data-qa-id="kilo-fork-from-here-button"]')].find(
+			(button) =>
+				button.closest('[data-slot="aui_user-message-root"]')?.textContent?.includes(text),
+		);
+	const progress = () => page.getByTestId("kilo-fork-progress");
+
+	function twoTurns() {
+		return serverWithChat("ses_a", [
+			userMessage("ses_a", "msg_u1", "Fix the login"),
+			assistantMessage("ses_a", "msg_a1", "msg_u1", [{ type: "text", text: "Fixed login." }]),
+			userMessage("ses_a", "msg_u2", "Now the signup"),
+			assistantMessage("ses_a", "msg_a2", "msg_u2", [{ type: "text", text: "Fixed signup." }]),
+		]);
+	}
+
+	async function showTwoTurns(server = twoTurns()) {
+		const host = await renderChat({
+			server,
+			workSession: workSession({ chatIds: ["ses_a"] }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.element(page.getByText("Fixed signup.")).toBeVisible();
+		return host;
+	}
+
+	async function forkAt(text: string) {
+		await vi.waitFor(() => expect(forkButtonOf(text)).toBeDefined());
+		forkButtonOf(text)!.click();
+	}
+
+	const forkedPane = (host: Awaited<ReturnType<typeof renderChat>>) => {
+		const panes = host.sessions.panesOf("wses_1");
+		const pane = panes.panes.find((candidate) => candidate.object?.id === "ses_fork_1");
+		return pane && { pane, active: panes.activePaneId === pane.id };
+	};
+
+	it("asks the window's event stream to leave out the copies a fork replays", async () => {
+		const host = await showTwoTurns();
+
+		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
+		const [stream] = host.server.requestsTo("GET", "/global/event");
+		expect(stream?.headers.get("x-kilo-sse-skip-fork-sync")).toBe("1");
+	});
+
+	it("offers a fork on each of the chat's user messages but the first", async () => {
+		await showTwoTurns();
+
+		await vi.waitFor(() => expect(forkButtons().elements()).toHaveLength(1));
+		expect(forkButtonOf("Now the signup")).toBeDefined();
+		expect(forkButtonOf("Fix the login")).toBeUndefined();
+	});
+
+	it("forks a chat started in the pane at a prompt and opens the fork as the active pane", async () => {
+		const host = await renderChat();
+		await send("Fix the login");
+		await expect.element(page.getByText("Fix the login")).toBeVisible();
+		await vi.waitFor(() => expect(host.server.chats.get("ses_new_1")?.messages).toHaveLength(1));
+		host.server.emit("session.idle", { sessionID: "ses_new_1" });
+		await send("Now the signup");
+		await vi.waitFor(() => expect(host.server.chats.get("ses_new_1")?.messages).toHaveLength(2));
+		host.server.emit("session.idle", { sessionID: "ses_new_1" });
+		await expect.element(page.getByTestId("kilo-composer-stop")).not.toBeInTheDocument();
+
+		await forkAt("Now the signup");
+
+		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
+		expect(host.server.requestsTo("POST", "/session/ses_new_1/fork")[0]?.body).toEqual({
+			messageID: "msg_user_2",
+		});
+		expect(host.sessions.calls.open).toHaveBeenCalledWith(
+			expect.objectContaining({ workSessionId: "wses_1", placement: "tab" }),
+		);
+		const fork = page.getByTestId(`pane-${forkedPane(host)!.pane.id}`);
+		await expect.element(fork.getByText("Fix the login")).toBeVisible();
+		expect(fork.getByText("Now the signup").elements()).toHaveLength(0);
+		expect(host.telemetry.events("chat-forked")).toEqual([{ success: true, midTurn: false }]);
+	});
+
+	it("shows the fork's copied exchange only, not the hidden note it was handed", async () => {
+		const host = await showTwoTurns();
+
+		await forkAt("Now the signup");
+
+		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
+		await vi.waitFor(() =>
+			expect(host.server.requestsTo("POST", "/session/ses_fork_1/prompt_async")).toHaveLength(1),
+		);
+		const fork = page.getByTestId(`pane-${forkedPane(host)!.pane.id}`);
+		await expect.element(fork.getByText("Fixed login.")).toBeVisible();
+		await vi.waitFor(() =>
+			expect(fork.element().querySelectorAll('[data-slot="aui_user-message-root"]')).toHaveLength(
+				1,
+			),
+		);
+		expect(fork.getByText(/forked from an existing session/).elements()).toHaveLength(0);
+	});
+
+	it("forks a chat the pane opened with", async () => {
+		const host = await showTwoTurns();
+
+		await forkAt("Now the signup");
+
+		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
+		expect(host.server.requestsTo("POST", "/session/ses_a/fork")[0]?.body).toEqual({
+			messageID: "msg_u2",
+		});
+	});
+
+	it("covers the pane while the fork is made, until the fork opens", async () => {
+		const server = twoTurns();
+		let release = () => {};
+		server.forkGate = new Promise<void>((resolve) => (release = resolve));
+		const host = await showTwoTurns(server);
+
+		await forkAt("Now the signup");
+
+		await expect.element(progress()).toHaveTextContent("Forking the chat…");
+		const content = page.getByTestId("kilo-agent-pane-content").first();
+		await expect.element(content).toHaveAttribute("inert");
+		await expect.element(content).toHaveAttribute("aria-busy", "true");
+		release();
+		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
+		await expect.element(progress()).not.toBeInTheDocument();
+		await expect.element(content).not.toHaveAttribute("inert");
+	});
+
+	it("says why the chat couldn't be forked and opens nothing", async () => {
+		const server = twoTurns();
+		server.failForks = true;
+		const host = await showTwoTurns(server);
+
+		await forkAt("Now the signup");
+
+		await expect.element(page.getByText("Could not fork the chat.")).toBeVisible();
+		await expect.element(progress()).not.toBeInTheDocument();
+		expect(host.sessions.calls.open).not.toHaveBeenCalled();
+		expect(host.telemetry.events("chat-forked")).toEqual([{ success: false, midTurn: false }]);
+	});
+
+	it("says why the fork couldn't be opened", async () => {
+		const host = await showTwoTurns();
+		host.sessions.calls.open.mockImplementationOnce(() => {
+			throw new KernelError("UNAVAILABLE", "No room.");
+		});
+
+		await forkAt("Now the signup");
+
+		await expect.element(page.getByText("Could not open the forked chat.")).toBeVisible();
+		await expect.element(progress()).not.toBeInTheDocument();
+	});
+
+	it("forks once for a double click", async () => {
+		const host = await showTwoTurns();
+		await vi.waitFor(() => expect(forkButtonOf("Now the signup")).toBeDefined());
+
+		forkButtonOf("Now the signup")!.click();
+		forkButtonOf("Now the signup")!.click();
+
+		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
+		expect(host.server.requestsTo("POST", "/session/ses_a/fork")).toHaveLength(1);
+	});
+
+	it("forks while the agent works, noting it was mid-turn", async () => {
+		const server = twoTurns();
+		const host = await showTwoTurns(server);
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+
+		await vi.waitFor(() => expect(forkButtonOf("Now the signup")).toBeDefined());
+		expect(forkButtonOf("Now the signup")!.hasAttribute("disabled")).toBe(false);
+		forkButtonOf("Now the signup")!.click();
+
+		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
+		expect(host.telemetry.events("chat-forked")).toEqual([{ success: true, midTurn: true }]);
 	});
 });

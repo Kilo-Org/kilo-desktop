@@ -33,9 +33,13 @@ import { pruneProductionDependencies } from "./config/prune-production-dependenc
 import { assertNoShippedSource } from "./config/assert-no-shipped-source.js";
 import { writeAppLegalFiles } from "./config/third-party-notices.js";
 import { listWorkspacePackageNames } from "./config/workspace-packages.js";
+import { getRpmVersion, LINUX_PACKAGE_FORMAT_FILE } from "./config/linux-package.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
-import { ensureNodePtySpawnHelpersExecutable } from "@kilo-desktop/plugin-terminal/packaging";
+import {
+	ensureNodePtySpawnHelpersExecutable,
+	validateTerminalBundle,
+} from "@kilo-desktop/plugin-terminal/packaging";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
@@ -105,6 +109,16 @@ const asarUnpackPackages = [
 	"node-pty",
 	...notebookPackaging.asarUnpackPackages,
 ];
+// Shared by the DEB and RPM makers: both install the same app under /usr/lib.
+const linuxPackageOptions = {
+	bin: identity.executableName,
+	categories: ["Development"],
+	homepage: "https://kilo.ai",
+	icon: path.join(packageRoot, "assets/icon.png"),
+	name: identity.executableName,
+	productName: identity.productName,
+	mimeType: ["x-scheme-handler/kilo-desktop"],
+};
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Copied over Squirrel's app.ico by the install hook (SquirrelUninstallIcon.ts).
@@ -276,6 +290,9 @@ const config: ForgeConfig = {
 					platform,
 					arch,
 				);
+				await validateTerminalBundle(
+					path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
+				);
 				await assertNoShippedSource(buildPath, workspacePackageNames);
 				await writeAppLegalFiles({
 					buildPath,
@@ -375,15 +392,23 @@ const config: ForgeConfig = {
 			platforms: ["linux"],
 			config: {
 				options: {
-					bin: identity.executableName,
-					categories: ["Development"],
-					homepage: "https://kilo.ai",
-					icon: path.join(packageRoot, "assets/icon.png"),
+					...linuxPackageOptions,
 					maintainer: "Anaconda, Inc.",
-					name: identity.executableName,
-					productName: identity.productName,
 					version: appVersion,
-					mimeType: ["x-scheme-handler/kilo-desktop"],
+				},
+			},
+		},
+		{
+			name: "@electron-forge/maker-rpm",
+			platforms: ["linux"],
+			config: {
+				options: {
+					...linuxPackageOptions,
+					license: "LicenseRef-OCVSAL-1.0",
+					version: getRpmVersion(appVersion),
+					specTemplate: path.join(packageRoot, "assets/linux/rpm.spec.ejs"),
+					// Read by the spec template, which writes the install marker.
+					packageFormatFile: LINUX_PACKAGE_FORMAT_FILE,
 				},
 			},
 		},

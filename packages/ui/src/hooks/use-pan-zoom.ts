@@ -1,5 +1,4 @@
 import {
-	useCallback,
 	useEffect,
 	useRef,
 	useState,
@@ -20,6 +19,7 @@ import {
 	type Size,
 	type View,
 } from "../lib/pan-zoom.js";
+import { useLatestRef } from "./use-latest-ref.js";
 
 export const ZOOM_STEP = 1.25;
 const FIT_EPSILON = 0.001;
@@ -76,8 +76,7 @@ export function usePanZoom({
 					maxFit,
 				)
 			: 1;
-	const geometry = useRef<Geometry>({ content, viewport, fit });
-	geometry.current = { content, viewport, fit };
+	const geometry = useLatestRef<Geometry>({ content, viewport, fit });
 
 	const view: View | null =
 		content && viewport
@@ -86,7 +85,7 @@ export function usePanZoom({
 				: centeredView(content, viewport, fit)
 			: null;
 
-	const update = useCallback((change: (view: View, geometry: Geometry) => View) => {
+	const update = (change: (view: View, geometry: Geometry) => View) => {
 		setUserView((previous) => {
 			const { content, viewport, fit } = geometry.current;
 			if (!content || !viewport) return previous;
@@ -95,49 +94,37 @@ export function usePanZoom({
 				: centeredView(content, viewport, fit);
 			return constrainView(change(current, geometry.current), content, viewport);
 		});
-	}, []);
+	};
 
-	const zoomTo = useCallback(
-		(scale: number, anchor?: Point) =>
-			update((current, { viewport, fit }) =>
-				zoomViewAt(
-					current,
-					clampScale(scale, fit),
-					anchor ?? { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 },
-				),
+	const zoomTo = (scale: number, anchor?: Point) =>
+		update((current, { viewport, fit }) =>
+			zoomViewAt(
+				current,
+				clampScale(scale, fit),
+				anchor ?? { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 },
 			),
-		[update],
-	);
+		);
 
-	const zoomBy = useCallback(
-		(factor: number, anchor?: Point) =>
-			update((current, { viewport, fit }) =>
-				zoomViewAt(
-					current,
-					clampScale(current.scale * factor, fit),
-					anchor ?? { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 },
-				),
+	const zoomBy = (factor: number, anchor?: Point) =>
+		update((current, { viewport, fit }) =>
+			zoomViewAt(
+				current,
+				clampScale(current.scale * factor, fit),
+				anchor ?? { x: (viewport?.width ?? 0) / 2, y: (viewport?.height ?? 0) / 2 },
 			),
-		[update],
-	);
+		);
 
-	const panBy = useCallback(
-		(dx: number, dy: number) => update((current) => panView(current, dx, dy)),
-		[update],
-	);
+	const panBy = (dx: number, dy: number) => update((current) => panView(current, dx, dy));
 
-	const reset = useCallback(() => setUserView(null), []);
-	const zoomIn = useCallback(() => zoomBy(ZOOM_STEP), [zoomBy]);
-	const zoomOut = useCallback(() => zoomBy(1 / ZOOM_STEP), [zoomBy]);
-	const actualSize = useCallback(() => zoomTo(1), [zoomTo]);
+	const reset = () => setUserView(null);
+	const zoomIn = () => zoomBy(ZOOM_STEP);
+	const zoomOut = () => zoomBy(1 / ZOOM_STEP);
+	const actualSize = () => zoomTo(1);
 
-	const toLocal = useCallback(
-		(clientX: number, clientY: number): Point => {
-			const rect = element?.getBoundingClientRect();
-			return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) };
-		},
-		[element],
-	);
+	const toLocal = (clientX: number, clientY: number): Point => {
+		const rect = element?.getBoundingClientRect();
+		return { x: clientX - (rect?.left ?? 0), y: clientY - (rect?.top ?? 0) };
+	};
 
 	useEffect(() => {
 		if (!element) return;
@@ -155,7 +142,7 @@ export function usePanZoom({
 	const drag = useRef<{ pointerId: number; x: number; y: number } | null>(null);
 	const [dragging, setDragging] = useState(false);
 
-	const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+	const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
 		if (event.pointerType === "mouse" && event.button !== 0) return;
 		// Keep the drag from a surrounding pan surface (a pane carousel's track).
 		event.stopPropagation();
@@ -166,38 +153,32 @@ export function usePanZoom({
 		}
 		drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
 		setDragging(true);
-	}, []);
+	};
 
-	const onPointerMove = useCallback(
-		(event: ReactPointerEvent<HTMLElement>) => {
-			const start = drag.current;
-			if (!start || start.pointerId !== event.pointerId) return;
-			drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
-			panBy(event.clientX - start.x, event.clientY - start.y);
-		},
-		[panBy],
-	);
+	const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+		const start = drag.current;
+		if (!start || start.pointerId !== event.pointerId) return;
+		drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+		panBy(event.clientX - start.x, event.clientY - start.y);
+	};
 
-	const endDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+	const endDrag = (event: ReactPointerEvent<HTMLElement>) => {
 		if (drag.current?.pointerId !== event.pointerId) return;
 		drag.current = null;
 		setDragging(false);
 		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 			event.currentTarget.releasePointerCapture(event.pointerId);
 		}
-	}, []);
+	};
 
 	const isAtFit = !userView || Math.abs((view?.scale ?? fit) - fit) < FIT_EPSILON;
 
 	/** At fit, zooms in on the clicked point; otherwise returns to fit. */
-	const onDoubleClick = useCallback(
-		(event: ReactMouseEvent<HTMLElement>) => {
-			event.preventDefault();
-			if (isAtFit) zoomTo(Math.max(1, fit * 2), toLocal(event.clientX, event.clientY));
-			else reset();
-		},
-		[fit, isAtFit, reset, toLocal, zoomTo],
-	);
+	const onDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
+		event.preventDefault();
+		if (isAtFit) zoomTo(Math.max(1, fit * 2), toLocal(event.clientX, event.clientY));
+		else reset();
+	};
 
 	const contentStyle: CSSProperties =
 		content && view
@@ -213,7 +194,7 @@ export function usePanZoom({
 			: { position: "absolute", left: 0, top: 0, visibility: "hidden" };
 
 	return {
-		viewportRef: setElement,
+		setViewportElement: setElement,
 		view,
 		fit,
 		scale: view?.scale ?? fit,

@@ -143,7 +143,7 @@ describe("the New Session page's composer", () => {
 
 		await send("Hello?");
 
-		await expect.element(page.getByText("Could not start the chat").first()).toBeVisible();
+		await expect.element(page.getByText("Could not start the chat")).toBeVisible();
 		await expect.element(composerInput()).toHaveTextContent("Hello?");
 		expect(host.workSessions.calls.create).not.toHaveBeenCalled();
 	});
@@ -182,7 +182,9 @@ describe("the New Session page's composer", () => {
 		await vi.waitFor(() => expect(host.starter.open).toHaveBeenCalledWith("wses_new_1"));
 		// Opening the work session closes the New Session page.
 		host.view.unmount();
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		await vi.waitFor(() =>
+			expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
+		);
 
 		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1);
 	});

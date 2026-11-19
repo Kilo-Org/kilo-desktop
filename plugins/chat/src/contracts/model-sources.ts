@@ -1,3 +1,4 @@
+import type { ComponentType, ReactNode } from "react";
 import { z } from "zod";
 
 import { defineExtensionPoint, implementation } from "@kilo-desktop/kernel";
@@ -21,9 +22,17 @@ export interface ModelSourceState {
 	readonly pending: boolean;
 }
 
+/**
+ * Props of a source's `State` component: it reads the source's live state
+ * with hooks and returns `children(state)`.
+ */
+export interface ModelSourceStateProps {
+	readonly children: (state: ModelSourceState) => ReactNode;
+}
+
 export interface ModelSourceImplementation {
-	/** Hook: the source's live state, read in the composer. */
-	readonly useState: () => ModelSourceState;
+	/** Rendered in the composer to report the source's live state. */
+	readonly State: ComponentType<ModelSourceStateProps>;
 	/** Starts the source's server (choosing its rail in the model picker does this). */
 	readonly start?: () => Promise<void>;
 	/** Loads a model before a prompt that uses it is sent. */

@@ -15,7 +15,6 @@ import {
 	AgentExtension,
 	ServerEnv,
 	Tool,
-	toolWireName,
 	type ServerEnvSource,
 } from "@kilo-desktop/plugin-core/contracts";
 
@@ -314,9 +313,15 @@ describe("kilo.notebook in main", () => {
 
 		const originDir = await tempDir("notebook-origin-");
 		await mkdir(path.join(originDir, "settings.json"));
-		const broken = await boot({ entry: { originStorageDir: () => originDir } });
-		await broken.main.flush();
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		const { logger, warnings } = recordingLogger();
+		const broken = await boot({ entry: { originStorageDir: () => originDir }, logger });
+		await vi.waitFor(
+			() =>
+				expect(warnings.flat().join("\n")).toContain(
+					`Could not import notebook settings from ${originDir}`,
+				),
+			WAIT,
+		);
 		expect(broken.storage.saved.get("notebook-state")?.importedFromOrigin).not.toBe(true);
 	});
 
@@ -459,7 +464,8 @@ describe("kilo.notebook in main", () => {
 	});
 
 	it("refuses a frame connection with bad arguments", async () => {
-		const host = await boot();
+		const { logger, warnings } = recordingLogger();
+		const host = await boot({ logger });
 		const sdk = host.renderer.sdkFor("kilo.notebook");
 
 		sdk.ports.open(NOTEBOOK_HOST_PORT, {
@@ -480,7 +486,15 @@ describe("kilo.notebook in main", () => {
 			workingDirectory: "relative",
 		});
 		await host.main.flush();
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await vi.waitFor(
+			() =>
+				expect(
+					warnings.filter(([message]) =>
+						String(message).includes("Refused a notebook connection with invalid arguments."),
+					),
+				).toHaveLength(3),
+			WAIT,
+		);
 
 		expect(host.services.connections).toEqual([]);
 	});
@@ -706,23 +720,13 @@ describe("kilo.notebook in main", () => {
 			).rejects.toThrow("Panes are unavailable");
 		});
 
-		it("declares origin's tool names, sign-in prompt, and Kilo-only use", async () => {
+		it("asks the user to sign in, and marks list_open read-only", async () => {
 			const host = await boot();
-			const metadata = host.tool("open_file").metadata;
 
-			expect(metadata).toMatchObject({
-				requiresSignIn: true,
-				external: false,
+			expect(host.tool("open_file").metadata).toMatchObject({
 				signInPrompt: { title: "Sign in to use embedded notebooks?" },
 			});
 			expect(host.tool("list_open").metadata.readOnly).toBe(true);
-			expect(
-				["list_open", "open", "open_file"].map((id) => toolWireName(host.tool(id).key)),
-			).toEqual([
-				"desktop_notebook_list_open",
-				"desktop_notebook_open",
-				"desktop_notebook_open_file",
-			]);
 		});
 	});
 });

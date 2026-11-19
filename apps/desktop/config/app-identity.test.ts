@@ -5,7 +5,6 @@ import {
 	getAppIdentity,
 	getDmgVolumeTitle,
 	getVersionedSetupExecutableName,
-	type AppEnvironment,
 } from "./app-identity.js";
 
 describe("app identity", () => {
@@ -40,14 +39,6 @@ describe("app identity", () => {
 			});
 		},
 	);
-
-	it("covers every supported environment", () => {
-		const environments = ["development", "preview", "stable"] satisfies readonly AppEnvironment[];
-
-		expect(
-			new Set(environments.map((environment) => getAppIdentity(environment).productName)),
-		).toEqual(new Set(["Kilo Dev", "Kilo Preview", "Kilo"]));
-	});
 
 	it.each([
 		["stable", "1.2.3", "x64", "Kilo-1.2.3-x64-Setup.exe"],

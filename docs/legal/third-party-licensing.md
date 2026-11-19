@@ -87,8 +87,8 @@ findings were reviewed and accepted, because none of the material ships:
 ### Ported code
 
 All ported code found is MIT, BSD-3-Clause or Apache-2.0 and is now credited:
-dugite and GitHub Desktop (`packages/git-client`, kilo.git, kilo.workbench),
-Visual Studio Code (kilo.git, kilo.workspaces), Kilo Code (kilo.git, kilo.agent,
+dugite and GitHub Desktop (`packages/git-client`, kilo.git, kilo.work-sessions),
+Visual Studio Code (kilo.git, kilo.work-sessions), Kilo Code (kilo.git, kilo.core,
 kilo.chat, kilo.marketplace), Pierre diffshub (kilo.git), assistant-ui
 (kilo.chat), nteract (kilo.notebook), shadcn/ui (`packages/ui`) and t3code.
 
@@ -96,7 +96,7 @@ kilo.chat, kilo.marketplace), Pierre diffshub (kilo.git), assistant-ui
 comparison against t3code's history found verbatim or near-verbatim code in the
 plan markdown helpers and the HTML render bootstrap and guidance (kilo.chat), the
 markdown file-link detection (kilo.files) and the page loading progress
-(kilo.browser), plus smaller borrowings in kilo.files, kilo.workbench,
-kilo.terminal and kilo.updates. All are credited under t3code's MIT license in
+(kilo.browser), plus smaller borrowings in kilo.files, kilo.work-sessions,
+kilo.terminal and kilo.shell. All are credited under t3code's MIT license in
 the packages' notices. Shared shadcn/ui stock components are shadcn's, not
 t3code's.

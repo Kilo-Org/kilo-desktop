@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -137,7 +137,7 @@ export function CreateEnvironmentDialog({
 		invalidates: ["listEnvironments", "checkPrefix"],
 	});
 
-	const envsDirs = useMemo(() => prefixQuery.data?.envsDirs ?? [], [prefixQuery.data?.envsDirs]);
+	const envsDirs = prefixQuery.data?.envsDirs ?? [];
 	const defaultDir = envsDirs[0] ?? "";
 
 	const trimmedName = name.trim();
@@ -169,9 +169,11 @@ export function CreateEnvironmentDialog({
 	});
 
 	// Pre-fill the default directory once the query resolves.
-	useEffect(() => {
+	const [prefilledDir, setPrefilledDir] = useState("");
+	if (prefilledDir !== defaultDir) {
+		setPrefilledDir(defaultDir);
 		if (defaultDir && !location) setLocation(defaultDir);
-	}, [defaultDir]); // eslint-disable-line react-hooks/exhaustive-deps
+	}
 
 	// Derive the Python version options from live repodata instead of a
 	// hardcoded list: look up the `python` package by exact name and show its
@@ -210,11 +212,10 @@ export function CreateEnvironmentDialog({
 		setCreated(null);
 	}
 
-	const packageSpecs = useMemo(() => {
-		const specs = selection.selected.map(selectedPackageToSpec);
-		if (pythonVersion !== PYTHON_LATEST) specs.push(`python=${pythonVersion}`);
-		return specs;
-	}, [selection.selected, pythonVersion]);
+	const packageSpecs = [
+		...selection.selected.map(selectedPackageToSpec),
+		...(pythonVersion === PYTHON_LATEST ? [] : [`python=${pythonVersion}`]),
+	];
 
 	function buildPayload(prefix: string) {
 		return {

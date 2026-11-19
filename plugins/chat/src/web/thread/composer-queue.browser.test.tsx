@@ -83,7 +83,7 @@ describe("the composer's queue", () => {
 		await page.getByTestId("kilo-composer-queue-pause").click();
 		await expect.element(page.getByTestId("kilo-composer-queue-paused")).toBeVisible();
 		endTurn(server);
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await expect.element(page.getByTestId("kilo-composer-stop")).not.toBeInTheDocument();
 		expect(server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
 
 		await page.getByRole("button", { name: "Resume queue" }).click();

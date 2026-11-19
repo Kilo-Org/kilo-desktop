@@ -1,12 +1,4 @@
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-	type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { Contribution, WhenExpression } from "@kilo-desktop/kernel";
 import {
@@ -22,7 +14,6 @@ import {
 	ONBOARDING_VERSION,
 	Onboarding,
 	OnboardingStep,
-	type OnboardingControls,
 	type OnboardingState,
 	type OnboardingStepImplementation,
 	type OnboardingStepView,
@@ -46,6 +37,20 @@ function isOffered(
 	return showWhen === undefined || kernel.contextKeys.evaluate(showWhen as WhenExpression);
 }
 
+/** The steps this run shows: those offered when onboarding opened (or now, before it opens), plus a required step. */
+function offeredSteps(
+	kernel: ReturnType<typeof useKernel>,
+	implemented: readonly Step[],
+	offered: ReadonlySet<string> | null,
+	required: Step | undefined,
+): readonly Step[] {
+	return implemented.filter((step) =>
+		offered
+			? offered.has(step.key) || step === required
+			: isOffered(kernel, step.metadata.showWhen),
+	);
+}
+
 function finishedCurrentVersion(state: OnboardingState): boolean {
 	return state.outcome !== null && (state.version ?? 1) >= ONBOARDING_VERSION;
 }
@@ -53,19 +58,13 @@ function finishedCurrentVersion(state: OnboardingState): boolean {
 /** The first step whose `required` condition holds, re-evaluated as context keys change. */
 function useRequiredStep(steps: readonly Step[]): Step | undefined {
 	const kernel = useKernel();
-	const subscribe = useCallback(
-		(onChange: () => void) => kernel.contextKeys.subscribe(onChange),
-		[kernel],
-	);
-	const read = useCallback(
-		() =>
-			steps.find(
-				(step) =>
-					step.metadata.required !== undefined &&
-					kernel.contextKeys.evaluate(step.metadata.required as WhenExpression),
-			)?.key,
-		[kernel, steps],
-	);
+	const subscribe = (onChange: () => void) => kernel.contextKeys.subscribe(onChange);
+	const read = () =>
+		steps.find(
+			(step) =>
+				step.metadata.required !== undefined &&
+				kernel.contextKeys.evaluate(step.metadata.required as WhenExpression),
+		)?.key;
 	const key = useSyncExternalStore(subscribe, read, read);
 	return steps.find((step) => step.key === key);
 }
@@ -86,26 +85,15 @@ export function OnboardingHost() {
 	const state = useDomainObjectState(Onboarding, selectState);
 	const kernel = useKernel();
 	const contributed = useExtensions(OnboardingStep);
-	const implemented = useMemo(
-		() => contributed.filter((step) => step.implementation !== undefined),
-		[contributed],
-	);
+	const implemented = contributed.filter((step) => step.implementation !== undefined);
 	const required = useRequiredStep(implemented);
 	const [closed, setClosed] = useState(false);
 	// Which `showWhen` steps apply is decided once, when onboarding opens.
 	const [offered, setOffered] = useState<ReadonlySet<string> | null>(null);
-	const steps = useMemo(
-		() =>
-			implemented.filter((step) =>
-				offered
-					? offered.has(step.key) || step === required
-					: isOffered(kernel, step.metadata.showWhen),
-			),
-		[implemented, kernel, offered, required],
-	);
 	const [chosen, setChosen] = useState<string | null>(null);
 	const [furthest, setFurthest] = useState(0);
 	const shown = useRef(false);
+	const steps = offeredSteps(kernel, implemented, offered, required);
 
 	const tourVisible =
 		desktop && state !== undefined && !closed && (!finishedCurrentVersion(state) || forced);
@@ -113,15 +101,10 @@ export function OnboardingHost() {
 		required ?? (tourVisible ? (steps.find((step) => step.key === chosen) ?? steps[0]) : undefined);
 	const index = current ? steps.indexOf(current) : -1;
 
-	useEffect(() => {
-		if (index > furthest) setFurthest(index);
-	}, [furthest, index]);
-
-	useEffect(() => {
-		if (offered === null && tourVisible && current) {
-			setOffered(new Set(steps.map((step) => step.key)));
-		}
-	}, [current, offered, steps, tourVisible]);
+	if (index > furthest) setFurthest(index);
+	if (offered === null && tourVisible && current) {
+		setOffered(new Set(steps.map((step) => step.key)));
+	}
 
 	useEffect(() => {
 		if (!tourVisible || !current || shown.current) return;
@@ -178,25 +161,11 @@ export function OnboardingHost() {
 		<RenderContribution
 			key={current.key}
 			contribution={current}
-			select={selectRunner}
-			props={{ step: current.implementation!, controls: { next }, render: renderFrame }}
+			select={selectStep}
+			props={{ next, children: renderFrame }}
 		/>
 	);
 }
 
-interface StepRunnerProps {
-	readonly step: OnboardingStepImplementation;
-	readonly controls: OnboardingControls;
-	readonly render: (view: OnboardingStepView) => ReactNode;
-}
-
-/**
- * Runs the current step's hook inside its plugin's context (so its domain
- * calls are its own), in a component keyed per step so hook order never
- * changes between steps.
- */
-function StepRunner({ step, controls, render }: StepRunnerProps) {
-	return <>{render(step.useStep(controls))}</>;
-}
-
-const selectRunner = () => StepRunner;
+/** Runs in the step's plugin context, keyed per step so its hooks never mix with another's. */
+const selectStep = (step: OnboardingStepImplementation) => step.Step;

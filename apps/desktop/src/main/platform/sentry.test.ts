@@ -1,15 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { setUser, init, close, send } = vi.hoisted(() => ({
+const { setUser, init, send } = vi.hoisted(() => ({
 	setUser: vi.fn(),
 	init: vi.fn(),
-	close: vi.fn(async () => true),
 	send: vi.fn(async () => ({ statusCode: 200 })),
 }));
 vi.mock("@sentry/electron/main", () => ({
 	setUser,
 	init,
-	close,
 	spotlightIntegration: () => ({ name: "Spotlight" }),
 	IPCMode: { Classic: 1 },
 	makeElectronTransport: () => ({ send, flush: vi.fn() }),
@@ -32,7 +30,7 @@ import type { ElectronMainOptions } from "@sentry/electron/main";
 
 import { app } from "electron";
 
-import { flushSentry, identifySentryUser, initSentry } from "./sentry.js";
+import { identifySentryUser, initSentry } from "./sentry.js";
 import type { SentryEnvelope } from "./sentry-scrub.js";
 import type { PreferencesStore } from "./PreferencesStore.js";
 
@@ -190,14 +188,6 @@ describe("initSentry beforeSend", () => {
 		);
 
 		expect(event).toMatchObject({ message: "failed to open /Users/<redacted>/notebook.ipynb" });
-	});
-});
-
-describe("flushSentry", () => {
-	it("closes the client with a bounded timeout so quitting is not blocked", async () => {
-		await flushSentry();
-
-		expect(close).toHaveBeenCalledWith(2000);
 	});
 });
 

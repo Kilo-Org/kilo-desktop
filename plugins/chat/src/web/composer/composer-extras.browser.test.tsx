@@ -136,49 +136,6 @@ describe("Enter while the agent works", () => {
 	});
 });
 
-describe("queued prompts", () => {
-	it("pauses, edits and deletes queued prompts before they are sent", async () => {
-		const server = serverWithChat();
-		await renderChat({
-			server,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-		});
-		await expect.element(page.getByText("Done.")).toBeVisible();
-		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
-
-		for (const text of ["First", "Second"]) {
-			await userEvent.fill(input(), text);
-			await page.getByTestId("kilo-composer-queue-submit").click();
-		}
-		await expect
-			.element(page.getByTestId("kilo-composer-queue-toggle"))
-			.toHaveTextContent("2 queued");
-
-		await page.getByTestId("kilo-composer-queue-pause").click();
-		await expect.element(page.getByTestId("kilo-composer-queue-paused")).toBeVisible();
-
-		await page.getByTestId("kilo-composer-queue-edit").first().click();
-		await userEvent.fill(page.getByTestId("kilo-composer-queue-edit-input"), "First, edited");
-		await page.getByTestId("kilo-composer-queue-edit-save").click();
-		await expect
-			.poll(() => page.getByTestId("kilo-composer-queue-item").first().element().textContent)
-			.toContain("First, edited");
-
-		await page.getByTestId("kilo-composer-queue-delete").nth(1).click();
-		await expect
-			.poll(() => page.getByTestId("kilo-composer-queue-toggle").element().textContent)
-			.toContain("1 queued");
-
-		server.emit("session.idle", { sessionID: "ses_a" });
-		await page.getByTestId("kilo-composer-queue-pause").click();
-		const [prompt] = await promptsTo(server, "ses_a");
-		expect(textOf(prompt!)).toBe("First, edited");
-	});
-});
-
 describe("the footer", () => {
 	it("shows where a chat works and its context usage", async () => {
 		const server = serverWithChat(0.42);

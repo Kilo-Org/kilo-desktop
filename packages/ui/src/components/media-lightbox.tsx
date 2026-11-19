@@ -185,7 +185,7 @@ function LightboxView({
 		if (element && !element.contains(document.activeElement))
 			element.focus({ preventScroll: true });
 	}, []);
-	const panZoom = usePanZoom({
+	const { setViewportElement, ...panZoom } = usePanZoom({
 		content,
 		maxFit: item.kind === "mermaid" ? DIAGRAM_MAX_FIT : 1,
 	});
@@ -350,7 +350,7 @@ function LightboxView({
 				</div>
 			) : (
 				<div
-					ref={panZoom.viewportRef}
+					ref={setViewportElement}
 					{...(diagramFailed ? {} : panZoom.viewportHandlers)}
 					data-qa-id="media-lightbox-stage"
 					className={cn(

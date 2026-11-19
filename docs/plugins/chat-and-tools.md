@@ -5,7 +5,8 @@ and desktop tools; contracts: `@kilo-desktop/plugin-core/contracts`.
 **kilo.chat** draws them: the chat pane (transcript, composer, tool calls,
 permission and question cards); contracts:
 `@kilo-desktop/plugin-chat/contracts`. Both may be absent — declare their
-points `optional` in `requires`.
+points `optional` in `requires`. Every point with its contributors is listed
+in the [schema](./schema.md#extension-points).
 
 ## Desktop tools (`kilo.core/tool`)
 
@@ -41,7 +42,9 @@ sdk.extensions.implement(
 ```
 
 - Tool ids are snake_case `<verb>[_<object>]` (`open_file`). Kilo sees a
-  tool as `desktop_<plugin>_<id>` with `kilo.` dropped (`toolWireName`).
+  tool as `desktop_<plugin>_<id>` with `kilo.` dropped (`toolWireName`:
+  `kilo.terminal/list` is `desktop_terminal_list`); permission rules use that
+  wire name.
 - Input is validated against `input` before `run`. Return any JSON value;
   throw to fail the call (the message goes back to the agent).
 - `context`: `chatId`, `workSessionId` and `workspaceId` (from the calling
@@ -58,17 +61,19 @@ sdk.extensions.implement(
 | `external`                | Offered to paired external AI apps (default `false`)                  |
 
 Expose the same action as a domain method and, if a person would use it, a
-command — all three calling one function.
+command — all three calling one function. How tools reach Kilo and external
+apps, and their trust rules: [Agent tools](../agent-tools.md).
 
 ### Shaping chats and Kilo (main)
 
 | Extension point             | Kind | Use it to                                                                                                                                                              |
 | --------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `kilo.core/chat-config`     | A    | `configure({ chatId, directory, workSessionId, workspaceId })` → `{ disableTools, instructions, permissions }` for a chat                                              |
-| `kilo.core/tool-approval`   | D    | Answer `"proceed"`, `{ ask }` or `{ reject }` per tool call; fails closed                                                                                              |
+| `kilo.core/tool-approval`   | D    | Answer `"proceed"`, `{ ask }` or `{ reject }` per tool when a chat is created (`input` undefined): ask adds an ask rule, reject a deny rule; fails closed              |
 | `kilo.core/ai-provider`     | A    | Add an AI provider entry (and the env it refers to) to Kilo's config                                                                                                   |
 | `kilo.core/mcp-server`      | A    | Add an MCP server to Kilo: static `{ command, args, env }` in metadata (`${resources}` is resolved by the kernel to the contributor's own folder) or an implementation |
 | `kilo.core/agent-extension` | A    | Add an agent, command, skill folder or Kilo plugin to Kilo, all data in metadata (`${resources}` is resolved by the kernel to the contributor's own folder)            |
+| `kilo.core/server-env`      | A    | Give the Kilo server process environment variables (`read()`, optional `subscribe`); `PATH`, proxies and `KILO_`/`XDG_`/loader variables are never taken               |
 
 ## How tool calls look (`kilo.chat/tool-renderer`)
 
@@ -106,16 +111,18 @@ function GreetCard(props: ToolRendererProps) {
 
 ### Other transcript points
 
-| Extension point                 | Use it to                                                                                                                                                                                                     |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kilo.chat/mcp-app`             | Show an interactive MCP App widget (`resourceUri: "ui://…"`) for a tool's calls, matched like `tool-renderer`; `loadHtml` serves it from your plugin, else it is read from the tool's MCP server (`serverId`) |
-| `kilo.chat/markdown-extension`  | Add remark plugins and component decorators to the agent's replies (file paths as links); made once per transcript from `{ workSessionId, workspaceFolders }`                                                 |
-| `kilo.chat/permission-renderer` | Add details and policies to permission and question cards: `permissionTitle`, a `PermissionDetail` view, `allowAlways: false`, a question `optionWarning`                                                     |
+| Extension point                 | Use it to                                                                                                                                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kilo.chat/mcp-app`             | Show an interactive MCP App widget (`resourceUri: "ui://…"`) for a tool's calls, matched like `tool-renderer`; `loadHtml` serves it from your plugin, else it is read from the tool's MCP server (`serverId`)             |
+| `kilo.chat/markdown-extension`  | Add remark plugins and component decorators to the agent's replies (file paths as links); made once per transcript from `{ workSessionId, workspaceFolders }`                                                             |
+| `kilo.chat/permission-renderer` | Add details and policies to permission and question cards: `permissionTitle`, a `PermissionDetail` view, `allowAlways` / `showPatterns` (return false to hide "Always allow" or the patterns), a question `optionWarning` |
 
 A `permission-renderer` with `tools` (contribution keys) applies its
 permission parts only to requests from those desktop tools — matched on
-kilo.core's `PermissionRequest.toolKey`, never on wire names; without
-`tools` it applies to every request.
+kilo.core's `PermissionRequest.toolKey`, never on wire names. `permissions`
+limits them to requests for those Kilo permissions, for ones no desktop tool
+raises (a Kilo plugin's `context.ask`). A request matching either applies;
+with neither, they apply to every request.
 
 ## The composer
 
@@ -132,15 +139,26 @@ Buttons, menus, popovers or your own view in the composer:
 A `kind: "action"` with a `command` needs no code: clicking runs the
 command. Otherwise implement it:
 
-| `kind`    | Implementation                                           |
-| --------- | -------------------------------------------------------- |
-| `action`  | `{ kind, useButton?(context), run?(context) }`           |
-| `menu`    | `{ kind, useMenu(context) → { items, value?, select } }` |
-| `popover` | `{ kind, useTrigger?(context), Content }`                |
-| `view`    | `{ kind, Component }` drawn as-is (a branch label)       |
+| `kind`    | Implementation                                             |
+| --------- | ---------------------------------------------------------- |
+| `action`  | `{ kind, Button?, run?(context) }`                         |
+| `menu`    | `{ kind, Menu }`, handing over `{ items, value?, select }` |
+| `popover` | `{ kind, Trigger?, Content }`                              |
+| `view`    | `{ kind, Component }` drawn as-is (a branch label)         |
 
-`use…` functions run as hooks while the composer shows, so they can read
-your domain objects. `context` has `workSessionId` (null on the New Session
+`Button`, `Menu` and `Trigger` are components the composer renders while
+the action shows, with `{ context, children }`: read your domain objects
+with hooks and return `children(value)` — the button's label, icon and
+state (or the menu) — and the composer draws it:
+
+```tsx
+function SyncButton({ children }: ComposerActionStateProps<ComposerActionButton>) {
+	const syncing = useDomainObjectState(Sync, (state) => state.running);
+	return children({ icon: RefreshCwIcon, busy: syncing });
+}
+```
+
+`context` has `workSessionId` (null on the New Session
 page, where the first send creates the work session), `chatId` (null for a
 draft), `directory`, `workspaceId` and `workspaceFolders`. Slots: `toolbar`,
 `toolbar-end` (before send), `footer` (under a chat's composer in a work

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getPopoverMessage,
-	getReadOnlyBranchLabel,
 	getTriggerLabel,
 	isTriggerLoading,
 	isUnbornRepository,
@@ -119,38 +118,5 @@ describe("getPopoverMessage", () => {
 		expect(getPopoverMessage({ ...ready, isRegular: false, data: undefined })).toBe(
 			"Not a git repository.",
 		);
-	});
-});
-
-describe("getReadOnlyBranchLabel", () => {
-	it("returns the current branch once loaded", () => {
-		expect(getReadOnlyBranchLabel(ready)).toBe("main");
-	});
-
-	it("returns Detached HEAD when the repo has no current branch", () => {
-		expect(
-			getReadOnlyBranchLabel({ ...ready, data: { ...ready.data!, currentBranch: undefined } }),
-		).toBe("Detached HEAD");
-	});
-
-	it("hides the label until a branch name is known", () => {
-		expect(
-			getReadOnlyBranchLabel({ ...ready, data: undefined, branchesPending: true }),
-		).toBeUndefined();
-		expect(
-			getReadOnlyBranchLabel({
-				...ready,
-				workspaceDirectory: undefined,
-				isRegular: false,
-				data: undefined,
-			}),
-		).toBeUndefined();
-		expect(
-			getReadOnlyBranchLabel({
-				...ready,
-				isRegular: false,
-				data: undefined,
-			}),
-		).toBeUndefined();
 	});
 });

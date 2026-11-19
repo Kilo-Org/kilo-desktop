@@ -10,6 +10,7 @@ interface Seen {
 	readonly path: string;
 	readonly directory: string | undefined;
 	readonly body: unknown;
+	readonly skipForkSync: string | undefined;
 }
 
 const chat = {
@@ -43,6 +44,7 @@ async function fakeServer(
 					? decodeURIComponent(header)
 					: (url.searchParams.get("directory") ?? undefined),
 			body: await readBody(request),
+			skipForkSync: request.headers["x-kilo-sse-skip-fork-sync"] as string | undefined,
 		});
 		if (url.pathname === "/global/event") {
 			if (options.dropEvents) {
@@ -60,7 +62,11 @@ async function fakeServer(
 		response.setHeader("content-type", "application/json");
 		const bodies: Record<string, unknown> = {
 			"/experimental/session": [chat, { id: "broken" }],
-			"/session/ses_a": chat,
+			"/session/ses_a": {
+				...chat,
+				permission: [{ permission: "bash", pattern: "*", action: "ask" }],
+			},
+			"/session/ses_a/fork": { ...chat, id: "ses_fork", title: "Fix login (fork #1)" },
 			"/session/status": { ses_a: { type: "busy" } },
 			"/permission": [{ id: "per_1", sessionID: "ses_a", permission: "bash" }],
 			"/question": [{ id: "que_1", sessionID: "ses_a", questions: [] }],
@@ -272,6 +278,55 @@ describe("the Kilo chat client", () => {
 					snapshotInitialization: "wait",
 				},
 			});
+	});
+
+	it("forks at a message in the directory it is given, then reads and appends rules", async () => {
+		const { kilo, seen } = await connect();
+
+		const fork = await kilo.forkChat("/projects/app", "ses_a", "msg_2");
+		const rules = await kilo.getChatPermission("/projects/app", "ses_a");
+		await kilo.updateChat("/projects/app", "ses_fork", { permission: rules });
+
+		expect(fork).toMatchObject({ id: "ses_fork", title: "Fix login (fork #1)", parentId: null });
+		expect(request(seen, "POST", "/session/ses_a/fork")).toMatchObject({
+			directory: "/projects/app",
+			body: { messageID: "msg_2" },
+		});
+		expect(rules).toEqual([{ permission: "bash", pattern: "*", action: "ask" }]);
+		expect(request(seen, "PATCH", "/session/ses_fork")).toMatchObject({
+			directory: "/projects/app",
+			body: { permission: [{ permission: "bash", pattern: "*", action: "ask" }] },
+		});
+	});
+
+	it("hands a fork a hidden note naming its directory, asking for no reply", async () => {
+		const { kilo, seen } = await connect();
+
+		await kilo.recordForkHandoff("/projects/app", "ses_fork");
+
+		expect(request(seen, "POST", "/session/ses_fork/prompt_async")).toMatchObject({
+			directory: "/projects/app",
+			body: {
+				noReply: true,
+				parts: [
+					{
+						type: "text",
+						synthetic: true,
+						text: expect.stringMatching(
+							/This session was forked from an existing session in the current repository or worktree\.[\s\S]*Use this as the current working directory: \/projects\/app\n/,
+						),
+					},
+				],
+			},
+		});
+	});
+
+	it("asks the event stream to leave out the copies a fork replays", async () => {
+		const { kilo, seen } = await connect();
+
+		for await (const _event of kilo.events(new AbortController().signal));
+
+		expect(request(seen, "GET", "/global/event")?.skipForkSync).toBe("1");
 	});
 
 	it("streams the server's events with the directory they came from", async () => {

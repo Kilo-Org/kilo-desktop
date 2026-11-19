@@ -30,10 +30,6 @@ export function setHostableMcpApps(apps: ReadonlyMap<string, HostableMcpApp>): v
 	);
 }
 
-export function hostableMcpApp(toolName: string): HostableMcpApp | undefined {
-	return hostable.get(toolName);
-}
-
 /** The hostable widget served from `resourceUri`. */
 export function hostableMcpAppByResource(resourceUri: string): HostableMcpApp | undefined {
 	for (const app of hostable.values()) if (app.resourceUri === resourceUri) return app;

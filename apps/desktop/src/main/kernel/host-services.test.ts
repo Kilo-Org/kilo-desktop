@@ -67,7 +67,7 @@ describe("createHostServices", () => {
 			.environment!.ready()
 			.then(ready);
 
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise<void>((resolve) => queueMicrotask(() => resolve()));
 		expect(ready).not.toHaveBeenCalled();
 		settle();
 		await vi.waitFor(() => expect(ready).toHaveBeenCalledOnce());

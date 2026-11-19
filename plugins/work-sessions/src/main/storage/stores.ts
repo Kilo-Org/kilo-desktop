@@ -15,12 +15,16 @@ export interface PersistedWorkspaces extends Record<string, unknown> {
 	activeId: string | null;
 	/** Set once origin's workspaces have been read (or there were none to read). */
 	importedFromOrigin: boolean;
+	/** Set once an import by this release (or its check of an earlier one) read origin. */
+	originImportVerified: boolean;
 }
 
 export interface PersistedWorkSessions extends Record<string, unknown> {
 	workSessions: WorkSession[];
 	/** Set once origin's work sessions have been read (or there were none to read). */
 	importedFromOrigin: boolean;
+	/** Set once an import by this release (or its check of an earlier one) read origin. */
+	originImportVerified: boolean;
 	/** Whether origin's work sessions a release imported as live were reopened to their chats' archives. */
 	originArchivesReopened: boolean;
 }
@@ -51,14 +55,24 @@ export const ADOPTION_NAMESPACE = "adoption";
 export function workspacesStore(sdk: PluginSdk): KvStore<PersistedWorkspaces> {
 	return mainHost(sdk).storage.kv<PersistedWorkspaces>({
 		namespace: WORKSPACES_NAMESPACE,
-		defaults: { workspaces: [], activeId: null, importedFromOrigin: false },
+		defaults: {
+			workspaces: [],
+			activeId: null,
+			importedFromOrigin: false,
+			originImportVerified: false,
+		},
 	});
 }
 
 export function workSessionsStore(sdk: PluginSdk): KvStore<PersistedWorkSessions> {
 	return mainHost(sdk).storage.kv<PersistedWorkSessions>({
 		namespace: WORK_SESSIONS_NAMESPACE,
-		defaults: { workSessions: [], importedFromOrigin: false, originArchivesReopened: false },
+		defaults: {
+			workSessions: [],
+			importedFromOrigin: false,
+			originImportVerified: false,
+			originArchivesReopened: false,
+		},
 	});
 }
 

@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toolWireName } from "@kilo-desktop/plugin-core/contracts";
-
-import {
-	HTML_RENDER_TOOL_ID,
-	HTML_RENDER_TOOL_NAME,
-	htmlPageFileStem,
-	isHtmlRenderToolName,
-} from "../../contracts";
+import { HTML_RENDER_TOOL_NAME, htmlPageFileStem, isHtmlRenderToolName } from "../../contracts";
 import {
 	htmlRenderContentSecurityPolicy,
 	injectHtmlRenderBootstrap,
@@ -24,10 +17,6 @@ const theme: HtmlRenderTheme = {
 const BOOTSTRAP_MARKER = 'id="kilo-html-render-theme"';
 
 describe("HTML_RENDER_TOOL_NAME", () => {
-	it("is the name kilo.core's gateway serves kilo.chat's tool under", () => {
-		expect(HTML_RENDER_TOOL_NAME).toBe(toolWireName(`kilo.chat/${HTML_RENDER_TOOL_ID}`));
-	});
-
 	it("still recognises origin's name in recorded chats", () => {
 		expect(isHtmlRenderToolName("desktop_kilo_ui_html_render")).toBe(true);
 		expect(isHtmlRenderToolName(HTML_RENDER_TOOL_NAME)).toBe(true);

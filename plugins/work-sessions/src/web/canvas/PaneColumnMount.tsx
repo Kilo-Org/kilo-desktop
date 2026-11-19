@@ -1,6 +1,19 @@
 import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
+/** Places `host` among `container`'s column hosts by ascending order. */
+function placeHost(container: HTMLDivElement, host: HTMLDivElement, order: number) {
+	host.dataset.columnOrder = String(order);
+	const next =
+		Array.from(container.children).find(
+			(element) => element !== host && Number((element as HTMLElement).dataset.columnOrder) > order,
+		) ?? null;
+	if (host.parentElement !== container || host.nextElementSibling !== next) {
+		if (host.isConnected) container.moveBefore(host, next);
+		else container.insertBefore(host, next);
+	}
+}
+
 // A column owns one portal host for its lifetime. Both destination containers stay
 // mounted; moveBefore transfers the connected host without resetting iframe documents
 // or React state. Only removing the column tears down its content.
@@ -27,16 +40,7 @@ export function PaneColumnMount({
 	useLayoutEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
-		host.dataset.columnOrder = String(order);
-		const next =
-			Array.from(container.children).find(
-				(element) =>
-					element !== host && Number((element as HTMLElement).dataset.columnOrder) > order,
-			) ?? null;
-		if (host.parentElement !== container || host.nextElementSibling !== next) {
-			if (host.isConnected) container.moveBefore(host, next);
-			else container.insertBefore(host, next);
-		}
+		placeHost(container, host, order);
 		setReady(true);
 	}, [containerRef, host, order]);
 

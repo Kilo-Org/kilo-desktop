@@ -153,6 +153,19 @@ export const WorkSessions = defineDomainObject({
 			}),
 			chatSummarySchema,
 		),
+		/**
+		 * Forks one of the work session's chats at a user message
+		 * (`kilo.core/chats` `fork`): a new chat in the same work session and
+		 * directory, listed in it before this resolves. `NOT_FOUND` when the
+		 * chat isn't the work session's.
+		 */
+		forkChat: method(
+			workSessionIdInput.extend({
+				chatId: z.string().min(1),
+				messageId: z.string().min(1),
+			}),
+			chatSummarySchema,
+		),
 		rename: method(
 			workSessionIdInput.extend({ title: z.string().trim().min(1) }),
 			workSessionSchema,

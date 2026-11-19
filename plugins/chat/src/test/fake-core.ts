@@ -132,6 +132,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 	const server = options.server ?? new FakeKiloServer();
 	const calls = {
 		create: vi.fn<(input: CreateChatInput) => void>(),
+		fork: vi.fn<(input: { id: string; messageId: string }) => void>(),
 		prompt: vi.fn<(input: PromptChatInput) => void>(),
 		abort: vi.fn<(input: { id: string }) => void>(),
 		chatConfig: vi.fn(),
@@ -262,6 +263,42 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 					});
 					write(chat);
 					options.onChatCreated?.(chat);
+					return chat;
+				},
+				fork: async ({ id, messageId }) => {
+					calls.fork({ id, messageId });
+					const source = provider.state.chats[id];
+					if (!source) throw new KernelError("NOT_FOUND", "The chat was not found.");
+					const forked = await server
+						.fork(id, directoryOf(id), messageId)
+						.catch((error: unknown) => {
+							throw new KernelError(
+								"UNAVAILABLE",
+								`Could not fork the chat: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						});
+					// kilo.core hands every fork a hidden note before returning it.
+					await server.post(`/session/${forked.id}/prompt_async`, directoryOf(id), {
+						noReply: true,
+						parts: [
+							{
+								type: "text",
+								text: "<system-reminder>\nThis session was forked from an existing session in the current repository or worktree.\n</system-reminder>",
+								synthetic: true,
+							},
+						],
+					});
+					const stored = server.chats.get(forked.id)!;
+					const chat: ChatSummary = {
+						...source,
+						id: stored.id,
+						title: stored.title,
+						directory: stored.directory,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+						activity: { status: "idle", pendingPermissionIds: [], pendingQuestionIds: [] },
+					};
+					write(chat);
 					return chat;
 				},
 				setWorktreeBranch: unavailable,

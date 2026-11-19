@@ -29,6 +29,18 @@ describe("selectPrE2eGrep", () => {
 		assert.doesNotMatch(grep, /@smoke/);
 	});
 
+	it("also runs a plugin's own e2e specs when it ships some", () => {
+		const changed = ["plugins/marketplace/src/main/entry.ts"];
+
+		const withOwn = selectPrE2eGrep(changed, (id) => id === "marketplace");
+
+		assert.ok(
+			withOwn.split("|").some((pattern) => pattern.startsWith("plugins")),
+			withOwn,
+		);
+		assert.ok(!selectPrE2eGrep(changed, noOwnSpecs).includes("plugins"));
+	});
+
 	it("runs smoke for shared inputs no plugin owns", () => {
 		assert.equal(select("pnpm-lock.yaml"), "@smoke");
 		assert.equal(select("packages/vite-plugin-externalize-deps/src/index.ts"), "@smoke");

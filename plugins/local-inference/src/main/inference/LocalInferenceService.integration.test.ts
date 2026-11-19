@@ -1,5 +1,5 @@
 import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import type { KvStore } from "@kilo-desktop/kernel";
 import type { LocalModel } from "../../contracts";
 import { LocalInferenceService } from "./LocalInferenceService";
 import type { LlamaRouterStatus } from "../runtime/LlamaRouterManager";
+import { advertisedListenHost } from "../runtime/connection-info";
 import { LocalModelRegistry, type PersistedLocalModels } from "../models/LocalModelRegistry";
 
 const roots: string[] = [];
@@ -955,9 +956,9 @@ describe("LocalInferenceService", () => {
 				apiKey: "secret",
 			},
 		});
-		expect(status.status === "ready" ? status.connection?.baseUrl : undefined).toMatch(
-			/^http:\/\/.+:8080\/v1$/,
-		);
+		const baseUrl = status.status === "ready" ? status.connection?.baseUrl : undefined;
+		// The host's advertised LAN address when it has one, and loopback only when it has none.
+		expect(baseUrl).toBe(`http://${advertisedListenHost(true, networkInterfaces())}:8080/v1`);
 	});
 
 	it("keeps a failed router status instead of a generic configuration error", async () => {

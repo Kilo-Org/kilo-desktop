@@ -222,6 +222,7 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 				methods: {
 					create: unused("create"),
 					createChat: unused("createChat"),
+					forkChat: unused("forkChat"),
 					rename: unused("rename"),
 					setPinned: unused("setPinned"),
 					setArchived: unused("setArchived"),

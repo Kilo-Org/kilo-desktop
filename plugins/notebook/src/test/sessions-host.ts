@@ -149,6 +149,7 @@ export function createSessionsHost(initialPanes: readonly Pane[] = []): Sessions
 				methods: {
 					create: unused,
 					createChat: unused,
+					forkChat: unused,
 					rename: unused,
 					setPinned: unused,
 					setArchived: unused,

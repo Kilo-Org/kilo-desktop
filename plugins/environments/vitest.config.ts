@@ -62,7 +62,10 @@ export default defineConfig({
 				},
 			},
 			{
-				plugins: [react(), tailwindcss()],
+				plugins: [
+					react({ compiler: true, exclude: [/\/node_modules\//, /\/\.vitest\//] }),
+					tailwindcss(),
+				],
 				resolve: {
 					dedupe: ["react", "react-dom"],
 				},

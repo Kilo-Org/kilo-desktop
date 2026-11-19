@@ -9,7 +9,6 @@ import type { FileTreeBatchOperation, FileTreeSortComparator, GitStatusEntry } f
 import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import {
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 	type CSSProperties,
@@ -33,6 +32,7 @@ import {
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import type { DiffTheme } from "./diff-theme";
 import type { GitDiffTreeSource } from "./lib/diff-data-accumulator";
@@ -128,19 +128,18 @@ export function GitDiffSidebar({
 	treePlaceholder,
 	viewerRef,
 }: GitDiffSidebarProps) {
-	const sourceRef = useRef<GitDiffTreeSource | null>(source);
+	const sourceRef = useLatestRef<GitDiffTreeSource | null>(source);
 	const previousSourceRef = useRef<GitDiffTreeSource | null>(source);
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
-	sourceRef.current = source;
 
-	const folderOptions = useMemo(() => {
-		const names = workspaceFolders.map(({ path }) => folderName(path));
-		return workspaceFolders.map(({ path }, index) => ({
-			value: path,
-			label:
-				names.indexOf(names[index]!) === names.lastIndexOf(names[index]!) ? names[index]! : path,
-		}));
-	}, [workspaceFolders]);
+	const folderNames = workspaceFolders.map(({ path }) => folderName(path));
+	const folderOptions = workspaceFolders.map(({ path }, index) => ({
+		value: path,
+		label:
+			folderNames.indexOf(folderNames[index]!) === folderNames.lastIndexOf(folderNames[index]!)
+				? folderNames[index]!
+				: path,
+	}));
 
 	const revealFile = (path: string) => {
 		const itemId = sourceRef.current?.pathToItemId.get(path);

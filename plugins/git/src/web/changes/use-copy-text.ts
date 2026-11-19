@@ -1,5 +1,3 @@
-import { useCallback } from "react";
-
 import { KernelClipboard } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 
@@ -11,11 +9,8 @@ import { useDomainObject } from "@kilo-desktop/kernel/web";
  */
 export function useCopyText(): (text: string) => Promise<void> {
 	const clipboard = useDomainObject(KernelClipboard);
-	return useCallback(
-		(text: string) =>
-			clipboard
-				? clipboard.methods.writeText({ text })
-				: globalThis.navigator.clipboard.writeText(text),
-		[clipboard],
-	);
+	return (text: string) =>
+		clipboard
+			? clipboard.methods.writeText({ text })
+			: globalThis.navigator.clipboard.writeText(text);
 }

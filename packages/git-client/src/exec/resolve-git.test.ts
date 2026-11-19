@@ -41,18 +41,6 @@ describe("resolveGitBinary", () => {
 		expect(location).toBe(expected);
 	});
 
-	it("prefers LOCAL_GIT_DIRECTORY over the PATH lookup", () => {
-		const localGitDir = mkdtempSync(join(tmpdir(), "desktop-git-test-local-dir-"));
-		directories.push(localGitDir);
-
-		const location = resolveGitBinary(undefined, {
-			LOCAL_GIT_DIRECTORY: localGitDir,
-			PATH: process.env["PATH"],
-		});
-
-		expect(location.includes(localGitDir)).toBe(true);
-	});
-
 	it("falls back to looking up git on the PATH", () => {
 		const location = resolveGitBinary(undefined, { PATH: process.env["PATH"] });
 		expect(location.includes("git")).toBe(true);

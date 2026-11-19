@@ -4,7 +4,7 @@ An example plugin that contributes panels to the shell's right sidebar
 (`kilo.shell/right-sidebar-panel`): each panel gets an icon in the rail along
 the window's right edge, and opens beside the main area when clicked. See
 [docs/plugins](../../docs/plugins/README.md) and the
-[extension point catalog](../../docs/plugins/extension-points.md). It is a
+[extension point catalog](../../docs/plugins/schema.md). It is a
 workspace package but never bundled into the app.
 
 | File                                   | Shows                                                                                    |

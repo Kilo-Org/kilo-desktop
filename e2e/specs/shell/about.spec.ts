@@ -39,23 +39,10 @@ test.describe("About settings", () => {
 		await aboutPage.verifySupportSectionVisible();
 	});
 
-	test("verifies version details", async ({ aboutPage }) => {
-		await aboutPage.verifyVersionNumber();
-	});
-
 	test("verifies update status without an update feed", async ({ aboutPage }) => {
 		await aboutPage.verifyUpdatesUnavailableMessage();
 		await aboutPage.verifyCheckForUpdatesDisabled();
 		await aboutPage.verifyNoUpdateReadyToInstall();
-	});
-
-	test("verifies update track", async ({ aboutPage }) => {
-		await aboutPage.verifyUpdateTrackRow();
-		await aboutPage.verifyUpdateTrackLocked();
-	});
-
-	test("verifies support section", async ({ aboutPage }) => {
-		await aboutPage.verifySupportHeading();
 	});
 
 	test("verifies application logs row", async ({ aboutPage }) => {

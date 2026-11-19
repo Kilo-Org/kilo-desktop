@@ -11,7 +11,6 @@ export interface ResolveLlamaExecutableOptions {
 	/** The `llama-runtime` contributions, in priority order. */
 	readonly runtimes: readonly LlamaRuntimeCandidate[];
 	readonly overridePath?: string;
-	readonly accessFile?: (filePath: string) => Promise<void>;
 	readonly logger?: { warn(message: string): void };
 }
 
@@ -23,10 +22,9 @@ export interface ResolveLlamaExecutableOptions {
 export async function resolveLlamaExecutable(
 	options: ResolveLlamaExecutableOptions,
 ): Promise<string> {
-	const accessFile = options.accessFile ?? access;
 	const override = options.overridePath?.trim();
 	if (override) {
-		await accessFile(override);
+		await access(override);
 		return override;
 	}
 	if (options.runtimes.length === 0) {
@@ -36,7 +34,7 @@ export async function resolveLlamaExecutable(
 	for (const runtime of options.runtimes) {
 		try {
 			const executable = await runtime.resolveExecutable();
-			await accessFile(executable);
+			await access(executable);
 			return executable;
 		} catch (error) {
 			lastError = error;

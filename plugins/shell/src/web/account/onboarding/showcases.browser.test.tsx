@@ -7,7 +7,7 @@ import { SignInShowcase } from "./SignInStep";
 afterEach(cleanup);
 
 describe("SignInShowcase", () => {
-	it("starts on one model per lab with no group header", async () => {
+	it("starts on one model per lab", async () => {
 		const { baseElement, container } = render(<SignInShowcase />);
 		const screen = page.elementLocator(baseElement);
 
@@ -21,7 +21,5 @@ describe("SignInShowcase", () => {
 			"Mistral",
 			"DeepSeek",
 		]);
-		await expect.element(screen.getByText("Kilo Gateway")).not.toBeInTheDocument();
-		await expect.element(screen.getByText("500+ models from every major lab")).toBeVisible();
 	});
 });

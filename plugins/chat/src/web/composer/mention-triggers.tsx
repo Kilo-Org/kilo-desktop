@@ -6,17 +6,15 @@ import type {
 import { AtSignIcon } from "lucide-react";
 import {
 	createContext,
-	useCallback,
 	useContext,
 	useEffect,
-	useMemo,
-	useRef,
 	useState,
 	type ComponentPropsWithoutRef,
 	type FC,
 } from "react";
 
 import { useExtensions } from "@kilo-desktop/kernel/web";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import {
 	ComposerMention,
@@ -30,21 +28,17 @@ import { ComposerTriggerPopover } from "./trigger-popover";
 /** The window's mention sources: `composer-mention` contributions bound here. */
 export function useMentionSources(): readonly MentionSource[] {
 	const contributions = useExtensions(ComposerMention);
-	return useMemo(
-		() =>
-			contributions.flatMap((contribution) =>
-				contribution.implementation
-					? [
-							{
-								key: contribution.key,
-								trigger: contribution.metadata.trigger,
-								title: contribution.metadata.title,
-								implementation: contribution.implementation,
-							},
-						]
-					: [],
-			),
-		[contributions],
+	return contributions.flatMap((contribution) =>
+		contribution.implementation
+			? [
+					{
+						key: contribution.key,
+						trigger: contribution.metadata.trigger,
+						title: contribution.metadata.title,
+						implementation: contribution.implementation,
+					},
+				]
+			: [],
 	);
 }
 
@@ -71,11 +65,85 @@ type Unstable_TriggerAdapter = NonNullable<
 
 const MAX_CACHED_QUERIES = 50;
 
-interface SearchState {
-	readonly results: Map<string, readonly Unstable_TriggerItem[]>;
-	readonly icons: Map<string, IconComponent>;
-	shown: readonly Unstable_TriggerItem[];
-	pending: { readonly query: string; readonly controller: AbortController } | undefined;
+type TriggerItems = readonly Unstable_TriggerItem[];
+
+/** Search answers by query, for one composer context. */
+interface Answers {
+	readonly contextKey: string;
+	readonly byQuery: ReadonlyMap<string, TriggerItems>;
+}
+
+const NO_ANSWERS: ReadonlyMap<string, TriggerItems> = new Map();
+
+function withAnswer(
+	answers: Answers,
+	contextKey: string,
+	query: string,
+	items: TriggerItems,
+): Answers {
+	const previous = answers.contextKey === contextKey ? answers.byQuery : NO_ANSWERS;
+	const byQuery = new Map(previous.size >= MAX_CACHED_QUERIES ? [] : previous);
+	byQuery.set(query, items);
+	return { contextKey, byQuery };
+}
+
+/**
+ * The in-flight search and the items last shown for a source. The popover asks
+ * for items during render, so this lives outside React state: starting a
+ * search there must not schedule an update.
+ */
+class MentionSearch {
+	readonly icons = new Map<string, IconComponent>();
+	#shown: { readonly contextKey: string; readonly items: TriggerItems } | undefined;
+	#pending:
+		| { readonly query: string; readonly contextKey: string; readonly controller: AbortController }
+		| undefined;
+
+	get isLoading(): boolean {
+		return this.#pending !== undefined;
+	}
+
+	show(contextKey: string, items: TriggerItems): TriggerItems {
+		this.#shown = { contextKey, items };
+		return items;
+	}
+
+	shownFor(contextKey: string): TriggerItems {
+		return this.#shown?.contextKey === contextKey ? this.#shown.items : [];
+	}
+
+	/** Starts searching `query` unless it already is, cancelling the search before. */
+	start(
+		query: string,
+		contextKey: string,
+		search: (signal: AbortSignal) => Promise<readonly MentionItem[]>,
+		onAnswer: (items: readonly MentionItem[]) => void,
+		onFailure: (error: unknown) => void,
+	): void {
+		if (this.#pending?.query === query && this.#pending.contextKey === contextKey) return;
+		this.#pending?.controller.abort();
+		const controller = new AbortController();
+		const pending = { query, contextKey, controller };
+		this.#pending = pending;
+		const settle = (items: readonly MentionItem[]) => {
+			if (controller.signal.aborted) return;
+			for (const item of items) if (item.icon) this.icons.set(item.id, item.icon);
+			if (this.#pending === pending) this.#pending = undefined;
+			onAnswer(items);
+		};
+		void Promise.resolve()
+			.then(() => search(controller.signal))
+			.then(settle, (error: unknown) => {
+				if (!controller.signal.aborted) onFailure(error);
+				settle([]);
+			});
+	}
+
+	abortFor(contextKey: string): void {
+		if (this.#pending?.contextKey !== contextKey) return;
+		this.#pending.controller.abort();
+		this.#pending = undefined;
+	}
 }
 
 /**
@@ -92,73 +160,42 @@ export function useMentionAdapter(
 	isLoading: boolean;
 	icons: ReadonlyMap<string, IconComponent>;
 } {
-	const [version, setVersion] = useState(0);
 	const contextKey = `${context.workSessionId}\n${context.directory}\n${context.workspaceFolders.map((folder) => folder.path).join("\n")}`;
-	const latest = useRef(context);
-	latest.current = context;
-	const state = useRef<SearchState>({
-		results: new Map(),
-		icons: new Map(),
-		shown: [],
-		pending: undefined,
+	const latest = useLatestRef(context);
+	const [search] = useState(() => new MentionSearch());
+	const [answers, setAnswers] = useState<Answers>({ contextKey, byQuery: NO_ANSWERS });
+	const byQuery = answers.contextKey === contextKey ? answers.byQuery : NO_ANSWERS;
+
+	useEffect(() => () => search.abortFor(contextKey), [search, contextKey]);
+
+	// Each answer replaces `byQuery`, and with it the adapter, so the popover asks again.
+	const type = mentionType(source.key);
+	const toTriggerItem = (item: MentionItem): Unstable_TriggerItem => ({
+		id: item.id,
+		type,
+		label: item.label,
+		...(item.detail ? { description: item.detail } : {}),
 	});
+	const lookup = (query: string): TriggerItems => {
+		const cached = byQuery.get(query);
+		if (cached) return search.show(contextKey, cached);
+		search.start(
+			query,
+			contextKey,
+			(signal) => source.implementation.search(query, { ...latest.current, signal }),
+			(items) =>
+				setAnswers((current) => withAnswer(current, contextKey, query, items.map(toTriggerItem))),
+			(error) => console.warn(`[kilo.chat] ${source.key} could not search mentions`, error),
+		);
+		return search.shownFor(contextKey);
+	};
+	const adapter: Unstable_TriggerAdapter = {
+		categories: () => [],
+		categoryItems: () => lookup(""),
+		search: lookup,
+	};
 
-	useEffect(() => {
-		const current = state.current;
-		current.results.clear();
-		current.shown = [];
-		return () => current.pending?.controller.abort();
-	}, [contextKey]);
-
-	const adapter = useMemo<Unstable_TriggerAdapter>(() => {
-		const type = mentionType(source.key);
-		const lookup = (query: string): readonly Unstable_TriggerItem[] => {
-			const current = state.current;
-			const cached = current.results.get(query);
-			if (cached) {
-				current.shown = cached;
-				return cached;
-			}
-			if (current.pending?.query !== query) {
-				current.pending?.controller.abort();
-				const controller = new AbortController();
-				current.pending = { query, controller };
-				const settle = (items: readonly MentionItem[]) => {
-					if (controller.signal.aborted) return;
-					if (current.results.size >= MAX_CACHED_QUERIES) current.results.clear();
-					current.results.set(
-						query,
-						items.map((item) => {
-							if (item.icon) current.icons.set(item.id, item.icon);
-							return {
-								id: item.id,
-								type,
-								label: item.label,
-								...(item.detail ? { description: item.detail } : {}),
-							};
-						}),
-					);
-					current.pending = undefined;
-					setVersion((value) => value + 1);
-				};
-				void Promise.resolve()
-					.then(() =>
-						source.implementation.search(query, { ...latest.current, signal: controller.signal }),
-					)
-					.then(settle, (error: unknown) => {
-						if (!controller.signal.aborted) {
-							console.warn(`[kilo.chat] ${source.key} could not search mentions`, error);
-						}
-						settle([]);
-					});
-			}
-			return current.shown;
-		};
-		return { categories: () => [], categoryItems: () => lookup(""), search: lookup };
-		// `version` re-creates the adapter so the popover asks again once results arrive.
-	}, [source, version, contextKey]);
-
-	return { adapter, isLoading: state.current.pending !== undefined, icons: state.current.icons };
+	return { adapter, isLoading: search.isLoading, icons: search.icons };
 }
 
 const MentionTrigger: FC<{
@@ -169,14 +206,11 @@ const MentionTrigger: FC<{
 	const { adapter, isLoading, icons } = useMentionAdapter(source, context);
 	const SourceIcon: IconComponent = source.implementation.icon ?? AtSignIcon;
 	const noun = source.title.toLocaleLowerCase();
-	const directive = useMemo(() => ({ formatter }), [formatter]);
-	const renderItemIcon = useCallback(
-		(item: Unstable_TriggerItem) => {
-			const Icon = icons.get(item.id);
-			return Icon ? <Icon className="size-3.5 shrink-0" /> : null;
-		},
-		[icons],
-	);
+	const directive = { formatter };
+	const renderItemIcon = (item: Unstable_TriggerItem) => {
+		const Icon = icons.get(item.id);
+		return Icon ? <Icon className="size-3.5 shrink-0" /> : null;
+	};
 	return (
 		<ComposerTriggerPopover
 			char={source.trigger}

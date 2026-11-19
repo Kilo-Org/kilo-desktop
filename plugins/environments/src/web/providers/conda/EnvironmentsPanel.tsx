@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 
@@ -79,7 +79,7 @@ const SORT_FIELDS = [
  */
 export function EnvironmentsPanelLoading() {
 	const [selectedPrefix, setSelectedPrefix] = useSelectedEnvironment();
-	const goBack = useCallback(() => setSelectedPrefix(undefined), [setSelectedPrefix]);
+	const goBack = () => setSelectedPrefix(undefined);
 	return selectedPrefix ? (
 		<EnvironmentDetailLoading prefix={selectedPrefix} onBack={goBack} />
 	) : (
@@ -149,22 +149,18 @@ function EnvironmentsPanelContent() {
 	const notReadySince = useProviderNotReadySince({
 		notReady: settledNotReady,
 		resolved: envs.isSuccess || (envs.isError && !settledNotReady),
+		failedAt: envs.errorUpdatedAt,
 	});
 	const [selectedPrefix, setSelectedPrefix] = useSelectedEnvironment();
 	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
-	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
+	const closeDialog = () => setDialog({ kind: "none" });
+	const selectEnv = (env: CondaEnv) => setSelectedPrefix(env.prefix);
+	const goBack = () => setSelectedPrefix(undefined);
 
-	const selectEnv = useCallback(
-		(env: CondaEnv) => setSelectedPrefix(env.prefix),
-		[setSelectedPrefix],
-	);
-
-	const goBack = useCallback(() => setSelectedPrefix(undefined), [setSelectedPrefix]);
-
-	const selectedEnv = useMemo(() => {
-		if (!selectedPrefix || !envs.data) return null;
-		return envs.data.find((e) => e.prefix === selectedPrefix) ?? null;
-	}, [selectedPrefix, envs.data]);
+	const selectedEnv =
+		selectedPrefix && envs.data
+			? (envs.data.find((e) => e.prefix === selectedPrefix) ?? null)
+			: null;
 
 	if (selectedEnv) {
 		return <EnvironmentDetail env={selectedEnv} onBack={goBack} />;
@@ -275,20 +271,18 @@ function EnvironmentsList({ rows, onSelectEnv, onClone, onDelete }: Environments
 	const [sortField, setSortField] = useState<EnvironmentSortField>("name");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-	const visible = useMemo(() => {
-		const query = searchQuery.trim().toLowerCase();
-		const matches = query
-			? rows.filter(
-					(env) =>
-						environmentDisplayName(env).toLowerCase().includes(query) ||
-						env.prefix.toLowerCase().includes(query),
-				)
-			: rows;
-		return matches.toSorted((a, b) => {
-			const comparison = sortKey(a, sortField).localeCompare(sortKey(b, sortField));
-			return sortDirection === "asc" ? comparison : -comparison;
-		});
-	}, [rows, searchQuery, sortField, sortDirection]);
+	const query = searchQuery.trim().toLowerCase();
+	const matches = query
+		? rows.filter(
+				(env) =>
+					environmentDisplayName(env).toLowerCase().includes(query) ||
+					env.prefix.toLowerCase().includes(query),
+			)
+		: rows;
+	const visible = matches.toSorted((a, b) => {
+		const comparison = sortKey(a, sortField).localeCompare(sortKey(b, sortField));
+		return sortDirection === "asc" ? comparison : -comparison;
+	});
 
 	return (
 		<>

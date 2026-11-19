@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDomainObject, useDomainObjectState, useKernel, useSdk } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
@@ -63,9 +63,6 @@ export function usePackageInstallLink(): readonly [TakenPackageInstallRequest | 
 	// Bound to the request it was handed with: a flow a newer link replaced can
 	// still finish (an install keeps running) and must not close the newer one.
 	const requestId = request?.id;
-	const dismiss = useCallback(
-		() => setRequest((current) => (current?.id === requestId ? null : current)),
-		[requestId],
-	);
+	const dismiss = () => setRequest((current) => (current?.id === requestId ? null : current));
 	return [request, dismiss] as const;
 }

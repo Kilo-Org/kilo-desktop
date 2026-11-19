@@ -1,10 +1,8 @@
-import { memo } from "react";
-
 import { SoloAwareLabelRow } from "./tool-ui-activity-row";
 import { str, truncate } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
-export const SkillActivity: ToolCallComponent = memo(({ args, status }) => {
+export const SkillActivity: ToolCallComponent = ({ args, status }) => {
 	const name = str((args as Record<string, unknown> | undefined)?.name);
 	const skill = name ? truncate(name) : undefined;
 
@@ -17,5 +15,5 @@ export const SkillActivity: ToolCallComponent = memo(({ args, status }) => {
 			status={status}
 		/>
 	);
-});
+};
 SkillActivity.displayName = "SkillActivity";

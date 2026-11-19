@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
 import type {
 	OpenCodePermissionRequest,
@@ -54,11 +54,14 @@ export const OpenCodePermissionCard = ({
 	const [error, setError] = useState<string | null>(null);
 
 	const submitReply = async (nextReply: OpenCodePermissionResponse) => {
+		if (!chats) {
+			setError("Kilo isn't available right now.");
+			return;
+		}
 		setSubmittingReply(nextReply);
 		setError(null);
 
 		try {
-			if (!chats) throw new Error("Kilo isn't available right now.");
 			await chats.methods.replyPermission({
 				chatId: request.sessionId,
 				permissionId: request.id,
@@ -105,8 +108,6 @@ export const OpenCodePermissionCard = ({
 	});
 
 	const permissionLabel = request.toolName ?? request.permission;
-	// A bare `*` (a tool-level rule's wildcard) means nothing to the person.
-	const patterns = useMemo(() => visiblePermissionPatterns(request.patterns), [request.patterns]);
 	// The request carries no arguments, so read them from the call in the thread.
 	const threadArgs = useAuiState((state) =>
 		findPermissionToolArgs(state.thread.messages, request.tool),
@@ -115,21 +116,17 @@ export const OpenCodePermissionCard = ({
 	const renderers = usePermissionRenderers();
 	const tools = useDesktopTools();
 	const toolKey = toolKeyOf(tools, request.permission);
+	// A bare `*` (a tool-level rule's wildcard) means nothing to the person.
+	const patterns = visiblePermissionPatterns(request.patterns);
 	// Renderers see Kilo's permission name; the label may be a tool's friendlier `metadata.toolName`.
-	const interaction = useMemo<PermissionInteraction>(
-		() => ({
-			permission: request.permission,
-			...(toolKey ? { toolKey } : {}),
-			patterns,
-			metadata: request.metadata,
-			args,
-		}),
-		[request.permission, toolKey, patterns, request.metadata, args],
-	);
-	const presentation = useMemo(
-		() => presentPermission(renderers, interaction),
-		[renderers, interaction],
-	);
+	const interaction: PermissionInteraction = {
+		permission: request.permission,
+		...(toolKey ? { toolKey } : {}),
+		patterns,
+		metadata: request.metadata,
+		args,
+	};
+	const presentation = presentPermission(renderers, interaction);
 	const shownPatterns = presentation.showPatterns ? patterns : [];
 	const description = request.metadata["description"];
 	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as

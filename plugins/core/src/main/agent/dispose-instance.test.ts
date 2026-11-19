@@ -115,6 +115,6 @@ describe("disposing a directory's Kilo instance", () => {
 		const connection = await server.start();
 		const dispose = createInstanceDisposer({ timeoutMs: 5_000 });
 
-		await expect(dispose(connection, "/projects/app")).rejects.toBeDefined();
+		await expect(dispose(connection, "/projects/app")).rejects.toMatchObject({ message: "boom" });
 	});
 });

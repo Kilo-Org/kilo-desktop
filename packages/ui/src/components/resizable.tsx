@@ -1,5 +1,4 @@
 import {
-	useCallback,
 	useState,
 	type ComponentProps,
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -54,42 +53,36 @@ export function ResizableHandle({
 }) {
 	const [active, setActive] = useState(false);
 	const vertical = orientation === "vertical";
-	const handlePointerDown = useCallback(
-		(event: ReactPointerEvent<HTMLDivElement>) => {
-			if (!onResize) return;
-			event.preventDefault();
-			const handle = event.currentTarget;
-			const start = vertical ? event.clientX : event.clientY;
-			handle.setPointerCapture(event.pointerId);
-			setActive(true);
-			const onMove = (moveEvent: PointerEvent) => {
-				onResize((vertical ? moveEvent.clientX : moveEvent.clientY) - start);
-			};
-			const onUp = (upEvent: PointerEvent) => {
-				handle.releasePointerCapture(upEvent.pointerId);
-				handle.removeEventListener("pointermove", onMove);
-				handle.removeEventListener("pointerup", onUp);
-				handle.removeEventListener("pointercancel", onUp);
-				setActive(false);
-			};
-			handle.addEventListener("pointermove", onMove);
-			handle.addEventListener("pointerup", onUp);
-			handle.addEventListener("pointercancel", onUp);
-		},
-		[onResize, vertical],
-	);
-	const handleKeyDown = useCallback(
-		(event: ReactKeyboardEvent<HTMLDivElement>) => {
-			if (!onResize) return;
-			const shrink = vertical ? "ArrowLeft" : "ArrowUp";
-			const grow = vertical ? "ArrowRight" : "ArrowDown";
-			if (event.key !== shrink && event.key !== grow) return;
-			event.preventDefault();
-			const step = event.shiftKey ? 40 : 12;
-			onResize(event.key === shrink ? -step : step);
-		},
-		[onResize, vertical],
-	);
+	const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+		if (!onResize) return;
+		event.preventDefault();
+		const handle = event.currentTarget;
+		const start = vertical ? event.clientX : event.clientY;
+		handle.setPointerCapture(event.pointerId);
+		setActive(true);
+		const onMove = (moveEvent: PointerEvent) => {
+			onResize((vertical ? moveEvent.clientX : moveEvent.clientY) - start);
+		};
+		const onUp = (upEvent: PointerEvent) => {
+			handle.releasePointerCapture(upEvent.pointerId);
+			handle.removeEventListener("pointermove", onMove);
+			handle.removeEventListener("pointerup", onUp);
+			handle.removeEventListener("pointercancel", onUp);
+			setActive(false);
+		};
+		handle.addEventListener("pointermove", onMove);
+		handle.addEventListener("pointerup", onUp);
+		handle.addEventListener("pointercancel", onUp);
+	};
+	const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (!onResize) return;
+		const shrink = vertical ? "ArrowLeft" : "ArrowUp";
+		const grow = vertical ? "ArrowRight" : "ArrowDown";
+		if (event.key !== shrink && event.key !== grow) return;
+		event.preventDefault();
+		const step = event.shiftKey ? 40 : 12;
+		onResize(event.key === shrink ? -step : step);
+	};
 
 	return (
 		<div

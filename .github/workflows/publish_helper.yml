@@ -98,7 +98,7 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential fakeroot libsecret-1-dev pkg-config
+          sudo apt-get install --yes build-essential fakeroot libsecret-1-dev pkg-config rpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

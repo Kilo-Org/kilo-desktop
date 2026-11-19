@@ -3,13 +3,12 @@ import {
 	memo,
 	useContext,
 	useEffect,
-	useMemo,
 	useState,
 	type CSSProperties,
 	type FC,
 	type PropsWithChildren,
 } from "react";
-import { useAuiState } from "@assistant-ui/react";
+import { useAuiState, type PartState } from "@assistant-ui/react";
 
 import {
 	Collapsible,
@@ -66,6 +65,26 @@ export function hiddenDelegationRows(
 	return hidden.size > 1 ? hidden : NO_HIDDEN_ROWS;
 }
 
+/** The group's delegation rows and their part indices. */
+function delegationRows(
+	parts: readonly PartState[],
+	groupIndices: readonly number[],
+	activityByToolCallId: ReturnType<typeof useSubagentActivity>["activityByToolCallId"],
+) {
+	const rows: DelegationRowState[] = [];
+	const indices: number[] = [];
+	for (const index of groupIndices) {
+		const part = parts[index];
+		if (part?.type !== "tool-call" || !isDelegationTool(part.toolName)) continue;
+		indices.push(index);
+		rows.push({
+			toolCallId: part.toolCallId,
+			status: delegationStatus(activityByToolCallId.get(part.toolCallId)?.status, part.status),
+		});
+	}
+	return { rows, indices };
+}
+
 const HiddenDelegationRowsContext = createContext<ReadonlySet<string>>(NO_HIDDEN_ROWS);
 
 /** Whether the enclosing delegation group has folded this row into "+N more". */
@@ -84,46 +103,31 @@ const DelegationGroupImpl: FC<PropsWithChildren<{ group: { indices: readonly num
 }) => {
 	const parts = useAuiState((s) => s.message.parts);
 	const { activityByToolCallId } = useSubagentActivity();
-	const { rows, indices } = useMemo(() => {
-		const delegationRows: DelegationRowState[] = [];
-		const delegationIndices: number[] = [];
-		for (const index of group.indices) {
-			const part = parts[index];
-			if (part?.type !== "tool-call" || !isDelegationTool(part.toolName)) continue;
-			delegationIndices.push(index);
-			delegationRows.push({
-				toolCallId: part.toolCallId,
-				status: delegationStatus(activityByToolCallId.get(part.toolCallId)?.status, part.status),
-			});
-		}
-		return { rows: delegationRows, indices: delegationIndices };
-	}, [activityByToolCallId, group.indices, parts]);
-	const stats = useMemo(
-		() =>
-			getSegmentStats(parts, { kind: "subagent", indices, running: false, requiresAction: false }),
-		[parts, indices],
-	);
-	const active = rows.some((row) => isActiveSubagentStatus(row.status));
 	const [toggled, setToggled] = useManualDisclosure(`delegation:${group.indices[0] ?? 0}`);
-	const automaticOpen = useDelayedActivityOpen(active, toggled === undefined);
-	const rowIds = useMemo(() => rows.map((row) => row.toolCallId), [rows]);
-	const revealNonce = useDelegationRevealNonce(rowIds);
 	const [showAll, setShowAll] = useState(false);
+	const spacing = useActivityGroupSpacing(group);
+	const { rows, indices } = delegationRows(parts, group.indices, activityByToolCallId);
+	const stats = getSegmentStats(parts, {
+		kind: "subagent",
+		indices,
+		running: false,
+		requiresAction: false,
+	});
+	const active = rows.some((row) => isActiveSubagentStatus(row.status));
+	const meta = getKindMeta("subagent");
+	const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
+	const rowIds = rows.map((row) => row.toolCallId);
+	const hiddenRows = showAll ? NO_HIDDEN_ROWS : hiddenDelegationRows(rows);
+	const automaticOpen = useDelayedActivityOpen(active, toggled === undefined);
+	const revealNonce = useDelegationRevealNonce(rowIds);
+	if (revealNonce !== null && !showAll) setShowAll(true);
 	useEffect(() => {
 		if (revealNonce === null) return;
-		setShowAll(true);
 		// Latch open: a settled group would otherwise fold again once the request clears.
 		if (toggled !== true) setToggled(true);
 	}, [revealNonce, setToggled, toggled]);
 	const open = revealNonce !== null || (toggled ?? automaticOpen);
-	const spacing = useActivityGroupSpacing(group);
-	const hiddenRows = useMemo(
-		() => (showAll ? NO_HIDDEN_ROWS : hiddenDelegationRows(rows)),
-		[rows, showAll],
-	);
 
-	const meta = getKindMeta("subagent");
-	const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
 	return (
 		<div data-slot="activity-group" className={spacing}>
 			<Collapsible

@@ -29,16 +29,11 @@ interface Entry {
 
 export class HistoryPrefetch {
 	readonly #entries = new Map<string, Entry>();
-	readonly #now: () => number;
-
-	constructor(now: () => number = Date.now) {
-		this.#now = now;
-	}
 
 	/** Loads `chatId`'s history through `client`, unless it is already waiting. */
 	prefetch(chatId: string, client: KiloClient): void {
 		const existing = this.#entries.get(chatId);
-		if (existing && existing.expires > this.#now()) return;
+		if (existing && existing.expires > Date.now()) return;
 		const entry: Entry = {
 			replies: new Map<HistoryReply, Promise<unknown>>([
 				["get", client.session.get({ sessionID: chatId })],
@@ -47,7 +42,7 @@ export class HistoryPrefetch {
 					client.session.messages({ sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE }),
 				],
 			]),
-			expires: this.#now() + PREFETCH_TTL_MS,
+			expires: Date.now() + PREFETCH_TTL_MS,
 		};
 		this.#entries.set(chatId, entry);
 		// A failure is the opening thread's to report, when it loads again.
@@ -67,7 +62,7 @@ export class HistoryPrefetch {
 	take(chatId: string, kind: HistoryReply): Promise<unknown> | undefined {
 		const entry = this.#entries.get(chatId);
 		if (!entry) return undefined;
-		if (entry.expires <= this.#now()) {
+		if (entry.expires <= Date.now()) {
 			this.#entries.delete(chatId);
 			return undefined;
 		}

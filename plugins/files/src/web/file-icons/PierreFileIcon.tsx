@@ -1,5 +1,5 @@
 import { createFileTreeIconResolver, getBuiltInSpriteSheet } from "@pierre/trees";
-import { useInsertionEffect, useMemo } from "react";
+import { useInsertionEffect } from "react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -101,7 +101,7 @@ export function PierreFileIcon({
 	readonly className?: string;
 }) {
 	useInsertionEffect(ensurePierreIconSprite, []);
-	const icon = useMemo(() => iconResolver.resolveIcon("file-tree-icon-file", path), [path]);
+	const icon = iconResolver.resolveIcon("file-tree-icon-file", path);
 
 	return (
 		<svg

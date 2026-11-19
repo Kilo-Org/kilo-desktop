@@ -32,6 +32,7 @@ import {
 
 import { getAppIdentity } from "$config/app-identity.js";
 import { requestDevRelaunch } from "$config/dev-relaunch.js";
+import { readLinuxPackageFormat } from "$config/linux-package.js";
 
 import {
 	repaintOnSystemColorSchemeChange,
@@ -448,6 +449,10 @@ export class KernelApplication {
 			},
 			persistTrack: (track) => this.preferences.setReleaseTrack(track),
 			logger: createLogger("updates"),
+			...(process.platform === "linux" &&
+				this.#app.metadata.isPackaged && {
+					linuxPackageFormat: readLinuxPackageFormat(process.resourcesPath),
+				}),
 			...(process.platform === "win32" && {
 				windowsFeed: new WindowsUpdateFeed({
 					directory: path.join(this.#storageRoot, "squirrel-feed"),

@@ -11,7 +11,6 @@ function provider(flags: Record<string, unknown>) {
 	const emitter = new EventEmitter<FeatureFlagEvents>();
 	return Object.assign(emitter, {
 		start: async () => "complete" as const,
-		getFlag: <T>(_key: string, fallback?: T) => fallback as T,
 		getAllFlags: () => flags,
 		identify: vi.fn(async () => {}),
 		dispose: vi.fn(async () => {}),
@@ -45,11 +44,12 @@ describe("LaunchDarklyFlagSource", () => {
 		const ld = provider({});
 		const source = new LaunchDarklyFlagSource({ provider: ld, logger: silent });
 		const listener = vi.fn();
-		const stop = source.subscribe(listener);
-		stop();
+		source.subscribe(listener);
 
 		await source.start();
+		listener.mockClear();
 		await source.dispose();
+		ld.emit("change");
 
 		expect(listener).not.toHaveBeenCalled();
 		expect(ld.dispose).toHaveBeenCalledOnce();

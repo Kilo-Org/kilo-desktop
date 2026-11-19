@@ -29,6 +29,7 @@ export interface RecordedRequest {
 	readonly search: URLSearchParams;
 	readonly directory: string | null;
 	readonly body: unknown;
+	readonly headers: Headers;
 }
 
 const encodeCursor = (id: string) => btoa(JSON.stringify({ id }));
@@ -104,6 +105,8 @@ export class FakeKiloServer {
 	};
 	readonly chats = new Map<string, FakeChat>();
 	readonly requests: RecordedRequest[] = [];
+	/** Chats whose newest message page a read finished answering, in order. */
+	readonly messagePagesSent: string[] = [];
 	/** What `/agent` lists: primary agents the agent picker offers. */
 	agents: Record<string, unknown>[] = [
 		{ name: "code", mode: "primary" },
@@ -241,6 +244,16 @@ export class FakeKiloServer {
 
 	/** A request from main (kilo.core), which doesn't go through the window's fetch. */
 	async post(path: string, directory: string, body: unknown): Promise<void> {
+		await this.#send(path, directory, body);
+	}
+
+	/** Forks a chat as kilo.core asks the server to, answering the new chat's info. */
+	async fork(chatId: string, directory: string, messageID: string): Promise<{ id: string }> {
+		const response = await this.#send(`/session/${chatId}/fork`, directory, { messageID });
+		return (await response.json()) as { id: string };
+	}
+
+	async #send(path: string, directory: string, body: unknown): Promise<Response> {
 		const url = `${KILO_BASE_URL}${path}?directory=${encodeURIComponent(directory)}`;
 		const response = await this.#handle(
 			new Request(url, {
@@ -250,6 +263,7 @@ export class FakeKiloServer {
 			}),
 		);
 		if (!response.ok) throw new Error(`The server refused ${path}`);
+		return response;
 	}
 
 	/** Intercepts fetch for this server's address until the test ends. */
@@ -275,6 +289,7 @@ export class FakeKiloServer {
 					? decodeURIComponent(request.headers.get("x-kilo-directory")!)
 					: null),
 			body: text ? JSON.parse(text) : undefined,
+			headers: request.headers,
 		};
 		this.requests.push(recorded);
 		const [, first, id, action] = url.pathname.split("/");
@@ -323,6 +338,7 @@ export class FakeKiloServer {
 		if (action === "message" && request.method === "GET") {
 			if (this.historyReadDelayMs)
 				await new Promise((resolve) => setTimeout(resolve, this.historyReadDelayMs));
+			this.messagePagesSent.push(chat.id);
 			return this.#messagePage(chat, url.searchParams);
 		}
 		if (action === "prompt_async") {
@@ -339,6 +355,12 @@ export class FakeKiloServer {
 			return json(info);
 		}
 		if (action === "command") return json({ info: {}, parts: [] });
+		if (action === "fork" && request.method === "POST") {
+			await this.forkGate;
+			if (this.failForks) return json({ message: "The chat is locked" }, 500);
+			const { messageID } = (recorded.body ?? {}) as { messageID?: string };
+			return json(this.#info(this.#fork(chat, messageID, recorded.directory ?? chat.directory)));
+		}
 		if (action === "summarize") return this.summarize(chat);
 		return json({ message: "Not found" }, 404);
 	}
@@ -369,7 +391,11 @@ export class FakeKiloServer {
 			.filter((part) => part.type === "text")
 			.map((part) => String(part.text))
 			.join("");
-		const message = userMessage(chat.id, id, text);
+		const typed = userMessage(chat.id, id, text);
+		// A hidden note (a fork's handoff) keeps its synthetic flag, as Kilo stores it.
+		const message = body.parts?.some((part) => part.synthetic === true)
+			? { ...typed, parts: typed.parts.map((part) => ({ ...part, synthetic: true })) }
+			: typed;
 		chat.messages.push(message);
 		// After the reply, as the real server publishes the prompt's events.
 		setTimeout(() => {
@@ -394,6 +420,44 @@ export class FakeKiloServer {
 
 	/** Permission and question ids whose replies fail. */
 	readonly failingReplies = new Set<string>();
+
+	/** Holds answering `/session/:id/fork` until the test releases it. */
+	forkGate?: Promise<void>;
+
+	/** Whether forks fail, as when the server refuses one. */
+	failForks = false;
+
+	#nextFork = 0;
+
+	/**
+	 * A new chat with copies of the messages strictly before `messageID`, as
+	 * Kilo forks one; an unknown or missing id copies them all.
+	 */
+	#fork(source: FakeChat, messageID: string | undefined, directory: string): FakeChat {
+		this.#nextFork += 1;
+		const id = `ses_fork_${this.#nextFork}`;
+		const at = source.messages.findIndex((message) => message.info.id === messageID);
+		const copied = source.messages.slice(0, at === -1 ? source.messages.length : at);
+		const ids = new Map(copied.map((message, index) => [message.info.id, `msg_${id}_${index}`]));
+		return this.addChat({
+			id,
+			directory,
+			title: `${source.title} (fork #1)`,
+			messages: copied.map(({ info, parts }) => {
+				const messageID = ids.get(info.id)!;
+				const parentID = typeof info.parentID === "string" ? ids.get(info.parentID) : undefined;
+				return {
+					info: { ...info, id: messageID, sessionID: id, ...(parentID ? { parentID } : {}) },
+					parts: parts.map((part, index) => ({
+						...part,
+						id: `${messageID}_p${index}`,
+						sessionID: id,
+						messageID,
+					})),
+				};
+			}),
+		});
+	}
 
 	/** A pending permission or question was answered: it leaves its list. */
 	#settle(kind: "permission" | "question", id: string): Response {

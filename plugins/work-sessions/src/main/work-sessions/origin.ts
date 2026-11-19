@@ -1,7 +1,12 @@
 import type { PluginSdk } from "@kilo-desktop/kernel";
 
 import { DEFAULT_WORK_SESSION_TITLE, type WorkSession } from "../../contracts/model";
-import type { SqliteLoader } from "../origin-database";
+import {
+	originImportMode,
+	recoverable,
+	reportOriginImportFailure,
+	type SqliteLoader,
+} from "../origin-database";
 import { readOriginSessions, type OriginSession } from "./import-origin";
 import type { WorkSessionRegistry } from "./registry";
 
@@ -63,7 +68,8 @@ function personalChoices(workSession: WorkSession): Partial<WorkSession> {
 /**
  * Imports origin's work sessions once; settles true once they are imported
  * (or there are none), false when the read failed and will be retried next
- * launch.
+ * launch. An install an earlier release marked imported without reading
+ * origin gets them now, unless some are already here (`originImportMode`).
  */
 export async function importOriginWorkSessions(
 	sdk: PluginSdk,
@@ -71,14 +77,21 @@ export async function importOriginWorkSessions(
 	file: string | undefined,
 	loadDriver?: SqliteLoader,
 ): Promise<boolean> {
-	if (!file || registry.persisted().importedFromOrigin) return true;
+	const mode = originImportMode(registry.persisted());
+	if (!file || mode === "done") return true;
 	try {
-		mergeOriginSessions(registry, await readOriginSessions(file, sdk.logger, loadDriver));
+		const origin = await readOriginSessions(file, loadDriver);
+		const merging =
+			mode === "import" ||
+			recoverable(
+				origin.map((session) => session.id),
+				registry.list().map((workSession) => workSession.id),
+			);
+		if (merging) mergeOriginSessions(registry, origin);
+		else registry.save(registry.list(), { importedFromOrigin: true, originImportVerified: true });
 		return true;
 	} catch (error) {
-		sdk.logger.warn(
-			`Could not import sessions from ${file}; will try again next launch: ${errorText(error)}`,
-		);
+		reportOriginImportFailure(sdk, "sessions", file, error);
 		return false;
 	}
 }
@@ -134,7 +147,7 @@ function mergeOriginSessions(
 			},
 		];
 	});
-	registry.save([...kept, ...added], { importedFromOrigin: true });
+	registry.save([...kept, ...added], { importedFromOrigin: true, originImportVerified: true });
 	for (const workSession of adopted) registry.announceDeleted(workSession);
 	for (const workSession of added) registry.announceCreated(workSession);
 }

@@ -1,5 +1,3 @@
-import { useCallback } from "react";
-
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 
 import {
@@ -23,26 +21,20 @@ export function useActiveWorkSession(): WorkSession | null {
 
 /** A work session by id, while it exists. */
 export function useWorkSession(workSessionId: string | null): WorkSession | null {
-	const select = useCallback(
-		(state: WorkSessionsState) =>
-			workSessionId === null
-				? null
-				: (state.workSessions.find((workSession) => workSession.id === workSessionId) ?? null),
-		[workSessionId],
-	);
+	const select = (state: WorkSessionsState) =>
+		workSessionId === null
+			? null
+			: (state.workSessions.find((workSession) => workSession.id === workSessionId) ?? null);
 	return useDomainObjectState(WorkSessions, select) ?? null;
 }
 
 /** The workspace a work session belongs to, when it still exists. */
 export function useWorkSessionWorkspace(workSession: WorkSession | null): Workspace | null {
 	const workspaceId = workSession?.workspaceId ?? null;
-	const select = useCallback(
-		(state: WorkspacesState) =>
-			workspaceId === null
-				? null
-				: (state.workspaces.find((workspace) => workspace.id === workspaceId) ?? null),
-		[workspaceId],
-	);
+	const select = (state: WorkspacesState) =>
+		workspaceId === null
+			? null
+			: (state.workspaces.find((workspace) => workspace.id === workspaceId) ?? null);
 	return useDomainObjectState(Workspaces, select) ?? null;
 }
 

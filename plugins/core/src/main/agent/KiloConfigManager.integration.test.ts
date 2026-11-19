@@ -229,7 +229,7 @@ describe("KiloConfigManager", () => {
 		expect((await readConfig()).mcp?.shared).toMatchObject({
 			url: "https://one.test/updated",
 		});
-	}, 15_000);
+	});
 
 	it("snapshots entries before queued writes", async () => {
 		const config = new KiloConfigManager(configDirectory);
@@ -273,7 +273,7 @@ describe("KiloConfigManager", () => {
 			reason: "explicit",
 		});
 		expect((await readConfig()).provider).not.toHaveProperty("kilo-desktop-model-server");
-	}, 15_000);
+	});
 
 	it("migrates legacy ownership and renames the Desktop-owned local provider", async () => {
 		await writeFile(

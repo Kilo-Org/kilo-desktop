@@ -5,6 +5,7 @@ import { page, userEvent } from "vitest/browser";
 
 import type { FileReadResult } from "../../contracts/models.js";
 import { bootFilesHost, filesPane, PaneHost } from "../../test/files-host.js";
+import { RELOAD_DEBOUNCE_MS } from "../document/document-watcher.js";
 import type { DocumentMethods } from "../documents.js";
 import {
 	configureSiftRuntime,
@@ -45,6 +46,9 @@ function ProbeTableView({ source, onLoadStateChange, onError }: SiftTableViewPro
 
 const REVISION_A = "a".repeat(64);
 const REVISION_B = "b".repeat(64);
+
+/** Just past the document watcher's reload debounce, on a clock the test moves itself. */
+const WATCHER_DEBOUNCE_PASSED_MS = RELOAD_DEBOUNCE_MS + 1;
 
 function csv(contents: string, extra: Partial<Extract<FileReadResult, { kind: "text" }>> = {}) {
 	return {
@@ -220,18 +224,26 @@ describe("FilesView table viewer", () => {
 
 	it("does not reload a dirty CSV from disk while it is shown as a table", async () => {
 		const read = vi.fn<DocumentMethods["read"]>(async () => csv("a\n1\n"));
-		const view = await renderFile(baseHandlers(read), "data.csv");
-		await page.getByRole("button", { name: "Edit source" }).click();
-		await replaceEditorText("a\nlocal\n");
-		await page.getByRole("button", { name: "Show as table" }).click();
+		// Fake the watcher's debounce clock before mount so its timer arms on it.
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const view = await renderFile(baseHandlers(read), "data.csv");
+			await page.getByRole("button", { name: "Edit source" }).click();
+			await replaceEditorText("a\nlocal\n");
+			await page.getByRole("button", { name: "Show as table" }).click();
 
-		read.mockResolvedValue(csv("a\nremote\n", { revision: REVISION_B }));
-		await view.emitFileChanges("/workspace", [{ path: "/workspace/data.csv", type: "update" }]);
-		await new Promise((resolve) => setTimeout(resolve, 700));
+			read.mockResolvedValue(csv("a\nremote\n", { revision: REVISION_B }));
+			await view.emitFileChanges("/workspace", [{ path: "/workspace/data.csv", type: "update" }]);
+			await vi.advanceTimersByTimeAsync(WATCHER_DEBOUNCE_PASSED_MS);
 
-		await expect.element(page.getByTestId("sift-probe")).toMatchTextContent(/local/u);
-		expect(document.querySelector('[data-qa-id="sift-probe"]')?.textContent).not.toMatch(/remote/u);
-		expect(read).toHaveBeenCalledOnce();
+			await expect.element(page.getByTestId("sift-probe")).toMatchTextContent(/local/u);
+			expect(document.querySelector('[data-qa-id="sift-probe"]')?.textContent).not.toMatch(
+				/remote/u,
+			);
+			expect(read).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("opens CSV in the editor when the tab targets a source line", async () => {
@@ -413,14 +425,21 @@ describe("FilesView table viewer", () => {
 			byteLength: 8,
 			revision: REVISION_A,
 		}));
-		const view = await renderFile(baseHandlers(read), "data.parquet");
-		await expect.element(page.getByTestId("sift-probe")).toBeVisible();
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			const view = await renderFile(baseHandlers(read), "data.parquet");
+			await expect.element(page.getByTestId("sift-probe")).toBeVisible();
 
-		await view.emitFileChanges("/workspace", [{ path: "/workspace/data.parquet", type: "update" }]);
-		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
-		await new Promise((resolve) => setTimeout(resolve, 50));
+			await view.emitFileChanges("/workspace", [
+				{ path: "/workspace/data.parquet", type: "update" },
+			]);
+			await vi.advanceTimersByTimeAsync(WATCHER_DEBOUNCE_PASSED_MS);
 
-		expect(mounted).toHaveLength(1);
+			expect(read).toHaveBeenCalledTimes(2);
+			expect(mounted).toHaveLength(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("reports invalid and oversized table files instead of rendering them", async () => {

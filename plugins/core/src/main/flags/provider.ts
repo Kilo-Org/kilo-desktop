@@ -166,10 +166,6 @@ export class LaunchDarklyProvider
 		}
 	}
 
-	getFlag<T>(key: string, defaultValue?: T): T {
-		return this.#client.variation(key, defaultValue) as T;
-	}
-
 	getAllFlags(): FlagMap {
 		return this.#client.allFlags();
 	}

@@ -1,7 +1,8 @@
 import type { McpAppResource, McpAppsHost } from "@assistant-ui/react";
-import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import { useChatConnection } from "../runtime/chat-connection";
 import { hostableMcpAppByResource, type HostableMcpApp } from "./mcp-app-registry";
@@ -108,15 +109,12 @@ export const McpAppsHostContext = createContext<McpAppsHost | null>(null);
 /** The pane's MCP App host, over the window's Kilo connection. */
 export function KiloMcpAppsHostProvider({ children }: { children: ReactNode }) {
 	const { connection } = useChatConnection();
-	const latest = useRef(connection);
-	latest.current = connection;
-	const host = useMemo(
-		() =>
-			createKiloMcpAppsHost({
-				connection: () => latest.current,
-				localApp: hostableMcpAppByResource,
-			}),
-		[],
+	const latest = useLatestRef(connection);
+	const [host] = useState(() =>
+		createKiloMcpAppsHost({
+			connection: () => latest.current,
+			localApp: hostableMcpAppByResource,
+		}),
 	);
 	return <McpAppsHostContext.Provider value={host}>{children}</McpAppsHostContext.Provider>;
 }

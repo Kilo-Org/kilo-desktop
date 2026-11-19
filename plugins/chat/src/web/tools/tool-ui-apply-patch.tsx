@@ -1,4 +1,3 @@
-import { memo, useMemo } from "react";
 import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 
 import { parseChatPatchFiles, usePierreDiffOptions } from "./pierre-diff";
@@ -104,25 +103,26 @@ function claudeBlockToUnifiedDiff(block: PatchBlock): string {
 	return `${gitHeader}\n${fileHeader}\n${hunkHeader}\n${diffLines.join("\n")}`;
 }
 
-export const ApplyPatchDiff: ToolCallComponent = memo(({ args, status, toolCallId }) => {
-	const options = usePierreDiffOptions();
-	const patchText = str(args?.patchText);
-
-	const patchInfo = useMemo(() => getPatchInfo(patchText), [patchText]);
-
-	const unifiedPatch = useMemo(() => {
-		if (!patchText) return "";
-		const blocks = parseClaudePatchBlocks(patchText);
-		return blocks.map(claudeBlockToUnifiedDiff).join("\n");
-	}, [patchText]);
-
-	const isRunning = status?.type === "running";
+/** The patch as a unified diff, and its file diffs once it has finished, primed for highlighting. */
+function usePatchDiffs(patchText: string, isRunning: boolean, toolCallId: string) {
+	const unifiedPatch = patchText
+		? parseClaudePatchBlocks(patchText).map(claudeBlockToUnifiedDiff).join("\n")
+		: "";
 	const hasDiff = unifiedPatch.length > 0 && !isRunning;
-	const fileDiffs = useMemo(
-		() => (hasDiff ? parseChatPatchFiles(unifiedPatch, toolCallId) : []),
-		[hasDiff, toolCallId, unifiedPatch],
-	);
+	const fileDiffs = hasDiff ? parseChatPatchFiles(unifiedPatch, toolCallId) : [];
 	usePrimePierreDiffs(fileDiffs);
+	return { unifiedPatch, hasDiff, fileDiffs };
+}
+
+export const ApplyPatchDiff: ToolCallComponent = ({ args, status, toolCallId }) => {
+	const options = usePierreDiffOptions();
+	const isRunning = status?.type === "running";
+	const { unifiedPatch, hasDiff, fileDiffs } = usePatchDiffs(
+		str(args?.patchText),
+		isRunning,
+		toolCallId,
+	);
+	const patchInfo = getPatchInfo(str(args?.patchText));
 
 	const object =
 		patchInfo.files.length === 0
@@ -187,5 +187,5 @@ export const ApplyPatchDiff: ToolCallComponent = memo(({ args, status, toolCallI
 			}
 		/>
 	);
-});
+};
 ApplyPatchDiff.displayName = "ApplyPatchDiff";

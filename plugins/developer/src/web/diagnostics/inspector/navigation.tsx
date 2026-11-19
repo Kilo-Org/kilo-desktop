@@ -1,12 +1,4 @@
-import {
-	createContext,
-	useCallback,
-	useContext,
-	useMemo,
-	useRef,
-	useSyncExternalStore,
-	type ReactNode,
-} from "react";
+import { createContext, useContext, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import { KernelDomainObjects, type DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
@@ -39,7 +31,7 @@ export function NavigationProvider({
 	readonly go: (trail: readonly EntityRef[]) => void;
 	readonly children: ReactNode;
 }) {
-	const value = useMemo(() => ({ trail: [], go }), [go]);
+	const value = { trail: [], go };
 	return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
 
@@ -52,7 +44,7 @@ export function TrailScope({
 	readonly children: ReactNode;
 }) {
 	const { go } = useContext(NavigationContext);
-	const value = useMemo(() => ({ trail, go }), [trail, go]);
+	const value = { trail, go };
 	return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
 
@@ -89,24 +81,21 @@ export function EntityLink({
 export function useKernelChanges(): number {
 	const kernel = useKernel();
 	const version = useRef(0);
-	const subscribe = useCallback(
-		(onChange: () => void) => {
-			const bump = () => {
-				version.current++;
-				onChange();
-			};
-			const unsubscribers = [
-				kernel.extensions.subscribe(bump),
-				kernel.onPluginStateChange(bump),
-				kernel.domainObjects.onChange(bump),
-				kernel.contextKeys.subscribe(bump),
-			];
-			return () => {
-				for (const unsubscribe of unsubscribers) unsubscribe();
-			};
-		},
-		[kernel],
-	);
+	const subscribe = (onChange: () => void) => {
+		const bump = () => {
+			version.current++;
+			onChange();
+		};
+		const unsubscribers = [
+			kernel.extensions.subscribe(bump),
+			kernel.onPluginStateChange(bump),
+			kernel.domainObjects.onChange(bump),
+			kernel.contextKeys.subscribe(bump),
+		];
+		return () => {
+			for (const unsubscribe of unsubscribers) unsubscribe();
+		};
+	};
 	const snapshot = () => version.current;
 	return useSyncExternalStore(subscribe, snapshot, snapshot);
 }

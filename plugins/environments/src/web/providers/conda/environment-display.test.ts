@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { basename, environmentDisplayName, validateEnvironmentName } from "./environment-display";
+import {
+	basename,
+	environmentDisplayName,
+	suggestEnvironmentName,
+	validateEnvironmentName,
+} from "./environment-display";
 
 describe("basename", () => {
 	it("returns the last POSIX segment", () => {
@@ -73,5 +78,47 @@ describe("validateEnvironmentName", () => {
 	it("enforces the contract's 128-character maximum", () => {
 		expect(validateEnvironmentName("a".repeat(128))).toBeNull();
 		expect(validateEnvironmentName("a".repeat(129))).toBe("Name must be 128 characters or fewer.");
+	});
+});
+
+describe("suggestEnvironmentName", () => {
+	const env = (name: string, prefix = `/opt/anaconda3/envs/${name}`) => ({ name, prefix });
+
+	function expectValid(name: string) {
+		expect(validateEnvironmentName(name)).toBeNull();
+		return name;
+	}
+
+	it("names a new environment after the package it is made for", () => {
+		expect(expectValid(suggestEnvironmentName("numpy", []))).toBe("numpy");
+		expect(suggestEnvironmentName("scikit-learn", [env("dev"), env("data")])).toBe("scikit-learn");
+	});
+
+	it("adds the first free number when an environment already uses the name", () => {
+		expect(suggestEnvironmentName("numpy", [env("numpy")])).toBe("numpy-2");
+		expect(suggestEnvironmentName("numpy", [env("numpy"), env("numpy-2"), env("numpy-4")])).toBe(
+			"numpy-3",
+		);
+	});
+
+	it("compares names without case, as macOS and Windows folders do", () => {
+		expect(suggestEnvironmentName("numpy", [env("NumPy")])).toBe("numpy-2");
+	});
+
+	it("counts nameless environments by their folder", () => {
+		expect(suggestEnvironmentName("numpy", [env("", "/Users/me/projects/numpy")])).toBe("numpy-2");
+	});
+
+	it("never suggests conda's reserved names", () => {
+		expect(suggestEnvironmentName("base", [])).toBe("base-2");
+		expect(suggestEnvironmentName("root", [])).toBe("root-2");
+	});
+
+	it("turns a package name conda would refuse into a valid environment name", () => {
+		expect(expectValid(suggestEnvironmentName("_libgcc_mutex", []))).toBe("libgcc_mutex");
+		expect(expectValid(suggestEnvironmentName("___", []))).toBe("env");
+		const long = suggestEnvironmentName("a".repeat(200), [env("a".repeat(120))]);
+		expectValid(long);
+		expect(long.length).toBeLessThanOrEqual(128);
 	});
 });

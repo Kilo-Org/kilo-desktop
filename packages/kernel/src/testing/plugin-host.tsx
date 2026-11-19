@@ -20,7 +20,6 @@
  * directly (no testing library), so it works in any DOM test environment;
  * query the returned container or the page.
  */
-import { useMemo } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import type { AnyDomainObject, DomainObjectMethods } from "../domain-object";
@@ -116,10 +115,7 @@ function Slot({
 	readonly props: object | undefined;
 	readonly select: ((implementation: never) => unknown) | undefined;
 }) {
-	const resolved = useMemo(
-		() => (typeof point === "string" ? ({ id: point } as AnyExtensionPoint) : point),
-		[point],
-	);
+	const resolved = typeof point === "string" ? ({ id: point } as AnyExtensionPoint) : point;
 	const contributions = useExtensions(resolved);
 	return contributions.map((contribution) => (
 		<div key={contribution.key} {...{ [CONTRIBUTION_ATTRIBUTE]: contribution.key }}>

@@ -3,7 +3,7 @@ import { page } from "vitest/browser";
 
 import { KILO_TERMS_VERSION, type AccountState } from "@kilo-desktop/plugin-core/contracts";
 
-import { AccountPanel, AiProviderPanel, OnboardingStep, SidebarNotice } from "../../contracts";
+import { SidebarNotice } from "../../contracts";
 import {
 	bootAccount,
 	disposeHosts,
@@ -13,24 +13,6 @@ import {
 } from "./test-harness";
 
 afterEach(disposeHosts);
-
-describe("contributions", () => {
-	it("implements the Kilo account panel, the Kilo Gateway panel and both onboarding steps", async () => {
-		const { host } = await bootAccount();
-
-		const accounts = host.renderSlot(AccountPanel);
-		const aiProviders = host.renderSlot(AiProviderPanel);
-		const steps = host.renderSlot(OnboardingStep, {}, { select: () => () => null });
-
-		await vi.waitFor(() => {
-			expect(accounts.keys()).toEqual(["kilo.shell/kilo"]);
-			expect(aiProviders.keys()).toEqual(["kilo.shell/kilo-gateway"]);
-			expect(steps.keys()).toEqual(
-				expect.arrayContaining(["kilo.shell/welcome", "kilo.shell/sign-in"]),
-			);
-		});
-	});
-});
 
 describe("welcome and terms", () => {
 	it("needs the terms accepted before Get started, then records the acceptance", async () => {

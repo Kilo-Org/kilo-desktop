@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { XIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -46,15 +46,12 @@ function storedWidth(panel: Panel): number {
 function usePanelWidth(panel: Panel, main: RefObject<HTMLElement | null>) {
 	const aside = useRef<HTMLElement>(null);
 	const [width, setWidth] = useState(() => storedWidth(panel));
-	const resize = useCallback(
-		(delta: number) => {
-			const room = (aside.current?.offsetWidth ?? 0) + (main.current?.offsetWidth ?? 0);
-			const next = clampWidth(Math.min(width, room) - delta, room);
-			localStorage.setItem(widthKey(panel.key), String(next));
-			setWidth(next);
-		},
-		[main, panel.key, width],
-	);
+	const resize = (delta: number) => {
+		const room = (aside.current?.offsetWidth ?? 0) + (main.current?.offsetWidth ?? 0);
+		const next = clampWidth(Math.min(width, room) - delta, room);
+		localStorage.setItem(widthKey(panel.key), String(next));
+		setWidth(next);
+	};
 	return { aside, width, resize };
 }
 

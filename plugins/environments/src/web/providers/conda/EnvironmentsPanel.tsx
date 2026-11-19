@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 
@@ -51,6 +51,8 @@ import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog";
 import { environmentDisplayName } from "./environment-display";
 import { isProviderNotReadyError } from "./environments-error-message";
 import { ListViewMenu, type SortDirection } from "./ListViewMenu";
+import { PackageInstallRequestDialog } from "./PackageInstallRequestDialog";
+import { usePackageInstallLink } from "./use-package-install-link";
 import { useProviderNotReadySince } from "./useProviderNotReadySince";
 
 /**
@@ -77,7 +79,7 @@ const SORT_FIELDS = [
  */
 export function EnvironmentsPanelLoading() {
 	const [selectedPrefix, setSelectedPrefix] = useSelectedEnvironment();
-	const goBack = useCallback(() => setSelectedPrefix(undefined), [setSelectedPrefix]);
+	const goBack = () => setSelectedPrefix(undefined);
 	return selectedPrefix ? (
 		<EnvironmentDetailLoading prefix={selectedPrefix} onBack={goBack} />
 	) : (
@@ -108,8 +110,28 @@ type DialogState =
  * list and its header actions until the user goes back. While the list is
  * still loading, a selected prefix shows the detail loading state instead of
  * the list skeleton.
+ *
+ * An anaconda.org install link opens its flow on top of whichever view shows.
  */
 export function EnvironmentsPanel() {
+	const [installRequest, dismissInstallRequest] = usePackageInstallLink();
+	const [, setSelectedPrefix] = useSelectedEnvironment();
+	return (
+		<>
+			<EnvironmentsPanelContent />
+			{installRequest ? (
+				<PackageInstallRequestDialog
+					key={installRequest.id}
+					request={installRequest}
+					onDone={dismissInstallRequest}
+					onOpenEnvironment={setSelectedPrefix}
+				/>
+			) : null}
+		</>
+	);
+}
+
+function EnvironmentsPanelContent() {
 	const conda = useConda();
 	const envs = useQuery({
 		...condaQueryOptions(conda, "listEnvironments"),
@@ -127,22 +149,18 @@ export function EnvironmentsPanel() {
 	const notReadySince = useProviderNotReadySince({
 		notReady: settledNotReady,
 		resolved: envs.isSuccess || (envs.isError && !settledNotReady),
+		failedAt: envs.errorUpdatedAt,
 	});
 	const [selectedPrefix, setSelectedPrefix] = useSelectedEnvironment();
 	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
-	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
+	const closeDialog = () => setDialog({ kind: "none" });
+	const selectEnv = (env: CondaEnv) => setSelectedPrefix(env.prefix);
+	const goBack = () => setSelectedPrefix(undefined);
 
-	const selectEnv = useCallback(
-		(env: CondaEnv) => setSelectedPrefix(env.prefix),
-		[setSelectedPrefix],
-	);
-
-	const goBack = useCallback(() => setSelectedPrefix(undefined), [setSelectedPrefix]);
-
-	const selectedEnv = useMemo(() => {
-		if (!selectedPrefix || !envs.data) return null;
-		return envs.data.find((e) => e.prefix === selectedPrefix) ?? null;
-	}, [selectedPrefix, envs.data]);
+	const selectedEnv =
+		selectedPrefix && envs.data
+			? (envs.data.find((e) => e.prefix === selectedPrefix) ?? null)
+			: null;
 
 	if (selectedEnv) {
 		return <EnvironmentDetail env={selectedEnv} onBack={goBack} />;
@@ -253,20 +271,18 @@ function EnvironmentsList({ rows, onSelectEnv, onClone, onDelete }: Environments
 	const [sortField, setSortField] = useState<EnvironmentSortField>("name");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-	const visible = useMemo(() => {
-		const query = searchQuery.trim().toLowerCase();
-		const matches = query
-			? rows.filter(
-					(env) =>
-						environmentDisplayName(env).toLowerCase().includes(query) ||
-						env.prefix.toLowerCase().includes(query),
-				)
-			: rows;
-		return matches.toSorted((a, b) => {
-			const comparison = sortKey(a, sortField).localeCompare(sortKey(b, sortField));
-			return sortDirection === "asc" ? comparison : -comparison;
-		});
-	}, [rows, searchQuery, sortField, sortDirection]);
+	const query = searchQuery.trim().toLowerCase();
+	const matches = query
+		? rows.filter(
+				(env) =>
+					environmentDisplayName(env).toLowerCase().includes(query) ||
+					env.prefix.toLowerCase().includes(query),
+			)
+		: rows;
+	const visible = matches.toSorted((a, b) => {
+		const comparison = sortKey(a, sortField).localeCompare(sortKey(b, sortField));
+		return sortDirection === "asc" ? comparison : -comparison;
+	});
 
 	return (
 		<>

@@ -1,5 +1,3 @@
-import { useCallback } from "react";
-
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import type { AppThemePreferences } from "@kilo-desktop/ui/themes/app-themes";
 import type {
@@ -37,10 +35,7 @@ export function useAppearance(): AppearanceControls {
 	const appearance = useDomainObject(Appearance);
 	const state = useDomainObjectState(Appearance, selectAppearance) ?? DEFAULT_APPEARANCE;
 	const resolved = useDomainObjectState(Theme, selectMode) ?? "dark";
-	const update = useCallback(
-		(patch: AppearancePatch) => void appearance?.methods.update(patch).catch(() => {}),
-		[appearance],
-	);
+	const update = (patch: AppearancePatch) => void appearance?.methods.update(patch).catch(() => {});
 	return {
 		source: state.source,
 		resolved,

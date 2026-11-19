@@ -173,7 +173,6 @@ export const gitWorktreeEntrySchema = z.object({
 	isMain: z.boolean(),
 });
 
-export const workingDirectoryInput = z.object({ workingDirectory: z.string().min(1).max(32_768) });
 export const githubCliStatusSchema = z.enum([
 	"ready",
 	"missing",

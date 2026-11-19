@@ -33,8 +33,7 @@ import type { BundledPlugin } from "./registrations";
 
 /**
  * Every plugin that ships with the app. The kernel orders them by `requires`;
- * each process attaches its own entries with `withEntries`. Plugins are added
- * here one at a time as they are rebuilt on the kernel (docs/plugin-plan-v2.md).
+ * each process attaches its own entries with `withEntries`.
  */
 export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: coreManifest, definitions: CORE_DEFINITIONS, mainOnly: true },

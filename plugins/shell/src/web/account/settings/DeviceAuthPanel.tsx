@@ -18,18 +18,23 @@ export function formatTime(seconds: number): string {
 /** Seconds left on the device code, ticking while the login is waiting. */
 export function useDeviceAuthCountdown(deviceAuth: DeviceSignInState): number {
 	const expiresIn = deviceAuth.expiresIn ?? 900;
+	const status = deviceAuth.status;
 	const [remaining, setRemaining] = useState(expiresIn);
+	const [countdownFor, setCountdownFor] = useState({ status, expiresIn });
+	if (countdownFor.status !== status || countdownFor.expiresIn !== expiresIn) {
+		setCountdownFor({ status, expiresIn });
+		if (status === "waiting") setRemaining(expiresIn);
+	}
 
 	useEffect(() => {
-		if (deviceAuth.status !== "waiting") return;
-		setRemaining(expiresIn);
+		if (status !== "waiting") return;
 		const started = Date.now();
 		const id = window.setInterval(() => {
 			const elapsed = Math.floor((Date.now() - started) / 1000);
 			setRemaining(Math.max(0, expiresIn - elapsed));
 		}, 1000);
 		return () => window.clearInterval(id);
-	}, [deviceAuth.status, expiresIn]);
+	}, [status, expiresIn]);
 
 	return remaining;
 }

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
 	activityOfSession,
-	createEmptySessionActivity,
 	deriveSessionRowState,
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
@@ -11,6 +10,11 @@ import {
 	sessionRowCapabilities,
 	type SessionActivity,
 } from "./session-activity";
+
+const emptyActivity = (): SessionActivity => ({
+	pendingPermissionIds: [],
+	pendingQuestionIds: [],
+});
 
 const NOW = 1_700_000_000_000;
 
@@ -73,13 +77,9 @@ describe("deriveSessionRowState", () => {
 describe("needsAttention", () => {
 	it("requires a pending permission or question", () => {
 		expect(needsAttention(undefined)).toBe(false);
-		expect(needsAttention(createEmptySessionActivity())).toBe(false);
-		expect(needsAttention({ ...createEmptySessionActivity(), pendingPermissionIds: ["p"] })).toBe(
-			true,
-		);
-		expect(needsAttention({ ...createEmptySessionActivity(), pendingQuestionIds: ["q"] })).toBe(
-			true,
-		);
+		expect(needsAttention(emptyActivity())).toBe(false);
+		expect(needsAttention({ ...emptyActivity(), pendingPermissionIds: ["p"] })).toBe(true);
+		expect(needsAttention({ ...emptyActivity(), pendingQuestionIds: ["q"] })).toBe(true);
 	});
 });
 
@@ -115,7 +115,7 @@ describe("resolveSessionLocationLabel", () => {
 
 	it("prefers the workspace name by stamped id", () => {
 		const activity: SessionActivity = {
-			...createEmptySessionActivity(),
+			...emptyActivity(),
 			workspaceId: "ws-1",
 			directory: "/repo/renamed-folder",
 		};
@@ -124,7 +124,7 @@ describe("resolveSessionLocationLabel", () => {
 
 	it("falls back to the directory basename when the workspace is gone", () => {
 		const activity: SessionActivity = {
-			...createEmptySessionActivity(),
+			...emptyActivity(),
 			workspaceId: "ws-deleted",
 			directory: "/repo/project",
 		};
@@ -133,7 +133,7 @@ describe("resolveSessionLocationLabel", () => {
 
 	it("has no location without a stamped workspace", () => {
 		const activity: SessionActivity = {
-			...createEmptySessionActivity(),
+			...emptyActivity(),
 			directory: "/chats/session-uSrBjH",
 		};
 		expect(resolveSessionLocationLabel(activity, workspaces)).toBeNull();

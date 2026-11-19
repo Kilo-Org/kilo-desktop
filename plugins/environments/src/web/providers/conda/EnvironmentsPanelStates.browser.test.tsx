@@ -42,6 +42,24 @@ describe("EnvironmentsStartingState", () => {
 		// …then appears after the window elapses.
 		await expect.element(screen.getByTestId("environments-conda-starting-retry")).toBeVisible();
 	});
+
+	it("hides the retry again when a new outage restarts the startup window", async () => {
+		const { baseElement, rerender } = render(
+			<EnvironmentsStartingState
+				startedAt={Date.now() - 1_000}
+				timeoutMs={10}
+				onRetry={() => {}}
+			/>,
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("environments-conda-starting-retry")).toBeVisible();
+
+		rerender(
+			<EnvironmentsStartingState startedAt={Date.now()} timeoutMs={60_000} onRetry={() => {}} />,
+		);
+
+		expect(screen.getByTestId("environments-conda-starting-retry").elements()).toHaveLength(0);
+	});
 });
 
 describe("EnvironmentsErrorState", () => {

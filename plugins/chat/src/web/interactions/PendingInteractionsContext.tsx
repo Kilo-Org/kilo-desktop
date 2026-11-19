@@ -1,5 +1,7 @@
-import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { useOpenCodePermissions, useOpenCodeQuestions } from "@assistant-ui/react-opencode";
+
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import {
@@ -13,37 +15,22 @@ import { useVisiblePermissionRequests } from "./visible-permissions";
 const ScopedPendingInteractionsContext = createContext<PendingInteractions | null>(null);
 const FamilyPendingInteractionsContext = createContext<PendingInteractions | null>(null);
 
-/** `value`, or the last value returned while it is equal to it. */
-function useStablePendingInteractions(value: PendingInteractions): PendingInteractions {
-	const last = useRef(value);
-	if (!samePendingInteractions(last.current, value)) last.current = value;
-	return last.current;
-}
-
 function useSessionFamilyInteractions(scopeSessionId?: string): PendingInteractions {
 	const state = useOptionalOpenCodeRuntimeExtras()?.state;
 	const { pending: permissions } = useOpenCodePermissions();
 	const questions = useOpenCodeQuestions();
-	const collected = useMemo(
-		() =>
-			collectPendingInteractions({
-				state,
-				scopeSessionId,
-				own: { permissions, questions },
-			}),
-		[permissions, questions, scopeSessionId, state],
-	);
+	const collected = collectPendingInteractions({
+		state,
+		scopeSessionId,
+		own: { permissions, questions },
+	});
 	// Auto-approve answers subagent requests too, so the whole family is filtered.
 	const visiblePermissions = useVisiblePermissionRequests(collected.permissions);
-	return useStablePendingInteractions(
-		useMemo(
-			() =>
-				visiblePermissions === collected.permissions
-					? collected
-					: { ...collected, permissions: visiblePermissions },
-			[collected, visiblePermissions],
-		),
-	);
+	const value =
+		visiblePermissions === collected.permissions
+			? collected
+			: { ...collected, permissions: visiblePermissions };
+	return useStableValue(value, samePendingInteractions);
 }
 
 /**

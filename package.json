@@ -8,20 +8,21 @@
 	"license": "SEE LICENSE IN LICENSE.md",
 	"packageManager": "pnpm@12.16.1",
 	"engines": {
-		"node": ">=24"
+		"node": ">=24.2"
 	},
 	"scripts": {
 		"check": "turbo run check",
 		"check:fast": "oxlint --type-aware --type-check",
 		"check:plugin-isolation": "node scripts/check-plugin-isolation.mjs",
 		"dev": "pnpm dev:desktop",
-		"docs:extension-points": "node scripts/list-extension-points.mjs --write",
+		"docs:schema": "node scripts/plugin-schema.mjs --write",
 		"docs:plugin-graph": "node scripts/plugin-dependency-graph.mjs",
 		"dev:web": "pnpm --filter @kilo-desktop/web dev",
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env KILO_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @kilo-desktop/desktop start\"",
 		"format": "oxfmt --no-error-on-unmatched-pattern",
 		"format:check": "oxfmt --check",
-		"lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/list-extension-points.mjs --check",
+		"lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/plugin-schema.mjs --check && node scripts/check-react-compiler.mjs",
+		"lint:react-compiler": "node scripts/check-react-compiler.mjs",
 		"lint:fix": "oxlint --fix",
 		"make": "pnpm --filter @kilo-desktop/desktop run make",
 		"package": "pnpm --filter @kilo-desktop/desktop run package",
@@ -33,6 +34,7 @@
 		"prepare": "husky",
 		"test": "turbo run test",
 		"test:changed": "node scripts/test-changed.mjs",
+		"test:scripts": "node --test \"scripts/*.test.mjs\" \"e2e/scripts/*.test.ts\"",
 		"test:web": "pnpm --filter @kilo-desktop/web test",
 		"test:desktop": "pnpm --filter @kilo-desktop/desktop test",
 		"test:e2e": "pnpm --filter @kilo-desktop/e2e run test:e2e",
@@ -49,8 +51,10 @@
 		]
 	},
 	"devDependencies": {
+		"@interfere/landmines": "^0.1.0",
 		"@kilo-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
+		"@oxlint/plugins": "^1.93.0",
 		"@types/node": "^26.0.0",
 		"@vitest/coverage-v8": "catalog:",
 		"concurrently": "^10.0.7",
@@ -58,6 +62,7 @@
 		"globals": "^17.14.0",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.2.0",
+		"oxc-parser": "^0.152.0",
 		"oxfmt": "^0.79.0",
 		"oxlint": "^1.94.0",
 		"tsrs": "0.25.0-ts7.1.0-beta",

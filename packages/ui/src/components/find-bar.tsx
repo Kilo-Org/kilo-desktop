@@ -2,6 +2,7 @@ import {
 	createContext,
 	useContext,
 	useEffect,
+	useEffectEvent,
 	useRef,
 	useState,
 	type ComponentProps,
@@ -120,9 +121,8 @@ export function FindBar({
 	onOpenChange,
 }: FindBarProps) {
 	const find = useDomFind({ rootRef, ...(searchRootSelector ? { searchRootSelector } : {}) });
-	const onOpenChangeRef = useRef(onOpenChange);
-	onOpenChangeRef.current = onOpenChange;
-	useEffect(() => onOpenChangeRef.current?.(find.open), [find.open]);
+	const reportOpen = useEffectEvent((open: boolean) => onOpenChange?.(open));
+	useEffect(() => reportOpen(find.open), [find.open]);
 	const { openBar } = find;
 	const inputRef = useRef<HTMLInputElement>(null);
 

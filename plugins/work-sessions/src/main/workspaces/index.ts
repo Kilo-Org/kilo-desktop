@@ -17,7 +17,12 @@ import { workspacesStore, type PersistedWorkspaces } from "../storage/stores";
 import { track } from "../telemetry";
 import { authorizePath } from "./authorize";
 import { comparablePath, unavailableFolderIds, validateFolders } from "./folders";
-import type { SqliteLoader } from "../origin-database";
+import {
+	originImportMode,
+	recoverable,
+	reportOriginImportFailure,
+	type SqliteLoader,
+} from "../origin-database";
 import { readOriginWorkspaces } from "./import-origin";
 
 export interface WorkspacesOptions {
@@ -43,7 +48,8 @@ const byName = (left: Workspace, right: Workspace) =>
  * which lets `authorize` compare without re-resolving them. Origin's
  * workspaces are imported once by a task that never overwrites an existing
  * workspace and retries on the next launch if the old database couldn't be
- * read. Creating and removing a workspace is reported to telemetry with its
+ * read (see `originImportMode` for installs an earlier release wrongly
+ * marked imported). Creating and removing a workspace is reported to telemetry with its
  * folder count only, never names or paths.
  */
 export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = {}): void {
@@ -220,11 +226,23 @@ export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = 
 	folderTimer.unref?.();
 	sdk.onDispose(() => clearInterval(folderTimer));
 
-	if (options.originDatabase && !store.snapshot().importedFromOrigin) {
+	const mode = originImportMode(store.snapshot());
+	if (options.originDatabase && mode !== "done") {
 		void importOrigin(sdk, options.originDatabase, options.loadSqlite, (imported) => {
-			const existing = new Set(store.snapshot().workspaces.map((workspace) => workspace.id));
-			const added = imported.filter((workspace) => !existing.has(workspace.id));
-			save({ workspaces: [...store.snapshot().workspaces, ...added], importedFromOrigin: true });
+			const current = store.snapshot().workspaces;
+			const existing = new Set(current.map((workspace) => workspace.id));
+			const merging =
+				mode === "import" ||
+				recoverable(
+					imported.map((workspace) => workspace.id),
+					existing,
+				);
+			const added = merging ? imported.filter((workspace) => !existing.has(workspace.id)) : [];
+			save({
+				workspaces: [...current, ...added],
+				importedFromOrigin: true,
+				originImportVerified: true,
+			});
 			if (added.length > 0) void checkFolders();
 		});
 	}
@@ -237,12 +255,8 @@ async function importOrigin(
 	merge: (workspaces: Workspace[]) => void,
 ): Promise<void> {
 	try {
-		merge(await readOriginWorkspaces(file, sdk.logger, loadDriver));
+		merge(await readOriginWorkspaces(file, loadDriver));
 	} catch (error) {
-		sdk.logger.warn(
-			`Could not import workspaces from ${file}; will try again next launch: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-		);
+		reportOriginImportFailure(sdk, "workspaces", file, error);
 	}
 }

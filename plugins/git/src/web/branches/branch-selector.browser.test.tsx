@@ -518,6 +518,65 @@ describe("the New Session page's branch picker", () => {
 		await expect.element(page.getByTestId("git-branch-create-dialog")).not.toBeInTheDocument();
 	});
 
+	it("replaces spaces in the branch name with hyphens", async () => {
+		const checkout = vi.fn(() => Promise.resolve());
+		await renderSelector({ branches: () => branchesResult, checkout });
+
+		await page.getByTestId("git-branch-selector-trigger").click();
+		await page.getByRole("combobox", { name: "Search branches" }).fill("new branch");
+		await page.getByTestId("git-branch-create").click();
+		const name = page.getByTestId("git-branch-create-name");
+		await expect.element(name).toHaveValue("new-branch");
+		await name.fill("another branch name");
+		await expect.element(name).toHaveValue("another-branch-name");
+		await page.getByTestId("git-branch-create-submit").click();
+		await vi.waitFor(() => {
+			expect(checkout).toHaveBeenCalledWith({
+				directory: "/workspace/project",
+				branch: "another-branch-name",
+				create: true,
+			});
+		}, WAIT);
+	});
+
+	it("filters invalid characters and trims edge hyphens before creating a branch", async () => {
+		const checkout = vi.fn(() => Promise.resolve());
+		await renderSelector({ branches: () => branchesResult, checkout });
+		await page.getByTestId("git-branch-selector-trigger").click();
+		await page.getByRole("combobox", { name: "Search branches" }).fill("--feature?: name--");
+		await page.getByTestId("git-branch-create").click();
+		const name = page.getByTestId("git-branch-create-name");
+		await expect.element(name).toHaveValue("feature-name--");
+		await name.fill("--feature?*[\\~^: name--");
+		await expect.element(name).toHaveValue("feature-name--");
+		await page.getByTestId("git-branch-create-submit").click();
+		await vi.waitFor(() => {
+			expect(checkout).toHaveBeenCalledWith({
+				directory: "/workspace/project",
+				branch: "feature-name",
+				create: true,
+			});
+		}, WAIT);
+	});
+
+	it("blocks submitting branch names git would reject", async () => {
+		const checkout = vi.fn(() => Promise.resolve());
+		await renderSelector({ branches: () => branchesResult, checkout });
+		await page.getByTestId("git-branch-selector-trigger").click();
+		await page.getByTestId("git-branch-create").click();
+		const name = page.getByTestId("git-branch-create-name");
+		const submit = page.getByTestId("git-branch-create-submit");
+
+		for (const invalid of ["feature.", "feature/", "feature.lock", "---"]) {
+			await name.fill(invalid);
+			await expect.element(submit).toBeDisabled();
+		}
+		await name.fill("feature/a..b");
+		await expect.element(name).toHaveValue("feature/a.b");
+		await expect.element(submit).toBeEnabled();
+		expect(checkout).not.toHaveBeenCalled();
+	});
+
 	it("opens the create dialog from the pinned item without typing", async () => {
 		const checkout = vi.fn(() => Promise.resolve());
 		await renderSelector({ branches: () => branchesResult, checkout });
@@ -927,30 +986,6 @@ describe("the New Session page's branch picker", () => {
 					branch: "topic",
 					create: true,
 					startPoint: "trunk",
-				});
-			}, WAIT);
-		});
-
-		it("offers the default branch pre-selected when it differs from the current branch", async () => {
-			const checkout = vi.fn(() => Promise.resolve());
-			await renderSelector({ branches: () => featureBranchesResult, checkout });
-
-			await page.getByTestId("git-branch-selector-trigger").click();
-			await page.getByTestId("git-branch-create").click();
-
-			const base = page.getByTestId("git-branch-create-base");
-			await expect.element(base).toBeVisible();
-			expect(base.element().textContent).toContain("main");
-
-			await page.getByTestId("git-branch-create-name").fill("topic");
-			await page.getByTestId("git-branch-create-submit").click();
-
-			await vi.waitFor(() => {
-				expect(checkout).toHaveBeenCalledWith({
-					directory: "/workspace/project",
-					branch: "topic",
-					create: true,
-					startPoint: "main",
 				});
 			}, WAIT);
 		});

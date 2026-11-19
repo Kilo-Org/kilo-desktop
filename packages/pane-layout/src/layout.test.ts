@@ -10,7 +10,6 @@ import {
 	dropPositionFromPoint,
 	findPaneGroup,
 	flattenPanes,
-	getFixedGroupLayout,
 	getScrollTarget,
 	moveGroup,
 	movePane,
@@ -21,7 +20,6 @@ import {
 	removePane,
 	resizeColumn,
 	resizeStackDivider,
-	rewritePaneId,
 	serializeLayout,
 	setActivePane,
 	togglePin,
@@ -148,17 +146,6 @@ describe("pane groups", () => {
 		layout = removePane(layout, "a");
 		expect(layout.groups.map((group) => group.id)).toEqual(["group:c"]);
 		expect(layout.activePaneId).toBe("c");
-	});
-
-	it("rewrites nested pane and active identifiers", () => {
-		let layout = createLayout([pane("draft"), pane("other")]);
-		layout = movePaneToGroup(layout, "other", "group:draft");
-		layout = setActivePane(layout, "draft");
-		const rewritten = rewritePaneId(layout, "draft", "local");
-
-		expect(flattenPanes(rewritten).map((entry) => entry.id)).toEqual(["local", "other"]);
-		expect(rewritten.groups[0]?.activePaneId).toBe("local");
-		expect(rewritten.activePaneId).toBe("local");
 	});
 });
 
@@ -297,22 +284,14 @@ describe("geometry and persistence", () => {
 		expect(dropPositionFromPoint("group", 200, 190, rect)).toBe("below");
 	});
 
-	it("updates existing panes, resolves identifier collisions, and fits fixed groups", () => {
+	it("updates an existing pane and moves a pane beside another", () => {
 		const initial = createLayout([pane("a"), pane("b")]);
 		const updated = addPane(initial, { ...pane("a"), title: "Updated" });
 		expect(findPaneGroup(updated, "a")?.tabs[0]?.title).toBe("Updated");
 		expect(updated.activePaneId).toBe("a");
 
-		expect(rewritePaneId(initial, "a", "a")).toBe(initial);
-		expect(rewritePaneId(initial, "missing", "other")).toBe(initial);
-		expect(flattenPanes(rewritePaneId(initial, "a", "b")).map(({ id }) => id)).toEqual(["b"]);
-
 		const moved = movePane(initial, "a", "group:b", "after");
 		expect(moved.groups.map((group) => group.tabs[0]?.id)).toEqual(["b", "a"]);
-
-		const fixed = getFixedGroupLayout(initial.groups, 604);
-		expect(fixed.groups).toEqual(initial.groups);
-		expect([...fixed.widths.values()]).toEqual([300, 300]);
 	});
 
 	it("round-trips only the explicit nested group schema", () => {

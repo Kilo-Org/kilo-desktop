@@ -63,8 +63,23 @@ export class NewChatPage {
 
 	async openNewSessionWithoutWorkspace(): Promise<void> {
 		await openNewSession();
+		await this.clearWorkspace();
+	}
+
+	async selectWorkspace(name: string): Promise<void> {
+		await click(this.workspaceSelector());
+		await click(getLocatorByRole("option", { name, exact: false }));
+	}
+
+	async clearWorkspace(): Promise<void> {
 		await click(this.workspaceSelector());
 		await click(getLocatorByTestId("workspace-unscoped-command", { onlyVisible: true }));
+	}
+
+	async verifySelectedWorkspace(name: string): Promise<void> {
+		await expectElementToHaveText(this.workspaceSelector(), name, {
+			message: `The workspace selector should show "${name}"`,
+		});
 	}
 
 	async openNewSessionInWorkspace(folderPath: string, name: string): Promise<void> {

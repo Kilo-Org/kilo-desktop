@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CircleAlertIcon } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
@@ -89,6 +89,10 @@ function sendToolResult(post: (msg: JsonRpcMessage) => void, output: ToolOutput)
 	});
 }
 
+function postToFrame(iframe: HTMLIFrameElement | null, msg: JsonRpcMessage) {
+	iframe?.contentWindow?.postMessage(msg, "*");
+}
+
 function ElectronMcpAppFrame({
 	html,
 	input,
@@ -127,14 +131,15 @@ function ElectronMcpAppFrame({
 	// CSP and force `script-src 'unsafe-inline'` onto it. The blob
 	// fallback only runs off the custom scheme (web dev server), where there is
 	// no preload bridge to elevate to.
-	const shellSrc = useMemo(() => mcpAppShellSrc(window.location), []);
-	const [blobUrl, setBlobUrl] = useState<string | null>(null);
+	const [shellSrc] = useState(() => mcpAppShellSrc(window.location));
 	// Create and revoke the blob URL in one effect so StrictMode/concurrent
-	// double-invocation cannot leak URLs (useMemo has no paired cleanup).
+	// double-invocation cannot leak URLs (a value made during render has no
+	// paired cleanup); the frame is pointed at it imperatively for the same reason.
 	useEffect(() => {
-		if (shellSrc) return;
+		const iframe = iframeRef.current;
+		if (shellSrc || !iframe) return;
 		const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-		setBlobUrl(url);
+		iframe.src = url;
 		return () => URL.revokeObjectURL(url);
 	}, [html, shellSrc]);
 	const widgetReady = useRef(false);
@@ -144,7 +149,8 @@ function ElectronMcpAppFrame({
 	// handshake gates delivery of the HTML; `ui/initialize` gates delivery of the
 	// tool output.
 	const shellReady = useRef(false);
-	const [shellError, setShellError] = useState(false);
+	// The frame generation whose shell never announced readiness.
+	const [failedGeneration, setFailedGeneration] = useState<number | null>(null);
 
 	// Reload the frame whenever the widget HTML changes. On the shell path the
 	// `src` is a fixed URL, and the isolated shell accepts HTML exactly once — it
@@ -170,7 +176,10 @@ function ElectronMcpAppFrame({
 	// holds. Clear both (and any output staged for the old frame) so the output
 	// is re-delivered to the fresh widget on init rather than posted into a frame
 	// that is tearing down.
+	const readinessHtml = useRef(html);
 	useEffect(() => {
+		if (readinessHtml.current === html) return;
+		readinessHtml.current = html;
 		shellReady.current = false;
 		widgetReady.current = false;
 		pendingOutput.current = undefined;
@@ -183,18 +192,15 @@ function ElectronMcpAppFrame({
 	// handshake to wait on.
 	useEffect(() => {
 		if (!shellSrc) return;
-		setShellError(false);
 		const timer = setTimeout(() => {
-			if (!shellReady.current) setShellError(true);
+			if (!shellReady.current) setFailedGeneration(frameGeneration);
 		}, MCP_APP_SHELL_READY_TIMEOUT_MS);
 		return () => clearTimeout(timer);
 	}, [shellSrc, frameGeneration]);
-
-	const post = (msg: JsonRpcMessage) => {
-		iframeRef.current?.contentWindow?.postMessage(msg, "*");
-	};
+	const shellError = failedGeneration === frameGeneration;
 
 	useEffect(() => {
+		const post = (msg: JsonRpcMessage) => postToFrame(iframeRef.current, msg);
 		const onMessage = (event: MessageEvent) => {
 			if (event.source !== iframeRef.current?.contentWindow) return;
 			// The isolated shell (mcp-app origin) announces readiness; hand it the
@@ -322,7 +328,7 @@ function ElectronMcpAppFrame({
 			pendingOutput.current = toolOutput;
 			return;
 		}
-		sendToolResult(post, toolOutput);
+		sendToolResult((msg) => postToFrame(iframeRef.current, msg), toolOutput);
 	}, [output, isError]);
 
 	if (shellError)
@@ -332,18 +338,14 @@ function ElectronMcpAppFrame({
 			</div>
 		);
 
-	// Prefer the isolated shell origin; the blob URL is created in an effect, so
-	// on the fallback path the first commit renders nothing.
-	const frameSrc = shellSrc ?? blobUrl;
-	if (!frameSrc) return null;
-
 	return (
 		<iframe
 			// Changing `key` on new HTML remounts the iframe, forcing the isolated
 			// shell to reload and re-accept it (see the generation comment above).
 			key={frameGeneration}
 			ref={iframeRef}
-			src={frameSrc}
+			// Unset on the blob fallback, where the blob effect points it at the widget.
+			src={shellSrc}
 			sandbox="allow-scripts"
 			style={{
 				border: "none",

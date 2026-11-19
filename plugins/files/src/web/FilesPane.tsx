@@ -1,5 +1,5 @@
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, type ComponentType } from "react";
+import type { ComponentType } from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -39,22 +39,16 @@ export function createFilesPane(reading: FilesReading | undefined) {
 export function FilesPane({ workSessionId, pane, workspaceId, directory }: PaneProps) {
 	const workspaceFolders = useDomainObjectState(
 		Workspaces,
-		useCallback(
-			(state: DomainObjectState<typeof Workspaces>) =>
-				state.workspaces.find((workspace) => workspace.id === workspaceId)?.folders,
-			[workspaceId],
-		),
+		(state: DomainObjectState<typeof Workspaces>) =>
+			state.workspaces.find((workspace) => workspace.id === workspaceId)?.folders,
 	);
-	const folders = useMemo(
-		() =>
-			workspaceId && workspaceFolders
-				? workSessionFolders(
-						workspaceFolders.map(({ path, isPrimary }) => ({ path, isPrimary })),
-						directory,
-					)
-				: [],
-		[directory, workspaceFolders, workspaceId],
-	);
+	const folders =
+		workspaceId && workspaceFolders
+			? workSessionFolders(
+					workspaceFolders.map(({ path, isPrimary }) => ({ path, isPrimary })),
+					directory,
+				)
+			: [];
 	return (
 		<FilesView key={pane.id} workSessionId={workSessionId} pane={pane} workspaceFolders={folders} />
 	);
@@ -65,13 +59,25 @@ export function withFilesRuntime<P extends object>(
 	runtime: FilesRuntime,
 	Component: ComponentType<P>,
 ): ComponentType<P> {
-	return function WithFilesRuntime(props: P) {
-		return (
-			<QueryClientProvider client={runtime.queries}>
-				<CloseGuardsContext.Provider value={runtime.guards}>
-					<Component {...props} />
-				</CloseGuardsContext.Provider>
-			</QueryClientProvider>
-		);
-	};
+	return (props: P) => (
+		<FilesRuntimeBoundary runtime={runtime} component={Component} componentProps={props} />
+	);
+}
+
+function FilesRuntimeBoundary<P extends object>({
+	runtime,
+	component: Component,
+	componentProps,
+}: {
+	readonly runtime: FilesRuntime;
+	readonly component: ComponentType<P>;
+	readonly componentProps: P;
+}) {
+	return (
+		<QueryClientProvider client={runtime.queries}>
+			<CloseGuardsContext.Provider value={runtime.guards}>
+				<Component {...componentProps} />
+			</CloseGuardsContext.Provider>
+		</QueryClientProvider>
+	);
 }

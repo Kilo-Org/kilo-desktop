@@ -76,6 +76,14 @@ export interface StatusBarItemPopoverProps {
 	readonly close: () => void;
 }
 
+/**
+ * Props of a status bar item's `Trigger`: it reads the item's state with hooks
+ * and returns `children(trigger)`, so kilo.shell draws the button from it.
+ */
+export interface StatusBarItemTriggerProps {
+	readonly children: (trigger: StatusBarItemTrigger) => ReactNode;
+}
+
 export type StatusBarItemImplementation =
 	| {
 			readonly kind: "view";
@@ -84,13 +92,15 @@ export type StatusBarItemImplementation =
 	  }
 	| {
 			readonly kind: "action";
-			readonly useTrigger?: () => StatusBarItemTrigger;
+			/** How the button looks; the contribution's title by default. */
+			readonly Trigger?: ComponentType<StatusBarItemTriggerProps>;
 			/** Runs on click; a contribution with `command` needs none. */
 			readonly run?: () => void | Promise<void>;
 	  }
 	| {
 			readonly kind: "popover";
-			readonly useTrigger?: () => StatusBarItemTrigger;
+			/** How the button looks; the contribution's title by default. */
+			readonly Trigger?: ComponentType<StatusBarItemTriggerProps>;
 			/** The popover's body; kilo.shell draws the popover above the status bar. */
 			readonly Content: ComponentType<StatusBarItemPopoverProps>;
 	  };
@@ -98,7 +108,8 @@ export type StatusBarItemImplementation =
 /**
  * An item in the status bar at the bottom of the window: a read-only view, a
  * button (`action`, running `run` or the contribution's `command`) or a
- * button opening a popover. `useTrigger` runs as a hook while the item shows.
+ * button opening a popover. kilo.shell renders the item's `Trigger` while the
+ * item shows and draws the button from what it hands to `children`.
  * Items sit at the bar's `start` (about the app or workspace) or `end` (the
  * default; about what is open), ordered by priority. The bar shows only while
  * an item renders. It is for ambient status: something to act on goes in a
@@ -303,7 +314,7 @@ export const SupportRow = defineExtensionPoint({
 
 // --- Onboarding ---
 
-/** What an onboarding step's `useStep` returns while it is the current step. */
+/** What an onboarding step's `Step` hands to `children` while it is the current step. */
 export interface OnboardingStepView {
 	/** Card heading; splash steps render their own. */
 	readonly title?: string;
@@ -330,9 +341,17 @@ export interface OnboardingControls {
 	next(): void;
 }
 
+/**
+ * Props of an onboarding step's `Step`: it reads the step's state with hooks
+ * and returns `children(view)`, which kilo.shell draws in its frame.
+ */
+export interface OnboardingStepProps extends OnboardingControls {
+	readonly children: (view: OnboardingStepView) => ReactNode;
+}
+
 export interface OnboardingStepImplementation {
-	/** A hook, run only while this step is current. */
-	useStep(controls: OnboardingControls): OnboardingStepView;
+	/** Rendered only while this step is current, in the step's plugin context. */
+	readonly Step: ComponentType<OnboardingStepProps>;
 }
 
 /**

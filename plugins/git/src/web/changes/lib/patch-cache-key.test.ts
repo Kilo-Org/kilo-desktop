@@ -37,25 +37,23 @@ index 4444444..5555555 100644
 `;
 
 describe("createPatchFileCacheKey", () => {
-	it("is stable for byte-identical patch text, so remounts reuse valid cached highlights", () => {
-		expect(createPatchFileCacheKey(README_PATCH_V1)).toBe(createPatchFileCacheKey(README_PATCH_V1));
-	});
-
 	it("changes when the diff content changes, so a remount never adopts a stale highlight", () => {
 		expect(createPatchFileCacheKey(README_PATCH_V1)).not.toBe(
 			createPatchFileCacheKey(README_PATCH_V2),
 		);
 	});
 
-	it("changes across files, so stream position is never shared state", () => {
-		expect(createPatchFileCacheKey(README_PATCH_V1)).not.toBe(
-			createPatchFileCacheKey(OTHER_FILE_PATCH),
+	it("changes when two patches have the same length but different content", () => {
+		const patchWith = (replacement: string) => `@@ -1 +1 @@\n-old\n+${replacement}\n`;
+
+		expect(createPatchFileCacheKey(patchWith("alpha"))).not.toBe(
+			createPatchFileCacheKey(patchWith("bravo")),
 		);
 	});
 
-	it("carries the git-diff namespace and content length", () => {
-		expect(createPatchFileCacheKey(README_PATCH_V1)).toMatch(
-			new RegExp(`^git-diff:${README_PATCH_V1.length}:`),
+	it("changes across files, so stream position is never shared state", () => {
+		expect(createPatchFileCacheKey(README_PATCH_V1)).not.toBe(
+			createPatchFileCacheKey(OTHER_FILE_PATCH),
 		);
 	});
 });

@@ -74,6 +74,18 @@ describe("getPartDiffStats", () => {
 		expect(getPartDiffStats(toolPart("bash", { command: "ls" }), undefined)).toBeNull();
 		expect(getPartDiffStats({ type: "text" }, undefined)).toBeNull();
 	});
+
+	it("returns null for mutation calls without content or with an empty patch", () => {
+		expect(getPartDiffStats(toolPart("write", {}), undefined)).toBeNull();
+		expect(getPartDiffStats(toolPart("edit", {}), undefined)).toBeNull();
+		expect(getPartDiffStats(toolPart("apply_patch", {}), undefined)).toBeNull();
+		expect(
+			getPartDiffStats(
+				toolPart("apply_patch", { patchText: "*** Begin Patch\n*** End Patch" }),
+				undefined,
+			),
+		).toBeNull();
+	});
 });
 
 describe("getGroupDiffStats", () => {

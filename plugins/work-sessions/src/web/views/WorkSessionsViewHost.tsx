@@ -1,5 +1,5 @@
 import { ExternalLinkIcon, Minimize2Icon, PanelLeftCloseIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FC } from "react";
+import { useSyncExternalStore, type FC } from "react";
 
 import { KernelWindows, type Contribution, type WindowViewProps } from "@kilo-desktop/kernel";
 import {
@@ -76,18 +76,17 @@ function useMainWindowFocus(): string | null {
 	const navigator = useDomainObject(WorkSessionsWindow);
 	const ownFocus = useDomainObjectState(WorkSessionsWindow, selectFocus);
 	const mainId = useDomainObjectState(KernelWindows, mainWindowId) ?? "main";
-	const [savedFocus, setSavedFocus] = useState(() => readSavedWindow(mainId, false).focus);
-	useEffect(() => {
-		if (navigator) return;
-		setSavedFocus(readSavedWindow(mainId, false).focus);
-		const onStorage = (event: StorageEvent) => {
-			if (event.key === savedWindowKey(mainId)) {
-				setSavedFocus(readSavedWindow(mainId, false).focus);
-			}
-		};
-		window.addEventListener("storage", onStorage);
-		return () => window.removeEventListener("storage", onStorage);
-	}, [mainId, navigator]);
+	const savedFocus = useSyncExternalStore(
+		(onChange) => {
+			if (navigator) return () => {};
+			const onStorage = (event: StorageEvent) => {
+				if (event.key === savedWindowKey(mainId)) onChange();
+			};
+			window.addEventListener("storage", onStorage);
+			return () => window.removeEventListener("storage", onStorage);
+		},
+		() => (navigator ? null : readSavedWindow(mainId, false).focus),
+	);
 	return navigator ? (ownFocus ?? null) : savedFocus;
 }
 
@@ -98,23 +97,17 @@ function useViewProps(detached: boolean): WorkSessionsViewProps {
 	const workspaces = useDomainObjectState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	const focus = resolveWorkspaceFocus(useMainWindowFocus(), workspaces);
 	const renderers = useWorkSessionRenderers();
-	const openWorkSession = useCallback(
-		(workSessionId: string) => {
-			if (!detached && navigator) {
-				void navigator.methods.openWorkSession({ workSessionId }).catch(() => undefined);
-				return;
-			}
-			void kernel.commands
-				.execute(OPEN_WORK_SESSION_COMMAND, { workSessionId })
-				.catch(reportFailure("Could not open the session", "Please try again."));
-			void windows?.methods.focusMain(undefined).catch(() => undefined);
-		},
-		[detached, kernel, navigator, windows],
-	);
-	return useMemo(
-		() => ({ focus, openWorkSession, detached, renderers }),
-		[detached, focus, openWorkSession, renderers],
-	);
+	const openWorkSession = (workSessionId: string) => {
+		if (!detached && navigator) {
+			void navigator.methods.openWorkSession({ workSessionId }).catch(() => undefined);
+			return;
+		}
+		void kernel.commands
+			.execute(OPEN_WORK_SESSION_COMMAND, { workSessionId })
+			.catch(reportFailure("Could not open the session", "Please try again."));
+		void windows?.methods.focusMain(undefined).catch(() => undefined);
+	};
+	return { focus, openWorkSession, detached, renderers };
 }
 
 const selectComponent = (implementation: WorkSessionsViewImplementation) =>

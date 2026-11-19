@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	KernelDataCollection,
@@ -16,6 +16,7 @@ import { createShellMainEntry } from "./entry";
 const hosts: PluginHost[] = [];
 
 afterEach(async () => {
+	vi.useRealTimers();
 	for (const host of hosts.splice(0)) await host.dispose();
 });
 
@@ -25,7 +26,7 @@ async function boot() {
 		{
 			manifest,
 			definitions: SHELL_DEFINITIONS,
-			main: createShellMainEntry({ notifications: { now: () => 7, newId: () => "generated" } }),
+			main: createShellMainEntry(),
 			web: { activate: () => {} },
 		},
 		{
@@ -186,6 +187,8 @@ describe("notifications (main)", () => {
 	});
 
 	it("keeps notices per plugin, replacing the same id and dismissing by id or key", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(7);
 		const { host, notifications } = await boot();
 		const guest = host.main.sdkFor("acme.guest").domainObjects.get(Notifications)!;
 
@@ -199,7 +202,7 @@ describe("notifications (main)", () => {
 		);
 
 		expect(key).toBe("acme.guest/sync");
-		expect(other).toBe("kilo.shell/generated");
+		expect(other).toMatch(/^kilo\.shell\/[0-9a-f-]{36}$/);
 		expect(notifications.getState().notices).toEqual({
 			"acme.guest/sync": {
 				id: "acme.guest/sync",
@@ -208,8 +211,8 @@ describe("notifications (main)", () => {
 				level: "error",
 				createdAt: 7,
 			},
-			"kilo.shell/generated": {
-				id: "kilo.shell/generated",
+			[other]: {
+				id: other,
 				pluginId: "kilo.shell",
 				title: "Hello",
 				level: "info",
@@ -218,12 +221,7 @@ describe("notifications (main)", () => {
 		});
 
 		await guest.methods.dismiss({ id: "sync" });
-		await host.invoke(
-			Notifications,
-			"dismiss",
-			{ id: "kilo.shell/generated" },
-			{ as: "acme.guest" },
-		);
+		await host.invoke(Notifications, "dismiss", { id: other }, { as: "acme.guest" });
 		await guest.methods.dismiss({ id: "gone" });
 
 		expect(notifications.getState().notices).toEqual({});

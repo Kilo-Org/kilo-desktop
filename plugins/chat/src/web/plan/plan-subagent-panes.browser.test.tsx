@@ -422,6 +422,24 @@ describe("subagent panes", () => {
 			.toMatchObject({ reply: "once" });
 	});
 
+	it("offers no fork on the child's messages", async () => {
+		const fake = server(planTurn([task("call_t1", "ses_c1", "Audit login")]), {
+			ses_c1: [
+				...childReply("ses_c1", "Reading login.ts"),
+				userMessage("ses_c1", "ses_c1_u2", "Look again"),
+				assistantMessage("ses_c1", "ses_c1_a2", "ses_c1_u2", [
+					{ type: "text", text: "Still fine" },
+				]),
+			],
+		});
+		await show(fake, {
+			otherPanes: [subagentPaneRecord("ses_c1", { chatId: "ses_a" })],
+		});
+
+		await expect.element(subagentPane().getByText("Still fine"), WAIT).toBeVisible();
+		expect(subagentPane().getByTestId("kilo-fork-from-here-button").elements()).toHaveLength(0);
+	});
+
 	it("finds the delegating chat of origin's pane through kilo.core", async () => {
 		const fake = server(planTurn([task("call_t1", "ses_c1", "Audit login")]), {
 			ses_c1: childReply("ses_c1", "Origin's child"),

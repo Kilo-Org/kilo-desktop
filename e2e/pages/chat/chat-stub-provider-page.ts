@@ -112,4 +112,22 @@ export class ChatStubProviderPage {
 			"Image part's decoded byte length should match the uploaded fixture's on-disk size",
 		).toBe(expectedByteLength);
 	}
+
+	/** The request carrying `promptMarker` assembled text that includes `expectedText`. */
+	async verifyCapturedPromptContains(promptMarker: string, expectedText: string): Promise<void> {
+		const captured = await this.waitForCapturedRequest(promptMarker);
+		expect(
+			captured.promptText,
+			`The model request for "${promptMarker}" should include "${expectedText}"`,
+		).toContain(expectedText);
+	}
+
+	/** The request carrying `promptMarker` left out `unexpectedText` (an unresolved directive, say). */
+	async verifyCapturedPromptOmits(promptMarker: string, unexpectedText: string): Promise<void> {
+		const captured = await this.waitForCapturedRequest(promptMarker);
+		expect(
+			captured.promptText,
+			`The model request for "${promptMarker}" should not include "${unexpectedText}"`,
+		).not.toContain(unexpectedText);
+	}
 }

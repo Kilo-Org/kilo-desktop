@@ -7,7 +7,7 @@ import { ReadingControl } from "@kilo-desktop/ui/components/reading/reading-cont
 import { blockIndexAt, readingBlocks } from "@kilo-desktop/ui/lib/reading/blocks";
 import { readingSurfaceTheme } from "@kilo-desktop/ui/lib/reading/reading-theme";
 import { readingTypography } from "@kilo-desktop/ui/lib/reading/typography";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { FileReadResult } from "../../contracts/models.js";
@@ -101,32 +101,25 @@ export function MarkdownPreview({
 	readonly read: ReadFile;
 	readonly onOpenFile: (relativePath: string) => void;
 }) {
-	const fileLinks = useMemo(
-		() =>
-			createFilesPreviewMarkdownExtension({
-				workspaceDirectory,
-				relativePath,
-				onOpenFile,
-			}),
-		[onOpenFile, relativePath, workspaceDirectory],
-	);
-	const extensions = useMemo(() => [fileLinks, mermaidExtension], [fileLinks]);
+	const fileLinks = createFilesPreviewMarkdownExtension({
+		workspaceDirectory,
+		relativePath,
+		onOpenFile,
+	});
+	const extensions = [fileLinks, mermaidExtension];
 	// MarkdownContent rebuilds its component map whenever these identities change,
 	// which remounts every rendered element (diagrams restart, images refetch).
-	const components = useMemo<MarkdownRendererComponents>(
-		() => ({
-			img: ({ alt, src }) => (
-				<MarkdownImage
-					currentPath={relativePath}
-					read={read}
-					workspaceDirectory={workspaceDirectory}
-					{...(alt ? { alt } : {})}
-					{...(src ? { src } : {})}
-				/>
-			),
-		}),
-		[read, relativePath, workspaceDirectory],
-	);
+	const components: MarkdownRendererComponents = {
+		img: ({ alt, src }) => (
+			<MarkdownImage
+				currentPath={relativePath}
+				read={read}
+				workspaceDirectory={workspaceDirectory}
+				{...(alt ? { alt } : {})}
+				{...(src ? { src } : {})}
+			/>
+		),
+	};
 	const markdown = (
 		<MarkdownContent
 			className="max-w-none"
@@ -159,17 +152,9 @@ function ReadingMarkdownPreview({ hasText, children }: { hasText: boolean; child
 	const secondary = useContextKey("kernel/secondaryWindow");
 	const shortcut = useFocusShortcut();
 	const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-	const surfaceStyle = useMemo(
-		() =>
-			readingTypography("chat", preferences.settings, preferences.textSizes.ui)
-				.cssVars as CSSProperties,
-		[preferences.settings, preferences.textSizes.ui],
-	);
-	const { themeId, mode } = preferences.appTheme;
-	const readingTheme = useMemo(
-		() => readingSurfaceTheme(preferences.settings, { themeId, mode }),
-		[preferences.settings, themeId, mode],
-	);
+	const surfaceStyle = readingTypography("chat", preferences.settings, preferences.textSizes.ui)
+		.cssVars as CSSProperties;
+	const readingTheme = readingSurfaceTheme(preferences.settings, preferences.appTheme);
 	const surface = () => scroller?.querySelector(".aui-md") ?? null;
 	const targetNearMiddle = (): FileFocusTarget | null => {
 		const root = surface();

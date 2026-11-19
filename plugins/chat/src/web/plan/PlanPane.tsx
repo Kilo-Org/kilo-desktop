@@ -56,27 +56,33 @@ export const PlanIcon: FC<{ className?: string }> = ({ className }) => (
 export function createPlanPane(
 	services: ChatMirrorServices & { readonly reading?: ChatReading },
 ): FC<PaneProps> {
-	return function PlanPane({ workSessionId, pane }) {
-		const chatId = paneChatId(pane);
-		return (
-			<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-plan-pane">
-				<ChatReadingProvider
-					reading={services.reading}
-					workSessionId={workSessionId}
-					paneId={pane.id}
-				>
-					<ChatMirror services={services} workSessionId={workSessionId} chatId={chatId}>
-						<PlanPaneContent
-							anchorCallId={pane.metadata[PLAN_ANCHOR_CALL_ID_METADATA_KEY] ?? null}
-							newestAnchorCallIdAtOpen={
-								pane.metadata[PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY] ?? null
-							}
-						/>
-					</ChatMirror>
-				</ChatReadingProvider>
-			</div>
-		);
-	};
+	return (props) => <PlanPane {...props} services={services} />;
+}
+
+function PlanPane({
+	workSessionId,
+	pane,
+	services,
+}: PaneProps & { services: ChatMirrorServices & { readonly reading?: ChatReading } }) {
+	const chatId = paneChatId(pane);
+	return (
+		<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-plan-pane">
+			<ChatReadingProvider
+				reading={services.reading}
+				workSessionId={workSessionId}
+				paneId={pane.id}
+			>
+				<ChatMirror services={services} workSessionId={workSessionId} chatId={chatId}>
+					<PlanPaneContent
+						anchorCallId={pane.metadata[PLAN_ANCHOR_CALL_ID_METADATA_KEY] ?? null}
+						newestAnchorCallIdAtOpen={
+							pane.metadata[PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY] ?? null
+						}
+					/>
+				</ChatMirror>
+			</ChatReadingProvider>
+		</div>
+	);
 }
 
 export function PlanPaneContent({

@@ -29,15 +29,23 @@ function mentionDirectories(context: Omit<MentionSearchContext, "signal">): stri
 	return context.directory ? [context.directory] : [];
 }
 
+function FileMentionIcon({
+	path,
+	className = "size-3.5 shrink-0",
+}: {
+	readonly path: string;
+	readonly className?: string | undefined;
+}) {
+	return <PierreFileIcon className={className} path={path} />;
+}
+
 const icons = new Map<string, IconComponent>();
 
 /** A file-type icon for one path, made once per path so lists keep stable components. */
 function iconFor(path: string): IconComponent {
 	let icon = icons.get(path);
 	if (!icon) {
-		icon = function FileMentionIcon({ className }) {
-			return <PierreFileIcon className={className ?? "size-3.5 shrink-0"} path={path} />;
-		};
+		icon = ({ className }) => <FileMentionIcon path={path} className={className} />;
 		icons.set(path, icon);
 	}
 	return icon;

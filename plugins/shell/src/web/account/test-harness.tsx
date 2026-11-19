@@ -1,5 +1,4 @@
 // Test harness: the account area on a plugin host, over a kilo.core stand-in the test controls.
-import type { ComponentType } from "react";
 import { vi } from "vitest";
 
 import {
@@ -31,7 +30,7 @@ import {
 	OnboardingStep,
 	SHELL_DEFINITIONS,
 	SidebarNotice,
-	type OnboardingStepImplementation,
+	type OnboardingStepView,
 } from "../../contracts";
 import { activateAccount } from "./index";
 import { signInStep, welcomeStep } from "./onboarding/steps";
@@ -206,47 +205,33 @@ export async function bootAccount(
  * Draws an onboarding step the way the onboarding host does: heading, body,
  * aside and the footer's primary/Skip actions, inside a dialog.
  */
-const stepViews = new WeakMap<OnboardingStepImplementation, ComponentType<StepViewProps>>();
-
-interface StepViewProps {
-	readonly next: () => void;
-}
-
-function stepView(step: OnboardingStepImplementation): ComponentType<StepViewProps> {
-	let View = stepViews.get(step);
-	if (!View) {
-		View = function StepView({ next }: StepViewProps) {
-			const view = step.useStep({ next });
-			return (
-				<Dialog open>
-					<DialogContent>
-						{view.title ? <h2>{view.title}</h2> : null}
-						{view.subtitle ? <p>{view.subtitle}</p> : null}
-						<div data-qa-id="step-body">{view.body}</div>
-						{view.aside}
-						{view.primary ? (
-							<button
-								type="button"
-								disabled={view.primary.disabled || view.busy}
-								onClick={view.primary.onClick}
-								data-qa-id="onboarding-continue"
-							>
-								{view.primary.label}
-							</button>
-						) : null}
-						{view.skippable ? (
-							<button type="button" data-qa-id="onboarding-skip">
-								Skip
-							</button>
-						) : null}
-						{view.busy ? <span data-qa-id="step-busy" /> : null}
-					</DialogContent>
-				</Dialog>
-			);
-		};
-		stepViews.set(step, View);
-	}
-	return View;
+function drawStep(view: OnboardingStepView) {
+	return (
+		<Dialog open>
+			<DialogContent>
+				{view.title ? <h2>{view.title}</h2> : null}
+				{view.subtitle ? <p>{view.subtitle}</p> : null}
+				<div data-qa-id="step-body">{view.body}</div>
+				{view.aside}
+				{view.primary ? (
+					<button
+						type="button"
+						disabled={view.primary.disabled || view.busy}
+						onClick={view.primary.onClick}
+						data-qa-id="onboarding-continue"
+					>
+						{view.primary.label}
+					</button>
+				) : null}
+				{view.skippable ? (
+					<button type="button" data-qa-id="onboarding-skip">
+						Skip
+					</button>
+				) : null}
+				{view.busy ? <span data-qa-id="step-busy" /> : null}
+			</DialogContent>
+		</Dialog>
+	);
 }
 
 /** Renders one of the area's onboarding steps (`welcome`, `sign-in`). */
@@ -258,7 +243,7 @@ export function renderOnboardingStep(
 	const target = step === "welcome" ? welcomeStep : signInStep;
 	return host.renderSlot(
 		OnboardingStep,
-		{ next },
-		{ select: (implementation) => (implementation === target ? stepView(target) : undefined) },
+		{ next, children: drawStep },
+		{ select: (implementation) => (implementation === target ? target.Step : undefined) },
 	);
 }

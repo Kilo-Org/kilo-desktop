@@ -418,6 +418,10 @@
 			],
 			"kernel/telemetry-event": [
 				{
+					"id": "chat-forked",
+					"name": "Chat Forked"
+				},
+				{
 					"id": "focus-entered",
 					"name": "Focus Entered"
 				},

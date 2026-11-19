@@ -183,8 +183,8 @@ function WorkspaceFormDialog({
 	const save = async () => {
 		if (!workspaces) return;
 		setPending(true);
-		try {
-			const fields = { name: form.name, color: form.color, folders: form.folders };
+		const fields = { name: form.name, color: form.color, folders: form.folders };
+		const persist = async () => {
 			if (workspace) {
 				await workspaces.methods.update({ id: workspace.id, ...fields });
 			} else {
@@ -192,11 +192,10 @@ function WorkspaceFormDialog({
 				await workspaces.methods.setActive({ id: saved.id });
 			}
 			onClose();
-		} catch (reason) {
-			form.setError(errorText(reason, "Could not save workspace."));
-		} finally {
-			setPending(false);
-		}
+		};
+		await persist()
+			.catch((reason: unknown) => form.setError(errorText(reason, "Could not save workspace.")))
+			.finally(() => setPending(false));
 	};
 	const mutation = { isPending: pending, mutate: () => void save() };
 
@@ -241,15 +240,14 @@ function DeleteWorkspaceDialog({
 		if (!workspaces) return;
 		setPending(true);
 		setError(null);
-		try {
+		const removeWorkspace = async () => {
 			// Removing the active workspace leaves none active (decided in main).
 			await workspaces.methods.remove({ id: workspace.id });
 			onClose();
-		} catch (reason) {
-			setError(errorText(reason, "Could not delete workspace."));
-		} finally {
-			setPending(false);
-		}
+		};
+		await removeWorkspace()
+			.catch((reason: unknown) => setError(errorText(reason, "Could not delete workspace.")))
+			.finally(() => setPending(false));
 	};
 	const mutation = { isPending: pending, mutate: () => void remove() };
 	return (

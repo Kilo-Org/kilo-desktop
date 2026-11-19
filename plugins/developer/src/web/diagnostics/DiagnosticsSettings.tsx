@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
 	BlocksIcon,
 	BoxIcon,
@@ -119,10 +119,8 @@ function PluginRow({
 /** This plugin and the owners of what it requires: turning one off would hide the way back. */
 function useLockedPlugins(): ReadonlySet<string> {
 	const kernel = useKernel();
-	return useMemo(() => {
-		const requires = Object.keys(kernel.manifest(DEVELOPER_PLUGIN_ID)?.requires ?? {});
-		return new Set([DEVELOPER_PLUGIN_ID, ...requires.map((id) => ownerOf(id as QualifiedId))]);
-	}, [kernel]);
+	const requires = Object.keys(kernel.manifest(DEVELOPER_PLUGIN_ID)?.requires ?? {});
+	return new Set([DEVELOPER_PLUGIN_ID, ...requires.map((id) => ownerOf(id as QualifiedId))]);
 }
 
 /**
@@ -271,7 +269,7 @@ export function DiagnosticsSettings() {
 		([id, plugin]) => (plugin.state === "disabled") !== disabled.has(id),
 	);
 	const [trail, setTrail] = useState<readonly EntityRef[]>([]);
-	const go = useCallback((next: readonly EntityRef[]) => setTrail(next), []);
+	const go = (next: readonly EntityRef[]) => setTrail(next);
 	const inspecting = trail.length > 0;
 
 	return (

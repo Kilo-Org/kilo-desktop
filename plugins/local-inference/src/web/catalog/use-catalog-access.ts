@@ -1,20 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-	createElement,
-	Fragment,
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-	type ReactNode,
-} from "react";
+import { createElement, Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
 	ModelCatalogAccess,
 	ModelCatalogSignInResult,
 	ModelCatalogState,
 } from "../../contracts/index";
-import { localInferenceQueryKey, useLocalInference, useModelServerState } from "../local-inference";
+import {
+	localInferenceQueryKey,
+	useLocalInference,
+	useModelServerState,
+	type LocalInferenceClient,
+} from "../local-inference";
 
 export type { ModelCatalogAccess, ModelCatalogSignInResult };
 
@@ -75,20 +72,16 @@ export function useCatalogAccess(): CatalogAccess {
 		if (available) void client.resolveCatalogAccess(undefined).catch(() => undefined);
 	}, [available, client]);
 
-	const signIn = useCallback(async (): Promise<ModelCatalogSignInResult> => {
+	const signIn = async (): Promise<ModelCatalogSignInResult> => {
 		setSigningIn(true);
-		try {
-			return await client.signInToCatalog(undefined);
-		} catch (cause) {
-			return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
-		} finally {
-			setSigningIn(false);
-		}
-	}, [client]);
+		const result = await signInToCatalog(client);
+		setSigningIn(false);
+		return result;
+	};
 
-	const cancelSignIn = useCallback(async (): Promise<void> => {
+	const cancelSignIn = async (): Promise<void> => {
 		await client.cancelCatalogSignIn(undefined).catch(() => undefined);
-	}, [client]);
+	};
 
 	return {
 		available,
@@ -99,6 +92,14 @@ export function useCatalogAccess(): CatalogAccess {
 		signIn,
 		cancelSignIn,
 	};
+}
+
+async function signInToCatalog(client: LocalInferenceClient): Promise<ModelCatalogSignInResult> {
+	try {
+		return await client.signInToCatalog(undefined);
+	} catch (cause) {
+		return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
+	}
 }
 
 /**

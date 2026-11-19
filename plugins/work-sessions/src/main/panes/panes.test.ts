@@ -85,6 +85,43 @@ describe("panes", () => {
 		expect(tabs()).toEqual([[a.id, tab.id], [b.id]]);
 	});
 
+	it("places a tab in the group it names, in the same write that adds the pane", async () => {
+		const { panes, workSession, of } = await boot();
+		const target = { workSessionId: workSession.id };
+		const a = await panes.methods.open({ ...target, kind: "test.panes/terminal" });
+		const b = await panes.methods.open({ ...target, kind: "test.panes/terminal" });
+		const saved = setActivePane(
+			createLayout([
+				{ id: a.id, kind: "tool", title: "a" },
+				{ id: b.id, kind: "tool", title: "b" },
+			]),
+			a.id,
+		);
+		await panes.methods.setLayout({
+			...target,
+			layout: serializeLayout(saved),
+			activePaneId: a.id,
+		});
+		const groupOfB = saved.groups.find((group) => group.tabs.some((t) => t.id === b.id))!;
+		const tabsOf = (layout: string | null | undefined) =>
+			parseLayoutJson(layout)?.groups.map((group) => group.tabs.map((t) => t.id));
+		const writes: Array<string[][] | undefined> = [];
+		const stop = panes.subscribe((state) => {
+			writes.push(tabsOf(state.byWorkSession[workSession.id]?.layout));
+		});
+
+		const tab = await panes.methods.open({
+			...target,
+			kind: "test.panes/editor",
+			placement: "tab",
+			groupId: groupOfB.id,
+		});
+		stop();
+
+		expect(writes).toEqual([[[a.id], [b.id, tab.id]]]);
+		expect(parseLayoutJson(of()?.layout)?.activePaneId).toBe(tab.id);
+	});
+
 	it("opens panes numbered per kind, activating each", async () => {
 		const { panes, workSession, of } = await boot();
 		const opened: string[] = [];

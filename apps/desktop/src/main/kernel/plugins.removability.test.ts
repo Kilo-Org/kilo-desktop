@@ -92,8 +92,8 @@ function expectBooted({ pair, errors }: Awaited<ReturnType<typeof boot>>, expect
 	expect(notRunning).toEqual([]);
 }
 
-// Every plugin's real main entry per case; generous so a loaded CI worker doesn't flake.
-describe("bundled plugins in main", { timeout: 30_000 }, () => {
+// Every plugin's real main entry per case.
+describe("bundled plugins in main", () => {
 	it("boot together", async () => {
 		expectBooted(await boot(BUNDLED_PLUGINS, []), BUNDLED_PLUGINS.length);
 	});

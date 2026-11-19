@@ -1,20 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	defaultChannelSelection,
-	getChannelPresentation,
-	selectableChannels,
-} from "./channel-presentation";
+import { getChannelPresentation, selectableChannels } from "./channel-presentation";
 
 describe("selectableChannels", () => {
-	it("offers conda-forge and Anaconda MAIN when none are configured", () => {
-		expect(selectableChannels([])).toEqual(["conda-forge", "defaults"]);
+	it("offers Anaconda MAIN ahead of conda-forge when none are configured", () => {
+		expect(selectableChannels([])).toEqual(["defaults", "conda-forge"]);
 	});
 
 	it("keeps custom channels without duplicating Anaconda aliases", () => {
 		expect(selectableChannels(["main", "conda-forge", "bioconda"])).toEqual([
-			"conda-forge",
 			"defaults",
+			"conda-forge",
 			"bioconda",
 		]);
 	});
@@ -55,19 +51,31 @@ describe("getChannelPresentation", () => {
 	});
 });
 
-describe("defaultChannelSelection", () => {
-	it("selects every channel for signed-in users", () => {
-		expect(defaultChannelSelection(["defaults", "conda-forge"])).toEqual([
-			"defaults",
-			"conda-forge",
-		]);
+describe("getChannelPresentation for an install link's channel", () => {
+	it("shows the link's channel as given, apart from the product channels", () => {
+		expect(getChannelPresentation("msys2", { fromLink: true })).toEqual({
+			kind: "other",
+			title: "msys2",
+			description: "From the install link.",
+		});
+		expect(
+			getChannelPresentation("https://repo.anaconda.com/pkgs/main", { fromLink: true }),
+		).toMatchObject({
+			title: "https://repo.anaconda.com/pkgs/main",
+			description: "From the install link.",
+		});
+		expect(getChannelPresentation("bioconda", { fromLink: true })).toMatchObject({
+			title: "bioconda",
+			description: "From the install link.",
+		});
 	});
 
-	it("selects every offered channel", () => {
-		expect(defaultChannelSelection(["defaults", "conda-forge", "bioconda"])).toEqual([
-			"defaults",
-			"conda-forge",
-			"bioconda",
-		]);
+	it("keeps the product presentation when the link names a product channel", () => {
+		expect(getChannelPresentation("defaults", { fromLink: true })).toEqual(
+			getChannelPresentation("defaults"),
+		);
+		expect(getChannelPresentation("conda-forge", { fromLink: true })).toEqual(
+			getChannelPresentation("conda-forge"),
+		);
 	});
 });

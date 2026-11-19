@@ -26,6 +26,7 @@ import {
 	type PaneProps,
 	type WorkSessionPanes,
 } from "../../contracts";
+import { LAYOUT_SAVE_DELAY_MS } from "./SessionCanvas";
 
 const SESSION = workSession("wses_1", { title: "Fix login", workspaceId: "w-app" });
 const APP = workspace("w-app", "App", {
@@ -197,16 +198,21 @@ describe("session panes", () => {
 		const open = page.getByTestId("open-another-pane");
 		await expect.element(open).toBeVisible();
 
-		await open.click();
-		await vi.waitFor(() => expect(state()?.panes).toHaveLength(3));
-		const opened = state()?.panes.at(-1)?.id;
-		expect(state()?.activePaneId).toBe(opened);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			await open.click();
+			await vi.waitFor(() => expect(state()?.panes).toHaveLength(3));
+			const opened = state()?.panes.at(-1)?.id;
+			expect(state()?.activePaneId).toBe(opened);
 
-		// The pointerdown that focused the clicked pane queued a layout save; it
-		// must not write back the active pane the open has since moved on from.
-		await new Promise((resolve) => setTimeout(resolve, 300));
-		expect(state()?.activePaneId).toBe(opened);
-		expect(state()?.panes).toHaveLength(3);
+			// The pointerdown that focused the clicked pane queued a layout save; it
+			// must not write back the active pane the open has since moved on from.
+			await vi.advanceTimersByTimeAsync(LAYOUT_SAVE_DELAY_MS + 1);
+			expect(state()?.activePaneId).toBe(opened);
+			expect(state()?.panes).toHaveLength(3);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("lists a gated kind as unavailable, with why", async () => {
@@ -450,6 +456,27 @@ describe("tab commands", () => {
 		});
 	});
 
+	it("opens a tab from a group's '+' straight into that group", async () => {
+		const { calls } = await renderPanes({ panes: withPanes([pane("a"), pane("b")]) });
+		const tabB = page.getByTestId("chat-pane-tab-b");
+		await expect.element(tabB).toBeVisible();
+		const groupB = tabB.element().closest<HTMLElement>("[data-pane-group-id]")!;
+
+		await tabB.hover();
+		groupB.querySelector<HTMLElement>("[data-qa-id='chat-pane-add-tab']")!.click();
+		await page.getByTestId("chat-pane-add-menu-test.panes/terminal").click();
+
+		// Main places it in the write that opens it (panes.test.ts), so it never shows in a column of its own.
+		await vi.waitFor(() =>
+			expect(calls.openPane).toHaveBeenCalledWith({
+				workSessionId: SESSION.id,
+				kind: "test.panes/terminal",
+				placement: "tab",
+				groupId: groupB.dataset.paneGroupId,
+			}),
+		);
+	});
+
 	it("saves layout changes made on the canvas", async () => {
 		const { calls } = await renderPanes({ panes: withPanes([pane("a"), pane("b")]) });
 		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
@@ -595,6 +622,22 @@ describe("WorkSessionsWindow.openPane (for other plugins' commands)", () => {
 			}),
 		);
 		expect(calls.openPane).toHaveBeenCalledTimes(1);
+	});
+
+	it("opens the kind in a new tab group beside the active one when asked, as the header '+' does", async () => {
+		const { window, state } = await renderPanes({
+			panes: withPanes([pane("a")]),
+			extraPlugins: [pinnedPlugin],
+		});
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await window().methods.openPane({ kind: "test.pinned/helper", placement: "group" });
+
+		await vi.waitFor(() => {
+			const layout = parseLayoutJson(state()?.layout);
+			expect(layout?.groups.map((group) => group.tabs.length)).toEqual([1, 1]);
+			expect(layout?.groups[0]?.tabs[0]?.id).toBe("a");
+		});
 	});
 
 	it("does nothing with no session open", async () => {

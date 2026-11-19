@@ -57,12 +57,6 @@ export function getTriggerLabel(state: SelectorQueryState, pendingBranch?: strin
 	return "Select branch";
 }
 
-/** Current branch for a read-only label. Hidden until a name is known. */
-export function getReadOnlyBranchLabel(state: SelectorQueryState): string | undefined {
-	if (!state.data) return undefined;
-	return state.data.currentBranch ?? "Detached HEAD";
-}
-
 /**
  * Structured unborn-repository notice. The component renders this with a
  * bold heading and two descriptive lines rather than the plain-string path.

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -91,6 +91,91 @@ function packageSource(pkg: CondaPackage): "pip" | "conda" {
 	return pkg.channel === "pypi" ? "pip" : "conda";
 }
 
+interface Upgrades {
+	/** Package name → newest available version. */
+	upgradableMap: Map<string, string>;
+	/** Package name → all versions newer than installed (newest first). */
+	availableVersionsMap: Map<string, string[]>;
+}
+
+/**
+ * Single-pass derivation of both upgrade maps from repodata, built together so
+ * `upgradableMap.get(name) === availableVersionsMap.get(name)![0]` by
+ * construction; the two consumers cannot drift apart. Bridge already emits
+ * `versions` newest-first (see SidecarCondaBackend.ts and the
+ * CondaRepodataPackage contract), so no re-sort is required.
+ */
+function deriveUpgrades(
+	repodata: CondaRepodataFindResult | undefined,
+	installedPackages: readonly CondaPackage[],
+): Upgrades {
+	const upgradableMap = new Map<string, string>();
+	const availableVersionsMap = new Map<string, string[]>();
+	if (!repodata) return { upgradableMap, availableVersionsMap };
+	const installedVersionByName = new Map(installedPackages.map((p) => [p.name, p.version]));
+	for (const repoPkg of repodata.packages) {
+		const installed = installedVersionByName.get(repoPkg.name);
+		if (!installed) continue;
+		const newer = repoPkg.versions
+			.map((v) => v.version)
+			.filter((v) => compareCondaVersions(v, installed) > 0);
+		const [latest] = newer;
+		if (latest !== undefined) {
+			availableVersionsMap.set(repoPkg.name, newer);
+			upgradableMap.set(repoPkg.name, latest);
+		}
+	}
+	return { upgradableMap, availableVersionsMap };
+}
+
+function visiblePackages(
+	installed: readonly CondaPackage[],
+	view: {
+		search: string;
+		showUpgradableOnly: boolean;
+		upgradableMap: ReadonlyMap<string, string>;
+		sortField: SortField;
+		sortDirection: SortDirection;
+	},
+): CondaPackage[] {
+	const query = view.search.trim().toLowerCase();
+	const field = view.sortField;
+	return installed
+		.filter(
+			(pkg) =>
+				(!view.showUpgradableOnly || view.upgradableMap.has(pkg.name)) &&
+				(!query || pkg.name.toLowerCase().includes(query)),
+		)
+		.toSorted((a, b) => {
+			const aVal = field === "source" ? packageSource(a) : a[field].toLowerCase();
+			const bVal = field === "source" ? packageSource(b) : b[field].toLowerCase();
+			const cmp = aVal.localeCompare(bVal);
+			return view.sortDirection === "asc" ? cmp : -cmp;
+		});
+}
+
+function selectedOf(
+	packages: readonly CondaPackage[],
+	selectedNames: ReadonlySet<string>,
+): CondaPackage[] {
+	return packages.filter((pkg) => selectedNames.has(pkg.name));
+}
+
+function upgradableOf(
+	packages: readonly CondaPackage[],
+	upgradableMap: ReadonlyMap<string, string>,
+): CondaPackage[] {
+	return packages.filter((pkg) => upgradableMap.has(pkg.name));
+}
+
+function toUpgradables(packages: readonly CondaPackage[], upgrades: Upgrades): UpgradablePackage[] {
+	return packages.map((pkg) => ({
+		pkg,
+		latestVersion: upgrades.upgradableMap.get(pkg.name) ?? null,
+		availableVersions: upgrades.availableVersionsMap.get(pkg.name) ?? [],
+	}));
+}
+
 type EnvironmentDialog =
 	| "none"
 	| "add"
@@ -107,68 +192,19 @@ interface EnvironmentDetailProps {
 
 export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 	const conda = useConda();
-	const displayName = environmentDisplayName(env);
 	const packages = useCondaQuery(conda, "listPackages", {
 		name: env.name || undefined,
 		prefix: env.prefix,
 	});
-
-	// Fetch latest versions for installed conda packages to detect upgrades.
-	// Pip packages are excluded (no conda repodata). Capped at 500 names.
-	const condaPackageNames = useMemo(
-		() => (packages.data?.packages ?? []).filter((p) => p.channel !== "pypi").map((p) => p.name),
-		[packages.data?.packages],
-	);
-
-	// Query uses the installed package names when available, or a dummy
-	// single-name that will return no results when there are no packages yet.
-	// The query always runs; repodataArgs decides what it asks for.
-	const repodataArgs = useMemo(
-		() =>
-			condaPackageNames.length > 0
-				? { names: condaPackageNames.slice(0, 500), limit: 500 }
-				: { names: ["__placeholder__"], limit: 1 },
-		[condaPackageNames],
-	);
-	const repodata = useCondaQuery(conda, "findRepodata", repodataArgs);
-
-	// Single-pass derivation of two related maps from repodata:
-	//   - upgradableMap:        package name → newest available version
-	//   - availableVersionsMap: package name → all versions newer than installed (newest first)
-	// Built together so `upgradableMap.get(name) === availableVersionsMap.get(name)![0]`
-	// by construction; the two consumers cannot drift apart. Bridge already
-	// emits `versions` newest-first (see SidecarCondaBackend.ts and the
-	// CondaRepodataPackage contract), so no re-sort is required.
-	const { upgradableMap, availableVersionsMap } = useMemo(() => {
-		const upgradable = new Map<string, string>();
-		const available = new Map<string, string[]>();
-		if (!repodata.data || !packages.data) {
-			return { upgradableMap: upgradable, availableVersionsMap: available };
-		}
-		const repodataResult = repodata.data as CondaRepodataFindResult;
-		const installedVersionByName = new Map(packages.data.packages.map((p) => [p.name, p.version]));
-		for (const repoPkg of repodataResult.packages) {
-			const installed = installedVersionByName.get(repoPkg.name);
-			if (!installed) continue;
-			const newer = repoPkg.versions
-				.map((v) => v.version)
-				.filter((v) => compareCondaVersions(v, installed) > 0);
-			const [latest] = newer;
-			if (latest !== undefined) {
-				available.set(repoPkg.name, newer);
-				upgradable.set(repoPkg.name, latest);
-			}
-		}
-		return { upgradableMap: upgradable, availableVersionsMap: available };
-	}, [repodata.data, packages.data]);
+	const installed = packages.data?.packages ?? [];
+	const { upgrades, allUpgradable, checkingUpdates } = usePackageUpgrades(conda, installed);
+	const { upgradableMap } = upgrades;
 
 	const [search, setSearch] = useState("");
 	const [sortField, setSortField] = useState<SortField>("name");
 	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 	const [showUpgradableOnly, setShowUpgradableOnly] = useState(false);
-	const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
 	const [dialog, setDialog] = useState<EnvironmentDialog>("none");
-	const closeDialog = useCallback(() => setDialog("none"), []);
 	// Package chosen via the per-row "Update…" action; opens the same
 	// preview/backup sheet as the bulk paths with a single-item list.
 	const [rowUpdatePackage, setRowUpdatePackage] = useState<CondaPackage | null>(null);
@@ -176,80 +212,35 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 	// instance. Uses increment/decrement so concurrent jobs (row + bulk, or
 	// two bulk operations) accumulate correctly instead of overwriting.
 	const [updatingCount, setUpdatingCount] = useState(0);
-	const bumpUpdating = useCallback(
-		(delta: number) => setUpdatingCount((prev) => Math.max(0, prev + delta)),
-		[],
-	);
 
-	const installed = packages.data?.packages ?? [];
+	const visible = visiblePackages(installed, {
+		search,
+		showUpgradableOnly,
+		upgradableMap,
+		sortField,
+		sortDirection,
+	});
+	// Selection lives in its own hook so `visible` is frozen before selection
+	// reads it: toggling a checkbox must not re-filter and re-sort the list.
+	const {
+		selectedNames,
+		selectedPackages,
+		allSelected,
+		someSelected,
+		toggleSelect,
+		toggleSelectAll,
+		clearSelection,
+	} = usePackageSelection(visible);
 
-	const pythonVersion = useMemo(
-		() => installed.find((p) => p.name === "python")?.version ?? null,
-		[installed],
-	);
-
-	const visible = useMemo(() => {
-		const query = search.trim().toLowerCase();
-		const matches = installed.filter(
-			(pkg) =>
-				(!showUpgradableOnly || upgradableMap.has(pkg.name)) &&
-				(!query || pkg.name.toLowerCase().includes(query)),
-		);
-		return matches.toSorted((a, b) => {
-			const aVal = sortField === "source" ? packageSource(a) : a[sortField].toLowerCase();
-			const bVal = sortField === "source" ? packageSource(b) : b[sortField].toLowerCase();
-			const cmp = aVal.localeCompare(bVal);
-			return sortDirection === "asc" ? cmp : -cmp;
-		});
-	}, [installed, search, showUpgradableOnly, upgradableMap, sortField, sortDirection]);
-
-	const selectedPackages = useMemo(
-		() => visible.filter((pkg) => selectedNames.has(pkg.name)),
-		[visible, selectedNames],
-	);
-
-	const toUpgradable = useCallback(
-		(pkg: CondaPackage): UpgradablePackage => ({
-			pkg,
-			latestVersion: upgradableMap.get(pkg.name) ?? null,
-			availableVersions: availableVersionsMap.get(pkg.name) ?? [],
-		}),
-		[upgradableMap, availableVersionsMap],
-	);
+	const displayName = environmentDisplayName(env);
+	const closeDialog = () => setDialog("none");
+	const bumpUpdating = (delta: number) => setUpdatingCount((prev) => Math.max(0, prev + delta));
+	const pythonVersion = installed.find((p) => p.name === "python")?.version ?? null;
 
 	// Packages with no available update are included so the user sees them in
 	// the dialog (marked "up to date") instead of being silently dropped.
-	const selectedForUpdate = useMemo(
-		() => selectedPackages.map(toUpgradable),
-		[selectedPackages, toUpgradable],
-	);
-	const rowUpdateItems = useMemo(
-		() => (rowUpdatePackage ? [toUpgradable(rowUpdatePackage)] : []),
-		[rowUpdatePackage, toUpgradable],
-	);
-	const allUpgradable = useMemo(
-		() => installed.filter((pkg) => upgradableMap.has(pkg.name)).map(toUpgradable),
-		[installed, upgradableMap, toUpgradable],
-	);
-
-	const allSelected = visible.length > 0 && visible.every((pkg) => selectedNames.has(pkg.name));
-	const someSelected = !allSelected && visible.some((pkg) => selectedNames.has(pkg.name));
-
-	const toggleSelectAll = useCallback(() => {
-		setSelectedNames(allSelected ? new Set() : new Set(visible.map((pkg) => pkg.name)));
-	}, [allSelected, visible]);
-
-	const toggleSelect = useCallback((name: string) => {
-		setSelectedNames((prev) => {
-			const next = new Set(prev);
-			if (next.has(name)) next.delete(name);
-			else next.add(name);
-			return next;
-		});
-	}, []);
-
-	const clearSelection = useCallback(() => setSelectedNames(new Set()), []);
-	const checkingUpdates = repodata.isPending && condaPackageNames.length > 0;
+	const selectedForUpdate = toUpgradables(selectedPackages, upgrades);
+	const rowUpdateItems = rowUpdatePackage ? toUpgradables([rowUpdatePackage], upgrades) : [];
 	const hasFilters = search.trim() !== "" || showUpgradableOnly;
 
 	return (
@@ -540,6 +531,63 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 	);
 }
 
+/**
+ * Latest versions for installed conda packages, to detect upgrades. Pip
+ * packages are excluded (no conda repodata); names are capped at 500.
+ */
+function usePackageUpgrades(
+	conda: ReturnType<typeof useConda>,
+	installed: readonly CondaPackage[],
+): { upgrades: Upgrades; allUpgradable: UpgradablePackage[]; checkingUpdates: boolean } {
+	const condaPackageNames = installed.filter((p) => p.channel !== "pypi").map((p) => p.name);
+	const hasCondaPackages = condaPackageNames.length > 0;
+	// Query uses the installed package names when available, or a dummy
+	// single-name that will return no results when there are no packages yet.
+	// The query always runs; repodataArgs decides what it asks for.
+	const repodataArgs = hasCondaPackages
+		? { names: condaPackageNames.slice(0, 500), limit: 500 }
+		: { names: ["__placeholder__"], limit: 1 };
+	const repodata = useCondaQuery(conda, "findRepodata", repodataArgs);
+	const upgrades = deriveUpgrades(repodata.data as CondaRepodataFindResult | undefined, installed);
+	return {
+		upgrades,
+		allUpgradable: toUpgradables(upgradableOf(installed, upgrades.upgradableMap), upgrades),
+		checkingUpdates: repodata.isPending && hasCondaPackages,
+	};
+}
+
+function usePackageSelection(visible: readonly CondaPackage[]) {
+	const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+	const selectedPackages = selectedOf(visible, selectedNames);
+	const allSelected = visible.length > 0 && visible.every((pkg) => selectedNames.has(pkg.name));
+	const someSelected = !allSelected && visible.some((pkg) => selectedNames.has(pkg.name));
+
+	const toggleSelectAll = () => {
+		setSelectedNames(allSelected ? new Set() : new Set(visible.map((pkg) => pkg.name)));
+	};
+
+	const toggleSelect = (name: string) => {
+		setSelectedNames((prev) => {
+			const next = new Set(prev);
+			if (next.has(name)) next.delete(name);
+			else next.add(name);
+			return next;
+		});
+	};
+
+	const clearSelection = () => setSelectedNames(new Set());
+
+	return {
+		selectedNames,
+		selectedPackages,
+		allSelected,
+		someSelected,
+		toggleSelect,
+		toggleSelectAll,
+		clearSelection,
+	};
+}
+
 function DetailHeading({
 	displayName,
 	prefix,
@@ -640,6 +688,32 @@ interface PackagesTableProps {
 }
 
 /**
+ * The rendered row window as plain values, so the compiled table never holds
+ * the virtualizer instance (whose identity stays fixed while its output changes).
+ */
+function usePackageRowWindow(
+	packages: CondaPackage[],
+	scrollRef: RefObject<HTMLDivElement | null>,
+) {
+	// TanStack Virtual returns a mutable instance the compiler cannot memoize safely.
+	"use no memo";
+	const virtualizer = useVirtualizer({
+		count: packages.length,
+		getScrollElement: () => scrollRef.current,
+		estimateSize: () => ROW_ESTIMATE_PX,
+		getItemKey: (index) => packages[index]?.name ?? index,
+		overscan: ROW_OVERSCAN,
+	});
+	const rows = virtualizer.getVirtualItems();
+	return {
+		rows,
+		paddingTop: rows[0]?.start ?? 0,
+		paddingBottom: virtualizer.getTotalSize() - (rows.at(-1)?.end ?? 0),
+		measureElement: virtualizer.measureElement,
+	};
+}
+
+/**
  * Installed packages as the shared `Table`, scrolling inside a bordered panel.
  * Environments routinely hold several hundred packages, so rows are
  * virtualised: spacer rows above and below the rendered window keep the
@@ -658,16 +732,10 @@ function PackagesTable({
 	updateDisabled,
 }: PackagesTableProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const virtualizer = useVirtualizer({
-		count: packages.length,
-		getScrollElement: () => scrollRef.current,
-		estimateSize: () => ROW_ESTIMATE_PX,
-		getItemKey: (index) => packages[index]?.name ?? index,
-		overscan: ROW_OVERSCAN,
-	});
-	const rows = virtualizer.getVirtualItems();
-	const paddingTop = rows[0]?.start ?? 0;
-	const paddingBottom = virtualizer.getTotalSize() - (rows.at(-1)?.end ?? 0);
+	const { rows, paddingTop, paddingBottom, measureElement } = usePackageRowWindow(
+		packages,
+		scrollRef,
+	);
 
 	return (
 		<div className="border-border flex min-h-0 flex-col overflow-hidden rounded-lg border">
@@ -717,7 +785,7 @@ function PackagesTable({
 							return (
 								<TableRow
 									key={row.key}
-									ref={virtualizer.measureElement}
+									ref={measureElement}
 									data-index={row.index}
 									data-state={isSelected ? "selected" : undefined}
 									data-qa-id="environments-conda-detail-row"

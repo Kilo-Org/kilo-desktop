@@ -30,6 +30,9 @@ function Box({ active }: { active: boolean }) {
 const atBottom = (box: HTMLElement) =>
 	Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) <= 1;
 
+/** Lets layout and its ResizeObserver callbacks run. */
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
 describe("useBottomPin", () => {
 	it("follows new content, and keeps following once the reader scrolls back down", async () => {
 		const { getByTestId } = render(<Box active />);
@@ -50,7 +53,9 @@ describe("useBottomPin", () => {
 	it("leaves the box alone while inactive", async () => {
 		const { getByTestId } = render(<Box active={false} />);
 		addLines(5);
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(getByTestId("box").scrollTop).toBe(0);
+		const box = getByTestId("box");
+		await vi.waitFor(() => expect(box.querySelectorAll("p")).toHaveLength(10));
+		await nextFrame();
+		expect(box.scrollTop).toBe(0);
 	});
 });

@@ -225,12 +225,6 @@ export function attachGatewayModelDetails(
 /** Kilo Gateway Auto Free virtual model — preferred first-run default. */
 export const AUTO_FREE_MODEL_ID = "kilo-auto/free";
 
-/** Same hardcoded fallback the VS Code extension uses (`KILO_AUTO`). */
-export const KILO_AUTO_DEFAULT: KiloModelRef = {
-	providerID: "kilo",
-	modelID: AUTO_FREE_MODEL_ID,
-};
-
 export function isSelectableModel(
 	catalog: KiloModelCatalog | undefined,
 	model: KiloModelRef | undefined,

@@ -156,7 +156,7 @@ export interface GitHostOptions {
 	readonly vcs?: boolean;
 	readonly activeWorkSessionId?: string | null;
 	/** What `WorkSessionsWindow.openPane` does; by default it opens the pane in the open work session. */
-	readonly openPane?: (input: { kind: string }) => void;
+	readonly openPane?: (input: { kind: string; placement?: "tab" | "group" | undefined }) => void;
 	readonly theme?: ThemeState;
 	/** kilo.git's pull requests in main; its methods are recorded. */
 	readonly pullRequests?: Partial<PullRequestsState>;
@@ -222,6 +222,7 @@ export async function bootGitHost(options: GitHostOptions = {}) {
 				methods: {
 					create: unused("create"),
 					createChat: unused("createChat"),
+					forkChat: unused("forkChat"),
 					rename: unused("rename"),
 					setPinned: unused("setPinned"),
 					setArchived: unused("setArchived"),
@@ -686,9 +687,10 @@ export const WAIT = { timeout: 15_000 };
 
 export async function waitForTreePath(relativePath: string): Promise<void> {
 	await vi.waitFor(() => {
+		// Not .not.toBeNull(): the chain is undefined until the shadow root mounts.
 		expect(
 			treeHost()?.shadowRoot?.querySelector(`[data-item-path="${relativePath}"]`),
-		).not.toBeNull();
+		).toBeTruthy();
 	}, WAIT);
 }
 

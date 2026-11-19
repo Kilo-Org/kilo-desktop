@@ -41,7 +41,7 @@ export type ToolCallStatus =
  */
 export interface ToolCallProps {
 	readonly toolCallId: string;
-	/** The name Kilo called the tool by (`bash`, `desktop_terminal_open_terminal`). */
+	/** The name Kilo called the tool by (`bash`, `desktop_terminal_open`). */
 	readonly toolName: string;
 	readonly args: Readonly<Record<string, unknown>>;
 	/** The arguments as streamed so far (JSON text). */
@@ -67,7 +67,7 @@ export interface ToolRendererImplementation {
 
 /**
  * How calls to some tools look in the chat transcript. `tools` are desktop
- * tools by `kilo.core/tool` contribution key (`kilo.terminal/open_terminal`)
+ * tools by `kilo.core/tool` contribution key (`kilo.terminal/open`)
  * and Kilo's built-in tools by name (`bash`, `read`); the highest-priority
  * contribution for a tool renders it and is handed the next one as
  * `Original`. `standalone` keeps the calls out of the activity groups and the

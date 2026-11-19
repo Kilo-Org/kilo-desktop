@@ -3,7 +3,7 @@ import useDebounce from "react-use/esm/useDebounce.js";
 
 import { useWorkspaceFileChanges } from "../file-changes.js";
 
-const RELOAD_DEBOUNCE_MS = 300;
+export const RELOAD_DEBOUNCE_MS = 300;
 
 /**
  * Reloads the open document when kilo.work-sessions' watcher reports it changed on

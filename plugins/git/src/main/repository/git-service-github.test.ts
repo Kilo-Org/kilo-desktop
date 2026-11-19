@@ -7,7 +7,7 @@ import { UnsupportedGitVersionError } from "@kilo-desktop/git-client";
 import type { GitClient } from "@kilo-desktop/git-client";
 
 import { folders } from "./test-workspace-access";
-import { classifyGithubCliError, ghErrorToKernelError, GitService } from "./git-service";
+import { ghErrorToKernelError, GitService } from "./git-service";
 
 const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 
@@ -64,13 +64,6 @@ describe("GitService GitHub CLI capability", () => {
 		);
 		expect(ghErrorToKernelError({ stderr: "network failed" }).message).toBe("network failed");
 		expect(ghErrorToKernelError({}).message).toBe("GitHub CLI operation failed.");
-	});
-
-	it("classifies GitHub CLI failure shapes", () => {
-		expect(classifyGithubCliError({ code: "ENOENT" })).toBe("missing");
-		expect(classifyGithubCliError({ timedOut: true })).toBe("timeout");
-		expect(classifyGithubCliError({ stderr: "authentication required" })).toBe("unauthenticated");
-		expect(classifyGithubCliError({ stderr: "network failed" })).toBe("error");
 	});
 });
 

@@ -260,20 +260,31 @@ export interface ComposerActionPopoverProps extends ComposerContext {
 	readonly close: () => void;
 }
 
+/**
+ * Props of a component that reads the action's own state with hooks and
+ * returns `children(value)`, so the composer draws the control from it.
+ */
+export interface ComposerActionStateProps<T> {
+	readonly context: ComposerContext;
+	readonly children: (value: T) => ReactNode;
+}
+
 export type ComposerActionImplementation =
 	| {
 			readonly kind: "action";
-			readonly useButton?: (context: ComposerContext) => ComposerActionButton;
+			/** How the button looks; a plain button with the contribution's title by default. */
+			readonly Button?: ComponentType<ComposerActionStateProps<ComposerActionButton>>;
 			/** Runs on click; a contribution with `command` needs none. */
 			readonly run?: (context: ComposerContext) => void | Promise<void>;
 	  }
 	| {
 			readonly kind: "menu";
-			readonly useMenu: (context: ComposerContext) => ComposerActionMenu;
+			readonly Menu: ComponentType<ComposerActionStateProps<ComposerActionMenu>>;
 	  }
 	| {
 			readonly kind: "popover";
-			readonly useTrigger?: (context: ComposerContext) => ComposerActionTrigger;
+			/** How the popover's button looks; a plain button by default. */
+			readonly Trigger?: ComponentType<ComposerActionStateProps<ComposerActionTrigger>>;
 			/**
 			 * The popup, inside the composer's popover root: render a
 			 * `PopoverContent` (or a component built on it).
@@ -290,8 +301,9 @@ export type ComposerActionImplementation =
  * A control in the composer: a button (`action`), a pick-from-list menu
  * (`menu`), a button opening a popover (`popover`) or the contribution's own
  * component (`view`, e.g. git's branch label). The composer draws the
- * button and the menu; `useButton` / `useMenu` / `useTrigger` run as hooks
- * while it shows, so contributions read their own state. Ordered by
+ * button and the menu; it renders the `Button` / `Menu` / `Trigger`
+ * component while the action shows, which reads its own state with hooks and
+ * hands the composer what to draw through `children`. Ordered by
  * priority, highest first; kilo.chat's own controls come through it too.
  */
 export const ComposerAction = defineExtensionPoint({

@@ -111,6 +111,19 @@ export function activateWorkSessions(sdk: PluginSdk, options: WorkSessionsOption
 				chats.apply(chat);
 				return chat;
 			},
+			forkChat: async ({ id, chatId, messageId }) => {
+				const workSession = requireWorkSession(id);
+				if (!workSession.chatIds.includes(chatId)) {
+					throw new KernelError("NOT_FOUND", "The chat isn't in this session.");
+				}
+				const handle = chats.current();
+				if (!handle) {
+					throw new KernelError("UNAVAILABLE", "Chats are unavailable — Kilo is not running.");
+				}
+				const chat = await handle.methods.fork({ id: chatId, messageId });
+				chats.apply(chat);
+				return chat;
+			},
 			rename: ({ id, title }) => {
 				const after = registry.change(id, { title, titleSource: "user", updatedAt: now() });
 				const first = after.chatIds[0];
@@ -138,6 +151,7 @@ export function activateWorkSessions(sdk: PluginSdk, options: WorkSessionsOption
 				const workSession = registry.find(id);
 				if (!workSession) return { deleted: false };
 				const orphaned = isOrphanedCopySession(registry.list(), id);
+				chats.forget(workSession);
 				registry.delete(workSession);
 				const deletes = workSession.chatIds.map((chatId) =>
 					chats.write("delete chat", (handle) => handle.methods.delete({ id: chatId })),

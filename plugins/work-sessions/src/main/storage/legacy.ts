@@ -46,6 +46,8 @@ export function readLegacyWorkspaces(raw: unknown): PersistedWorkspaces {
 		workspaces: parsed<Workspace>(listOf(value.workspaces), workspaceSchema),
 		activeId: typeof value.activeId === "string" ? value.activeId : null,
 		importedFromOrigin: value.importedFromOrigin === true,
+		// The predecessors predate the marker, so their imports are checked again.
+		originImportVerified: false,
 	};
 }
 
@@ -76,6 +78,7 @@ export function readLegacyWorkSessions(raw: unknown): PersistedWorkSessions {
 			workSessionSchema,
 		),
 		importedFromOrigin: value.importedFromOrigin === true,
+		originImportVerified: false,
 		originArchivesReopened: value.originArchivesReopened === true,
 	};
 }

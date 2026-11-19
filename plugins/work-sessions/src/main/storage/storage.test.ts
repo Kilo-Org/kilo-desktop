@@ -32,7 +32,6 @@ const boot = (storage: MemoryStorage = ownStorage(), logger?: { warn: (m: string
 	bootWorkSessions({
 		storage,
 		core: false,
-		options: { storage: () => ({}) },
 		...(logger
 			? {
 					logger: {

@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import {
-	definePlugin,
-	KernelDataCollection,
-	KernelTelemetrySink,
-	type TelemetryEnvelope,
-} from "@kilo-desktop/kernel";
+import { definePlugin, KernelTelemetrySink, type TelemetryEnvelope } from "@kilo-desktop/kernel";
 import { testManifest } from "@kilo-desktop/kernel/testing";
 import { Reading, Theme } from "@kilo-desktop/plugin-shell/contracts";
 import { readingThemeStyle } from "@kilo-desktop/ui/lib/reading/reading-theme";
@@ -73,10 +68,6 @@ async function showReply(
 		chats: [chatSummary("ses_a")],
 		plugins: [telemetrySink(envelopes)],
 		...(options.strictMode ? { strictMode: true } : {}),
-	});
-	host.host.main.kernelSdk.domainObjects.provide(KernelDataCollection, {
-		initialState: { choice: true, allowed: true, installationId: "i", environment: "test" },
-		methods: { setChoice: () => {} },
 	});
 	await expect
 		.element(page.getByText("Then we fix the redirect after sign-in.").first())

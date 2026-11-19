@@ -112,8 +112,9 @@ runs:
         DIR: ${{ steps.pnpm-cli.outputs.dir }}
         VERSION: ${{ steps.pnpm-cli.outputs.version }}
       # PNPM_HOME keeps the value pnpm/action-setup gave it: pnpm puts its store
-      # under PNPM_HOME, and the store cache's key includes that path, so moving
-      # it would cold-start every store cache saved before this change.
+      # under PNPM_HOME, and actions/cache only restores an entry saved from the
+      # same path (the path is part of the cache version, alongside the key), so
+      # moving it would cold-start every store cache saved before this change.
       run: |
         echo "$DIR" >> "$GITHUB_PATH"
         pnpm_home="$HOME/setup-pnpm/node_modules/.bin"

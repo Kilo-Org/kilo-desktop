@@ -17,6 +17,14 @@ inputs:
   package-name:
     description: Workspace package that provides the installer.
     required: true
+  save-cache:
+    description: >
+      Save the download cache on a miss. CI jobs only restore: on a version bump
+      every test and e2e job misses at once, each would compress the same
+      download, and only the first save is kept. warm-caches.yml passes "true"
+      and saves it on main for every PR.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -38,20 +46,39 @@ runs:
     # Electron's installer (@electron/get) and electron-forge packaging read the
     # download cache before fetching the release from GitHub. The Playwright
     # browsers come from cdn.playwright.dev. A version pins each download, so
-    # neither cache goes stale. warm-caches.yml saves both on main.
-    - name: Cache Electron download
-      if: inputs.runtime == 'electron'
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ runner.os == 'Linux' && '~/.cache/electron' || runner.os == 'macOS' && '~/Library/Caches/electron' || '~/AppData/Local/electron/Cache' }}
-        key: electron-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime.outputs.version }}
+    # neither cache goes stale.
+    - name: Resolve the download cache
+      id: cache
+      shell: bash
+      env:
+        RUNTIME: ${{ inputs.runtime }}
+        VERSION: ${{ steps.runtime.outputs.version }}
+      run: |
+        case "$RUNNER_OS-$RUNTIME" in
+          Linux-electron) path="~/.cache/electron" ;;
+          macOS-electron) path="~/Library/Caches/electron" ;;
+          Windows-electron) path="~/AppData/Local/electron/Cache" ;;
+          Linux-playwright) path="~/.cache/ms-playwright" ;;
+          macOS-playwright) path="~/Library/Caches/ms-playwright" ;;
+          Windows-playwright) path="~/AppData/Local/ms-playwright" ;;
+        esac
+        name=$([[ "$RUNTIME" == electron ]] && echo electron || echo playwright-browsers)
+        echo "path=$path" >> "$GITHUB_OUTPUT"
+        echo "key=$name-$RUNNER_OS-$RUNNER_ARCH-$VERSION" >> "$GITHUB_OUTPUT"
 
-    - name: Cache Playwright browsers
-      if: inputs.runtime == 'playwright'
+    - name: Cache the ${{ inputs.runtime }} download
+      if: inputs.save-cache == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ${{ runner.os == 'Linux' && '~/.cache/ms-playwright' || runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/AppData/Local/ms-playwright' }}
-        key: playwright-browsers-${{ runner.os }}-${{ runner.arch }}-${{ steps.runtime.outputs.version }}
+        path: ${{ steps.cache.outputs.path }}
+        key: ${{ steps.cache.outputs.key }}
+
+    - name: Restore the ${{ inputs.runtime }} download
+      if: inputs.save-cache != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.cache.outputs.path }}
+        key: ${{ steps.cache.outputs.key }}
 
     # On a cache hit neither installer downloads anything. A miss downloads with
     # the installers' own stall timeouts inside these retries.

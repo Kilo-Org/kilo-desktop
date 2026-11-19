@@ -59,8 +59,10 @@ jobs:
         with:
           runtime: electron
           package-name: "@kilo-desktop/desktop"
+          save-cache: "true"
       - if: runner.os == 'Linux'
         uses: ./.github/actions/install-test-runtime
         with:
           runtime: playwright
           package-name: "@kilo-desktop/web"
+          save-cache: "true"

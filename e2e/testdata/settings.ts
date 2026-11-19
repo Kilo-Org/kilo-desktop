@@ -27,9 +27,10 @@ export const CONDA_ENVIRONMENTS_SECTION: SettingsSection = {
 
 /**
  * Every bundled settings section (`kilo.shell/settings-section`), as origin
- * listed them. Diagnostics (kilo.developer) and External AI apps (kilo.core's
- * `external-api-apps-settings`) are flag-gated; `package:e2e` forces both
- * flags on. Notebooks is sign-in gated.
+ * listed them. Diagnostics (kilo.developer), Conda Environments
+ * (`environments-feature`) and External AI apps (kilo.core's
+ * `external-api-apps-settings`) are flag-gated; `package:e2e` forces those
+ * flags on. Conda Environments and Notebooks are sign-in gated.
  */
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: "about", title: "About" },
@@ -37,10 +38,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: "appearance", title: "Appearance" },
 	{ id: "keyboard-shortcuts", title: "Shortcuts" },
 	{ id: "diagnostics", title: "Diagnostics" },
-	// Behind the LaunchDarkly `environments-feature` flag, which package:e2e does not force on,
-	// so whether the section renders depends on LaunchDarkly. Uncomment once package:e2e
-	// adds the flag to VITE_FEATURE_FLAG_OVERRIDES.
-	// CONDA_ENVIRONMENTS_SECTION,
+	CONDA_ENVIRONMENTS_SECTION,
 	{
 		id: "notebooks",
 		title: "Notebooks",

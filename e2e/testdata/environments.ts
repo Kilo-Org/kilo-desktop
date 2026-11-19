@@ -13,6 +13,4 @@ export const environmentsData = {
 	 * panel waits out silently for 120s before it offers a retry.
 	 */
 	settledTimeoutMs: 150_000,
-	flagOffSkipReason:
-		"Conda Environments is behind the `environments-feature` flag, which this build does not force on",
 } as const;

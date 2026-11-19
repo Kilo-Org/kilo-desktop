@@ -15,6 +15,7 @@ import {
 	isElementVisible,
 	pressPageKeyboard,
 } from "@anaconda/playwright-utils";
+import type { Locator } from "@playwright/test";
 
 import type { CondaSandbox } from "../../fixtures/environments.js";
 import { environmentsData } from "../../testdata/environments.js";
@@ -27,6 +28,8 @@ import { environmentsData } from "../../testdata/environments.js";
 export class EnvironmentsPage {
 	private readonly sectionDescription = () => getLocatorByTestId("settings-section-description");
 	private readonly provider = () => getLocatorByTestId("environments-provider-conda");
+	private readonly unavailableMessage = () =>
+		getLocatorByTestId("environments-unavailable-message");
 	private readonly list = () => getLocatorByTestId("environments-conda-list");
 	private readonly emptyList = () => getLocatorByTestId("environments-conda-empty");
 	private readonly loadError = () => getLocatorByTestId("environments-conda-error");
@@ -45,17 +48,22 @@ export class EnvironmentsPage {
 
 	/** Waits past sign-in and the bridge's warm-up; fails with the page's error if loading failed. */
 	async waitForEnvironmentsLoaded(): Promise<void> {
-		await expectElementToBeVisible(this.provider(), {
+		await expectElementToBeVisible(this.provider().or(this.unavailableMessage()), {
 			message:
 				"Conda Environments should open once Kilo sign-in and the conda bridge status resolve",
 			timeout: environmentsData.settledTimeoutMs,
 		});
+		await this.throwIfShown(this.unavailableMessage(), "Conda Environments is unavailable");
 		await expectElementToBeVisible(this.list().or(this.emptyList()).or(this.loadError()), {
 			message: "The environment list should finish loading once the conda bridge is ready",
 			timeout: environmentsData.settledTimeoutMs,
 		});
-		if (await isElementVisible(this.loadError(), { timeout: 0 })) {
-			throw new Error(`Conda Environments failed to load: ${await getText(this.loadError())}`);
+		await this.throwIfShown(this.loadError(), "Conda Environments failed to load");
+	}
+
+	private async throwIfShown(failure: Locator, reason: string): Promise<void> {
+		if (await isElementVisible(failure, { timeout: 0 })) {
+			throw new Error(`${reason}: ${await getText(failure)}`);
 		}
 	}
 

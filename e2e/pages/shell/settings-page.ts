@@ -6,7 +6,6 @@ import {
 	expectElementToHaveAttribute,
 	expectElementToHaveText,
 	getLocatorByTestId,
-	isElementVisible,
 } from "@anaconda/playwright-utils";
 
 import {
@@ -35,12 +34,6 @@ export class SettingsPage {
 
 	async openSection(section: SettingsSection): Promise<void> {
 		await click(this.sectionEntry(section.id));
-	}
-
-	/** Whether this build registers the section (flag-gated sections may be absent). */
-	async isSectionListed(section: SettingsSection): Promise<boolean> {
-		await expectElementToBeVisible(this.sidebar(), "Settings should take over the app sidebar");
-		return isElementVisible(this.sectionEntry(section.id));
 	}
 
 	async verifyLayout(): Promise<void> {

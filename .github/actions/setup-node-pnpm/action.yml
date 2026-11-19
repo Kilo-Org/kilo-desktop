@@ -139,6 +139,7 @@ runs:
         {
           echo "path=$(pnpm store path --silent)"
           echo "full-key=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
+          echo "full-prefix=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-"
           echo "key=pnpm-store-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
           echo "prefix=pnpm-store-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-"
         } >> "$GITHUB_OUTPUT"
@@ -159,13 +160,16 @@ runs:
     # a lockfile change merges) restores an older store, and saving its own
     # copy would only spend ~35 s uploading what main is about to hold. A merge
     # queue save is readable only by that queue run's temporary branch.
-    # Fails toward saving if the base commit can't be fetched.
+    # A pull_request run checks out the merge commit, whose first parent is the
+    # current base. github.event.pull_request.base.sha is not: it can be the
+    # older commit the branch started from, so a branch behind a lockfile change
+    # on main would look like it changed the lockfile itself.
+    # Fails toward saving if the parent can't be fetched.
     - name: Decide whether to save the pnpm store
       if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true'
       id: save-store
       shell: bash
       env:
-        BASE_SHA: ${{ github.event.pull_request.base.sha }}
         FULL_STORE_EXISTS: ${{ steps.full-store.outputs.cache-hit }}
       run: |
         save=true
@@ -173,8 +177,8 @@ runs:
         case "$GITHUB_EVENT_NAME" in
           merge_group) save=false ;;
           pull_request)
-            if git fetch --quiet --no-tags --depth=1 origin "$BASE_SHA" &&
-              git diff --quiet "$BASE_SHA" HEAD -- pnpm-lock.yaml; then
+            if git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" &&
+              git diff --quiet HEAD^1 HEAD -- pnpm-lock.yaml; then
               save=false
             fi
             ;;
@@ -187,9 +191,11 @@ runs:
     # ~1,250 packages again. The prefix fallback restores the closest store and
     # pnpm fetches only what changed. Caches saved on a PR branch are invisible
     # to other PRs; .github/workflows/warm-caches.yml saves them on main.
-    # A filtered scope falls back to the full store, which holds every package,
-    # before an older store of its own. For the full scope the first and third
-    # restore keys are the same entry, which actions/cache tolerates.
+    # The first matching restore key wins, so a filtered scope takes the current
+    # full store, then any older full store (both hold every package it needs),
+    # and its own older store only when no full store exists. For the full
+    # scope the primary key equals the first restore key and the second restore
+    # key equals the third, which actions/cache tolerates.
     - name: Cache the pnpm store
       if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -198,8 +204,8 @@ runs:
         key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
           ${{ steps.pnpm-store.outputs.full-key }}
+          ${{ steps.pnpm-store.outputs.full-prefix }}
           ${{ steps.pnpm-store.outputs.prefix }}
-          pnpm-store-full-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Restore the pnpm store
       if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save != 'true'
@@ -209,5 +215,5 @@ runs:
         key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
           ${{ steps.pnpm-store.outputs.full-key }}
+          ${{ steps.pnpm-store.outputs.full-prefix }}
           ${{ steps.pnpm-store.outputs.prefix }}
-          pnpm-store-full-${{ runner.os }}-${{ runner.arch }}-

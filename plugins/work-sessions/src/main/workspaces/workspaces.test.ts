@@ -190,17 +190,25 @@ describe("workspaces in new folders", () => {
 	});
 
 	it("removes the new folder again when the workspace can't be saved", async () => {
+		const project = await folder("Project");
 		const fresh = path.join(root, "Fresh");
 		const { workspaces } = await boot();
 
+		// Two primaries pass the input schema and fail only when saving, after the folder is made.
 		await expect(
 			workspaces.methods.create({
-				color: "orange",
-				folders: [{ path: fresh, isPrimary: true }],
+				folders: [
+					{ path: fresh, isPrimary: true },
+					{ path: project, isPrimary: true },
+				],
 				createFolders: [fresh],
 			}),
-		).rejects.toMatchObject({ code: "VALIDATION" });
-		await expect(readdir(root)).resolves.toEqual([]);
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: "A workspace must have exactly one primary folder.",
+		});
+		await expect(readdir(root)).resolves.toEqual(["Project"]);
+		expect(workspaces.getState().workspaces).toEqual([]);
 	});
 
 	it("offers Documents first, then the location of the last new folder, across launches", async () => {

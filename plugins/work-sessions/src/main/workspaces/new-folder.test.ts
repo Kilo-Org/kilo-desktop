@@ -102,6 +102,16 @@ describe("withNewFolders", () => {
 		},
 	);
 
+	it("refuses a new folder whose path climbs out of its location", () => {
+		// Joined as the renderer joins a typed name, so nothing normalizes the `..` away.
+		const requested = `${parent}${path.sep}..${path.sep}escaped`;
+
+		expect(() =>
+			withNewFolders([{ path: requested, isPrimary: true }], [requested], vi.fn()),
+		).toThrow(expect.objectContaining({ code: "VALIDATION" }));
+		expect(existsSync(path.join(path.dirname(parent), "escaped"))).toBe(false);
+	});
+
 	it("refuses a new folder whose location is missing or relative", () => {
 		for (const requested of [path.join(parent, "missing", "Fresh"), "relative/Fresh"]) {
 			expect(() =>

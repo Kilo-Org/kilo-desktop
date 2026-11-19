@@ -22,7 +22,7 @@ import { track } from "../telemetry";
 import { authorizePath } from "./authorize";
 import { comparablePath, unavailableFolderIds, validateFolders } from "./folders";
 import { newFolderPath, withNewFolders } from "./new-folder";
-import { createNewFolderLocation, defaultDocumentsDirectory } from "./new-folder-location";
+import { createNewFolderLocation, defaultLocations } from "./new-folder-location";
 import {
 	originImportMode,
 	recoverable,
@@ -40,7 +40,7 @@ export interface WorkspacesOptions {
 	readonly loadSqlite?: SqliteLoader;
 	/** How often folder availability is re-checked. */
 	readonly folderCheckIntervalMs?: number;
-	/** The default location for new folders before one has been used. */
+	/** The default location for new folders before one has been used (instead of Documents, then home). */
 	readonly documentsDirectory?: () => string | null;
 }
 
@@ -67,9 +67,10 @@ export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = 
 	const createId = options.createId ?? randomUUID;
 	const now = options.now ?? Date.now;
 	const store = workspacesStore(sdk);
+	const { documentsDirectory } = options;
 	const newFolderLocation = createNewFolderLocation({
 		store: newFolderLocationStore(sdk),
-		documentsDirectory: options.documentsDirectory ?? defaultDocumentsDirectory,
+		defaults: documentsDirectory ? () => [documentsDirectory()] : defaultLocations,
 	});
 	let unavailable: string[] = [];
 
@@ -98,7 +99,7 @@ export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = 
 				authorize: ({ path: target, rule }) =>
 					authorizePath(store.snapshot().workspaces, target, rule),
 				checkFolders: () => checkFolders(),
-				newFolderLocation: () => ({ path: newFolderLocation.get() }),
+				newFolderLocation: async () => ({ path: await newFolderLocation.get() }),
 				newFolderPath: ({ parentPath, name }) => ({ path: newFolderPath(parentPath, name) }),
 				rememberNewFolderLocation: ({ path: parentPath }) => {
 					newFolderLocation.remember(parentPath);
@@ -163,7 +164,14 @@ export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = 
 		const workspace = withNewFolders(input.folders, input.createFolders ?? [], (folders) =>
 			insert({ ...input, folders }),
 		);
-		if (firstNewFolder) newFolderLocation.remember(path.dirname(firstNewFolder));
+		if (firstNewFolder) {
+			// The workspace is saved; failing to keep the next default must not undo that.
+			try {
+				newFolderLocation.remember(path.dirname(firstNewFolder));
+			} catch (reason) {
+				sdk.logger.warn("Couldn't remember the new folder location.", reason);
+			}
+		}
 		return workspace;
 	}
 

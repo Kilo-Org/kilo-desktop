@@ -239,6 +239,63 @@ describe("GitHub repository source", () => {
 		await expect.element(list.getByRole("option", { name: "repo-30" })).toBeInViewport();
 	});
 
+	it("tells assistive technology which repository is highlighted", async () => {
+		await renderSource("kilo.git/github-repository", {
+			repository: { githubCliStatus: () => ({ status: "ready" }) },
+			github: {
+				list: () => ({
+					repositories: [repo("acme/app"), repo("acme/api")],
+					fetchedAt: 1,
+					refreshing: false,
+				}),
+			},
+		});
+		const search = page.getByRole("combobox", { name: "Search repositories or enter owner/name" });
+		const list = page.getByTestId("github-repository-list");
+		const app = list.getByRole("option", { name: "app" });
+		await expect.element(app).toBeVisible();
+		await expect.element(search).toHaveAttribute("aria-controls", list.element().id);
+		await expect.element(search).toHaveAttribute("aria-activedescendant", app.element().id);
+
+		await search.click();
+		await userEvent.keyboard("{ArrowDown}");
+
+		const api = list.getByRole("option", { name: "api" });
+		await expect.element(search).toHaveAttribute("aria-activedescendant", api.element().id);
+	});
+
+	it("doesn't pick a typed repository whose lookup settles after the person typed on", async () => {
+		let settleFirst!: () => void;
+		await renderSource("kilo.git/github-repository", {
+			repository: { githubCliStatus: () => ({ status: "ready" }) },
+			github: {
+				list: () => ({ repositories: [repo("acme/app")], fetchedAt: 1, refreshing: false }),
+				resolve: ({ repository }: { repository: string }) =>
+					repository === "other/tool"
+						? new Promise((resolve) => {
+								settleFirst = () => resolve(repo("other/tool"));
+							})
+						: repo("other/thing"),
+			},
+		});
+		const search = page.getByLabelText("Search repositories or enter owner/name");
+		await search.fill("other/tool");
+		await page.getByRole("option", { name: "Clone other/tool" }).click();
+		await expect.element(page.getByText("Checking other/tool…")).toBeVisible();
+
+		await search.fill("acme");
+		settleFirst();
+		// Had the stale lookup picked other/tool, the picker would be gone by now.
+		await search.fill("other/thing");
+		await page.getByRole("option", { name: "Clone other/thing" }).click();
+
+		await expect
+			.element(
+				page.getByTestId("github-repository-chosen").getByText("other/thing", { exact: true }),
+			)
+			.toBeVisible();
+	});
+
 	it("goes back to the list to choose another repository", async () => {
 		await renderSource("kilo.git/github-repository", {
 			repository: { githubCliStatus: () => ({ status: "ready" }) },

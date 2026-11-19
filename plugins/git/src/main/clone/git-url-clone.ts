@@ -32,6 +32,14 @@ export function parseGitUrl(input: string): string | null {
 	return URL_FORM.test(url) || SCP_FORM.test(url) ? url : null;
 }
 
+/** Userinfo in a scheme URL (`https://user:token@host/…`), which can carry a credential. */
+const SCHEME_USERINFO = /(\b[a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi;
+
+/** `text` with any scheme URL's userinfo removed, so a token pasted in a URL never reaches a message. */
+export function withoutUrlCredentials(text: string): string {
+	return text.replace(SCHEME_USERINFO, "$1");
+}
+
 /** The server a clone URL points at, for error messages. */
 function hostOf(url: string): string {
 	return (
@@ -72,6 +80,20 @@ const GIT_URL_FAILURES: readonly KnownCloneFailure[] = [
 ];
 
 /**
+ * The timeout signal firing. git-client rejects a spawn aborted by its signal
+ * with its own `ExecError` (not exported) carrying Node's `ABORT_ERR` code,
+ * not with an `AbortError`/`TimeoutError`, so the code is what's checked.
+ */
+function isAbort(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	return (
+		(error as { code?: unknown }).code === "ABORT_ERR" ||
+		error.name === "AbortError" ||
+		error.name === "TimeoutError"
+	);
+}
+
+/**
  * Clones any Git remote into `destination` (which must not exist yet) with
  * plain `git clone`, using the user's own credential helper or SSH keys.
  * Prompts are disabled so a missing credential fails instead of hanging on
@@ -103,13 +125,13 @@ export async function cloneGitUrl(
 		}
 		if (isGitError(error)) {
 			throw describeCloneFailure(
-				String(error.result.stderr ?? ""),
-				{ repository: url, host: hostOf(url) },
+				withoutUrlCredentials(String(error.result.stderr ?? "")),
+				{ repository: withoutUrlCredentials(url), host: hostOf(url) },
 				GIT_URL_FAILURES,
 				"The repository could not be cloned.",
 			);
 		}
-		if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) {
+		if (isAbort(error)) {
 			throw new KernelError("BUSINESS", "Cloning took too long and was stopped.");
 		}
 		throw error;

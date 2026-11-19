@@ -1,12 +1,18 @@
 import { useId, useState } from "react";
 
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
+import {
+	Field,
+	FieldDescription,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@kilo-desktop/ui/components/field";
 import { Input } from "@kilo-desktop/ui/components/input";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { DEFAULT_WORKSPACE_IDENTITY_COLOR, type NewFolderFormProps } from "../../contracts";
 import { FILLED_INPUT_CLASS, FILLED_SWATCH_CLASS } from "@kilo-desktop/ui/lib/filled-styles";
-import { joinFolderPath } from "./folder-path";
+import { folderNameProblem, joinFolderPath } from "./folder-path";
 import { LocationPicker } from "./LocationPicker";
 import { useNewFolderServices } from "./new-folder-context";
 import { useReportDraft } from "./workspace-source-host";
@@ -41,11 +47,12 @@ export function NewFolderForm({
 	const location = chosenLocation ?? services.defaultLocation;
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<{ title: string; message: string } | null>(null);
-	const canSubmit = ready && folderName !== "" && location !== null && !pending;
+	const nameProblem = folderName ? folderNameProblem(folderName) : null;
+	const canSubmit = ready && folderName !== "" && !nameProblem && location !== null && !pending;
 	useReportDraft(services.onDraft, {
 		name: folderName,
 		color,
-		folders: location && folderName ? [joinFolderPath(location, folderName)] : [],
+		folders: location && folderName && !nameProblem ? [joinFolderPath(location, folderName)] : [],
 	});
 
 	const chooseLocation = async () => {
@@ -98,10 +105,15 @@ export function NewFolderForm({
 							value={name}
 							onChange={(event) => setTypedName(event.target.value)}
 							placeholder="e.g. My project"
+							aria-invalid={nameProblem ? true : undefined}
 							className={cn(filled && FILLED_INPUT_CLASS)}
 							data-qa-id="new-folder-workspace-name"
 						/>
-						<FieldDescription>Also used as the new folder&apos;s name.</FieldDescription>
+						{nameProblem ? (
+							<FieldError>{nameProblem}</FieldError>
+						) : (
+							<FieldDescription>Also used as the new folder&apos;s name.</FieldDescription>
+						)}
 					</Field>
 					<Field>
 						<FieldLabel>Identity color</FieldLabel>

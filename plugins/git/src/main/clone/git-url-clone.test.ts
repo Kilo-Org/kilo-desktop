@@ -108,4 +108,40 @@ describe("cloneGitUrl", () => {
 			cloneGitUrl({ exec }, { url: "https://gitlab.com/g/p.git", destination: "/projects/p" }),
 		).rejects.toMatchObject({ code: "BUSINESS", message: GIT_NOT_FOUND_MESSAGE });
 	});
+
+	it("explains a clone stopped by its timeout", async () => {
+		// git-client rejects an aborted spawn with a plain Error carrying Node's code.
+		const aborted = Object.assign(new Error("The operation was aborted for clone"), {
+			code: "ABORT_ERR",
+		});
+		const exec = vi.fn().mockRejectedValue(aborted);
+
+		await expect(
+			cloneGitUrl({ exec }, { url: "https://gitlab.com/g/p.git", destination: "/projects/p" }),
+		).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: "Cloning took too long and was stopped.",
+		});
+	});
+
+	it("keeps a credential in the URL out of its messages", async () => {
+		const url = "https://me:s3cret@gitlab.com/g/p.git";
+		const exec = vi
+			.fn()
+			.mockRejectedValueOnce(gitFailure(`fatal: repository '${url}/' not found`))
+			.mockRejectedValueOnce(gitFailure(`fatal: unexpected failure talking to ${url}`));
+
+		const notFound = cloneGitUrl({ exec }, { url, destination: "/projects/p" });
+		await expect(notFound).rejects.toMatchObject({ code: "NOT_FOUND" });
+		await expect(notFound).rejects.not.toMatchObject({
+			message: expect.stringContaining("s3cret"),
+		});
+		const unknown = cloneGitUrl({ exec }, { url, destination: "/projects/p" });
+		await expect(unknown).rejects.toMatchObject({
+			message: expect.stringContaining("https://gitlab.com/g/p.git"),
+		});
+		await expect(unknown).rejects.not.toMatchObject({
+			message: expect.stringContaining("s3cret"),
+		});
+	});
 });

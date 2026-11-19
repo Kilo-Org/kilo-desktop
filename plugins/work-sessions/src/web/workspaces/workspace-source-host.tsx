@@ -15,6 +15,7 @@ import {
 	useContextKey,
 	useDomainObject,
 	useExtensions,
+	useSdk,
 } from "@kilo-desktop/kernel/web";
 
 import {
@@ -62,20 +63,27 @@ export function useWorkspaceSources(): SourceContribution[] {
 	return sources;
 }
 
-/** The default location for a new folder, asked of main once per host. */
+/**
+ * The default location for a new folder, asked of main once per host (and
+ * again only if workspaces come back). Keyed on availability, not the handle,
+ * which is a new object every render.
+ */
 function useDefaultLocation(): string | null {
-	const workspaces = useDomainObject(Workspaces);
+	const sdk = useSdk();
+	const available = useDomainObject(Workspaces) !== null;
 	const [location, setLocation] = useState<string | null>(null);
 	useEffect(() => {
+		if (!available) return;
 		let current = true;
-		workspaces?.methods
-			.newFolderLocation(undefined)
+		sdk.domainObjects
+			.get(Workspaces)
+			?.methods.newFolderLocation(undefined)
 			.then(({ path }) => current && setLocation(path))
 			.catch(() => undefined);
 		return () => {
 			current = false;
 		};
-	}, [workspaces]);
+	}, [sdk, available]);
 	return location;
 }
 

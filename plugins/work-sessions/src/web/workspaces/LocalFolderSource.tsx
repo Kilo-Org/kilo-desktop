@@ -8,7 +8,7 @@ import {
 	type WorkspaceSourceImplementation,
 	type WorkspaceSourceProps,
 } from "../../contracts";
-import { joinFolderPath } from "./folder-path";
+import { folderNameProblem, joinFolderPath } from "./folder-path";
 import { useNewFolderServices } from "./new-folder-context";
 import { useFolderPicking, useWorkspaceForm } from "./useWorkspaceForm";
 import { useReportDraft } from "./workspace-source-host";
@@ -30,7 +30,9 @@ function LocalFolderSource({ onCreated, appearance, children }: WorkspaceSourceP
 	const [pending, setPending] = useState(false);
 	const creatingFolder = mode === "new";
 	const folderName = form.name.trim();
-	const newFolder = location !== null && folderName ? joinFolderPath(location, folderName) : null;
+	const nameProblem = creatingFolder && folderName ? folderNameProblem(folderName) : null;
+	const newFolder =
+		location !== null && folderName && !nameProblem ? joinFolderPath(location, folderName) : null;
 	const canSubmit = creatingFolder ? newFolder !== null : form.folders.length > 0;
 	useReportDraft(services.onDraft, {
 		name: form.name.trim(),
@@ -97,6 +99,7 @@ function LocalFolderSource({ onCreated, appearance, children }: WorkspaceSourceP
 		body: (
 			<WorkspaceFormFields
 				{...form}
+				error={form.error ?? nameProblem}
 				appearance={appearance}
 				folderChoice={{
 					mode,

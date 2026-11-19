@@ -46,14 +46,36 @@ export function newFolderPath(parentPath: string, name: string): string {
 	return destination;
 }
 
+/** Why a folder couldn't be made, as copy that survives the IPC boundary. */
+function mkdirFailure(reason: unknown, name: string): unknown {
+	switch ((reason as NodeJS.ErrnoException).code) {
+		case "EEXIST":
+			return folderExistsError(name);
+		case "EACCES":
+		case "EPERM":
+			return new KernelError(
+				"BUSINESS",
+				"You don't have permission to create a folder in that location. Choose another location.",
+			);
+		case "EROFS":
+			return new KernelError(
+				"BUSINESS",
+				"That location is read-only. Choose another location for the new folder.",
+			);
+		case "ENOSPC":
+			return new KernelError("BUSINESS", "There isn't enough disk space to create the folder.");
+		case "ENAMETOOLONG":
+			return new KernelError("VALIDATION", `"${name}" is too long for a folder name.`);
+		default:
+			return new KernelError("BUSINESS", `The folder "${name}" couldn't be created.`);
+	}
+}
+
 function makeEmptyFolder(destination: string): void {
 	try {
 		mkdirSync(destination);
 	} catch (reason) {
-		if ((reason as NodeJS.ErrnoException).code === "EEXIST") {
-			throw folderExistsError(path.basename(destination));
-		}
-		throw reason;
+		throw mkdirFailure(reason, path.basename(destination));
 	}
 }
 
@@ -76,6 +98,10 @@ export function withNewFolders<T>(
 				"VALIDATION",
 				"A new folder must also be one of the workspace's folders.",
 			);
+		}
+		// A `..` segment would put the folder outside the location it names.
+		if (requested.split(/[\\/]/).some((segment) => segment === "." || segment === "..")) {
+			throw new KernelError("VALIDATION", "A new folder's path can't contain . or .. segments.");
 		}
 		return {
 			requested,

@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookMarkedIcon, LockIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
-import { useDeferredValue, useRef, useState, type ReactNode } from "react";
+import {
+	useDeferredValue,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type ReactNode,
+	type RefObject,
+} from "react";
 
 import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -133,12 +140,17 @@ function RepositoryPicker({
 		onSuccess: (result) => queries.setQueryData(GITHUB_REPOSITORIES_KEY, result),
 	});
 	const isRefreshing = reload.isPending || repositories.data?.refreshing === true;
+	// What the search field holds now, for a lookup that settles after the
+	// person typed on: it only selects what is still typed.
+	const currentTyped = useRef("");
 	// A typed repository isn't in the list, so confirm it exists (and take its
 	// canonical name) here rather than failing later, mid-clone.
 	const verify = useMutation({
 		mutationFn: (typedRepository: string) =>
 			(github ?? gitUnavailable()).methods.resolve({ repository: typedRepository }),
-		onSuccess: (resolved) => onSelect(selection(resolved)),
+		onSuccess: (resolved, typedRepository) => {
+			if (typedRepository === currentTyped.current) onSelect(selection(resolved));
+		},
 	});
 
 	const [search, setSearch] = useState("");
@@ -160,6 +172,9 @@ function RepositoryPicker({
 	const entries = listEntries(filtered, offerTyped);
 	const firstOption = filtered[0]?.nameWithOwner ?? (offerTyped ? TYPED_REPOSITORY_VALUE : "");
 	const scrollToHighlighted = useRef<((value: string) => void) | null>(null);
+	const commandRef = useRef<HTMLDivElement>(null);
+	const searchRef = useRef<HTMLInputElement>(null);
+	useActiveOptionAria(commandRef, searchRef, highlighted ?? firstOption);
 
 	const filled = appearance === "filled";
 
@@ -172,13 +187,16 @@ function RepositoryPicker({
 				status={noticeStatus}
 				checking={recheck.isPending}
 				onCheckAgain={() => recheck.mutate()}
-				onInstall={() => void os?.methods.openExternal({ url: GITHUB_CLI_URL })}
+				onInstall={() =>
+					void os?.methods.openExternal({ url: GITHUB_CLI_URL }).catch(() => undefined)
+				}
 			/>
 		) : (
 			<div className="flex min-w-0 flex-col gap-2">
 				{/* A bare cmdk root: its keydown handling still drives arrow and
 					    Enter navigation from the plain search field above the list. */}
 				<Command
+					ref={commandRef}
 					label="Repositories"
 					shouldFilter={false}
 					value={highlighted ?? firstOption}
@@ -191,10 +209,15 @@ function RepositoryPicker({
 					<div className="flex items-center gap-2">
 						<InputGroup className={cn("flex-1", filled && FILLED_INPUT_GROUP_CLASS)}>
 							<InputGroupInput
+								ref={searchRef}
 								type="search"
+								role="combobox"
+								aria-autocomplete="list"
+								aria-expanded
 								value={search}
 								onChange={(event) => {
 									setSearch(event.currentTarget.value);
+									currentTyped.current = event.currentTarget.value.trim();
 									setHighlighted(null);
 									verify.reset();
 								}}
@@ -257,6 +280,36 @@ function RepositoryPicker({
 			</div>
 		),
 	});
+}
+
+/**
+ * Points the search field (a combobox) at cmdk's list and its highlighted
+ * option, so a screen reader announces the highlight as arrows move it. cmdk
+ * wires this only for its own input and gives items generated ids, so the
+ * highlighted item (by its `data-value`) and the list are read from the DOM.
+ */
+function useActiveOptionAria(
+	rootRef: RefObject<HTMLElement | null>,
+	inputRef: RefObject<HTMLInputElement | null>,
+	/** The highlighted option's cmdk value. */
+	highlight: string,
+): void {
+	useLayoutEffect(() => {
+		const input = inputRef.current;
+		const root = rootRef.current;
+		if (!input || !root) return;
+		const list = root.querySelector<HTMLElement>("[cmdk-list]");
+		const active = highlight
+			? root.querySelector<HTMLElement>(`[cmdk-item][data-value="${CSS.escape(highlight)}"]`)
+			: null;
+		setOrRemove(input, "aria-controls", list?.id);
+		setOrRemove(input, "aria-activedescendant", active?.id);
+	}, [rootRef, inputRef, highlight]);
+}
+
+function setOrRemove(element: HTMLElement, name: string, value: string | undefined): void {
+	if (value) element.setAttribute(name, value);
+	else element.removeAttribute(name);
 }
 
 /** Varied so the placeholder reads as a list of names rather than a block. */

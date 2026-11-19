@@ -30,7 +30,7 @@ import {
  * The New workspace dialog: first how to start (the `workspace-source`
  * contributions, highest priority first), then that source's screens in the
  * dialog's header, body and footer. A created workspace becomes active and
- * the dialog closes.
+ * the dialog closes. It can't be dismissed while the action runs.
  */
 export function CreateWorkspaceDialog({ onClose }: { onClose(): void }) {
 	const sources = useWorkspaceSources();
@@ -43,10 +43,14 @@ export function CreateWorkspaceDialog({ onClose }: { onClose(): void }) {
 		reset();
 		setChosenKey(null);
 	};
+	// While a source's action runs (a clone), the dialog can't be dismissed: the
+	// action would still create and activate the workspace after it closed.
+	const busy = chosen !== null && screen?.busy === true;
 
 	return (
-		<Dialog open onOpenChange={(open) => !open && onClose()}>
+		<Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
 			<DialogContent
+				showCloseButton={!busy}
 				data-qa-id="workspace-create-dialog"
 				className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
 			>
@@ -71,18 +75,14 @@ export function CreateWorkspaceDialog({ onClose }: { onClose(): void }) {
 								type="button"
 								variant="outline"
 								className="sm:mr-auto"
-								disabled={screen?.busy}
+								disabled={busy}
 								onClick={onClose}
 							>
 								Cancel
 							</Button>
 							{primary ? (
-								<Button
-									type="button"
-									disabled={screen?.busy || primary.disabled}
-									onClick={primary.onClick}
-								>
-									{screen?.busy ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+								<Button type="button" disabled={busy || primary.disabled} onClick={primary.onClick}>
+									{busy ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 									{primary.label}
 								</Button>
 							) : null}

@@ -26,6 +26,7 @@ const downloadedState: UpdateState = {
 	enabled: true,
 	status: "downloaded",
 	track: "stable",
+	installedTrack: "stable",
 	currentVersion: "1.2.2",
 	availableVersion: "1.2.3",
 	downloadedVersion: "1.2.3",
@@ -57,6 +58,22 @@ const availableState: UpdateState = {
 	downloadedVersion: null,
 	downloadUrl:
 		"https://updates.example.com/kilo-desktop/latest/linux/x64/kilo-desktop_1.2.3_amd64.deb",
+};
+
+/** A Preview installation on the Preview track, before any switch. */
+const previewInstallState: UpdateState = {
+	...idleState,
+	track: "preview",
+	installedTrack: "preview",
+	currentVersion: "1.2.3-preview-261118-10302",
+	availableVersion: null,
+};
+
+/** The same installation after switching to Stable, before Stable has caught up. */
+const waitingForStableState: UpdateState = {
+	...previewInstallState,
+	status: "up-to-date",
+	track: "stable",
 };
 
 type ActionResult = { accepted: boolean; state: UpdateState };
@@ -529,6 +546,47 @@ describe("About settings", () => {
 		await page.getByTestId("update-track-preview").click();
 
 		await expect.element(page.getByText("Switching update tracks is not enabled.")).toBeVisible();
+	});
+
+	it("explains that a Preview installation moves to Stable with the next Stable release", async () => {
+		const openExternal = vi.fn(() => true);
+		await openAbout({
+			state: previewInstallState,
+			os: { openExternal },
+			updater: { setTrack: () => ({ accepted: true, state: waitingForStableState }) },
+		});
+		await expect.element(page.getByTestId("update-track-awaiting-stable")).not.toBeInTheDocument();
+
+		await page.getByTestId("update-track").click();
+		await page.getByTestId("update-track-stable").click();
+
+		await vi.waitFor(() =>
+			expect(page.getByTestId("update-track-awaiting-stable").element().textContent).toContain(
+				"You'll be offered Stable 1.2.3 or later once it's released.",
+			),
+		);
+		await expect
+			.element(page.getByTestId("update-status-message"))
+			.toHaveTextContent("Waiting for Stable 1.2.3 or later.");
+
+		await page.getByTestId("update-track-download-stable").click();
+
+		await vi.waitFor(() => expect(openExternal).toHaveBeenCalledWith("https://kilo.ai/install"));
+	});
+
+	it("drops the Stable explanation once a Stable update is on its way", async () => {
+		await openAbout({
+			state: {
+				...downloadedState,
+				installedTrack: "preview",
+				currentVersion: "1.2.3-preview-261118-10302",
+			},
+		});
+
+		await expect
+			.element(page.getByTestId("update-status-message"))
+			.toHaveTextContent("Version 1.2.3 is ready to install.");
+		await expect.element(page.getByTestId("update-track-awaiting-stable")).not.toBeInTheDocument();
 	});
 
 	it("offers the track only while the switcher flag is on", async () => {

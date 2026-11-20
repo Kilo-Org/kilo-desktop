@@ -66,19 +66,29 @@ overrides:
   # Source-map upload still gets both through the @sentry/vite-plugin devDep.
   "@sentry/node>@sentry/bundler-plugins": "-"
 
+# Every `true` costs install time in each fresh worktree whose package versions
+# are not yet built in the store, so allow only scripts that are needed.
 allowBuilds:
+  # No install script since Electron 44: the binary downloads on first launch.
   electron: true
+  # Picks the 7-Zip binary for the Windows installer maker.
   electron-winstaller: true
+  # Verifies its platform binary.
   esbuild: true
+  # 13.x ships prebuilds with `gypfile: false`, so it runs no install script.
   better-sqlite3: true
+  # Selects a shipped prebuild; compiles only when none matches.
   node-pty: true
   # koffi is a general-purpose FFI (arbitrary syscall capability) in the main
   # process; used only by the notebook daemon peer-credential check. Its addon
   # ships in prebuilt @koromix/koffi-* siblings (no build script), but the koffi
   # package itself runs a native prebuild step, so it needs a build allowance.
   koffi: true
+  # The only real compiles (node-gyp): the macOS DMG maker (appdmg) needs both
+  # for `pnpm make`. The store caches the build, so it runs once per version.
   fs-xattr: true
   macos-alias: true
+  # Copies its shipped prebuild into build/Release.
   "@github/keytar": true
   "@anaconda/playwright-utils": false
   unrs-resolver: false

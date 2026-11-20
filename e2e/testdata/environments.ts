@@ -11,7 +11,8 @@ export const environmentsData = {
 	seededEnvName: "e2e-seeded",
 	/**
 	 * One budget for the whole load: Kilo sign-in (up to 120s on a cold CI Kilo server) plus the
-	 * bridge's cold start, which the panel waits out silently for 120s before it offers a retry.
+	 * bridge's cold start (the panel waits out 120s before it offers a retry), with margin. Stays
+	 * under the 360s test timeout so the shell and settings steps still fit.
 	 */
-	settledTimeoutMs: 150_000,
+	settledTimeoutMs: 270_000,
 } as const;

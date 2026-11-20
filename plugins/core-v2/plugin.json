@@ -2,7 +2,7 @@
 	"manifestVersion": 1,
 	"id": "kilo.core",
 	"displayName": "Kilo",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"description": "The Kilo server and everything it knows: identity, terms, AI providers and models, chats and tools.",
 	"main": "./src/main/index.ts",
 	"permissions": {

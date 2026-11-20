@@ -28,10 +28,11 @@ env:
   GIT_CONFIG_KEY_5: init.defaultBranch
   GIT_CONFIG_VALUE_5: main
 
-# One job per runner type saves the pnpm store on a lockfile change: lint-format
-# on Linux and each `test` leg on Windows and macOS (under its own "platform"
-# store scope, and only when main holds no full store for the lockfile yet).
-# Every other job passes save-pnpm-store: "false" and only restores.
+# One job per runner type saves caches when a PR changes their key inputs:
+# lint-format saves the pnpm store and node_modules on Linux; each `test` leg
+# on Windows and macOS saves only its filtered node_modules (a filtered install
+# never saves a store). Every other job passes save-pnpm-store: "false" and
+# only restores.
 jobs:
   lint-format:
     runs-on: blacksmith-4vcpu-ubuntu-2404

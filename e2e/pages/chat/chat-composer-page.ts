@@ -132,6 +132,31 @@ export class ChatComposerPage {
 		await click(this.sendButton());
 	}
 
+	async pressKey(key: string): Promise<void> {
+		await this.messageInput().press(key);
+	}
+
+	/** Types `text` at the caret, one key at a time, after what is already in the composer. */
+	async appendMessageSequentially(text: string): Promise<void> {
+		await pressSequentially(this.messageInput(), text);
+	}
+
+	async verifyComposerHoldsText(text: string): Promise<void> {
+		await expectElementToContainText(this.messageInput(), text, {
+			message: `The composer should still hold "${text}" unsent`,
+		});
+	}
+
+	/** The welcome composer is still the draft: no session has started. */
+	async verifyStillOnDraft(): Promise<void> {
+		await expectElementToBeVisible(getLocatorByTestId("kilo-session-starter"), {
+			message: "The New Session page's starter should still be showing",
+		});
+		await expectElementToBeHidden(getLocatorByTestId("kilo-agent-pane"), {
+			message: "No session should have started",
+		});
+	}
+
 	/**
 	 * Types `/query` one key at a time, so the rich input sees the leading slash
 	 * and opens Kilo's command menu filtered to `query`.

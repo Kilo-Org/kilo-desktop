@@ -41,8 +41,7 @@ export class SidemenuPage {
 	private readonly chatActions = () => getLocatorByTestId(SESSION_LIST.navigationTestId);
 	private readonly newSession = () => getLocatorByTestId(SESSION_LIST.newSessionTestId);
 	private readonly search = () => getLocatorByTestId(SESSION_LIST.searchTestId);
-	private readonly searchInput = () =>
-		getLocatorByRole("combobox", { name: "Search sessions and workspaces" });
+	private readonly searchInput = () => getLocatorByTestId(SESSION_LIST.searchInputTestId);
 	private readonly searchScopeAll = () => getLocatorByTestId(SESSION_LIST.searchScopeAllTestId);
 	private readonly searchSessionResult = (title: string) =>
 		getLocatorByTestId(SESSION_LIST.searchSessionTestIdPattern).filter({ hasText: title });

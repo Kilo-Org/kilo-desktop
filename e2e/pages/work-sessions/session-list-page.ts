@@ -5,6 +5,7 @@ import {
 	expectElementToBeHidden,
 	expectElementToBeVisible,
 	expectElementToHaveAttribute,
+	expectElementToHaveText,
 	fill,
 	focus,
 	getAttribute,
@@ -230,16 +231,13 @@ export class SessionListPage {
 	}
 
 	/**
-	 * The listed titles, in the order the list shows them. The library has no
-	 * ordered-text assertion, so this uses Playwright's, as the focus
-	 * assertion above does. Exact titles: the assertion also pins how many
-	 * rows are listed.
+	 * The listed titles, in the order the list shows them. An array of exact
+	 * titles also pins how many rows are listed.
 	 */
 	async verifyRowOrder(titles: readonly string[]): Promise<void> {
-		await expect(
-			this.rowTitles(),
-			`The list should show ${titles.join(", ")} in that order`,
-		).toHaveText([...titles]);
+		await expectElementToHaveText(this.rowTitles(), [...titles], {
+			message: `The list should show ${titles.join(", ")} in that order`,
+		});
 	}
 
 	/** Asks to delete a session, leaving the confirmation open. */

@@ -6,7 +6,7 @@ import type {
 import type {
 	OpenCodeMessageQueueController,
 	OpenCodeMessageQueueDriver,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 

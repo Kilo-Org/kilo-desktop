@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOpenCodeThreadState } from "@assistant-ui/react-opencode";
+import { createOpenCodeThreadState } from "@kilo-desktop/react-opencode";
 
 import {
 	childSessionIdForToolCall,

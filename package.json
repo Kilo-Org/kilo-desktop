@@ -54,7 +54,6 @@
 	"devDependencies": {
 		"@interfere/landmines": "^0.1.0",
 		"@kilo-desktop/ui": "workspace:*",
-		"@opencode-ai/sdk": "workspace:*",
 		"@oxlint/plugins": "^1.93.0",
 		"@types/node": "^26.0.0",
 		"@vitest/coverage-v8": "catalog:",
@@ -73,8 +72,5 @@
 		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"wait-on": "^9.5.1"
-	},
-	"dependencies": {
-		"@assistant-ui/react-opencode": "0.2.17"
 	}
 }

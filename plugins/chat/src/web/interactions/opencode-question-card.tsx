@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { OpenCodeQuestionRequest, QuestionAnswer } from "@assistant-ui/react-opencode";
+import type { OpenCodeQuestionRequest, QuestionAnswer } from "@kilo-desktop/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";

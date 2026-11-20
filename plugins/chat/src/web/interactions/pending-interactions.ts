@@ -2,7 +2,7 @@ import type {
 	OpenCodePermissionRequest,
 	OpenCodeQuestionRequest,
 	OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 
 import {
 	childSessionIdFromTaskPart,

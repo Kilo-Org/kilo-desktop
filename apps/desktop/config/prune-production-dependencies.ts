@@ -10,8 +10,8 @@ import path from "node:path";
 // anyone who extracts app.asar. An allowlist keeps new top-level folders from
 // shipping by default, whether they arrive via `pnpm deploy` or the
 // linked-plugin copy in forge.config.ts. Workspace packages are identified by
-// the caller's workspace listing, not by scope: some ship under third-party
-// names (the `@opencode-ai/sdk` shim).
+// the caller's workspace listing, not by scope: one may ship under a
+// third-party name (as the old `@opencode-ai/sdk` shim did).
 const workspacePackageRuntimeEntries = new Set([
 	"build",
 	"dist",

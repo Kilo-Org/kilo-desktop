@@ -1,0 +1,33 @@
+{
+	"name": "@kilo-desktop/react-opencode",
+	"version": "0.2.17-kilo.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.chat's fork of @assistant-ui/react-opencode 0.2.17 (MIT), with Kilo Desktop's changes in source",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../../LICENSE.md",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"sideEffects": false,
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@assistant-ui/core": "^0.3.35",
+		"@assistant-ui/store": "^0.3.23",
+		"@kilocode/sdk": "7.8.27"
+	},
+	"peerDependencies": {
+		"@assistant-ui/react": "^0.15.0",
+		"react": "^18 || ^19"
+	},
+	"devDependencies": {
+		"@assistant-ui/react": "0.15.35",
+		"@types/react": "^19.2.17",
+		"react": "^19.3.1",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

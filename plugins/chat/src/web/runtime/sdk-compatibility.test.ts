@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createOpencodeClient, type OpencodeClient } from "@assistant-ui/react-opencode";
+import { createOpencodeClient, type OpencodeClient } from "@kilo-desktop/react-opencode";
 import { createKiloClient, KiloClient } from "@kilocode/sdk/v2/client";
 
 describe("OpenCode SDK compatibility facade", () => {

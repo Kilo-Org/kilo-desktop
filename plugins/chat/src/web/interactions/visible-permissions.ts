@@ -1,4 +1,4 @@
-import type { OpenCodePermissionRequest } from "@assistant-ui/react-opencode";
+import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode";
 import { useEffect, useState } from "react";
 
 import type { Contribution, DomainObjectState, PluginSdk } from "@kilo-desktop/kernel";

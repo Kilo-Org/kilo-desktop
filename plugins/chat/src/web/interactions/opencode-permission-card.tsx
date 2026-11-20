@@ -3,7 +3,7 @@ import { useAuiState } from "@assistant-ui/react";
 import type {
 	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { Badge } from "@kilo-desktop/ui/components/badge";

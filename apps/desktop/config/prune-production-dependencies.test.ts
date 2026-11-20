@@ -175,8 +175,8 @@ describe("pruneProductionDependencies", () => {
 	});
 
 	it("prunes workspace packages deployed under a non-workspace scope", async () => {
-		// The opencode SDK shim is a workspace package published as
-		// `@opencode-ai/sdk`, so scope alone cannot identify our packages.
+		// A workspace package published under a third-party name (like the old
+		// `@opencode-ai/sdk` shim) can't be identified by scope alone.
 		const nodeModules = makeNodeModules();
 		const shim = makePackage(nodeModules, "@opencode-ai/sdk", [
 			"src/v2/client.ts",

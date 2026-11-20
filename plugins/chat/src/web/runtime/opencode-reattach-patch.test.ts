@@ -1,10 +1,10 @@
-import { OpenCodeThreadController, type OpenCodeServerEvent } from "@assistant-ui/react-opencode";
-import type { OpencodeClient } from "@opencode-ai/sdk/v2/client";
+import { OpenCodeThreadController, type OpenCodeServerEvent } from "@kilo-desktop/react-opencode";
+import type { KiloClient as OpencodeClient } from "@kilocode/sdk/v2/client";
 import { describe, expect, it, vi } from "vitest";
 
 /*
- * Reattaching in the pnpm patch (plugins/chat/patches/
- * @assistant-ui__react-opencode@0.2.17.patch): a thread whose listeners all
+ * Reattaching in kilo.chat's react-opencode fork
+ * (plugins/chat/react-opencode): a thread whose listeners all
  * left (a hidden Activity, a tab switched away) only watches whether anything
  * for it arrived. Coming back refreshes its history only if something did,
  * so showing a kept chat again doesn't fetch and rebuild its whole history.

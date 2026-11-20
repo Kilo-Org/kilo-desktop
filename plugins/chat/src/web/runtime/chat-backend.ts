@@ -1,5 +1,5 @@
 import { MessageNotSentError } from "@assistant-ui/react";
-import type { OpenCodeRuntimeBackend, OpenCodeSessionRef } from "@assistant-ui/react-opencode";
+import type { OpenCodeRuntimeBackend, OpenCodeSessionRef } from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { ChatServices } from "./chat-services";

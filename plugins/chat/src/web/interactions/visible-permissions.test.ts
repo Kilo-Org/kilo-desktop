@@ -1,4 +1,4 @@
-import type { OpenCodePermissionRequest } from "@assistant-ui/react-opencode";
+import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode";
 import { describe, expect, it } from "vitest";
 
 import { PERMISSION_AUTO_ANSWER_TIMEOUT_MS } from "@kilo-desktop/plugin-work-sessions/contracts";

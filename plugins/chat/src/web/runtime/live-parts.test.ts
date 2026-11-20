@@ -1,7 +1,7 @@
 import {
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeServerEvent,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

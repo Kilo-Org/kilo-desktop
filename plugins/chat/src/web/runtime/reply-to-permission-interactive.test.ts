@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { OpenCodeThreadController } from "@assistant-ui/react-opencode";
+import { OpenCodeThreadController } from "@kilo-desktop/react-opencode";
 
 /**
- * Regression guard for the react-opencode patch: human permission approvals
+ * Regression guard for the react-opencode fork: human permission approvals
  * must send `interactive: true`. The Kilo server silently refuses non-reject
  * approvals of sensitive (skill-shell / sandbox-escalation) permissions unless
  * `interactive` is set, leaving them pending until a sibling reply sweeps them

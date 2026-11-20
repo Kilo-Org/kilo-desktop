@@ -1,4 +1,4 @@
-import { OPEN_CODE_HISTORY_PAGE_SIZE } from "@assistant-ui/react-opencode";
+import { OPEN_CODE_HISTORY_PAGE_SIZE } from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

@@ -1,4 +1,4 @@
-import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
+import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 /*

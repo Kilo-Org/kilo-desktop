@@ -1,5 +1,5 @@
 import { useAuiState } from "@assistant-ui/react";
-import type { OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
+import type { OpenCodeRuntimeExtras } from "@kilo-desktop/react-opencode";
 
 /**
  * Duck-type OpenCode extras without using `useOpenCodeRuntimeExtras()`, which

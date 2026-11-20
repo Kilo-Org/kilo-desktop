@@ -1,4 +1,4 @@
-import type { Part, ToolPart } from "@assistant-ui/react-opencode";
+import type { Part, ToolPart } from "@kilo-desktop/react-opencode";
 
 import { isPlanFilePath, normalizePlanPath, pathsMatch } from "./plan-paths";
 

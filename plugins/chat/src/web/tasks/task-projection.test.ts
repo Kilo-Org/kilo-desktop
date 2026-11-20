@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Part, ToolPart } from "@assistant-ui/react-opencode";
+import type { Part, ToolPart } from "@kilo-desktop/react-opencode";
 
 import { projectTaskThread, type TaskThreadSource } from "./task-projection";
 

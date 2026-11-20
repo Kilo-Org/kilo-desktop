@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { useOpenCodePermissions, useOpenCodeQuestions } from "@assistant-ui/react-opencode";
+import { useOpenCodePermissions, useOpenCodeQuestions } from "@kilo-desktop/react-opencode";
 
 import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 

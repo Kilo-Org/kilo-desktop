@@ -4,7 +4,7 @@ import {
 	type OpenCodePermissionRequest,
 	type OpenCodeQuestionRequest,
 	type OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 
 import { collectPendingInteractions, subagentOriginOf } from "./pending-interactions";
 

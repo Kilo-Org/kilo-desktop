@@ -44,6 +44,7 @@ Adapted from the [assistant-ui](https://github.com/assistant-ui/assistant-ui)
 component registry.
 
 - `src/web/thread/attachment.tsx`, `markdown-text.tsx`, `tooltip-icon-button.tsx` and parts of `messages.tsx` ← the registry's `attachment`, `markdown-text`, `tooltip-icon-button` and `thread` components
+- `react-opencode/` (the `@kilo-desktop/react-opencode` workspace package) ← `packages/react-opencode` as published in `@assistant-ui/react-opencode` 0.2.17, with Kilo Desktop's changes applied to the source (formerly a pnpm patch); upstream licence in `react-opencode/LICENSE` (Copyright (c) 2025 AgentbaseAI Inc.)
 
 License: MIT. Copyright (c) 2026 AgentbaseAI Inc.
 

@@ -1,4 +1,4 @@
-import type { OpenCodeEventSourceLike, OpenCodeServerEvent } from "@assistant-ui/react-opencode";
+import type { OpenCodeEventSourceLike, OpenCodeServerEvent } from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;

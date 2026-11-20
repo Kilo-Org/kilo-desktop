@@ -9,7 +9,7 @@ import { listWorkspaceDirectories, listWorkspacePackageNames } from "$config/wor
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 describe("listWorkspacePackageNames", () => {
-	it("lists every workspace package by its published name, whatever its scope", async () => {
+	it("lists every workspace package by its published name", async () => {
 		const names = await listWorkspacePackageNames(workspaceRoot);
 
 		expect(names).toEqual(
@@ -18,7 +18,7 @@ describe("listWorkspacePackageNames", () => {
 				"@kilo-desktop/bundled-plugins",
 				"@kilo-desktop/plugin-core",
 				"@kilo-desktop/plugin-chat",
-				"@opencode-ai/sdk",
+				"@kilo-desktop/react-opencode",
 				"@kilo-desktop/example-hello",
 			]),
 		);

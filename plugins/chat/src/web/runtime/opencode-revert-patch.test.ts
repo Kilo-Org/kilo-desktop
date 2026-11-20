@@ -5,7 +5,7 @@ import {
 	type OpencodeClient,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 import { describe, expect, it, vi } from "vitest";
 
 const serverMessage = (
@@ -50,8 +50,8 @@ const stateWithMessages = (
 });
 
 /*
- * `applyRevertVisibility` in the pnpm patch (plugins/chat/patches/
- * @assistant-ui__react-opencode@0.2.17.patch) filters reverted messages with
+ * `applyRevertVisibility` in kilo.chat's react-opencode fork
+ * (plugins/chat/react-opencode) filters reverted messages with
  * `message.id < revert.messageID` — plain string comparison.  This is safe
  * because the OpenCode server generates message IDs via
  * `Identifier.ascending("message")`: `msg_` + 12-char big-endian timestamp hex

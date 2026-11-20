@@ -1,5 +1,5 @@
 import type { AssistantRuntime, Attachment, CompleteAttachment } from "@assistant-ui/react";
-import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import { useOpenCodeRuntime } from "@kilo-desktop/react-opencode";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";

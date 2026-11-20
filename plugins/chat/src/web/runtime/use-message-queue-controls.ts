@@ -1,5 +1,5 @@
 import { useAuiState } from "@assistant-ui/react";
-import type { OpenCodeMessageQueueControls } from "@assistant-ui/react-opencode";
+import type { OpenCodeMessageQueueControls } from "@kilo-desktop/react-opencode";
 
 const CONTROL_METHODS = [
 	"pause",

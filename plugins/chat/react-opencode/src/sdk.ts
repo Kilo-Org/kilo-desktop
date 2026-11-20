@@ -1,3 +1,5 @@
+// Upstream imports `@opencode-ai/sdk/v2/client`; this fork talks to the Kilo v1
+// server, whose SDK is the same client under Kilo names.
 export * from "@kilocode/sdk/v2/client";
 
 export {

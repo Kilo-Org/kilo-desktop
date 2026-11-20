@@ -281,16 +281,15 @@ runs:
           ${{ steps.pnpm-store.outputs.prefix }}
 
     # On a node_modules hit the install only confirms the tree matches the
-    # lockfile; --offline makes a mismatch fail here instead of downloading.
+    # lockfile (and checks the lockfile's supply-chain policy, which needs the
+    # registry's metadata, so it can't run --offline).
     - name: Install dependencies
       if: inputs.install == 'true'
       shell: bash
       env:
         FILTERS_FILE: ${{ inputs.install-filters-file }}
-        NODE_MODULES_HIT: ${{ steps.node-modules.outputs.cache-hit }}
       run: |
         args=(--frozen-lockfile)
-        if [[ "$NODE_MODULES_HIT" == "true" ]]; then args+=(--offline); fi
         if [[ -n "$FILTERS_FILE" ]]; then
           while IFS= read -r package || [[ -n "$package" ]]; do
             package=${package%$'\r'}

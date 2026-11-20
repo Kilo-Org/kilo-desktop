@@ -98,10 +98,13 @@ const POLICY_GUIDANCE =
  * failed clone as SOLVE_FAILED, with no policy reason and no `[policy]` line.
  */
 const CLONE_POLICY_GUIDANCE =
-	"A clone that the organization's package policy or a missing Anaconda sign-in prevents " +
-	"fails as a generic SOLVE_FAILED clone error that does not say so; report the error as " +
-	"given, and do not recreate the environment from another channel, pip or a URL to get " +
-	"around it. ";
+	"A clone that the organization's package policy prevents usually fails as a generic " +
+	"SOLVE_FAILED clone error that does not say so; report the error as given. " +
+	"NOT_SIGNED_IN or CHANNEL_ACCESS_DENIED mean Anaconda refused a channel: ask the user " +
+	"to sign in to Anaconda (not Kilo) in Kilo Desktop, or to ask their administrator for " +
+	"access, then try again. Either way, do not recreate the environment from another " +
+	"channel, pip or a URL to get around it, and never ask the user for a token or API key " +
+	"in the chat. ";
 
 /**
  * `run` as a tool's run: the tool call's input and context pass through

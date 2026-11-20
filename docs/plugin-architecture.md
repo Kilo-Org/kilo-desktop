@@ -431,6 +431,7 @@ surface is built or changed.
 | `kilo.work-sessions` | `work-session-activity`      | A    | Later  | Live state feeding a session's status and attention (today only its chats)  | terminal (command running); notebook (kernel busy)                                   |
 | `kilo.work-sessions` | `notification-cue`           | A    | Later  | Cues the notifier sounds and shows                                          | terminal (long command finished); git (checks finished)                              |
 | `kilo.work-sessions` | `project-detector`           | A    | Later  | Facts and suggestions about a workspace                                     | environments ("create env from environment.yml")                                     |
+| `kilo.work-sessions` | `pane-tab-menu`              | A    | Next   | A pane tab's right-click menu (today kilo.work-sessions' own tab commands)  | files (reveal in Finder); git (open changes); browser (copy URL)                     |
 | `kilo.core`          | `helper-model`               | X    | Later  | The small model for titles, commit messages, summaries                      | local-inference (local helper)                                                       |
 | `kilo.core`          | `usage-source`               | A    | Later  | Usage and quota meters                                                      | local-inference (tokens/s); _ext_ provider accounts                                  |
 | `kilo.shell`         | `theme`                      | A    | Later  | Colour themes                                                               | _ext_ community themes                                                               |
@@ -518,6 +519,7 @@ open, delete what it settles.
 | `GitActionsControl` branch coverage                             | 56% branches (the default-branch confirm's Cancel and "branch changed" paths).                                                                                                                                                                   |
 | One Kilo sign-in gate                                           | kilo.environments, kilo.notebook and kilo.local-inference each have a copy.                                                                                                                                                                      |
 | Panes and work sessions                                         | Choosing among several openers ("Open with"); a pane status contract so a Browser pane's loading feeds work session status; a dirty indicator for Files and Notebook tabs; clicking a notification to open its work session; a dock badge.       |
+| Pane tab menu                                                   | Opening it from the keyboard (Shift+F10) and showing keybindings in its items. Close others / to the right / all close one `Panes.close` at a time (so close guards ask in turn); a `Panes.closeMany` would save the broadcasts.                 |
 
 ---
 

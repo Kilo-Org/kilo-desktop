@@ -38,9 +38,14 @@ describe("the workbook marker", () => {
 describe("matchSections", () => {
 	const page = (title: string, id = title.toLowerCase()) => ({ page_id: id, title });
 
-	it("matches the template's sections and guide by title, ignoring case and spacing", () => {
+	it("finds sections under their headings on shared pages, and in the Brief", () => {
 		const matched = matchSections(
-			[page("How to work here", "g"), page(" plan ", "p"), page("Decisions", "d"), page("Mine")],
+			[
+				page("How to work here", "g"),
+				page(" plan ", "p"),
+				page("Decisions & Findings", "r"),
+				page("Mine"),
+			],
 			templates,
 			coding,
 		);
@@ -48,10 +53,64 @@ describe("matchSections", () => {
 		expect(matched).toEqual({
 			guidePageId: "g",
 			sections: [
-				{ id: "plan", title: "Plan", itemType: "plan-step", pageId: "p" },
-				{ id: "decisions", title: "Decisions", itemType: "decision", pageId: "d" },
+				{ id: "plan", title: "Steps", itemType: "plan-step", pageId: "p", heading: "Steps" },
+				{ id: "tasks", title: "Tasks", itemType: "task", pageId: "p", heading: "Tasks" },
+				{
+					id: "follow-ups",
+					title: "Follow-ups",
+					itemType: "task",
+					pageId: "p",
+					heading: "Follow-ups",
+				},
+				{
+					id: "decisions",
+					title: "Decisions",
+					itemType: "decision",
+					pageId: "r",
+					heading: "Decisions",
+				},
+				{
+					id: "findings",
+					title: "Findings",
+					itemType: "finding",
+					pageId: "r",
+					heading: "Findings",
+				},
+				{
+					id: "questions",
+					title: "Open questions",
+					itemType: "question",
+					heading: "Open questions",
+				},
 			],
 		});
+	});
+
+	it("keeps an older workbook's sections on their own pages", () => {
+		const matched = matchSections(
+			[
+				page("Plan", "p"),
+				page("Tasks", "t"),
+				page("Decisions", "d"),
+				page("Findings", "f"),
+				page("Open questions", "q"),
+				page("Follow-ups", "u"),
+				page("Snippets", "s"),
+			],
+			templates,
+			coding,
+		);
+
+		expect(
+			matched.sections.map((section) => [section.id, section.pageId, section.heading]),
+		).toEqual([
+			["plan", "p", "Steps"],
+			["tasks", "t", undefined],
+			["follow-ups", "u", undefined],
+			["decisions", "d", undefined],
+			["findings", "f", undefined],
+			["questions", "q", undefined],
+		]);
 	});
 
 	it("falls back to every known template's sections when the template is unknown", () => {
@@ -67,6 +126,7 @@ describe("matchSections", () => {
 			["questions", "q"],
 			["notes", "n"],
 		]);
+		expect(matched.sections.some((section) => !section.pageId)).toBe(false);
 	});
 });
 
@@ -95,11 +155,11 @@ describe("discoverWorkbooks", () => {
 			templateId: "coding",
 			url: `https://pages.test/project/${made}`,
 			backend: { kind: "pages-mcp", server: "pages" },
-			sections: [
-				{ id: "plan", pageId: expect.any(String) },
-				{ id: "tasks", pageId: expect.any(String) },
-			],
 		});
+		expect(found[0]!.sections.slice(0, 2)).toMatchObject([
+			{ id: "plan", heading: "Steps" },
+			{ id: "tasks", pageId: expect.any(String) },
+		]);
 		expect(found[0]!.guidePageId).toEqual(expect.any(String));
 		expect(Date.parse(found[0]!.createdAt)).not.toBeNaN();
 		expect(found[1]).toMatchObject({ templateId: "spike", templateName: "Spike" });

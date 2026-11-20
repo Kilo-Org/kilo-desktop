@@ -78,17 +78,17 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 				if (section === "guide" && !workbook.guidePageId) {
 					throw new KernelError("NOT_FOUND", 'This workbook has no "How to work here" page.');
 				}
-				const pageId =
+				const target =
 					section === "guide"
-						? workbook.guidePageId
+						? { pageId: workbook.guidePageId }
 						: section
-							? writer.section(section).pageId
-							: undefined;
+							? writer.section(section)
+							: {};
 				return {
 					workbook: { id: workbook.id, name: workbook.name, url: workbook.url ?? null },
 					sections: workbook.sections.map(({ id, title, itemType }) => ({ id, title, itemType })),
 					showing: section ?? "brief",
-					markdown: await writer.read(pageId ? { pageId } : {}),
+					markdown: await writer.read(target),
 				};
 			},
 		}),
@@ -158,9 +158,12 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		"file_item",
 		defineTool({
 			description:
-				"File an item in a workbook section the moment it comes up, formatted for that section: a task, finding (detail = evidence), open question (detail = context), artifact (text = kind: link, detail = note), snippet (text = title, detail = the code or command) or note. Use read_workbook to see the section ids.",
+				"File an item in a workbook section the moment it comes up, formatted for that section: a task or follow-up (detail = context), finding (detail = evidence), open question (detail = context), artifact (text = kind: link, detail = note), snippet (text = title, detail = the code or command) or note. Use read_workbook to see the section ids.",
 			input: z.object({
-				section: z.string().min(1).describe('The section id, e.g. "findings" or "follow-ups".'),
+				section: z
+					.string()
+					.min(1)
+					.describe('The section id, e.g. "tasks", "findings" or "questions".'),
 				text: z.string().min(1),
 				detail: z.string().optional(),
 				workbookId: workbookIdInput,

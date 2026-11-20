@@ -7,12 +7,21 @@ import {
 	type AddWorkbookInput,
 	type Workbook,
 	type WorkbookBackend,
+	type WorkbookSectionRef,
 	type WorkbookTemplate,
 } from "../contracts";
 import { createWorkbookContent } from "./create-workbook";
 import { discoverWorkbooks, markerFor } from "./discover";
 import { kickoffText } from "./kickoff";
-import { nextStep, openQuestions, openTasks, planSteps, whereILeftOff } from "./progress";
+import {
+	nextStep,
+	openQuestions,
+	openReviewTasks,
+	openTasks,
+	planSteps,
+	whereILeftOff,
+} from "./progress";
+import { sectionMarkdown } from "./section-scope";
 import type { PagesToolCaller } from "./pages-tools";
 
 interface SavedWorkbooks extends Record<string, unknown> {
@@ -131,8 +140,14 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 					workbook.sections.find((section) =>
 						id ? section.id === id : section.itemType === itemType,
 					);
-				const read = async (section: { pageId: string } | undefined) =>
-					section ? ((await readMarkdown(pages, { page_id: section.pageId })) ?? "") : "";
+				const read = async (section: WorkbookSectionRef | undefined) => {
+					if (!section) return "";
+					const target = section.pageId
+						? { page_id: section.pageId }
+						: { project_id: workbook.projectId };
+					return sectionMarkdown((await readMarkdown(pages, target)) ?? "", section.heading);
+				};
+				const reviewSection = page("finding", "review");
 				const [brief, plan, tasks, questions, review] = await Promise.all([
 					readMarkdown(pages, { project_id: workbook.projectId }, { strict: true }).then(
 						(text) => text ?? "",
@@ -140,7 +155,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 					read(page("plan-step")),
 					read(page("task", "tasks")),
 					read(page("question")),
-					read(page("finding", "review")),
+					read(reviewSection),
 				]);
 				const steps = planSteps(plan);
 				const next = nextStep(steps);
@@ -150,7 +165,8 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 					...(next ? { next: { number: next.number, title: next.title } } : {}),
 					openTasks: openTasks(tasks),
 					openQuestions: openQuestions(questions),
-					openReview: openTasks(review),
+					// Review comments are a page of their own in older workbooks, tasks naming a file now.
+					openReview: reviewSection ? openTasks(review) : openReviewTasks(tasks),
 				};
 			},
 			kickoff: async ({ workbookId, focus, fresh }) => {

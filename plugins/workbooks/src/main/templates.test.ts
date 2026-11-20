@@ -67,7 +67,7 @@ async function boot(...others: ReturnType<typeof templatePlugin>[]) {
 }
 
 describe("workbook templates", () => {
-	it("offers the built-in Coding template, with every section and the guide", async () => {
+	it("offers the built-in Coding template: the Brief, the guide, Plan and Decisions & findings", async () => {
 		const { host, templates } = await boot();
 
 		await expect
@@ -76,26 +76,23 @@ describe("workbook templates", () => {
 		const coding = await host.invoke(WorkbookTemplates, "get", { id: "coding" });
 
 		expect(coding.name).toBe("Coding");
-		expect(coding.brief.fields.find((field) => field.required)?.id).toBe("goal");
+		expect(coding.brief.fields.map((field) => [field.id, field.required])).toEqual([
+			["goal", true],
+			["context", false],
+		]);
 		expect(coding.brief.markdown).toContain("{{goal}}");
 		expect(coding.guide.title).toBe("How to work here");
 		expect(coding.guide.markdown).toContain("Extract, don't archive");
-		expect(coding.sections.map((section) => section.id)).toEqual([
-			"plan",
-			"tasks",
-			"decisions",
-			"findings",
-			"questions",
-			"snippets",
-			"artifacts",
-			"review",
-			"follow-ups",
-			"notes",
+		expect(coding.pages.map((page) => page.title)).toEqual(["Plan", "Decisions & findings"]);
+		expect(coding.sections.map((section) => [section.id, section.in])).toEqual([
+			["plan", "plan"],
+			["tasks", "plan"],
+			["follow-ups", "plan"],
+			["decisions", "record"],
+			["findings", "record"],
+			["questions", "brief"],
 		]);
-		for (const section of coding.sections) {
-			expect(ITEM_TYPES).toContain(section.itemType);
-			expect(section.markdown.length).toBeGreaterThan(0);
-		}
+		for (const section of coding.sections) expect(ITEM_TYPES).toContain(section.itemType);
 		expect(templates.getState().issues).toEqual([]);
 	});
 
@@ -112,6 +109,29 @@ describe("workbook templates", () => {
 			expect.objectContaining({ id: "goal", label: "What's this about?", required: true }),
 		]);
 		expect(blank.guide.markdown).toContain("add it to **Notes** straight away");
+	});
+
+	it("accepts sections that share a page or live in the Brief, under their headings", async () => {
+		const { templates } = await boot(
+			templatePlugin({
+				shared: () => ({
+					...recipe,
+					id: "shared",
+					brief: { ...recipe.brief, markdown: "## Dish\n\n{{dish}}\n\n## Doubts" },
+					pages: [{ id: "kitchen", title: "Kitchen", markdown: "## Method\n\n## Tips" }],
+					sections: [
+						{ id: "method", title: "Method", itemType: "plan-step", in: "kitchen" },
+						{ id: "tips", title: "Tips", itemType: "note", in: "kitchen" },
+						{ id: "doubts", title: "Doubts", itemType: "question", in: "brief" },
+					],
+				}),
+			}),
+		);
+
+		await expect
+			.poll(() => templates.getState().templates.map((template) => template.id))
+			.toContain("shared");
+		expect(templates.getState().issues).toEqual([]);
 	});
 
 	it("offers templates other plugins contribute", async () => {
@@ -148,6 +168,16 @@ describe("workbook templates", () => {
 					id: "twice",
 					sections: [recipe.sections[0], recipe.sections[0]],
 				}),
+				nowhere: () => ({
+					...recipe,
+					id: "nowhere",
+					sections: [{ id: "tips", title: "Tips", itemType: "note", in: "kitchen" }],
+				}),
+				unheaded: () => ({
+					...recipe,
+					id: "unheaded",
+					sections: [{ id: "tips", title: "Tips", itemType: "note", in: "brief" }],
+				}),
 			}),
 		);
 
@@ -159,6 +189,8 @@ describe("workbook templates", () => {
 				"example.templates/throws",
 				"example.templates/optional",
 				"example.templates/twice",
+				"example.templates/nowhere",
+				"example.templates/unheaded",
 			]);
 		const messages = templates.getState().issues.map((issue) => issue.message);
 		expect(messages[0]).toContain("sections");
@@ -166,6 +198,8 @@ describe("workbook templates", () => {
 		expect(messages[2]).toBe("can't read it");
 		expect(messages[3]).toContain("at least one required field");
 		expect(messages[4]).toContain('section "method" appears more than once');
+		expect(messages[5]).toContain(`is in page "kitchen", which the template doesn't have`);
+		expect(messages[6]).toContain('needs a "Tips" heading in "brief"');
 		expect(templates.getState().templates.map((template) => template.id)).toEqual([
 			"coding",
 			"blank",

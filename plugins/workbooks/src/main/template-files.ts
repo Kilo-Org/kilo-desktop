@@ -12,8 +12,16 @@ const templateManifestSchema = z.object({
 	brief: z.object({ file: z.string(), fields: z.array(z.unknown()) }),
 	guide: z.object({ file: z.string(), title: z.string() }),
 	firstMove: z.string(),
+	pages: z.array(z.object({ id: z.string(), title: z.string(), file: z.string() })).default([]),
 	sections: z.array(
-		z.object({ id: z.string(), title: z.string(), itemType: z.string(), file: z.string() }),
+		z.object({
+			id: z.string(),
+			title: z.string(),
+			itemType: z.string(),
+			/** A page id from `pages`, or "brief"; the section is the part under its heading there. */
+			in: z.string().optional(),
+			file: z.string().optional(),
+		}),
 	),
 });
 
@@ -28,7 +36,12 @@ export function templateFromFiles(
 	files: Readonly<Record<string, string>>,
 ): WorkbookTemplateInput {
 	const parsed = templateManifestSchema.parse(manifest);
-	const referenced = [parsed.brief.file, parsed.guide.file, ...parsed.sections.map((s) => s.file)];
+	const referenced = [
+		parsed.brief.file,
+		parsed.guide.file,
+		...parsed.pages.map((page) => page.file),
+		...parsed.sections.flatMap((section) => (section.file ? [section.file] : [])),
+	];
 	const missing = referenced.filter((file) => files[file] === undefined);
 	if (missing.length > 0) throw new Error(`missing template files: ${missing.join(", ")}`);
 	const read = (file: string) => files[file]!;
@@ -40,11 +53,17 @@ export function templateFromFiles(
 		brief: { markdown: read(parsed.brief.file), fields: parsed.brief.fields as never },
 		guide: { title: parsed.guide.title, markdown: read(parsed.guide.file) },
 		firstMove: parsed.firstMove,
+		pages: parsed.pages.map((page) => ({
+			id: page.id,
+			title: page.title,
+			markdown: read(page.file),
+		})),
 		sections: parsed.sections.map((section) => ({
 			id: section.id,
 			title: section.title,
 			itemType: section.itemType as never,
-			markdown: read(section.file),
+			...(section.in ? { in: section.in } : {}),
+			...(section.file ? { markdown: read(section.file) } : {}),
 		})),
 	};
 }

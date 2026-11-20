@@ -5,6 +5,7 @@ import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts"
 
 import { SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
 import { bootWorkbooks } from "../test/hosts";
+import { sectionMarkdown } from "./section-scope";
 import { whereILeftOffEdits, withStatus } from "./workbook-writer";
 
 const hosts: PluginHost[] = [];
@@ -45,8 +46,12 @@ async function boot(options: { flag?: boolean } = {}) {
 			Record<string, unknown>
 		>;
 	};
-	const page = (section: string) =>
-		pages.markdown(workbook.sections.find((candidate) => candidate.id === section)!.pageId);
+	/** A section's markdown: its page, or the part under its heading. */
+	const page = (id: string) => {
+		const section = workbook.sections.find((candidate) => candidate.id === id)!;
+		const markdown = pages.markdown(section.pageId ?? pages.documentOf(workbook.projectId));
+		return sectionMarkdown(markdown, section.heading);
+	};
 	return { host, pages, workbook: workbook as Workbook, call, tools, page };
 }
 
@@ -70,8 +75,20 @@ describe("workbook tools", () => {
 			showing: "brief",
 		});
 		expect(brief.markdown).toContain("Fix the bug");
-		expect((brief.sections as unknown[]).length).toBe(10);
-		expect((await call("read_workbook", { section: "plan" })).markdown).toContain("**1. Refine");
+		expect((brief.sections as { id: string }[]).map((section) => section.id)).toEqual([
+			"plan",
+			"tasks",
+			"follow-ups",
+			"decisions",
+			"findings",
+			"questions",
+		]);
+		const plan = (await call("read_workbook", { section: "plan" })).markdown;
+		expect(plan).toContain("**1. Refine");
+		expect(plan).not.toContain("Tasks");
+		expect((await call("read_workbook", { section: "questions" })).markdown).toBe(
+			"_Things the user needs to decide. Each goes once answered, recorded as a decision._",
+		);
 		expect((await call("read_workbook", { section: "guide" })).markdown).toContain(
 			"Extract, don't archive",
 		);
@@ -84,12 +101,13 @@ describe("workbook tools", () => {
 		await expect(
 			call("add_plan_step", { title: "Build it", intent: "make it work" }),
 		).resolves.toEqual({ section: "plan", step: 2 });
-		// Pages keeps the template's Plan (intro, heading, list) as one block: the step joins its list.
+		// Pages keeps the template's Plan (headings, text, lists) as one block: the step joins its list.
 		expect(page("plan")).toContain(
 			"the user confirms before building.\n- [ ] **2. Build it**: make it work",
 		);
 		const plan = workbook.sections.find((section) => section.id === "plan")!;
-		expect(pages.pages.get(plan.pageId)!.blocks).toHaveLength(1);
+		expect(pages.pages.get(plan.pageId!)!.blocks).toHaveLength(1);
+		expect(page("tasks")).not.toContain("Build it");
 		await call("set_step_status", { step: "2", status: "in_progress" });
 		expect(page("plan")).toContain("- [ ] **2. Build it**: make it work · in progress");
 
@@ -116,8 +134,8 @@ describe("workbook tools", () => {
 		);
 	});
 
-	it("record decisions and file items in each section's format", async () => {
-		const { call, page } = await boot();
+	it("record decisions and file items in each section's format, under its heading", async () => {
+		const { call, page, pages, workbook } = await boot();
 		const date = new Date().toISOString().slice(0, 10);
 
 		await call("record_decision", { decision: "Use SSE", why: "simpler", rejected: "websockets" });
@@ -126,7 +144,11 @@ describe("workbook tools", () => {
 		);
 
 		await call("file_item", { section: "tasks", text: "Get an API key", detail: "user" });
-		expect(page("tasks")).toContain("- [ ] Get an API key (user)");
+		expect(page("tasks")).toBe(
+			"_In-scope work that isn't a step: chores, review comments, and things only the user can do._\n\n- [ ] Get an API key (user)",
+		);
+		await call("file_item", { section: "tasks", text: "Second" });
+		expect(page("tasks")).toContain("- [ ] Get an API key (user)\n- [ ] Second");
 		await call("file_item", {
 			section: "findings",
 			text: "The clock mock flakes",
@@ -135,14 +157,12 @@ describe("workbook tools", () => {
 		expect(page("findings")).toContain(`- **The clock mock flakes.** Evidence: ran 50x. (${date})`);
 		await call("file_item", { section: "questions", text: "Support Windows", detail: "CI cost" });
 		expect(page("questions")).toContain("- **Support Windows?** CI cost");
-		await call("file_item", { section: "artifacts", text: "pr: #12", detail: "the fix" });
-		expect(page("artifacts")).toContain(`- pr: #12 · the fix (${date})`);
-		await call("file_item", { section: "snippets", text: "Run e2e", detail: "pnpm e2e" });
-		expect(page("snippets")).toContain("### Run e2e\n\n```\npnpm e2e\n```");
-		await call("file_item", { section: "notes", text: "Remember lunch" });
-		expect(page("notes")).toContain("Remember lunch");
+		expect(pages.markdown(pages.documentOf(workbook.projectId))).toMatch(
+			/## Constraints and non-goals[\s\S]*## Open questions[\s\S]*Support Windows/,
+		);
 		await call("file_item", { section: "follow-ups", text: "Later thing" });
 		expect(page("follow-ups")).toContain("- [ ] Later thing");
+		expect(page("decisions")).not.toContain("clock mock");
 
 		await expect(call("file_item", { section: "plan", text: "x" })).rejects.toThrow(
 			"add_plan_step",
@@ -194,6 +214,57 @@ describe("workbook tools", () => {
 		await call("file_item", { section: "tasks", text: "After a race" });
 
 		expect(page("tasks")).toContain("- [ ] After a race");
+	});
+});
+
+describe("sections of other item types and layouts", () => {
+	it("file artifacts, snippets and notes on their own pages", async () => {
+		const { call, host, pages } = await boot();
+		const projectId = pages.addProject("Own pages", "", ["Artifacts", "Snippets", "Notes"]);
+		const [artifacts, snippets, notes] = pages.pagesOf(projectId).map((entry) => entry.id);
+		const own = await host.invoke(Workbooks, "add", {
+			workspaceId: null,
+			name: "Own pages",
+			templateId: "custom",
+			backend: { kind: "pages-mcp", server: "pages" },
+			projectId,
+			sections: [
+				{ id: "artifacts", title: "Artifacts", itemType: "artifact", pageId: artifacts! },
+				{ id: "snippets", title: "Snippets", itemType: "reference", pageId: snippets! },
+				{ id: "notes", title: "Notes", itemType: "note", pageId: notes! },
+			],
+		});
+		const date = new Date().toISOString().slice(0, 10);
+		const file = (section: string, text: string, detail?: string) =>
+			call("file_item", { section, text, workbookId: own.id, ...(detail ? { detail } : {}) });
+
+		await file("artifacts", "pr: #12", "the fix");
+		expect(pages.markdown(artifacts!)).toBe(`- pr: #12 · the fix (${date})`);
+		await file("snippets", "Run e2e", "pnpm e2e");
+		expect(pages.markdown(snippets!)).toContain("### Run e2e\n\n```\npnpm e2e\n```");
+		await file("notes", "Remember lunch");
+		expect(pages.markdown(notes!)).toBe("Remember lunch");
+	});
+
+	it("add a missing heading at the end of the page", async () => {
+		const { call, host, pages } = await boot();
+		const projectId = pages.addProject("No headings", "", ["Plan"]);
+		const [plan] = pages.pagesOf(projectId).map((entry) => entry.id);
+		const bare = await host.invoke(Workbooks, "add", {
+			workspaceId: null,
+			name: "No headings",
+			templateId: "custom",
+			backend: { kind: "pages-mcp", server: "pages" },
+			projectId,
+			sections: [
+				{ id: "tasks", title: "Tasks", itemType: "task", pageId: plan!, heading: "Tasks" },
+			],
+		});
+
+		await call("file_item", { section: "tasks", text: "First", workbookId: bare.id });
+		await call("file_item", { section: "tasks", text: "Second", workbookId: bare.id });
+
+		expect(pages.markdown(plan!)).toBe("## Tasks\n\n- [ ] First\n- [ ] Second");
 	});
 });
 

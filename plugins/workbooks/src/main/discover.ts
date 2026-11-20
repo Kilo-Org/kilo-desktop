@@ -1,4 +1,5 @@
 import {
+	BRIEF_PAGE,
 	DEFAULT_PAGES_MCP_SERVER,
 	type Workbook,
 	type WorkbookSectionRef,
@@ -35,7 +36,10 @@ const DEFAULT_GUIDE_TITLE = "How to work here";
 /**
  * A workbook's guide and sections, found among its Project's pages by title:
  * the template's when it's known, otherwise any known template's (the first
- * to name a title wins). Pages that match nothing are left alone.
+ * to name a title wins). A page titled as the section is the section (older
+ * workbooks gave every section a page); otherwise a section that lives under
+ * a heading is found on its shared page, or, for a known template, in the
+ * Brief. Pages that match nothing are left alone.
  */
 export function matchSections(
 	pages: readonly { page_id: string; title: string }[],
@@ -56,11 +60,28 @@ export function matchSections(
 
 	const sections: WorkbookSectionRef[] = [];
 	const taken = new Set<string>();
-	for (const section of sources.flatMap((source) => source.sections)) {
-		const pageId = pageByTitle.get(normalized(section.title));
-		if (!pageId || taken.has(section.id) || taken.has(pageId)) continue;
-		taken.add(section.id).add(pageId);
-		sections.push({ id: section.id, title: section.title, itemType: section.itemType, pageId });
+	for (const source of sources) {
+		for (const section of source.sections) {
+			if (taken.has(section.id)) continue;
+			const ref = { id: section.id, title: section.title, itemType: section.itemType };
+			const own = pageByTitle.get(normalized(section.title));
+			if (own && !taken.has(own)) {
+				taken.add(section.id).add(own);
+				sections.push({ ...ref, pageId: own });
+				continue;
+			}
+			if (section.in === BRIEF_PAGE) {
+				if (!template) continue;
+				taken.add(section.id);
+				sections.push({ ...ref, heading: section.title });
+				continue;
+			}
+			const shared = source.pages.find((page) => page.id === section.in);
+			const pageId = shared && pageByTitle.get(normalized(shared.title));
+			if (!pageId) continue;
+			taken.add(section.id);
+			sections.push({ ...ref, pageId, heading: section.title });
+		}
 	}
 	return { ...(guidePageId ? { guidePageId } : {}), sections };
 }

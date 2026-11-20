@@ -8,15 +8,16 @@ The pre-rolled templates (Coding; Blank) live in `plugins/workbooks/templates/` 
 
 ```
 <id>/
-  workbook.json   # name, description, Brief fields, first move, sections
+  workbook.json   # name, description, Brief fields, first move, pages, sections
   AGENTS.md       # agent guide, copied to the workbook's "How to work here" page
-  pages/*.md      # starter content for the Brief and each section
+  pages/*.md      # starter content for the Brief and each page
 ```
 
-- **Copied once.** Creating a workbook copies the template into a Pages Project: `pages/brief.md` (with `{{field}}` placeholders filled from the Brief fields) becomes the Project document, the guide and every section become Pages. After that the workbook owns its content; changing a template never changes existing workbooks.
+- **Sections and pages.** A section is either a page of its own (`file`) or the part of a shared page under a `## <section title>` heading (`in`: a page id from `pages`, or `brief` for the Brief), so related sections can share one page. The template is checked for each heading. The Coding template is the Brief (with Open questions) plus three pages: How to work here, Plan (Steps, Tasks, Follow-ups) and Decisions & findings.
+- **Copied once.** Creating a workbook copies the template into a Pages Project: `pages/brief.md` (with `{{field}}` placeholders filled from the Brief fields) becomes the Project document, and the guide and each page become Pages. After that the workbook owns its content; changing a template never changes existing workbooks.
 - **All sections are created up front**, so people, agents and the app always find them.
 - **Item types** are the shared vocabulary every template is built from: `plan-step`, `task`, `decision`, `finding`, `question`, `reference`, `artifact`, `note`. Each section declares the item type it holds; the app and the workbook tools address sections by id and item type, never by title.
-- **Item formats** are defined in the guide. Workbook tools (agent tools contributed by `kilo.workbooks`, which find the calling session's active workbook) own the write path and guarantee them; until they exist, agents write the formats with the Pages MCP tools.
+- **Item formats** are defined once, in the guide; each page's starter content says only what belongs there. Workbook tools (agent tools contributed by `kilo.workbooks`, which find the calling session's active workbook) own the write path and guarantee them; until they exist, agents write the formats with the Pages MCP tools.
 - **The app reaches Pages through Kilo's Pages MCP connection** (the user signs in to the `pages` MCP entry), and starting a session from a workbook injects its Brief and guide into the first prompt.
 
 ## In the app (prototype, behind the `workbooks` flag)

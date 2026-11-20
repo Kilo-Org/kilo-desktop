@@ -9,13 +9,13 @@ import { toolResultPayload } from "./pages-tools";
 const coding = workbookTemplateSchema.parse(BUILT_IN_TEMPLATES.coding());
 
 describe("createWorkbookContent", () => {
-	it("copies the template into a new Project: Brief, guide and every section", async () => {
+	it("copies the template into a new Project: the Brief, the guide and its pages", async () => {
 		const pages = new FakePages();
 
 		const created = await createWorkbookContent(pages, {
 			template: coding,
 			name: "Fix the server bug",
-			values: { goal: "Fix the bug in the Kilo server", acceptance: "  " },
+			values: { goal: "Fix the bug in the Kilo server", context: "  " },
 			description: "Workbook · Coding (coding)",
 		});
 
@@ -27,19 +27,45 @@ describe("createWorkbookContent", () => {
 		expect(created.url).toBe(`https://pages.test/project/${created.projectId}`);
 		const brief = pages.markdown(project.documentId);
 		expect(brief).toContain("Fix the bug in the Kilo server");
-		expect(brief).toContain("**Status:** New");
-		expect(brief).toContain("_Not given yet._");
+		expect(brief).not.toContain("Status");
+		expect(brief).toContain("## Context and links\n\n_Not given yet._");
+		expect(brief).toContain("## Open questions");
 		expect(brief).not.toContain("Seeded");
 		expect(pages.pagesOf(created.projectId).map((page) => page.title)).toEqual([
 			"How to work here",
-			...coding.sections.map((section) => section.title),
+			"Plan",
+			"Decisions & findings",
 		]);
 		expect(pages.markdown(created.guidePageId)).toContain("Extract, don't archive");
-		expect(created.sections.map((section) => [section.id, section.itemType])).toEqual(
-			coding.sections.map((section) => [section.id, section.itemType]),
-		);
-		const plan = created.sections.find((section) => section.id === "plan")!;
-		expect(pages.markdown(plan.pageId)).toContain("Refine the Brief");
+		const [guide, plan, record] = pages.pagesOf(created.projectId).map((page) => page.id);
+		expect(guide).toBe(created.guidePageId);
+		expect(created.sections).toEqual([
+			{ id: "plan", title: "Steps", itemType: "plan-step", pageId: plan, heading: "Steps" },
+			{ id: "tasks", title: "Tasks", itemType: "task", pageId: plan, heading: "Tasks" },
+			{
+				id: "follow-ups",
+				title: "Follow-ups",
+				itemType: "task",
+				pageId: plan,
+				heading: "Follow-ups",
+			},
+			{
+				id: "decisions",
+				title: "Decisions",
+				itemType: "decision",
+				pageId: record,
+				heading: "Decisions",
+			},
+			{
+				id: "findings",
+				title: "Findings",
+				itemType: "finding",
+				pageId: record,
+				heading: "Findings",
+			},
+			{ id: "questions", title: "Open questions", itemType: "question", heading: "Open questions" },
+		]);
+		expect(pages.markdown(plan!)).toContain("Refine the Brief");
 	});
 
 	it("refuses a Brief without its required fields, before touching Pages", async () => {

@@ -157,7 +157,7 @@ describe("creating a workbook", () => {
 		});
 		expect(created.id).toBe(created.projectId);
 		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Coding (coding)");
-		expect(created.sections).toHaveLength(10);
+		expect(created.sections).toHaveLength(6);
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
 	});
 
@@ -235,8 +235,8 @@ describe("finding workbooks in Pages", () => {
 			name: "From the old laptop",
 			templateId: "coding",
 			usedIn: [],
-			sections: [{ id: "plan" }],
 		});
+		expect(state.workbooks[0]!.sections[0]).toMatchObject({ id: "plan", heading: "Steps" });
 		expect(state.workbooks[1]).toEqual(made);
 	});
 

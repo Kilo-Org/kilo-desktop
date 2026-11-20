@@ -17,11 +17,17 @@ export const workbookBackendSchema = z.object({
 });
 export type WorkbookBackend = z.output<typeof workbookBackendSchema>;
 
+/**
+ * Where a workbook's section lives: a page (`pageId`; without one, the
+ * Brief), and within it, for a section sharing the page, the part under its
+ * `heading`.
+ */
 export const workbookSectionRefSchema = z.object({
 	id: z.string().min(1),
 	title: z.string().min(1),
 	itemType: z.enum(ITEM_TYPES),
-	pageId: z.string().min(1),
+	pageId: z.string().min(1).optional(),
+	heading: z.string().min(1).optional(),
 });
 export type WorkbookSectionRef = z.output<typeof workbookSectionRefSchema>;
 

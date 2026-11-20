@@ -39,6 +39,11 @@ export function openTasks(markdown: string): number {
 	return markdown.split("\n").filter((line) => /^\s*- \[ \] /.test(line)).length;
 }
 
+/** Unticked review comments filed as tasks: `- [ ] **file or area**: …`. */
+export function openReviewTasks(markdown: string): number {
+	return markdown.split("\n").filter((line) => /^\s*- \[ \] \*\*[^*]+\*\*:/.test(line)).length;
+}
+
 /** Open questions: bold-led bullets ending in "?". */
 export function openQuestions(markdown: string): number {
 	return markdown.split("\n").filter((line) => /^\s*- \*\*.*\?\*\*/.test(line)).length;

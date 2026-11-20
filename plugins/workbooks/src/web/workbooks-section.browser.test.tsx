@@ -178,10 +178,8 @@ describe("Start from a workbook on the New Session page", () => {
 		await expect.element(page.getByTestId("workbooks-template-blank")).toBeVisible();
 		await expect.element(page.getByTestId("workbooks-template-filter")).not.toBeInTheDocument();
 		await userEvent.click(page.getByTestId("workbooks-template-coding"));
-		await expect
-			.poll(() => moreDetails())
-			.toMatch(/Context and links, Acceptance criteria, Constraints and non-goals\W+optional$/);
-		await expect.element(page.getByTestId("workbooks-field-acceptance")).not.toBeInTheDocument();
+		await expect.poll(() => moreDetails()).toMatch(/Context and links\W+optional$/);
+		await expect.element(page.getByTestId("workbooks-field-context")).not.toBeInTheDocument();
 		await userEvent.click(page.getByTestId("workbooks-back"));
 		await userEvent.click(page.getByTestId("workbooks-template-blank"));
 		await expect.element(page.getByTestId("workbooks-more-details")).not.toBeInTheDocument();
@@ -248,7 +246,7 @@ describe("Start from a workbook on the New Session page", () => {
 
 		await newWorkbook();
 		await userEvent.click(page.getByTestId("workbooks-more-details"));
-		await userEvent.fill(page.getByTestId("workbooks-field-acceptance").element(), "It ticks");
+		await userEvent.fill(page.getByTestId("workbooks-field-context").element(), "Issue #42");
 		await expect.poll(() => moreDetails()).toMatch(/1 filled in$/);
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Clock");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Show the time");
@@ -259,7 +257,7 @@ describe("Start from a workbook on the New Session page", () => {
 			.toBe(1);
 		const [workbook] = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
 		expect(pages.markdown(pages.documentOf(workbook!.projectId))).toContain(
-			"## Acceptance criteria\n\nIt ticks",
+			"## Context and links\n\nIssue #42",
 		);
 	});
 

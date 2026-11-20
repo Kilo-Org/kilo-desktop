@@ -2,11 +2,10 @@ import { KernelError } from "@kilo-desktop/kernel";
 
 import { STEP_STATUSES, type Workbook, type WorkbookSectionRef } from "../contracts";
 import type { PagesToolCaller } from "./pages-tools";
+import { sectionScope, type Block, type Line } from "./section-scope";
 
-interface Block {
-	readonly node_id: string;
-	readonly markdown?: string;
-}
+/** Where to read or write: a page (the Brief without one), and a section's heading on it. */
+type Target = Pick<WorkbookSectionRef, "pageId" | "heading">;
 
 interface ReadPage {
 	readonly revision: string;
@@ -24,9 +23,12 @@ const STEP_NUMBER = /^\*\*(\d+)\./;
 
 /**
  * Writes workbook items into Pages in the formats the guide defines, so agents
- * never hand-edit them. Every write reads the page first and sends its
- * revision; a write that loses a race with another writer is retried once on
- * the fresh page, which is enough for concurrent agents appending items.
+ * never hand-edit them. A section is a page, or the part of a page (or of the
+ * Brief) under its heading; reads and writes stay within it, and a missing
+ * heading is added at the end of the page. Every write reads the page first
+ * and sends its revision; a write that loses a race with another writer is
+ * retried once on the fresh page, which is enough for concurrent agents
+ * appending items.
  */
 export class WorkbookWriter {
 	constructor(
@@ -51,11 +53,17 @@ export class WorkbookWriter {
 		return section;
 	}
 
-	async read(target: { pageId?: string }): Promise<string> {
+	async read(target: Target): Promise<string> {
 		const page = await this.#read(target);
-		return page.blocks
-			.map((block) => block.markdown ?? "")
-			.join("\n\n")
+		if (!target.heading) {
+			return page.blocks
+				.map((block) => block.markdown ?? "")
+				.join("\n\n")
+				.trim();
+		}
+		return sectionScope(page.blocks, target.heading)
+			.lines.map((line) => line.text)
+			.join("\n")
 			.trim();
 	}
 
@@ -63,7 +71,7 @@ export class WorkbookWriter {
 	async addPlanStep(title: string, intent: string): Promise<number> {
 		const plan = this.sectionFor("plan-step");
 		let number = 0;
-		await this.#appendListItem(plan.pageId, (lines) => {
+		await this.#appendListItem(plan, (lines) => {
 			number = Math.max(0, ...lines.map(stepNumber)) + 1;
 			return `- [ ] **${number}. ${oneLine(title)}**: ${oneLine(intent)}`;
 		});
@@ -82,13 +90,10 @@ export class WorkbookWriter {
 		}
 		const plan = this.sectionFor("plan-step");
 		return this.#withRetry(async () => {
-			const page = await this.#read({ pageId: plan.pageId });
-			const matches: { block: Block; index: number }[] = [];
-			for (const block of page.blocks) {
-				(block.markdown ?? "").split("\n").forEach((line, index) => {
-					if (TASK_LINE.test(line) && matchesStep(line, step)) matches.push({ block, index });
-				});
-			}
+			const page = await this.#read(plan);
+			const matches = sectionScope(page.blocks, plan.heading).lines.filter(
+				(line) => TASK_LINE.test(line.text) && matchesStep(line.text, step),
+			);
 			if (matches.length !== 1) {
 				throw new KernelError(
 					matches.length === 0 ? "NOT_FOUND" : "VALIDATION",
@@ -101,7 +106,7 @@ export class WorkbookWriter {
 			const lines = (block.markdown ?? "").split("\n");
 			const updated = withStatus(lines[index]!, status, note);
 			lines[index] = updated;
-			await this.#edit({ pageId: plan.pageId }, page.revision, [
+			await this.#edit(plan, page.revision, [
 				{ op: "replace_block_markdown", node_id: block.node_id, markdown: lines.join("\n") },
 			]);
 			return updated;
@@ -111,7 +116,7 @@ export class WorkbookWriter {
 	async recordDecision(decision: string, why: string, rejected?: string): Promise<string> {
 		const rejectedText = rejected?.trim() ? ` Rejected: ${sentence(rejected)}` : "";
 		const line = `- **${sentence(decision)}** Why: ${sentence(why)}${rejectedText} (${this.today()})`;
-		await this.#appendListItem(this.sectionFor("decision").pageId, () => line);
+		await this.#appendListItem(this.sectionFor("decision"), () => line);
 		return line;
 	}
 
@@ -126,34 +131,34 @@ export class WorkbookWriter {
 				throw new KernelError("VALIDATION", "Use record_decision for decisions.");
 			case "task": {
 				const line = `- [ ] ${oneLine(text)}${extra ? ` (${oneLine(extra)})` : ""}`;
-				await this.#appendListItem(section.pageId, () => line);
+				await this.#appendListItem(section, () => line);
 				return line;
 			}
 			case "finding": {
 				const evidence = extra ? ` Evidence: ${sentence(extra)}` : "";
 				const line = `- **${sentence(text)}**${evidence} (${this.today()})`;
-				await this.#appendListItem(section.pageId, () => line);
+				await this.#appendListItem(section, () => line);
 				return line;
 			}
 			case "question": {
 				const question = oneLine(text).replace(/[?.]*$/, "?");
 				const line = `- **${question}**${extra ? ` ${oneLine(extra)}` : ""}`;
-				await this.#appendListItem(section.pageId, () => line);
+				await this.#appendListItem(section, () => line);
 				return line;
 			}
 			case "artifact": {
 				const line = `- ${oneLine(text)}${extra ? ` · ${oneLine(extra)}` : ""} (${this.today()})`;
-				await this.#appendListItem(section.pageId, () => line);
+				await this.#appendListItem(section, () => line);
 				return line;
 			}
 			case "reference": {
 				const markdown = `### ${oneLine(text)}\n\n\`\`\`\n${extra ?? ""}\n\`\`\``;
-				await this.#appendBlock(section.pageId, markdown);
+				await this.#appendBlock(section, markdown);
 				return markdown;
 			}
 			case "note": {
 				const markdown = extra ? `${text.trim()}\n\n${extra}` : text.trim();
-				await this.#appendBlock(section.pageId, markdown);
+				await this.#appendBlock(section, markdown);
 				return markdown;
 			}
 		}
@@ -171,43 +176,77 @@ export class WorkbookWriter {
 	}
 
 	/**
-	 * Appends a list item after the page's last list item, in the same block
-	 * (Pages may keep a page's intro, headings and list in one block), so a
-	 * section stays one list; a page with no list yet gets one at the end.
+	 * Appends a list item after the section's last one, in the same block
+	 * (Pages may keep a section's text and list in one block), so a section
+	 * stays one list; a section with no list yet gets one after its last line.
 	 */
-	async #appendListItem(pageId: string, line: (existingLines: string[]) => string): Promise<void> {
+	async #appendListItem(target: Target, line: (existingLines: string[]) => string): Promise<void> {
+		await this.#insert(target, (scope) => {
+			const item = line(scope.lines.map((candidate) => candidate.text));
+			const lastItem = scope.lines.findLast((candidate) => LIST_LINE.test(candidate.text));
+			return { text: item, after: lastItem ?? scope.end, asListItem: lastItem !== undefined };
+		});
+	}
+
+	/** Adds markdown at the end of the section, as its own paragraph or block. */
+	async #appendBlock(target: Target, markdown: string): Promise<void> {
+		await this.#insert(target, (scope) => ({
+			text: markdown,
+			after: target.heading ? scope.end : undefined,
+			asListItem: false,
+		}));
+	}
+
+	/**
+	 * Inserts `text` after a line of the section, inside that line's block: a
+	 * list item right after it, anything else as a new paragraph. With no line
+	 * to follow it goes at the end of the page, under a new heading when the
+	 * section's heading is missing.
+	 */
+	async #insert(
+		target: Target,
+		place: (scope: ReturnType<typeof sectionScope>) => {
+			text: string;
+			after: Line | undefined;
+			asListItem: boolean;
+		},
+	): Promise<void> {
 		await this.#withRetry(async () => {
-			const page = await this.#read({ pageId });
-			const lines = page.blocks.flatMap((block) => (block.markdown ?? "").split("\n"));
-			const item = line(lines);
-			const last = page.blocks.findLast((block) =>
-				(block.markdown ?? "").split("\n").some((candidate) => LIST_LINE.test(candidate)),
-			);
-			if (!last) {
-				await this.#edit({ pageId }, page.revision, [{ op: "insert_markdown", markdown: item }]);
+			const page = await this.#read(target);
+			const scope = sectionScope(page.blocks, target.heading);
+			const { text, after, asListItem } = place(scope);
+			if (!scope.found) {
+				await this.#edit(target, page.revision, [
+					{ op: "insert_markdown", markdown: `## ${target.heading}\n\n${text}` },
+				]);
 				return;
 			}
-			const blockLines = (last.markdown ?? "").split("\n");
-			const at = blockLines.findLastIndex((candidate) => LIST_LINE.test(candidate));
-			blockLines.splice(at + 1, 0, item);
-			await this.#edit({ pageId }, page.revision, [
-				{ op: "replace_block_markdown", node_id: last.node_id, markdown: blockLines.join("\n") },
+			if (!after) {
+				await this.#edit(target, page.revision, [{ op: "insert_markdown", markdown: text }]);
+				return;
+			}
+			const lines = (after.block.markdown ?? "").split("\n");
+			const following = lines[after.index + 1];
+			const inserted = asListItem ? [text] : ["", text];
+			if (
+				following !== undefined &&
+				following.trim() &&
+				!(asListItem && LIST_LINE.test(following))
+			) {
+				inserted.push("");
+			}
+			lines.splice(after.index + 1, 0, ...inserted);
+			await this.#edit(target, page.revision, [
+				{ op: "replace_block_markdown", node_id: after.block.node_id, markdown: lines.join("\n") },
 			]);
 		});
 	}
 
-	async #appendBlock(pageId: string, markdown: string): Promise<void> {
-		await this.#withRetry(async () => {
-			const page = await this.#read({ pageId });
-			await this.#edit({ pageId }, page.revision, [{ op: "insert_markdown", markdown }]);
-		});
-	}
-
-	#target(target: { pageId?: string }) {
+	#target(target: Target) {
 		return target.pageId ? { page_id: target.pageId } : { project_id: this.workbook.projectId };
 	}
 
-	async #read(target: { pageId?: string }): Promise<ReadPage> {
+	async #read(target: Target): Promise<ReadPage> {
 		const page = (await this.pages.call("read_page", {
 			...this.#target(target),
 			comments: "none",
@@ -216,7 +255,7 @@ export class WorkbookWriter {
 		return { revision: page.revision, blocks: page.blocks ?? [] };
 	}
 
-	async #edit(target: { pageId?: string }, revision: string, operations: unknown[]): Promise<void> {
+	async #edit(target: Target, revision: string, operations: unknown[]): Promise<void> {
 		await this.pages.call("edit_page", {
 			...this.#target(target),
 			revision,

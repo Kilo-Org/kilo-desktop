@@ -1,6 +1,6 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { WorkbookSectionRef, WorkbookTemplate } from "../contracts";
+import { BRIEF_PAGE, type WorkbookSectionRef, type WorkbookTemplate } from "../contracts";
 import type { PagesToolCaller } from "./pages-tools";
 
 export interface NewWorkbookContent {
@@ -22,15 +22,15 @@ export interface CreatedWorkbookContent {
 
 const NOT_GIVEN = "_Not given yet._";
 
-/** The Brief's markdown: `{{field}}` placeholders filled from `values`, `{{status}}` as "New". */
+/** The Brief's markdown: `{{field}}` placeholders filled from `values`. */
 export function renderBrief(
 	template: WorkbookTemplate,
 	values: Readonly<Record<string, string>>,
 ): string {
-	return template.brief.markdown.replace(/\{\{([a-z][a-z0-9-]*)\}\}/g, (_, id: string) => {
-		if (id === "status") return "New";
-		return values[id]?.trim() || NOT_GIVEN;
-	});
+	return template.brief.markdown.replace(
+		/\{\{([a-z][a-z0-9-]*)\}\}/g,
+		(_, id: string) => values[id]?.trim() || NOT_GIVEN,
+	);
 }
 
 /** Required Brief fields left empty, by label. */
@@ -45,8 +45,9 @@ export function missingRequiredFields(
 
 /**
  * Copies a template into a new Pages Project, all at once: the Project, its
- * document replaced by the filled-in Brief, then the guide and every section
- * as Pages, in template order. A failure part-way leaves a partial Project in
+ * document replaced by the filled-in Brief, then the guide and the pages, in
+ * section order: a section's own page, or the shared page it sits in (once).
+ * Sections in the Brief or a shared page are found by their heading. A failure part-way leaves a partial Project in
  * Pages (reported to the caller); nothing is recorded until
  * the whole copy succeeds.
  */
@@ -78,10 +79,27 @@ export async function createWorkbookContent(
 		template.guide.markdown,
 		nonce,
 	);
+	// Shared pages are made as their first section comes, so pages follow section order.
+	const sharedPageIds = new Map<string, string>();
 	const sections: WorkbookSectionRef[] = [];
 	for (const section of template.sections) {
-		const pageId = await createPage(pages, projectId, section.title, section.markdown, nonce);
-		sections.push({ id: section.id, title: section.title, itemType: section.itemType, pageId });
+		const ref = { id: section.id, title: section.title, itemType: section.itemType };
+		if (section.in === BRIEF_PAGE) {
+			sections.push({ ...ref, heading: section.title });
+			continue;
+		}
+		if (section.in) {
+			let pageId = sharedPageIds.get(section.in);
+			if (!pageId) {
+				const page = template.pages.find((candidate) => candidate.id === section.in)!;
+				pageId = await createPage(pages, projectId, page.title, page.markdown, nonce);
+				sharedPageIds.set(section.in, pageId);
+			}
+			sections.push({ ...ref, pageId, heading: section.title });
+			continue;
+		}
+		const pageId = await createPage(pages, projectId, section.title, section.markdown ?? "", nonce);
+		sections.push({ ...ref, pageId });
 	}
 	return { projectId, ...(project.url ? { url: project.url } : {}), guidePageId: guide, sections };
 }

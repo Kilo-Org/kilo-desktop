@@ -1,5 +1,3 @@
-**Workbook template:** Coding · **Status:** {{status}}
-
 ## Where I left off
 
 _Updated by whoever (person or agent) last worked here._
@@ -16,8 +14,12 @@ _Updated by whoever (person or agent) last worked here._
 
 ## Acceptance criteria
 
-{{acceptance}}
+_The agent proposes these; the user confirms them._
 
 ## Constraints and non-goals
 
-{{constraints}}
+_The agent proposes these; the user confirms them._
+
+## Open questions
+
+_Things the user needs to decide. Each goes once answered, recorded as a decision._

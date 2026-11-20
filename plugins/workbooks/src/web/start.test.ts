@@ -54,7 +54,7 @@ describe("starting a work session from a workbook", () => {
 		expect(log.opened).toEqual([workSessionId]);
 		const text = started[0]!.text;
 		expect(text).toContain("## First\n\nRefine the Brief");
-		expect(text).toContain("## Brief\n\n**Workbook template:** Coding");
+		expect(text).toContain("## Brief\n\n## Where I left off");
 		expect(text).toContain("Fix the bug");
 		expect(text).toContain("## How to work here\n\nThis is the agent guide");
 		const workbookId = deps.workbooks!.getState().workbooks[0]!.id;

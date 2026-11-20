@@ -16,6 +16,7 @@ import type {
 	PolicyBlockedPackage,
 	PolicyNotice,
 } from "../../../contracts/common";
+import { keyedBlockedPackages } from "./environments-error-message";
 
 /** Shown for a solve failure the bridge flagged with `policy_note`. */
 export const POLICY_NOTE_MESSAGE =
@@ -60,12 +61,8 @@ export function PolicyErrorDetails({
 function BlockedPackages({ blocked }: { blocked: readonly PolicyBlockedPackage[] }) {
 	return (
 		<ul className="flex flex-col gap-1.5" data-qa-id="environments-policy-blocked">
-			{blocked.map((entry, index) => (
-				<li
-					key={`${entry.package}@${entry.version ?? ""}#${index}`}
-					className="flex flex-col"
-					data-qa-id="environments-policy-blocked-package"
-				>
+			{keyedBlockedPackages(blocked).map(({ key, entry }) => (
+				<li key={key} className="flex flex-col" data-qa-id="environments-policy-blocked-package">
 					<span className="text-foreground font-medium">
 						{entry.version ? `${entry.package} ${entry.version}` : entry.package}
 					</span>

@@ -2,6 +2,7 @@ import { createKiloClient } from "@kilocode/sdk/v2/client";
 
 import type { PermissionRequest, ServerConnection, PermissionRule } from "../../../contracts";
 import { readChatInfo, type ChatInfo, type KiloEvent } from "./activity";
+import { forkHandoffText } from "./fork-handoff";
 import { listAllSessionPages } from "./session-list-pages";
 import type { PendingRequest } from "./store";
 
@@ -69,7 +70,24 @@ export interface KiloChatClient {
 	/** The server's global event stream, until `signal` aborts or the server ends it. */
 	events(signal: AbortSignal): AsyncIterable<KiloEvent>;
 	createChat(directory: string, params: CreateChatParams): Promise<ChatInfo>;
-	/** `archived: null` restores an archived chat; `metadata` replaces the chat's metadata. */
+	/**
+	 * A new root chat in `directory` with the messages strictly before
+	 * `messageId`, the source's metadata and none of its permission rules. The
+	 * server announces `session.created` before this resolves.
+	 */
+	forkChat(directory: string, id: string, messageId: string): Promise<ChatInfo>;
+	/**
+	 * Hands a fresh fork its hidden note (`forkHandoffText`): a synthetic part
+	 * sent without a reply, which the next turn reads and no transcript shows.
+	 */
+	recordForkHandoff(directory: string, id: string): Promise<void>;
+	/** The permission rules stored on the chat; none when it has no rules. */
+	getChatPermission(directory: string, id: string): Promise<readonly PermissionRule[]>;
+	/**
+	 * `archived: null` restores an archived chat; `metadata` replaces the
+	 * chat's metadata; `permission` is appended to the chat's rules, never
+	 * replacing them.
+	 */
 	updateChat(
 		directory: string,
 		id: string,
@@ -77,6 +95,7 @@ export interface KiloChatClient {
 			readonly title?: string;
 			readonly archived?: number | null;
 			readonly metadata?: Readonly<Record<string, unknown>>;
+			readonly permission?: readonly PermissionRule[];
 		},
 	): Promise<void>;
 	/** A task-focused branch name for the chat's conversation; null while the task isn't clear. */
@@ -107,6 +126,13 @@ export interface KiloChatClient {
 }
 
 const at = (directory: string | undefined) => (directory ? { directory } : {});
+
+/**
+ * A fork replays its whole copied transcript twice on `/global/event`: as the
+ * usual events and as durable `sync` copies, which nothing here reads. VS Code
+ * and JetBrains send the same header.
+ */
+const SKIP_FORK_SYNC_HEADERS = { "x-kilo-sse-skip-fork-sync": "1" } as const;
 
 /** A `KiloChatClient` over the Kilo SDK. The client carries no directory: with one, listing is scoped to that project. */
 export function createKiloChatClient(connection: ServerConnection): KiloChatClient {
@@ -158,7 +184,11 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		},
 		async *events(signal) {
 			// The provider owns reconnect hydration and drain-token rotation.
-			const subscription = await client.global.event({ signal, sseMaxRetryAttempts: 1 });
+			const subscription = await client.global.event({
+				signal,
+				sseMaxRetryAttempts: 1,
+				headers: SKIP_FORK_SYNC_HEADERS,
+			});
 			const stream = subscription.stream as AsyncIterable<{
 				directory?: string;
 				payload?: { type?: unknown; properties?: Record<string, unknown> };
@@ -201,9 +231,29 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 					// Kilo clears the archive time with null, which its SDK types don't say.
 					...(patch.archived !== undefined ? { time: { archived: patch.archived as number } } : {}),
 					...(patch.metadata !== undefined ? { metadata: { ...patch.metadata } } : {}),
+					...(patch.permission !== undefined ? { permission: [...patch.permission] } : {}),
 				},
 				options,
 			);
+		},
+		async forkChat(directory, sessionID, messageID) {
+			const { data } = await client.session.fork({ sessionID, directory, messageID }, options);
+			return toInfo(data);
+		},
+		async recordForkHandoff(directory, sessionID) {
+			await client.session.promptAsync(
+				{
+					sessionID,
+					directory,
+					noReply: true,
+					parts: [{ type: "text", text: forkHandoffText(directory), synthetic: true }],
+				},
+				options,
+			);
+		},
+		async getChatPermission(directory, sessionID) {
+			const { data } = await client.session.get({ sessionID, directory }, options);
+			return data?.permission ?? [];
 		},
 		async generateBranchName(directory, sessionID, params) {
 			const { data } = await client.branchName.generate(

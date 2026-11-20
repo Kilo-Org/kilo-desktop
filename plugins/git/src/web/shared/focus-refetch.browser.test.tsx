@@ -29,10 +29,10 @@ describe("refetchOnWindowFocus", () => {
 
 		window.dispatchEvent(new Event("focus"));
 		await vi.waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
+		await vi.waitFor(() => expect(queries.isFetching()).toBe(0));
 
 		stop();
 		window.dispatchEvent(new Event("focus"));
-		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(queryFn).toHaveBeenCalledTimes(2);
 	});
 

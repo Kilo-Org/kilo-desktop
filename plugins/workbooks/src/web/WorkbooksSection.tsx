@@ -29,7 +29,7 @@ import {
 } from "../contracts";
 import { NewWorkbookDialog } from "./NewWorkbookDialog";
 import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
-import { templateIcon } from "./template-icons";
+import { TemplateIcon } from "./template-icons";
 
 const selectWorkbooks = (state: { workbooks: Workbook[] }) => state.workbooks;
 const selectRefreshing = (state: { refreshing: boolean }) => state.refreshing;
@@ -104,9 +104,8 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 			toast.error(`Couldn't start a session on "${workbook.name}"`, {
 				description: failure instanceof Error ? failure.message : String(failure),
 			});
-		} finally {
-			setRunning(false);
 		}
+		setRunning(false);
 	};
 
 	const select = (workbook: Workbook) => {
@@ -122,9 +121,8 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 			setCreating(false);
 		} catch (failure) {
 			setError(failure instanceof Error ? failure.message : String(failure));
-		} finally {
-			setRunning(false);
 		}
+		setRunning(false);
 	};
 
 	const onTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -138,7 +136,6 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 
 	const workbookRow = (workbook: Workbook) => {
 		const template = templates.find((candidate) => candidate.id === workbook.templateId);
-		const Icon = templateIcon(template?.icon);
 		return (
 			<CommandItem
 				key={workbook.id}
@@ -148,7 +145,7 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 				data-checked={workbook.id === selected?.id}
 				onSelect={() => select(workbook)}
 			>
-				<Icon className="text-muted-foreground" />
+				<TemplateIcon icon={template?.icon} className="text-muted-foreground" />
 				<span className="min-w-0 flex-1 truncate">{workbook.name}</span>
 				<span className="text-muted-foreground shrink-0 text-xs">
 					{templateLabel(workbook, template)}
@@ -187,14 +184,14 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 						/>
 					}
 				>
-					{(() => {
-						const Icon = selected
-							? templateIcon(
-									templates.find((candidate) => candidate.id === selected.templateId)?.icon,
-								)
-							: NotebookTabsIcon;
-						return <Icon className="size-3.5 shrink-0" />;
-					})()}
+					{selected ? (
+						<TemplateIcon
+							icon={templates.find((candidate) => candidate.id === selected.templateId)?.icon}
+							className="size-3.5 shrink-0"
+						/>
+					) : (
+						<NotebookTabsIcon className="size-3.5 shrink-0" />
+					)}
 					<span className={cn("min-w-0 truncate", !selected && "whitespace-nowrap")}>
 						{selected ? selected.name : "Workbook"}
 					</span>

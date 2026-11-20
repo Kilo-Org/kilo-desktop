@@ -300,15 +300,18 @@ describe("KiloToolEndpoint", () => {
 			return changed;
 		});
 		await changeUntilAnnounced(source, changes);
-		// Let announcements of earlier attempts drain before counting.
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		// The helper's last attempt sends one more announcement; wait for it so
+		// counting starts with nothing in flight.
+		const announced = changes.map((changed) => changed.mock.calls.length);
+		for (const [index, changed] of changes.entries()) {
+			await vi.waitFor(() => expect(changed.mock.calls.length).toBeGreaterThan(announced[index]!));
+		}
 		for (const changed of changes) changed.mockClear();
 
 		source.set([tool("todos_added")]);
 		source.set([tool("todos_added")]);
 
 		for (const changed of changes) await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		for (const changed of changes) expect(changed).toHaveBeenCalledOnce();
 	});
 

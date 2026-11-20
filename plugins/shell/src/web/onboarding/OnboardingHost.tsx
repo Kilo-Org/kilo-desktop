@@ -1,12 +1,4 @@
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-	type ReactNode,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { Contribution, WhenExpression } from "@kilo-desktop/kernel";
 import {
@@ -22,12 +14,11 @@ import {
 	ONBOARDING_VERSION,
 	Onboarding,
 	OnboardingStep,
-	type OnboardingControls,
 	type OnboardingState,
 	type OnboardingStepImplementation,
 	type OnboardingStepView,
 } from "../../contracts";
-import { OnboardingFrame } from "./OnboardingFrame";
+import { OnboardingFrame, StepContent, type StepChrome } from "./OnboardingFrame";
 
 /**
  * Dev override that reopens onboarding every launch
@@ -46,6 +37,20 @@ function isOffered(
 	return showWhen === undefined || kernel.contextKeys.evaluate(showWhen as WhenExpression);
 }
 
+/** The steps this run shows: those offered when onboarding opened (or now, before it opens), plus a required step. */
+function offeredSteps(
+	kernel: ReturnType<typeof useKernel>,
+	implemented: readonly Step[],
+	offered: ReadonlySet<string> | null,
+	required: Step | undefined,
+): readonly Step[] {
+	return implemented.filter((step) =>
+		offered
+			? offered.has(step.key) || step === required
+			: isOffered(kernel, step.metadata.showWhen),
+	);
+}
+
 function finishedCurrentVersion(state: OnboardingState): boolean {
 	return state.outcome !== null && (state.version ?? 1) >= ONBOARDING_VERSION;
 }
@@ -53,19 +58,13 @@ function finishedCurrentVersion(state: OnboardingState): boolean {
 /** The first step whose `required` condition holds, re-evaluated as context keys change. */
 function useRequiredStep(steps: readonly Step[]): Step | undefined {
 	const kernel = useKernel();
-	const subscribe = useCallback(
-		(onChange: () => void) => kernel.contextKeys.subscribe(onChange),
-		[kernel],
-	);
-	const read = useCallback(
-		() =>
-			steps.find(
-				(step) =>
-					step.metadata.required !== undefined &&
-					kernel.contextKeys.evaluate(step.metadata.required as WhenExpression),
-			)?.key,
-		[kernel, steps],
-	);
+	const subscribe = (onChange: () => void) => kernel.contextKeys.subscribe(onChange);
+	const read = () =>
+		steps.find(
+			(step) =>
+				step.metadata.required !== undefined &&
+				kernel.contextKeys.evaluate(step.metadata.required as WhenExpression),
+		)?.key;
 	const key = useSyncExternalStore(subscribe, read, read);
 	return steps.find((step) => step.key === key);
 }
@@ -77,7 +76,9 @@ function useRequiredStep(steps: readonly Step[]): Step | undefined {
  * whenever its condition holds, even after onboarding is done, and can't be
  * dismissed; satisfying it advances the tour, or closes the overlay if the
  * tour wouldn't otherwise show. Escape and "Exit setup" record a skip; the
- * last step's action records completion.
+ * last step's action records completion. One frame stays mounted for the
+ * whole flow: each step renders its own content inside it (so it animates out
+ * as the next comes in) and reports its footer state back here.
  */
 export function OnboardingHost() {
 	const desktop = useContextKey("kernel/desktop");
@@ -86,26 +87,22 @@ export function OnboardingHost() {
 	const state = useDomainObjectState(Onboarding, selectState);
 	const kernel = useKernel();
 	const contributed = useExtensions(OnboardingStep);
-	const implemented = useMemo(
-		() => contributed.filter((step) => step.implementation !== undefined),
-		[contributed],
-	);
+	const implemented = contributed.filter((step) => step.implementation !== undefined);
 	const required = useRequiredStep(implemented);
 	const [closed, setClosed] = useState(false);
 	// Which `showWhen` steps apply is decided once, when onboarding opens.
 	const [offered, setOffered] = useState<ReadonlySet<string> | null>(null);
-	const steps = useMemo(
-		() =>
-			implemented.filter((step) =>
-				offered
-					? offered.has(step.key) || step === required
-					: isOffered(kernel, step.metadata.showWhen),
-			),
-		[implemented, kernel, offered, required],
-	);
 	const [chosen, setChosen] = useState<string | null>(null);
 	const [furthest, setFurthest] = useState(0);
 	const shown = useRef(false);
+	const steps = offeredSteps(kernel, implemented, offered, required);
+	// The current step's footer state and primary action, reported by the step
+	// as it renders (the frame stays mounted across steps, so steps animate).
+	const [chrome, setChrome] = useState<{ stepKey: string; chrome: StepChrome } | null>(null);
+	const action = useRef<(() => void) | null>(null);
+	const setAction = (run: (() => void) | null) => {
+		action.current = run;
+	};
 
 	const tourVisible =
 		desktop && state !== undefined && !closed && (!finishedCurrentVersion(state) || forced);
@@ -113,15 +110,10 @@ export function OnboardingHost() {
 		required ?? (tourVisible ? (steps.find((step) => step.key === chosen) ?? steps[0]) : undefined);
 	const index = current ? steps.indexOf(current) : -1;
 
-	useEffect(() => {
-		if (index > furthest) setFurthest(index);
-	}, [furthest, index]);
-
-	useEffect(() => {
-		if (offered === null && tourVisible && current) {
-			setOffered(new Set(steps.map((step) => step.key)));
-		}
-	}, [current, offered, steps, tourVisible]);
+	if (index > furthest) setFurthest(index);
+	if (offered === null && tourVisible && current) {
+		setOffered(new Set(steps.map((step) => step.key)));
+	}
 
 	useEffect(() => {
 		if (!tourVisible || !current || shown.current) return;
@@ -156,11 +148,28 @@ export function OnboardingHost() {
 	};
 	const previous = steps[index - 1];
 
-	const renderFrame = (view: OnboardingStepView) => (
+	const layout = current.metadata.layout;
+	const renderStep = (view: OnboardingStepView) => (
+		<>
+			<ReportChrome stepKey={current.key} view={view} onChrome={setChrome} onAction={setAction} />
+			<StepContent layout={layout} view={view} />
+		</>
+	);
+
+	return (
 		<OnboardingFrame
 			stepKey={current.key}
-			layout={current.metadata.layout}
-			view={view}
+			layout={layout}
+			content={
+				<RenderContribution
+					key={current.key}
+					contribution={current}
+					select={selectStep}
+					props={{ next, children: renderStep }}
+				/>
+			}
+			chrome={chrome?.stepKey === current.key ? chrome.chrome : NO_CHROME}
+			onPrimary={() => action.current?.()}
 			progress={steps
 				.filter((step) => step.metadata.layout === "card")
 				.map((step) => ({ id: step.key, label: step.metadata.label }))}
@@ -173,30 +182,53 @@ export function OnboardingHost() {
 			onDismiss={dismiss}
 		/>
 	);
-
-	return (
-		<RenderContribution
-			key={current.key}
-			contribution={current}
-			select={selectRunner}
-			props={{ step: current.implementation!, controls: { next }, render: renderFrame }}
-		/>
-	);
 }
 
-interface StepRunnerProps {
-	readonly step: OnboardingStepImplementation;
-	readonly controls: OnboardingControls;
-	readonly render: (view: OnboardingStepView) => ReactNode;
-}
+/** Until a step reports its chrome (before its first paint): nothing to press. */
+const NO_CHROME: StepChrome = { skippable: false, busy: false, primary: null };
 
 /**
- * Runs the current step's hook inside its plugin's context (so its domain
- * calls are its own), in a component keyed per step so hook order never
- * changes between steps.
+ * Hands the host a step's footer state as it renders, only when it changes
+ * (so reporting never loops), and before paint, so the footer never shows the
+ * previous step's buttons. The primary action itself is kept current apart.
  */
-function StepRunner({ step, controls, render }: StepRunnerProps) {
-	return <>{render(step.useStep(controls))}</>;
+function ReportChrome({
+	stepKey,
+	view,
+	onChrome,
+	onAction,
+}: {
+	readonly stepKey: string;
+	readonly view: OnboardingStepView;
+	readonly onChrome: (chrome: { stepKey: string; chrome: StepChrome }) => void;
+	readonly onAction: (run: (() => void) | null) => void;
+}) {
+	const skippable = view.skippable === true;
+	const busy = view.busy === true;
+	const label = view.primary === undefined ? null : (view.primary?.label ?? null);
+	const disabled = view.primary?.disabled === true;
+	const kind = view.primary === undefined ? "continue" : view.primary === null ? "none" : "own";
+	useLayoutEffect(() => {
+		onChrome({
+			stepKey,
+			chrome: {
+				skippable,
+				busy,
+				primary:
+					kind === "continue"
+						? "continue"
+						: kind === "none" || label === null
+							? null
+							: { label, disabled },
+			},
+		});
+	}, [onChrome, stepKey, skippable, busy, kind, label, disabled]);
+	const run = view.primary?.onClick ?? null;
+	useLayoutEffect(() => {
+		onAction(run);
+	});
+	return null;
 }
 
-const selectRunner = () => StepRunner;
+/** Runs in the step's plugin context, keyed per step so its hooks never mix with another's. */
+const selectStep = (step: OnboardingStepImplementation) => step.Step;

@@ -4,7 +4,6 @@ import { activateAccount } from "./account";
 import { activateAiProviders } from "./ai-providers";
 import { activateExternalApps } from "./external-apps";
 import { activateFrame } from "./frame";
-import { activateOnboarding } from "./onboarding";
 import { activateSettings } from "./settings";
 import { activateSupport } from "./support";
 import { activateUpdates } from "./updates";
@@ -19,7 +18,6 @@ export const shellWebEntry = definePlugin({
 	activate(sdk) {
 		activateFrame(sdk);
 		activateSettings(sdk);
-		activateOnboarding(sdk);
 		activateUpdates(sdk);
 		activateAccount(sdk);
 		activateAiProviders(sdk);

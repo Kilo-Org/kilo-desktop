@@ -93,6 +93,7 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 	const calls = {
 		create: vi.fn(),
 		createChat: vi.fn(),
+		forkChat: vi.fn(),
 		remove: vi.fn(),
 		open: vi.fn<(input: OpenPaneInput) => void>(),
 		update: vi.fn(),
@@ -150,6 +151,11 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 					return options.authorize?.(path) ?? { allowed: true, path };
 				},
 				checkFolders: () => undefined,
+				newFolderLocation: () => ({ path: null }),
+				newFolderPath: () => {
+					throw new Error("newFolderPath is not faked here.");
+				},
+				rememberNewFolderLocation: () => undefined,
 			},
 		});
 	}
@@ -204,6 +210,19 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 						...(model ? { model } : {}),
 						...(title ? { title } : {}),
 					});
+					attachChat(chat);
+					return chat;
+				},
+				forkChat: async ({ id, chatId, messageId }, caller) => {
+					calls.forkChat({ id, chatId, messageId, caller: caller.pluginId });
+					const owner = workSessions.state.workSessions.find((candidate) => candidate.id === id);
+					if (!owner) throw new KernelError("NOT_FOUND", `No work session ${id}.`);
+					if (!owner.chatIds.includes(chatId)) {
+						throw new KernelError("NOT_FOUND", "The chat isn't in this session.");
+					}
+					const chats = sdk.domainObjects.get(Chats);
+					if (!chats) throw new KernelError("UNAVAILABLE", "kilo.core's chats are not available.");
+					const chat = await chats.methods.fork({ id: chatId, messageId });
 					attachChat(chat);
 					return chat;
 				},

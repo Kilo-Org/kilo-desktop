@@ -1,7 +1,7 @@
 import type { FileContents, FileOptions } from "@pierre/diffs";
 import { Editor, type EditorOptions, type EditorType } from "@pierre/diffs/edit";
 import { EditProvider, File, Virtualizer } from "@pierre/diffs/react";
-import { memo, useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface FileEditorProps {
 	readonly relativePath: string;
@@ -39,7 +39,7 @@ export function FilesEditProvider({ children }: { readonly children: ReactNode }
 	return <EditProvider createEditor={createEditor}>{children}</EditProvider>;
 }
 
-export const FileEditor = memo(function FileEditor({
+export function FileEditor({
 	relativePath,
 	contents,
 	revealLine,
@@ -50,24 +50,18 @@ export const FileEditor = memo(function FileEditor({
 	documentRevision,
 	editorOptions,
 }: FileEditorProps) {
-	const file = useMemo<FileContents>(
-		() => ({
-			name: relativePath,
-			contents,
-			cacheKey: `${relativePath}:${documentRevision ?? "readonly"}:${String(reloadVersion)}`,
-		}),
-		[contents, documentRevision, relativePath, reloadVersion],
-	);
-	const options = useMemo<FileOptions<undefined, undefined>>(
-		() => ({
-			disableFileHeader: true,
-			overflow: "wrap",
-			theme: shiki,
-			themeType: theme,
-			unsafeCSS: FILE_EDITOR_SURFACE_CSS,
-		}),
-		[shiki, theme],
-	);
+	const file: FileContents = {
+		name: relativePath,
+		contents,
+		cacheKey: `${relativePath}:${documentRevision ?? "readonly"}:${String(reloadVersion)}`,
+	};
+	const options: FileOptions<undefined, undefined> = {
+		disableFileHeader: true,
+		overflow: "wrap",
+		theme: shiki,
+		themeType: theme,
+		unsafeCSS: FILE_EDITOR_SURFACE_CSS,
+	};
 
 	return (
 		<Virtualizer
@@ -87,4 +81,4 @@ export const FileEditor = memo(function FileEditor({
 			/>
 		</Virtualizer>
 	);
-});
+}

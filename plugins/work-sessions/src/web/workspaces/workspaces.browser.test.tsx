@@ -1,3 +1,4 @@
+import { BookIcon } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -9,14 +10,17 @@ import {
 	type PluginEntry,
 } from "@kilo-desktop/kernel";
 import { KiloWorkStyle } from "@kilo-desktop/plugin-core/contracts";
-import { renderShell } from "@kilo-desktop/plugin-shell/testing";
+import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
 
 import manifest from "../../../plugin.json";
 import {
 	Workspaces,
 	WORK_SESSIONS_DEFINITIONS,
+	WorkspaceSource,
 	type CreateWorkspaceInput,
+	type NewFolderDetails,
 	type Workspace,
+	type WorkspaceSourceProps,
 } from "../../contracts";
 import { activateWorkspaces } from "./index";
 
@@ -35,7 +39,10 @@ const APP: Workspace = {
 };
 
 /** Stands in for kilo.work-sessions' main workspaces area: workspaces kept in memory. */
-function fakeWorkspacesMain(initial: Workspace[], options: { unavailable?: string[] } = {}) {
+function fakeWorkspacesMain(
+	initial: Workspace[],
+	options: { unavailable?: string[]; newFolderLocation?: string | null } = {},
+) {
 	const calls = {
 		create: vi.fn<(input: CreateWorkspaceInput) => void>(),
 		update: vi.fn(),
@@ -111,6 +118,9 @@ function fakeWorkspacesMain(initial: Workspace[], options: { unavailable?: strin
 						},
 						authorize: () => ({ allowed: false }),
 						checkFolders: () => {},
+						newFolderLocation: () => ({ path: options.newFolderLocation ?? null }),
+						newFolderPath: ({ parentPath, name }) => ({ path: `${parentPath}/${name}` }),
+						rememberNewFolderLocation: () => {},
 					},
 				},
 			);
@@ -128,10 +138,15 @@ async function renderApp(
 		pickedFolders?: string[];
 		onboarding?: boolean;
 		localStorage?: Record<string, string>;
+		newFolderLocation?: string | null;
+		guests?: GuestPlugin[];
 	} = {},
 ) {
 	const fake = fakeWorkspacesMain(options.workspaces ?? [], {
 		...(options.unavailable ? { unavailable: options.unavailable } : {}),
+		...(options.newFolderLocation === undefined
+			? {}
+			: { newFolderLocation: options.newFolderLocation }),
 	});
 	const open = vi.fn(() => ({ paths: options.pickedFolders ?? [] }));
 	const host = await renderShell(
@@ -142,6 +157,7 @@ async function renderApp(
 				main: fake.entry,
 				web: workspacesWebEntry,
 			},
+			...(options.guests ?? []),
 		],
 		{
 			desktop: options.desktop ?? true,
@@ -169,7 +185,16 @@ async function renderApp(
 }
 
 const formDialog = () => page.getByTestId("workspace-form-dialog");
+const createDialog = () => page.getByTestId("workspace-create-dialog");
 const manager = () => page.getByTestId("workspace-manager-dialog");
+
+/** Opens New workspace on its Local folder source. */
+async function addFromLocalFolder(run: (command: "add-workspace") => Promise<unknown>) {
+	await run("add-workspace");
+	await createDialog()
+		.getByRole("button", { name: /Local folder/ })
+		.click();
+}
 
 describe("Manage workspaces", () => {
 	it("explains there are none yet, and creates one from the footer", async () => {
@@ -179,7 +204,9 @@ describe("Manage workspaces", () => {
 
 		await expect.element(manager().getByText("No workspaces yet")).toBeVisible();
 		await manager().getByRole("button", { name: "Create workspace" }).click();
-		await expect.element(formDialog()).toBeVisible();
+		await expect
+			.element(createDialog().getByRole("heading", { name: "New workspace", exact: true }))
+			.toBeVisible();
 	});
 
 	it("edits and deletes listed workspaces", async () => {
@@ -244,14 +271,14 @@ describe("Add workspace", () => {
 			pickedFolders: ["/projects/app", "/projects/docs"],
 		});
 
-		await run("add-workspace");
-		await formDialog().getByTestId("workspace-folder-dropzone").click();
+		await addFromLocalFolder(run);
+		await createDialog().getByTestId("workspace-folder-dropzone").click();
 		await vi.waitFor(() =>
 			expect(open).toHaveBeenCalledWith({ directory: true, multiple: true }, expect.anything()),
 		);
-		await formDialog().getByRole("button", { name: "Make primary" }).click();
-		await formDialog().getByRole("button", { name: "Green", exact: true }).click();
-		await formDialog().getByRole("button", { name: "Create workspace" }).click();
+		await createDialog().getByRole("button", { name: "Make primary" }).click();
+		await createDialog().getByRole("button", { name: "Green", exact: true }).click();
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
 
 		await vi.waitFor(() =>
 			expect(calls.create).toHaveBeenCalledWith(
@@ -266,17 +293,17 @@ describe("Add workspace", () => {
 			),
 		);
 		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-1"));
-		await expect.element(formDialog()).not.toBeInTheDocument();
+		await expect.element(createDialog()).not.toBeInTheDocument();
 	});
 
 	it("makes the next folder primary when the primary is removed", async () => {
 		const { run, calls } = await renderApp({ pickedFolders: ["/projects/app", "/projects/docs"] });
-		await run("add-workspace");
-		await formDialog().getByTestId("workspace-folder-dropzone").click();
-		await expect.element(formDialog().getByText("docs", { exact: true })).toBeVisible();
+		await addFromLocalFolder(run);
+		await createDialog().getByTestId("workspace-folder-dropzone").click();
+		await expect.element(createDialog().getByText("docs", { exact: true })).toBeVisible();
 
-		await formDialog().getByRole("button", { name: "Remove /projects/app" }).click();
-		await formDialog().getByRole("button", { name: "Create workspace" }).click();
+		await createDialog().getByRole("button", { name: "Remove /projects/app" }).click();
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
 
 		await vi.waitFor(() =>
 			expect(calls.create).toHaveBeenCalledWith(
@@ -298,18 +325,18 @@ describe("Add workspace", () => {
 
 	it("needs at least one folder", async () => {
 		const { run } = await renderApp();
-		await run("add-workspace");
+		await addFromLocalFolder(run);
 
 		await expect
-			.element(formDialog().getByRole("button", { name: "Create workspace" }))
+			.element(createDialog().getByRole("button", { name: "Create workspace" }))
 			.toBeDisabled();
 	});
 
 	it("accepts dropped folders and refuses anything else", async () => {
 		const { run } = await renderApp();
-		await run("add-workspace");
-		await expect.element(formDialog().getByTestId("workspace-folder-dropzone")).toBeVisible();
-		const dropZone = formDialog().getByTestId("workspace-folder-dropzone").element();
+		await addFromLocalFolder(run);
+		await expect.element(createDialog().getByTestId("workspace-folder-dropzone")).toBeVisible();
+		const dropZone = createDialog().getByTestId("workspace-folder-dropzone").element();
 		const dataTransfer = {
 			items: [
 				{
@@ -334,23 +361,276 @@ describe("Add workspace", () => {
 
 	it("explains a workspace that can't be saved", async () => {
 		const { run, failNextWith } = await renderApp({ pickedFolders: ["/projects/app"] });
-		await run("add-workspace");
-		await formDialog().getByTestId("workspace-folder-dropzone").click();
-		await expect.element(formDialog().getByText("app", { exact: true })).toBeVisible();
+		await addFromLocalFolder(run);
+		await createDialog().getByTestId("workspace-folder-dropzone").click();
+		await expect.element(createDialog().getByText("app", { exact: true })).toBeVisible();
 		failNextWith("Workspace folders must be unique.");
 
-		await formDialog().getByRole("button", { name: "Create workspace" }).click();
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
 
 		await expect.element(page.getByText("Workspace folders must be unique.")).toBeVisible();
 	});
 
 	it("says folders can only be chosen in the desktop app", async () => {
 		const { run } = await renderApp({ desktop: false });
-		await run("add-workspace");
+		await addFromLocalFolder(run);
 
 		await expect
-			.element(formDialog().getByText("Folder selection requires the desktop app."))
+			.element(createDialog().getByText("Folder selection requires the desktop app."))
 			.toBeVisible();
+	});
+});
+
+describe("New workspace in a new folder", () => {
+	it("makes an empty folder named after the workspace at the remembered location", async () => {
+		const { run, calls } = await renderApp({ newFolderLocation: "/projects" });
+		await addFromLocalFolder(run);
+
+		await createDialog().getByRole("button", { name: "New folder" }).click();
+		await createDialog().getByTestId("workspace-name").fill("Fresh Idea");
+		await expect
+			.element(createDialog().getByTestId("workspace-location-preview"))
+			.toHaveAttribute("title", "/projects/Fresh Idea");
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
+
+		await vi.waitFor(() =>
+			expect(calls.create).toHaveBeenCalledWith(
+				expect.objectContaining({
+					name: "Fresh Idea",
+					folders: [{ path: "/projects/Fresh Idea", isPrimary: true }],
+					createFolders: ["/projects/Fresh Idea"],
+					source: "dialog-new-folder",
+				}),
+			),
+		);
+		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-1"));
+		await expect.element(createDialog()).not.toBeInTheDocument();
+	});
+
+	it("puts the new folder where the person chooses", async () => {
+		const { run, calls, open } = await renderApp({
+			newFolderLocation: "/projects",
+			pickedFolders: ["/elsewhere"],
+		});
+		await addFromLocalFolder(run);
+		await createDialog().getByRole("button", { name: "New folder" }).click();
+		await createDialog().getByTestId("workspace-name").fill("Notes");
+
+		await createDialog().getByRole("button", { name: "Change location" }).click();
+		await vi.waitFor(() =>
+			expect(open).toHaveBeenCalledWith(
+				{ directory: true, multiple: false, defaultPath: "/projects" },
+				expect.anything(),
+			),
+		);
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
+
+		await vi.waitFor(() =>
+			expect(calls.create).toHaveBeenCalledWith(
+				expect.objectContaining({ createFolders: ["/elsewhere/Notes"] }),
+			),
+		);
+	});
+
+	it("needs a name and a location", async () => {
+		const { run } = await renderApp({ newFolderLocation: null });
+		await addFromLocalFolder(run);
+		await createDialog().getByRole("button", { name: "New folder" }).click();
+		await createDialog().getByTestId("workspace-name").fill("Notes");
+
+		await expect.element(createDialog().getByText("No location chosen")).toBeVisible();
+		await expect
+			.element(createDialog().getByRole("button", { name: "Create workspace" }))
+			.toBeDisabled();
+	});
+});
+
+/** acme.templates: a workspace source that makes its folder with kilo.work-sessions' form. */
+function templateSource(
+	create: (details: NewFolderDetails) => Promise<Workspace>,
+	prepare?: () => void,
+): GuestPlugin {
+	function TemplateSource({ NewFolderForm }: WorkspaceSourceProps) {
+		return (
+			<NewFolderForm
+				description="Name it and choose where it goes."
+				suggestedName="starter"
+				pendingLabel="Copying…"
+				errorTitle="Couldn't copy the template"
+				create={create}
+			/>
+		);
+	}
+	return {
+		manifest: {
+			manifestVersion: 1,
+			id: "acme.templates",
+			displayName: "Acme templates",
+			version: "1.0.0",
+			requires: { "kilo.work-sessions/workspace-source": "optional" },
+			contributes: {
+				extensions: {
+					"kilo.work-sessions/workspace-source": [
+						{
+							id: "template",
+							title: "Template",
+							description: "Start from a template.",
+							priority: 10,
+						},
+					],
+				},
+			},
+		},
+		web: definePlugin({
+			activate(sdk) {
+				sdk.extensions.implement(WorkspaceSource, "template", {
+					icon: BookIcon,
+					Component: TemplateSource,
+					...(prepare ? { prepare } : {}),
+				});
+			},
+		}),
+	};
+}
+
+describe("workspace sources", () => {
+	it("lists contributed sources by priority, and comes back from one", async () => {
+		const { run } = await renderApp({ guests: [templateSource(vi.fn())] });
+		await run("add-workspace");
+
+		const sources = createDialog().getByRole("button", { name: /folder|template/i });
+		await expect.element(sources.nth(1)).toBeVisible();
+		expect(sources.elements().map((source) => source.textContent)).toEqual([
+			"TemplateStart from a template.",
+			"Local folderUse folders on this computer, or create a new one.",
+		]);
+
+		await sources.nth(0).click();
+		await expect
+			.element(
+				createDialog()
+					.getByTestId("workspace-source-chosen")
+					.getByText("Template", { exact: true }),
+			)
+			.toBeVisible();
+		await createDialog().getByRole("button", { name: "Change how to start" }).click();
+		await expect
+			.element(createDialog().getByRole("heading", { name: "New workspace", exact: true }))
+			.toBeVisible();
+	});
+
+	it("lets each source warm up once every time the dialog opens", async () => {
+		const prepare = vi.fn();
+		const { run } = await renderApp({ guests: [templateSource(vi.fn(), prepare)] });
+
+		await run("add-workspace");
+		await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+		await createDialog()
+			.getByRole("button", { name: /Template/ })
+			.click();
+		await createDialog().getByRole("button", { name: "Change how to start" }).click();
+		expect(prepare).toHaveBeenCalledTimes(1);
+
+		await userEvent.keyboard("{Escape}");
+		await expect.element(createDialog()).not.toBeInTheDocument();
+		await run("add-workspace");
+		await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(2));
+	});
+
+	it("still opens when a source fails to warm up", async () => {
+		const { run } = await renderApp({
+			guests: [
+				templateSource(vi.fn(), () => {
+					throw new Error("boom");
+				}),
+			],
+		});
+
+		await run("add-workspace");
+
+		await expect.element(createDialog().getByRole("button", { name: /Template/ })).toBeVisible();
+	});
+
+	it("creates through a source's own step and makes the workspace active", async () => {
+		const create = vi.fn(async (details: NewFolderDetails) => ({
+			...APP,
+			id: "w-template",
+			name: details.name,
+		}));
+		const { run, calls } = await renderApp({
+			newFolderLocation: "/projects",
+			guests: [templateSource(create)],
+		});
+		await run("add-workspace");
+		await createDialog()
+			.getByRole("button", { name: /Template/ })
+			.click();
+		await createDialog().getByRole("button", { name: "Green", exact: true }).click();
+
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
+
+		await vi.waitFor(() =>
+			expect(create).toHaveBeenCalledWith({
+				name: "starter",
+				color: "#34D399",
+				parentPath: "/projects",
+			}),
+		);
+		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-template"));
+		await expect.element(createDialog()).not.toBeInTheDocument();
+	});
+
+	it("locks the form while the source creates the workspace", async () => {
+		let finish!: (workspace: Workspace) => void;
+		const create = vi.fn(
+			() =>
+				new Promise<Workspace>((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const { run } = await renderApp({
+			newFolderLocation: "/projects",
+			guests: [templateSource(create)],
+		});
+		await run("add-workspace");
+		await createDialog()
+			.getByRole("button", { name: /Template/ })
+			.click();
+
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
+
+		await expect.element(createDialog().getByRole("button", { name: "Copying…" })).toBeDisabled();
+		await expect.element(createDialog().getByTestId("new-folder-workspace-name")).toBeDisabled();
+		await expect
+			.element(createDialog().getByRole("button", { name: "Green", exact: true }))
+			.toBeDisabled();
+		await expect
+			.element(createDialog().getByRole("button", { name: "Change how to start" }))
+			.toBeDisabled();
+		finish({ ...APP, id: "w-template" });
+		await expect.element(createDialog()).not.toBeInTheDocument();
+	});
+
+	it("explains why a source couldn't create the workspace", async () => {
+		const create = vi.fn(async () => {
+			throw new Error("Run `gh auth login` first.");
+		});
+		const { run } = await renderApp({
+			newFolderLocation: "/projects",
+			guests: [templateSource(create)],
+		});
+		await run("add-workspace");
+		await createDialog()
+			.getByRole("button", { name: /Template/ })
+			.click();
+
+		await createDialog().getByRole("button", { name: "Create workspace" }).click();
+
+		await expect.element(createDialog().getByText("Couldn't copy the template")).toBeVisible();
+		await expect.element(createDialog().getByText("gh auth login")).toBeVisible();
+		await expect
+			.element(createDialog().getByRole("button", { name: "Create workspace" }))
+			.toBeEnabled();
 	});
 });
 
@@ -366,7 +646,6 @@ describe("origin's active workspace", () => {
 
 		const seeded = { ...localStorage };
 		const again = await renderApp({ workspaces: [APP], localStorage: seeded });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(again.calls.setActive).not.toHaveBeenCalled();
 	});
 
@@ -391,20 +670,55 @@ async function passWorkStyleStep() {
 }
 
 describe("onboarding workspace step", () => {
-	it("creates the first workspace and makes it active", async () => {
-		const { calls } = await renderApp({ onboarding: true, pickedFolders: ["/projects/app"] });
-		await passWorkStyleStep();
+	const onboardingSources = () => page.getByTestId("onboarding-workspace-step");
+	const card = () => page.getByTestId("onboarding-card");
 
+	it("offers every source first, then creates from local folders in the card", async () => {
+		const { calls } = await renderApp({
+			onboarding: true,
+			pickedFolders: ["/projects/app"],
+			guests: [templateSource(vi.fn())],
+		});
+		await passWorkStyleStep();
 		await expect.element(page.getByRole("heading", { name: "Create a workspace" })).toBeVisible();
+		await expect
+			.element(onboardingSources().getByRole("button", { name: /Template/ }))
+			.toBeVisible();
+		await expect.element(page.getByTestId("onboarding-continue")).not.toBeInTheDocument();
+
+		await onboardingSources()
+			.getByRole("button", { name: /Local folder/ })
+			.click();
+		await expect
+			.element(
+				card().getByTestId("workspace-source-chosen").getByText("Local folder", { exact: true }),
+			)
+			.toBeVisible();
 		await expect.element(page.getByTestId("onboarding-continue")).toBeDisabled();
-		await page.getByTestId("workspace-folder-dropzone").click();
+		await card().getByTestId("workspace-folder-dropzone").click();
+		await expect.element(card().getByText("app", { exact: true }).first()).toBeVisible();
 		await page.getByTestId("onboarding-continue").click();
 
 		await vi.waitFor(() =>
 			expect(calls.create).toHaveBeenCalledWith(expect.objectContaining({ source: "onboarding" })),
 		);
 		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-1"));
-		await expect.element(page.getByRole("heading", { name: "You're all set" })).toBeVisible();
+		await expect.element(page.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+		expect(page.getByRole("dialog", { name: /New workspace/ }).elements()).toEqual([]);
+	});
+
+	it("keeps the card in place while moving between screens, so they can animate", async () => {
+		await renderApp({ onboarding: true, guests: [templateSource(vi.fn())] });
+		await passWorkStyleStep();
+		await expect.element(onboardingSources()).toBeVisible();
+		const heading = page.getByRole("heading", { name: "Create a workspace" }).element();
+
+		await onboardingSources()
+			.getByRole("button", { name: /Template/ })
+			.click();
+		await expect.element(card().getByTestId("workspace-source-chosen")).toBeVisible();
+
+		expect(page.getByRole("heading", { name: "Create a workspace" }).element()).toBe(heading);
 	});
 
 	it("explains a workspace that can't be created", async () => {
@@ -413,7 +727,10 @@ describe("onboarding workspace step", () => {
 			pickedFolders: ["/projects/app"],
 		});
 		await passWorkStyleStep();
-		await page.getByTestId("workspace-folder-dropzone").click();
+		await onboardingSources()
+			.getByRole("button", { name: /Local folder/ })
+			.click();
+		await card().getByTestId("workspace-folder-dropzone").click();
 		failNextWith("Workspace folders must be unique.");
 
 		await page.getByTestId("onboarding-continue").click();
@@ -421,10 +738,61 @@ describe("onboarding workspace step", () => {
 		await expect.element(page.getByText("Workspace folders must be unique.")).toBeVisible();
 	});
 
+	it("creates through another source's form in the card and moves on", async () => {
+		const create = vi.fn(async (details: NewFolderDetails) => ({
+			...APP,
+			id: "w-template",
+			name: details.name,
+		}));
+		const { calls } = await renderApp({
+			onboarding: true,
+			newFolderLocation: "/projects",
+			guests: [templateSource(create)],
+		});
+		await passWorkStyleStep();
+
+		await onboardingSources()
+			.getByRole("button", { name: /Template/ })
+			.click();
+		await expect
+			.element(card().getByTestId("workspace-source-chosen").getByText("Template", { exact: true }))
+			.toBeVisible();
+		await page.getByTestId("onboarding-continue").click();
+
+		await vi.waitFor(() =>
+			expect(create).toHaveBeenCalledWith(expect.objectContaining({ parentPath: "/projects" })),
+		);
+		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-template"));
+		await expect.element(page.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+	});
+
+	it("changes how to start from the top of a source's form; Back is the previous step", async () => {
+		await renderApp({ onboarding: true, guests: [templateSource(vi.fn())] });
+		await passWorkStyleStep();
+		await onboardingSources()
+			.getByRole("button", { name: /Template/ })
+			.click();
+		await expect
+			.element(card().getByTestId("workspace-source-chosen").getByText("Template", { exact: true }))
+			.toBeVisible();
+
+		await card().getByRole("button", { name: "Change how to start" }).click();
+		await expect.element(onboardingSources()).toBeVisible();
+		await onboardingSources()
+			.getByRole("button", { name: /Template/ })
+			.click();
+
+		await page.getByTestId("onboarding-back").click();
+		await expect
+			.element(page.getByRole("heading", { name: "Choose how you want to work" }))
+			.toBeVisible();
+	});
+
 	it("isn't offered when workspaces already exist", async () => {
 		await renderApp({ onboarding: true, workspaces: [APP] });
 		await passWorkStyleStep();
 
-		await expect.element(page.getByRole("heading", { name: "You're all set" })).toBeVisible();
+		await expect.element(page.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+		expect(page.getByRole("heading", { name: "Create a workspace" }).elements()).toEqual([]);
 	});
 });

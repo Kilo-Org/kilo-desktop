@@ -345,6 +345,28 @@ describe("the transcript", () => {
 		expect(viewport.scrollHeight).toBe(viewport.clientHeight);
 	});
 
+	it("leaves the transcript's scrollbar gutters beside the docked composer to the scrollbar", async () => {
+		// Classic scrollbars, as on Windows and Linux; headless Chromium's overlay ones take no gutter.
+		const classicScrollbars = document.createElement("style");
+		classicScrollbars.textContent = "::-webkit-scrollbar { width: 12px; }";
+		document.head.append(classicScrollbars);
+		onTestFinished(() => classicScrollbars.remove());
+		await renderChat();
+		await expect.element(page.getByTestId("kilo-composer-dock")).toBeVisible();
+		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
+		const gutter = (viewport.offsetWidth - viewport.clientWidth) / 2;
+		expect(gutter).toBeGreaterThan(0);
+		viewport.scrollIntoView();
+
+		const view = viewport.getBoundingClientRect();
+		const composer = page.getByTestId("kilo-composer-dock").element().getBoundingClientRect();
+		const midline = composer.top + composer.height / 2;
+		await vi.waitFor(() => {
+			expect(document.elementFromPoint(view.left + gutter / 2, midline)).toBe(viewport);
+			expect(document.elementFromPoint(view.right - gutter / 2, midline)).toBe(viewport);
+		});
+	});
+
 	it("removes an attachment before sending", async () => {
 		await renderChat();
 		const transfer = new DataTransfer();

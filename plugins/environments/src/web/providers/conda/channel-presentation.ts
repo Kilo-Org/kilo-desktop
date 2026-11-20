@@ -13,11 +13,12 @@ export const ANACONDA_MAIN_CHANNEL = "defaults";
 /**
  * Product channels are always offered, even when `conda info` reports no
  * configured channels. Keep custom configured channels after these defaults.
+ * Order is solver priority: Anaconda's vetted channel wins over conda-forge.
  */
 export function selectableChannels(configuredChannels: string[]): string[] {
 	return [
-		CONDA_FORGE_CHANNEL,
 		ANACONDA_MAIN_CHANNEL,
+		CONDA_FORGE_CHANNEL,
 		...configuredChannels.filter(
 			(channel) =>
 				channel !== CONDA_FORGE_CHANNEL &&
@@ -46,8 +47,18 @@ function isAnacondaChannel(channel: string): boolean {
  * Human presentation for a conda channel in the channel chooser. Known
  * channels get marketing copy from the design spec; anything else falls back
  * to the raw channel name with a neutral description.
+ *
+ * An install link's channel (`fromLink`) shows as given, even when it names
+ * part of Anaconda's repository: it is a different channel from `defaults`,
+ * and merging the two rows would hide which one the link asked for.
  */
-export function getChannelPresentation(channel: string): ChannelPresentation {
+export function getChannelPresentation(
+	channel: string,
+	options: { readonly fromLink?: boolean } = {},
+): ChannelPresentation {
+	if (options.fromLink && channel !== CONDA_FORGE_CHANNEL && channel !== ANACONDA_MAIN_CHANNEL) {
+		return { kind: "other", title: channel, description: "From the install link." };
+	}
 	if (channel === CONDA_FORGE_CHANNEL) {
 		return {
 			kind: "conda-forge",

@@ -62,6 +62,7 @@ export type FlagRecord = z.output<typeof flagRecordSchema>;
 export const KernelFlags = defineDomainObject({
 	id: "kernel/flags",
 	home: "main",
+	description: "Every declared feature flag and its value for the identity.",
 	state: z.object({
 		ready: z.boolean(),
 		flags: z.record(z.string(), flagRecordSchema),

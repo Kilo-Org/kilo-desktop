@@ -1,4 +1,6 @@
-# Install dependencies in freshly created worktrees (e.g. Kilo Agent Manager).
+# Set up freshly created worktrees (Kilo Agent Manager, Kilo Desktop work sessions,
+# `git worktree add`) in the background so creating the worktree returns at once.
+# Progress and the agent wait protocol live in .kilo/worktree-setup/ (see AGENTS.md).
 # git passes: $1 = previous HEAD, $2 = new HEAD, $3 = 1 for branch checkouts.
 # A null previous HEAD (all zeros) means a new worktree; branch switches are skipped.
 [ "$3" = "1" ] || exit 0
@@ -7,10 +9,14 @@ case "$1" in
 esac
 [ -n "$CI" ] && exit 0
 
+# The relative core.hooksPath resolves in the checkout that ran `git worktree add`,
+# so take the script from beside this hook: the new worktree's commit may predate it.
+setup="$(cd "$(dirname "$0")/.." && pwd)/scripts/setup-worktree.mjs"
 cd "$(git rev-parse --show-toplevel)" || exit 0
 
-echo "post-checkout: new worktree detected, running pnpm install..."
-if ! pnpm install --frozen-lockfile --prefer-offline; then
-	echo "post-checkout: pnpm install failed; run it manually in $(pwd)" >&2
+if node "$setup" --background; then
+	echo "post-checkout: installing dependencies in the background; log: .kilo/worktree-setup/log"
+else
+	echo "post-checkout: could not start worktree setup; run: node scripts/setup-worktree.mjs" >&2
 fi
 exit 0

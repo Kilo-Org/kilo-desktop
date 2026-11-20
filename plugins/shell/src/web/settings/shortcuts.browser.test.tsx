@@ -3,6 +3,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { KernelCommand, KernelKeybindings } from "@kilo-desktop/kernel";
 
+import { ShortcutsPanel } from "../../contracts";
 import { contributor, renderShell } from "../../testing";
 
 function commandPlugin(run = vi.fn()) {
@@ -50,7 +51,7 @@ describe("shortcuts settings", () => {
 		const { main, renderer } = await openShortcuts();
 
 		await page.getByTestId("shortcut-recorder-acme.cmds/deploy").click();
-		await expect.poll(() => renderer.keyboard.chords()).toEqual([]);
+		await expect.poll(() => renderer.keyboard.bindings()).toEqual([]);
 		await userEvent.keyboard("{Control>}{Alt>}j{/Alt}{/Control}");
 
 		await expect.poll(() => overridesOf(main)).toEqual({ "acme.cmds/deploy": "Ctrl+Alt+KeyJ" });
@@ -84,6 +85,32 @@ describe("shortcuts settings", () => {
 
 		await page.getByTestId("keyboard-shortcuts-reset-all").click();
 		await expect.poll(() => overridesOf(main)).toEqual({});
+	});
+
+	it("shows contributed shortcuts panels above the list and leaves out the commands they claim", async () => {
+		const panel = contributor(
+			"acme.panel",
+			{
+				"kernel/command": [
+					{ id: "jump", title: "Jump", category: "Release", keybinding: "Mod+Alt+J" },
+				],
+				"kilo.shell/shortcuts-panel": [
+					{ id: "jumps", title: "Jumps", commands: ["acme.panel/jump"] },
+				],
+			},
+			(sdk) => {
+				sdk.extensions.implement(KernelCommand, "jump", () => {});
+				sdk.extensions.implement(ShortcutsPanel, "jumps", {
+					component: () => <p>Jump keys</p>,
+				});
+			},
+		);
+		await openShortcuts([commandPlugin().plugin, panel]);
+
+		const section = page.getByRole("region", { name: "Jumps" });
+		await expect.element(section.getByText("Jump keys")).toBeVisible();
+		await expect.element(page.getByTestId("shortcut-row-acme.cmds/deploy")).toBeVisible();
+		await expect.element(page.getByTestId("shortcut-row-acme.panel/jump")).not.toBeInTheDocument();
 	});
 
 	it("explains which command kept a shortcut two commands want", async () => {

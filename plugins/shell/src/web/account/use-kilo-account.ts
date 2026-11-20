@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { KernelClipboard, KernelOs } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import {
@@ -59,34 +57,32 @@ export function useKiloAccount(): KiloAccountView {
 	const clipboard = useDomainObject(KernelClipboard);
 	const desktop = useContextKey("kernel/desktop");
 
-	return useMemo(() => {
-		const call = (run: (methods: NonNullable<typeof account>["methods"]) => Promise<unknown>) => {
-			if (account) void run(account.methods).catch(ignore);
-		};
-		return {
-			isLoading:
-				state.connection === "pending" ||
-				(state.connection === "connected" && state.signedIn === null) ||
-				(state.signedIn === true && !state.profile && !state.profileError),
-			connectionUnavailable: state.connection === "unavailable",
-			unavailableMessage: desktop
-				? "Unavailable while the Kilo server isn't running."
-				: "Available in the desktop app.",
-			signedIn: state.signedIn,
-			profile: state.signedIn ? state.profile : null,
-			profileError: state.profileError,
-			deviceSignIn: state.deviceSignIn,
-			organizationError: state.organizationError,
-			refreshing: state.refreshing,
-			switchingOrganization: state.switchingOrganization,
-			signIn: () => call((methods) => methods.signIn(undefined)),
-			cancelSignIn: () => call((methods) => methods.cancelSignIn(undefined)),
-			signOut: () => call((methods) => methods.signOut(undefined)),
-			refresh: () => call((methods) => methods.refresh(undefined)),
-			setOrganization: (organizationId) =>
-				call((methods) => methods.setOrganization({ organizationId })),
-			openExternal: (url) => void os?.methods.openExternal({ url }).catch(ignore),
-			copyText: (text) => void clipboard?.methods.writeText({ text }).catch(ignore),
-		};
-	}, [account, clipboard, desktop, os, state]);
+	const call = (run: (methods: NonNullable<typeof account>["methods"]) => Promise<unknown>) => {
+		if (account) void run(account.methods).catch(ignore);
+	};
+	return {
+		isLoading:
+			state.connection === "pending" ||
+			(state.connection === "connected" && state.signedIn === null) ||
+			(state.signedIn === true && !state.profile && !state.profileError),
+		connectionUnavailable: state.connection === "unavailable",
+		unavailableMessage: desktop
+			? "Unavailable while the Kilo server isn't running."
+			: "Available in the desktop app.",
+		signedIn: state.signedIn,
+		profile: state.signedIn ? state.profile : null,
+		profileError: state.profileError,
+		deviceSignIn: state.deviceSignIn,
+		organizationError: state.organizationError,
+		refreshing: state.refreshing,
+		switchingOrganization: state.switchingOrganization,
+		signIn: () => call((methods) => methods.signIn(undefined)),
+		cancelSignIn: () => call((methods) => methods.cancelSignIn(undefined)),
+		signOut: () => call((methods) => methods.signOut(undefined)),
+		refresh: () => call((methods) => methods.refresh(undefined)),
+		setOrganization: (organizationId) =>
+			call((methods) => methods.setOrganization({ organizationId })),
+		openExternal: (url) => void os?.methods.openExternal({ url }).catch(ignore),
+		copyText: (text) => void clipboard?.methods.writeText({ text }).catch(ignore),
+	};
 }

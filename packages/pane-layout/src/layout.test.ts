@@ -10,18 +10,17 @@ import {
 	dropPositionFromPoint,
 	findPaneGroup,
 	flattenPanes,
-	getFixedGroupLayout,
 	getScrollTarget,
 	moveGroup,
 	movePane,
 	movePaneToGroup,
 	PANE_GAP,
+	paneDirectionTarget,
 	parseLayoutJson,
 	projectLayout,
 	removePane,
 	resizeColumn,
 	resizeStackDivider,
-	rewritePaneId,
 	serializeLayout,
 	setActivePane,
 	togglePin,
@@ -149,16 +148,62 @@ describe("pane groups", () => {
 		expect(layout.groups.map((group) => group.id)).toEqual(["group:c"]);
 		expect(layout.activePaneId).toBe("c");
 	});
+});
 
-	it("rewrites nested pane and active identifiers", () => {
-		let layout = createLayout([pane("draft"), pane("other")]);
-		layout = movePaneToGroup(layout, "other", "group:draft");
-		layout = setActivePane(layout, "draft");
-		const rewritten = rewritePaneId(layout, "draft", "local");
+describe("moving a tab in a direction", () => {
+	const all = ["up", "down", "left", "right"] as const;
+	const target = (
+		layout: ReturnType<typeof createLayout>,
+		paneId: string,
+		direction: (typeof all)[number],
+	) => paneDirectionTarget(layout, paneId, direction);
 
-		expect(flattenPanes(rewritten).map((entry) => entry.id)).toEqual(["local", "other"]);
-		expect(rewritten.groups[0]?.activePaneId).toBe("local");
-		expect(rewritten.activePaneId).toBe("local");
+	it("has nowhere to take a lone tab in the only group, or a tab that isn't there", () => {
+		const layout = createLayout([pane("a")]);
+
+		for (const direction of all) expect(target(layout, "a", direction)).toBeNull();
+		expect(target(layout, "gone", "left")).toBeNull();
+	});
+
+	it("splits a tab off its group toward an edge with no group", () => {
+		const layout = movePaneToGroup(createLayout([pane("a"), pane("b")]), "b", "group:a");
+
+		expect(target(layout, "b", "left")).toEqual({ targetGroupId: "group:a", position: "before" });
+		expect(target(layout, "b", "right")).toEqual({ targetGroupId: "group:a", position: "after" });
+		expect(target(layout, "b", "up")).toEqual({ targetGroupId: "group:a", position: "above" });
+		expect(target(layout, "b", "down")).toEqual({ targetGroupId: "group:a", position: "below" });
+	});
+
+	it("moves into the neighbouring column, at the same height in a stack", () => {
+		let layout = createLayout([pane("a"), pane("b"), pane("c")]);
+		layout = moveGroup(layout, "group:c", "group:b", "below");
+
+		expect(target(layout, "a", "right")).toEqual({ targetGroupId: "group:b", position: "inside" });
+		expect(target(layout, "c", "left")).toEqual({ targetGroupId: "group:a", position: "inside" });
+		expect(target(layout, "b", "left")).toEqual({ targetGroupId: "group:a", position: "inside" });
+	});
+
+	it("moves into the group above or below in its stack, and nowhere past its ends", () => {
+		let layout = createLayout([pane("a"), pane("b")]);
+		layout = moveGroup(layout, "group:b", "group:a", "below");
+
+		expect(target(layout, "a", "down")).toEqual({ targetGroupId: "group:b", position: "inside" });
+		expect(target(layout, "b", "up")).toEqual({ targetGroupId: "group:a", position: "inside" });
+		expect(target(layout, "a", "up")).toBeNull();
+		expect(target(layout, "b", "down")).toBeNull();
+	});
+
+	it("takes a stacked lone tab out of its column to a new one at the edge", () => {
+		let layout = createLayout([pane("a"), pane("b")]);
+		layout = moveGroup(layout, "group:b", "group:a", "below");
+
+		const left = target(layout, "b", "left")!;
+		expect(left).toEqual({ targetGroupId: "group:a", position: "before" });
+		const moved = movePane(layout, "b", left.targetGroupId, left.position);
+		expect(moved.groups.map((group) => [group.tabs[0]?.id, group.stackId])).toEqual([
+			["b", undefined],
+			["a", undefined],
+		]);
 	});
 });
 
@@ -297,22 +342,14 @@ describe("geometry and persistence", () => {
 		expect(dropPositionFromPoint("group", 200, 190, rect)).toBe("below");
 	});
 
-	it("updates existing panes, resolves identifier collisions, and fits fixed groups", () => {
+	it("updates an existing pane and moves a pane beside another", () => {
 		const initial = createLayout([pane("a"), pane("b")]);
 		const updated = addPane(initial, { ...pane("a"), title: "Updated" });
 		expect(findPaneGroup(updated, "a")?.tabs[0]?.title).toBe("Updated");
 		expect(updated.activePaneId).toBe("a");
 
-		expect(rewritePaneId(initial, "a", "a")).toBe(initial);
-		expect(rewritePaneId(initial, "missing", "other")).toBe(initial);
-		expect(flattenPanes(rewritePaneId(initial, "a", "b")).map(({ id }) => id)).toEqual(["b"]);
-
 		const moved = movePane(initial, "a", "group:b", "after");
 		expect(moved.groups.map((group) => group.tabs[0]?.id)).toEqual(["b", "a"]);
-
-		const fixed = getFixedGroupLayout(initial.groups, 604);
-		expect(fixed.groups).toEqual(initial.groups);
-		expect([...fixed.widths.values()]).toEqual([300, 300]);
 	});
 
 	it("round-trips only the explicit nested group schema", () => {

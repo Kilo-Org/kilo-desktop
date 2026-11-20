@@ -135,6 +135,8 @@ export function activatePullRequests(
 		loadMany: async (directories) => {
 			const answers = new Map<string, PrStatusLoadResult>();
 			for (let start = 0; start < directories.length; start += MAX_BATCHED_DIRECTORIES) {
+				// One batch at a time bounds concurrent `gh` processes and GitHub API load.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				const results = await options.source.snapshots(
 					directories.slice(start, start + MAX_BATCHED_DIRECTORIES),
 				);
@@ -156,15 +158,17 @@ export function activatePullRequests(
 	let workspaces: DomainObjectHandle<typeof Workspaces> | null = null;
 
 	function workSessionDirectories(): string[] {
-		const folders = workspaces?.getState().workspaces ?? [];
+		const primaryFolderByWorkspace = new Map(
+			(workspaces?.getState().workspaces ?? []).map((workspace) => [
+				workspace.id,
+				workspace.folders.find((folder) => folder.isPrimary)?.path,
+			]),
+		);
 		const directories = new Set<string>();
 		for (const workSession of workSessions?.getState().workSessions ?? []) {
 			if (!workSession.workspaceId) continue;
 			const directory =
-				workSession.directory ??
-				folders
-					.find((workspace) => workspace.id === workSession.workspaceId)
-					?.folders.find((folder) => folder.isPrimary)?.path;
+				workSession.directory ?? primaryFolderByWorkspace.get(workSession.workspaceId);
 			if (directory) directories.add(directory);
 		}
 		return [...directories];

@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type {
-	DomainObjectHandle,
-	DomainObjectProvider,
-	KernelLogger,
-	PluginSdk,
+import {
+	KernelError,
+	type DomainObjectHandle,
+	type DomainObjectProvider,
+	type KernelLogger,
+	type PluginSdk,
 } from "@kilo-desktop/kernel";
 import { createMainKernel, type MainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
@@ -25,7 +26,13 @@ import {
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import manifest from "../../../plugin.json";
-import { GIT_DEFINITIONS, GIT_PROTOCOL_SCHEME, Repository } from "../../contracts";
+import {
+	GIT_DEFINITIONS,
+	Clone,
+	GIT_PROTOCOL_SCHEME,
+	GithubRepositories,
+	Repository,
+} from "../../contracts";
 import { createGitMainEntry, type GitMainOptions } from "../entry";
 
 /* Boots kilo.git's whole main entry on a real main kernel, with stand-ins for kilo.work-sessions' workspaces and kilo.shell's notifications. */
@@ -62,11 +69,16 @@ function workspaceOf(folder: string, index: number): Workspace {
 /**
  * kilo.work-sessions under its real manifest, providing only its workspaces
  * with the given folders; `authorize` resolves symlinks and short names on
- * both sides like the real one.
+ * both sides like the real one. New workspaces (`newFolderPath`, `create`,
+ * `rememberNewFolderLocation`) are recorded, not added to the folders.
  */
 function fakeWorkSessions(folders: readonly string[]) {
 	let provider: DomainObjectProvider<typeof Workspaces> | undefined;
+	const created: Workspace[] = [];
+	const rememberedLocations: string[] = [];
 	return {
+		created,
+		rememberedLocations,
 		registration: {
 			manifest: workSessionsManifest,
 			definitions: WORK_SESSIONS_DEFINITIONS,
@@ -75,11 +87,30 @@ function fakeWorkSessions(folders: readonly string[]) {
 					provider = sdk.domainObjects.provide(Workspaces, {
 						initialState: { workspaces: [], activeId: null, unavailableFolderIds: [] },
 						methods: {
-							create: unused,
 							update: unused,
 							remove: unused,
 							setActive: unused,
 							checkFolders: unused,
+							newFolderLocation: unused,
+							newFolderPath: ({ parentPath, name }) => {
+								const destination = path.join(realpathOr(parentPath), name);
+								if (fs.existsSync(destination)) {
+									throw new KernelError("VALIDATION", `A folder named "${name}" already exists.`);
+								}
+								return { path: destination };
+							},
+							create: ({ name, color, folders: newFolders }) => {
+								const workspace: Workspace = {
+									...workspaceOf(newFolders[0]!.path, created.length + 100),
+									...(name === undefined ? {} : { name }),
+									...(color === undefined ? {} : { color }),
+								};
+								created.push(workspace);
+								return workspace;
+							},
+							rememberNewFolderLocation: ({ path: location }) => {
+								rememberedLocations.push(location);
+							},
 							authorize: async ({ path: target }) => {
 								const resolved = realpathOr(target);
 								const folder = folders.find((candidate) =>
@@ -135,6 +166,12 @@ export interface BootOptions {
 export interface BootedGit {
 	readonly kernel: MainKernel;
 	readonly repository: DomainObjectHandle<typeof Repository>;
+	readonly clone: DomainObjectHandle<typeof Clone>;
+	/** kilo.git's GitHub repositories, absent if not provided. */
+	readonly githubRepositories: DomainObjectHandle<typeof GithubRepositories> | null;
+	/** Workspaces kilo.work-sessions' `create` was asked for, and the locations offered as the next default. */
+	readonly created: readonly Workspace[];
+	readonly rememberedLocations: readonly string[];
 	/** kilo.git's `vcs` implementation, as another plugin sees it. */
 	readonly vcs: VcsImplementation;
 	readonly protocol: { handler(request: Request): Promise<Response> };
@@ -192,6 +229,10 @@ export async function bootGit(options: BootOptions = {}): Promise<BootedGit> {
 	return {
 		kernel,
 		repository: kernel.kernelSdk.domainObjects.get(Repository)!,
+		clone: kernel.kernelSdk.domainObjects.get(Clone)!,
+		githubRepositories: kernel.kernelSdk.domainObjects.get(GithubRepositories),
+		created: workSessions.created,
+		rememberedLocations: workSessions.rememberedLocations,
 		get vcs() {
 			const implementation = consumer?.extensions.exclusive(Vcs).winner?.implementation;
 			if (!implementation) throw new Error("No vcs implementation.");

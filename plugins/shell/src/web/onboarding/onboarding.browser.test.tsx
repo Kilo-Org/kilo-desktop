@@ -1,19 +1,23 @@
+import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { definePlugin, type PluginSdk } from "@kilo-desktop/kernel";
 import type { MainKernel } from "@kilo-desktop/kernel/main";
 
-import { Onboarding, OnboardingStep, type OnboardingStepImplementation } from "../../contracts";
+import {
+	Onboarding,
+	OnboardingStep,
+	type OnboardingStepImplementation,
+	type OnboardingStepProps,
+} from "../../contracts";
 import { contributor, renderShell, type GuestPlugin } from "../../testing";
 import { activateFrame } from "../frame";
-import { activateOnboarding } from "./index";
 
-/** kilo.shell's window with only its own onboarding step, so the tests' steps are the tour. */
+/** kilo.shell's window with only its frame, so the tests' steps are the whole tour. */
 const onboardingOnly = definePlugin({
 	activate(sdk) {
 		activateFrame(sdk);
-		activateOnboarding(sdk);
 	},
 });
 
@@ -21,22 +25,23 @@ const onboardingOnly = definePlugin({
 function termsStep(): GuestPlugin {
 	let sdk: PluginSdk | undefined;
 	const step: OnboardingStepImplementation = {
-		useStep: ({ next }) => ({
-			body: (
-				<div className="flex flex-1 items-center justify-center">
-					<button
-						type="button"
-						onClick={() => {
-							sdk?.context.set("accepted", true);
-							next();
-						}}
-					>
-						I agree
-					</button>
-				</div>
-			),
-			primary: null,
-		}),
+		Step: ({ next, children }) =>
+			children({
+				body: (
+					<div className="flex flex-1 items-center justify-center">
+						<button
+							type="button"
+							onClick={() => {
+								sdk?.context.set("accepted", true);
+								next();
+							}}
+						>
+							I agree
+						</button>
+					</div>
+				),
+				primary: null,
+			}),
 	};
 	return contributor(
 		"acme.terms",
@@ -59,6 +64,25 @@ function termsStep(): GuestPlugin {
 	);
 }
 
+/** The tour's last step, whose own state drives its primary action. */
+function FinishStep({ next, children }: OnboardingStepProps) {
+	const [ready, setReady] = useState(false);
+	return children({
+		title: "Almost there",
+		body: (
+			<label>
+				<input
+					type="checkbox"
+					checked={ready}
+					onChange={(event) => setReady(event.target.checked)}
+				/>
+				Ready
+			</label>
+		),
+		primary: { label: "Next", disabled: !ready, onClick: next },
+	});
+}
+
 /** Two card steps: one that can be skipped, then the last. */
 function tourSteps(): GuestPlugin {
 	return contributor(
@@ -71,19 +95,16 @@ function tourSteps(): GuestPlugin {
 		},
 		(sdk) => {
 			sdk.extensions.implement(OnboardingStep, "connect", {
-				useStep: () => ({
-					title: "Connect your account",
-					subtitle: "Or do it later.",
-					body: <p>Connect body</p>,
-					skippable: true,
-				}),
+				Step: ({ children }) =>
+					children({
+						title: "Connect your account",
+						subtitle: "Or do it later.",
+						body: <p>Connect body</p>,
+						skippable: true,
+					}),
 			});
 			sdk.extensions.implement(OnboardingStep, "finish", {
-				useStep: ({ next }) => ({
-					title: "Almost there",
-					body: <p>Finish body</p>,
-					primary: { label: "Next", onClick: next },
-				}),
+				Step: FinishStep,
 			});
 		},
 	);
@@ -119,7 +140,7 @@ function connectStep(): GuestPlugin & { setConnected(value: boolean): void } {
 				{
 					id: "connect",
 					label: "Connect",
-					priority: 500,
+					priority: 600,
 					showWhen: { none: ["acme.connect/connected"] },
 				},
 			],
@@ -127,7 +148,7 @@ function connectStep(): GuestPlugin & { setConnected(value: boolean): void } {
 		(pluginSdk) => {
 			sdk = pluginSdk;
 			pluginSdk.extensions.implement(OnboardingStep, "connect", {
-				useStep: () => ({ title: "Connect something", body: <p>Connect body</p> }),
+				Step: ({ children }) => children({ title: "Connect something", body: <p>Connect body</p> }),
 			});
 		},
 		{ contextKeys: [{ id: "connected", scope: "window" }] },
@@ -143,23 +164,31 @@ describe("onboarding", () => {
 		await page.getByRole("button", { name: "I agree" }).click();
 
 		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
-		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 3");
+		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 2");
 		await page.getByTestId("onboarding-continue").click();
 		await expect.element(page.getByRole("heading", { name: "Almost there" })).toBeVisible();
 		await page.getByTestId("onboarding-back").click();
 		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
 		await page.getByTestId("onboarding-skip").click();
-		await page.getByRole("button", { name: "Next" }).click();
+		const finish = page.getByRole("button", { name: "Next" });
+		await expect.element(finish).toBeDisabled();
+		await page.getByRole("checkbox", { name: "Ready" }).click();
+		await finish.click();
 
-		// The shell's own closing step comes last.
-		await expect.element(page.getByRole("heading", { name: "You're all set" })).toBeVisible();
-		await expect
-			.element(page.getByText("Use any model from any provider", { exact: true }))
-			.toBeVisible();
-		await page.getByTestId("onboarding-continue").click();
-
+		// The last step's action finishes onboarding.
 		await expect.element(overlay()).not.toBeInTheDocument();
 		await expect.poll(outcome).toBe("completed");
+	});
+
+	it("keeps one frame across steps, so a step leaves while the next comes in", async () => {
+		await renderOnboarding([tourSteps()]);
+		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
+		const progress = page.getByTestId("onboarding-progress-label").element();
+
+		await page.getByTestId("onboarding-continue").click();
+
+		await expect.element(page.getByRole("heading", { name: "Almost there" })).toBeVisible();
+		expect(page.getByTestId("onboarding-progress-label").element()).toBe(progress);
 	});
 
 	it("records leaving setup as skipped", async () => {
@@ -194,23 +223,23 @@ describe("onboarding", () => {
 
 	it("decides which conditional steps to offer when it opens, and keeps them", async () => {
 		const connect = connectStep();
-		await renderOnboarding([connect]);
+		await renderOnboarding([connect, tourSteps()]);
 		await expect.element(page.getByRole("heading", { name: "Connect something" })).toBeVisible();
 
 		// Connecting mid-flow doesn't pull the step out from under the person.
 		connect.setConnected(true);
 
 		await expect.element(page.getByRole("heading", { name: "Connect something" })).toBeVisible();
-		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 2");
+		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 3");
 	});
 
 	it("leaves out a conditional step that doesn't apply when it opens", async () => {
 		const connect = connectStep();
-		await renderOnboarding([connect], {
+		await renderOnboarding([connect, tourSteps()], {
 			beforeRender: () => connect.setConnected(true),
 		});
 
-		await expect.element(page.getByRole("heading", { name: "You're all set" })).toBeVisible();
+		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
 		await expect
 			.element(page.getByRole("heading", { name: "Connect something" }))
 			.not.toBeInTheDocument();

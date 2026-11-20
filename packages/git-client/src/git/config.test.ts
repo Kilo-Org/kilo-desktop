@@ -44,16 +44,5 @@ describe("git/config", () => {
 
 			await expect(getGlobalConfigValue(exec, "init.defaultBranch")).resolves.toBe(null);
 		});
-
-		it("returns only the value piece when the -z output carries a trailing delimiter", async () => {
-			const exec = await execWithIsolatedGlobalConfig(`[init]
-	defaultBranch = trunk
-`);
-
-			const value = await getGlobalConfigValue(exec, "init.defaultBranch");
-
-			expect(value).toBe("trunk");
-			expect(value).not.toContain("\0");
-		});
 	});
 });

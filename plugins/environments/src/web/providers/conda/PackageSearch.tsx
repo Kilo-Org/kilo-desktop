@@ -1,12 +1,4 @@
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	type ComponentProps,
-	type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { SearchIcon, SearchXIcon, XIcon } from "lucide-react";
 
@@ -94,47 +86,55 @@ export interface PackageSelection {
 }
 
 /**
+ * Packages a dialog opens with already selected (an install link's package),
+ * and channels it searches and installs from ahead of the configured ones.
+ */
+export interface PackageInstallPreset {
+	readonly packages: readonly SelectedPackage[];
+	readonly channels?: readonly string[];
+}
+
+/**
  * Selected packages plus each result row's chosen version. A row keeps its
  * version choice while unselected, so ticking it later installs what the
- * row shows.
+ * row shows. `initial` is read once, on mount.
  */
-export function usePackageSelection(): PackageSelection {
-	const [selected, setSelected] = useState<SelectedPackage[]>([]);
-	const [rowVersions, setRowVersions] = useState<Record<string, string>>({});
-	const selectedByName = useMemo(() => new Map(selected.map((s) => [s.name, s])), [selected]);
-
-	const remove = useCallback((name: string) => {
-		setSelected((prev) => prev.filter((p) => p.name !== name));
-	}, []);
-
-	const toggle = useCallback(
-		(pkg: CondaRepodataPackage, checked: boolean) => {
-			if (!checked) {
-				remove(pkg.name);
-				return;
-			}
-			setSelected((prev) =>
-				prev.some((p) => p.name === pkg.name)
-					? prev
-					: [
-							...prev,
-							{ name: pkg.name, version: versionValueToPinned(rowVersions[pkg.name] ?? LATEST) },
-						],
-			);
-		},
-		[remove, rowVersions],
+export function usePackageSelection(initial?: readonly SelectedPackage[]): PackageSelection {
+	const [selected, setSelected] = useState<SelectedPackage[]>(() => [...(initial ?? [])]);
+	const [rowVersions, setRowVersions] = useState<Record<string, string>>(() =>
+		Object.fromEntries((initial ?? []).map((pkg) => [pkg.name, pkg.version ?? LATEST])),
 	);
+	const selectedByName = new Map(selected.map((s) => [s.name, s]));
 
-	const changeVersion = useCallback((pkg: CondaRepodataPackage, value: string) => {
+	const remove = (name: string) => {
+		setSelected((prev) => prev.filter((p) => p.name !== name));
+	};
+
+	const toggle = (pkg: CondaRepodataPackage, checked: boolean) => {
+		if (!checked) {
+			remove(pkg.name);
+			return;
+		}
+		setSelected((prev) =>
+			prev.some((p) => p.name === pkg.name)
+				? prev
+				: [
+						...prev,
+						{ name: pkg.name, version: versionValueToPinned(rowVersions[pkg.name] ?? LATEST) },
+					],
+		);
+	};
+
+	const changeVersion = (pkg: CondaRepodataPackage, value: string) => {
 		setRowVersions((prev) => ({ ...prev, [pkg.name]: value }));
 		const pinned = versionValueToPinned(value);
 		setSelected((prev) => prev.map((p) => (p.name === pkg.name ? { ...p, version: pinned } : p)));
-	}, []);
+	};
 
-	const reset = useCallback(() => {
+	const reset = () => {
 		setSelected([]);
 		setRowVersions({});
-	}, []);
+	};
 
 	return { selected, selectedByName, rowVersions, toggle, remove, changeVersion, reset };
 }
@@ -199,9 +199,12 @@ export function PackageResultsTable({
 	const sentinelRef = useRef<HTMLTableRowElement>(null);
 	const { packages, loading, loadingMore, hasMore, atCap, loadMore } = search;
 
+	// Re-observed whenever the row count changes, so a sentinel still in view
+	// after a batch lands requests the next one.
+	const rowCount = packages.length;
 	useEffect(() => {
 		const sentinel = sentinelRef.current;
-		if (!sentinel || !hasMore || loadingMore) return;
+		if (!sentinel || !hasMore || loadingMore || rowCount === 0) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
 				if (entries.some((entry) => entry.isIntersecting)) loadMore();
@@ -210,7 +213,7 @@ export function PackageResultsTable({
 		);
 		observer.observe(sentinel);
 		return () => observer.disconnect();
-	}, [hasMore, loadingMore, loadMore, packages.length]);
+	}, [hasMore, loadingMore, loadMore, rowCount]);
 
 	if (!loading && packages.length === 0) {
 		return (

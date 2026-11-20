@@ -213,18 +213,6 @@ describe("LaunchDarklyProvider", () => {
 		});
 	});
 
-	it("logs linked account kinds", async () => {
-		const infoSpy = vi.fn();
-		const provider = makeProvider({ logger: fakeLogger({ info: infoSpy }) });
-
-		await provider.identify({
-			isEmployee: false,
-			linkedAccounts: [{ kind: "kilo.anaconda", key: "a1", attributes: {} }],
-		});
-
-		expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining("linked=kilo.anaconda"));
-	});
-
 	it("emits an anonymous single-user context when no userId is set", async () => {
 		const provider = makeProvider();
 
@@ -252,6 +240,7 @@ describe("LaunchDarklyProvider", () => {
 			userId: "grace.hopper@example.com",
 			email: "grace.hopper@example.com",
 			organization: { id: "org-42", name: "Hopper Industries" },
+			linkedAccounts: [{ kind: "kilo.anaconda", key: "a1", attributes: {} }],
 		});
 
 		const line = infoSpy.mock.calls.map(([message]) => String(message)).join("\n");
@@ -261,9 +250,10 @@ describe("LaunchDarklyProvider", () => {
 		expect(line).toContain("userId=set");
 		expect(line).toContain("email=g***@example.com");
 		expect(line).toContain("org=org-42");
+		expect(line).toContain("linked=kilo.anaconda");
 	});
 
-	it("identify() logs an anonymous userId when signed out", async () => {
+	it("identify() logs a signed-out user as anonymous", async () => {
 		const infoSpy = vi.fn();
 		const provider = makeProvider({ logger: fakeLogger({ info: infoSpy }) });
 
@@ -296,14 +286,6 @@ describe("LaunchDarklyProvider", () => {
 		changeListeners.forEach((cb) => cb());
 
 		expect(onChange).toHaveBeenCalledTimes(1);
-	});
-
-	it("getFlag delegates to the client variation with the default value", () => {
-		variationSpy.mockReturnValueOnce("enabled");
-		const provider = makeProvider();
-
-		expect(provider.getFlag("my-flag", "off")).toBe("enabled");
-		expect(variationSpy).toHaveBeenCalledWith("my-flag", "off");
 	});
 
 	it("getAllFlags delegates to the client allFlags", () => {

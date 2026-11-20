@@ -8,7 +8,7 @@ import {
 	MessageSquareIcon,
 	type LucideIcon,
 } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ComponentType } from "react";
+import { Fragment, useEffect, useState, type ComponentType } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
@@ -30,6 +30,7 @@ import {
 } from "@kilo-desktop/ui/components/dialog";
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -76,42 +77,50 @@ const ACTION_ICONS: Record<
  * / pull request split button and its menu, for the work session's directory.
  * Commands' requests are run as if picked from the menu.
  */
-export function createGitSessionActions(window: {
+export function createGitSessionActions(
+	window: GitActionsWindow,
+): ComponentType<WorkSessionActionProps> {
+	return (props: WorkSessionActionProps) => <GitSessionActions {...props} window={window} />;
+}
+
+interface GitActionsWindow {
 	readonly progress: ActionProgress;
 	readonly requests: ActionRequests;
-}): ComponentType<WorkSessionActionProps> {
-	function GitSessionActions({ workSession }: WorkSessionActionProps) {
-		const directory = useWorkSessionDirectory(workSession);
-		const workSessionsWindow = useDomainObject(WorkSessionsWindow);
-		const composer = useDomainObject(Composer);
-		if (!directory) return null;
-		return (
-			<GitActions
-				key={directory}
-				workspaceDirectory={directory}
-				progress={window.progress}
-				requests={window.requests}
-				onOpenChanges={() =>
-					void workSessionsWindow?.methods
-						.openPane({ kind: CHANGES_PANE_KIND })
-						.catch(() => undefined)
-				}
-				{...(composer
-					? {
-							onAppendToChat: (text: string) =>
-								void composer.methods
-									.insert({ workSessionId: workSession.id, text })
-									.catch((error: unknown) =>
-										toast.error("Could not add the error to the chat", {
-											description: error instanceof Error ? error.message : undefined,
-										}),
-									),
-						}
-					: {})}
-			/>
-		);
-	}
-	return GitSessionActions;
+}
+
+function GitSessionActions({
+	workSession,
+	window,
+}: WorkSessionActionProps & { readonly window: GitActionsWindow }) {
+	const directory = useWorkSessionDirectory(workSession);
+	const workSessionsWindow = useDomainObject(WorkSessionsWindow);
+	const composer = useDomainObject(Composer);
+	if (!directory) return null;
+	return (
+		<GitActions
+			key={directory}
+			workspaceDirectory={directory}
+			progress={window.progress}
+			requests={window.requests}
+			onOpenChanges={() =>
+				void workSessionsWindow?.methods
+					.openPane({ kind: CHANGES_PANE_KIND, placement: "group" })
+					.catch(() => undefined)
+			}
+			{...(composer
+				? {
+						onAppendToChat: (text: string) =>
+							void composer.methods
+								.insert({ workSessionId: workSession.id, text })
+								.catch((error: unknown) =>
+									toast.error("Could not add the error to the chat", {
+										description: error instanceof Error ? error.message : undefined,
+									}),
+								),
+					}
+				: {})}
+		/>
+	);
 }
 
 /** Runs a command's request like the matching menu item, saying why when it can't. */
@@ -120,8 +129,7 @@ function useRequestedActions(
 	actions: RepositoryActions | null,
 	confirmDefaultBranchPush: () => boolean,
 ) {
-	const latest = useRef({ actions, confirmDefaultBranchPush });
-	latest.current = { actions, confirmDefaultBranchPush };
+	const latest = useLatestRef({ actions, confirmDefaultBranchPush });
 	useEffect(
 		() =>
 			requests.listen((requested: RequestedAction) => {
@@ -147,7 +155,7 @@ function useRequestedActions(
 				if (action.id === "push" && latest.current.confirmDefaultBranchPush()) return;
 				action.run();
 			}),
-		[requests],
+		[latest, requests],
 	);
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ArrowRightIcon, SearchIcon } from "lucide-react";
 
@@ -120,6 +120,35 @@ export function packagesLabel(count: number): string {
 	return `${count} ${count === 1 ? "package" : "packages"}`;
 }
 
+function useExistingEnvironmentNames(conda: ReturnType<typeof useConda>): ReadonlySet<string> {
+	const envList = useCondaQuery(conda, "listEnvironments");
+	return new Set((envList.data ?? []).map((e) => e.name).filter(Boolean));
+}
+
+/** Which updatable packages are checked (included in the update). */
+function useCheckedPackages(items: readonly UpgradablePackage[]) {
+	// Names of packages that can actually be updated (drives the header
+	// select-all checkbox; up-to-date rows have no checkbox).
+	const updatableNames = items.filter((u) => u.latestVersion !== null).map((u) => u.pkg.name);
+	const [checkedPkgs, setCheckedPkgs] = useState<Set<string>>(() => new Set(updatableNames));
+	const allChecked =
+		updatableNames.length > 0 && updatableNames.every((name) => checkedPkgs.has(name));
+	const someChecked = !allChecked && updatableNames.some((name) => checkedPkgs.has(name));
+	return { updatableNames, checkedPkgs, setCheckedPkgs, allChecked, someChecked };
+}
+
+/** Format check + uniqueness check against existing envs. */
+function backupNameErrorFor(backupName: string, existingEnvNames: ReadonlySet<string>) {
+	const trimmed = backupName.trim();
+	if (!trimmed) return null; // Don't show error for empty — the submit button handles that
+	const formatError = validateEnvironmentName(trimmed);
+	if (formatError) return formatError;
+	if (existingEnvNames.has(trimmed)) {
+		return `An environment named "${trimmed}" already exists. Choose a different name.`;
+	}
+	return null;
+}
+
 export function UpdateConfirmationDialog({
 	env,
 	upgradablePackages,
@@ -130,21 +159,14 @@ export function UpdateConfirmationDialog({
 }: UpdateConfirmationDialogProps) {
 	const conda = useConda();
 	const queryClient = useQueryClient();
-	const envList = useCondaQuery(conda, "listEnvironments");
-	const existingEnvNames = useMemo(
-		() => new Set((envList.data ?? []).map((e) => e.name).filter(Boolean)),
-		[envList.data],
-	);
+	const existingEnvNames = useExistingEnvironmentNames(conda);
 	const cloneMutation = useCondaMutation(conda, "cloneEnvironment", {
 		invalidates: ["listEnvironments"],
 	});
 
 	const items = upgradablePackages;
-	// Set of package names that are checked (included in the update).
-	const [checkedPkgs, setCheckedPkgs] = useState<Set<string>>(
-		() =>
-			new Set(upgradablePackages.filter((u) => u.latestVersion !== null).map((u) => u.pkg.name)),
-	);
+	const { updatableNames, checkedPkgs, setCheckedPkgs, allChecked, someChecked } =
+		useCheckedPackages(items);
 	// Per-package target version; defaults to latestVersion for each upgradable package.
 	const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>(() =>
 		Object.fromEntries(
@@ -155,19 +177,6 @@ export function UpdateConfirmationDialog({
 	);
 	const [backup, setBackup] = useState(false);
 	const [backupName, setBackupName] = useState("");
-
-	// Validate backup name: format check + uniqueness check against existing envs.
-	const backupNameError = useMemo(() => {
-		if (!backup) return null;
-		const trimmed = backupName.trim();
-		if (!trimmed) return null; // Don't show error for empty — the submit button handles that
-		const formatError = validateEnvironmentName(trimmed);
-		if (formatError) return formatError;
-		if (existingEnvNames.has(trimmed)) {
-			return `An environment named "${trimmed}" already exists. Choose a different name.`;
-		}
-		return null;
-	}, [backup, backupName, existingEnvNames]);
 
 	// Preview state
 	const [preview, setPreview] = useState<CondaPackagesPreviewResult | null>(null);
@@ -194,16 +203,15 @@ export function UpdateConfirmationDialog({
 	const previewStaleRef = useRef(false);
 
 	// Only checked packages with an available update are sent to the solver.
-	const upgradableItems = useMemo(
-		() => items.filter((u) => u.latestVersion !== null && checkedPkgs.has(u.pkg.name)),
-		[items, checkedPkgs],
+	const upgradableItems = items.filter(
+		(u) => u.latestVersion !== null && checkedPkgs.has(u.pkg.name),
 	);
 
 	// Packages chosen on the left are excluded from the dependency panel so
 	// it only shows transitive (indirect) changes.
-	const selectedPkgNames = useMemo(() => new Set(items.map((u) => u.pkg.name)), [items]);
+	const selectedPkgNames = new Set(items.map((u) => u.pkg.name));
 
-	const runPreview = useCallback(() => {
+	const runPreview = () => {
 		if (upgradableItems.length === 0) return;
 		// Pin target versions — see buildUpdateSpecs.
 		const specs = buildUpdateSpecs(upgradableItems, selectedVersions);
@@ -213,6 +221,8 @@ export function UpdateConfirmationDialog({
 		const gen = ++previewGenRef.current;
 		setPreviewLoading(true);
 		setPreviewError(null);
+		// Part of starting a solver request (an external call), not a prop-derived adjustment.
+		// react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
 		setPreviewStale(false);
 		previewStaleRef.current = false;
 		conda
@@ -247,14 +257,16 @@ export function UpdateConfirmationDialog({
 			.finally(() => {
 				if (gen === previewGenRef.current) setPreviewLoading(false);
 			});
-	}, [upgradableItems, selectedVersions, targetName, env.prefix, conda, selectedPkgNames]);
+	};
 
 	// Reset on open
-	useEffect(() => {
+	const [wasOpen, setWasOpen] = useState(false);
+	if (wasOpen !== open) {
+		setWasOpen(open);
 		if (open) {
-			setCheckedPkgs(
-				new Set(upgradablePackages.filter((u) => u.latestVersion !== null).map((u) => u.pkg.name)),
-			);
+			// A useState setter from useCheckedPackages, in the adjust-state-on-prop-change pattern.
+			// react-doctor-disable-next-line react-doctor/no-prop-callback-in-render
+			setCheckedPkgs(new Set(updatableNames));
 			setSelectedVersions(
 				Object.fromEntries(
 					upgradablePackages
@@ -273,12 +285,16 @@ export function UpdateConfirmationDialog({
 			setPkgSearch("");
 			setDepSearch("");
 			setDepFilter("all");
+		}
+	}
+	useEffect(() => {
+		if (open) {
 			itemNamesRef.current = "";
 			previewGenRef.current = 0;
 			previewRef.current = null;
 			previewStaleRef.current = false;
 		}
-	}, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [open]);
 
 	// Trigger initial preview after items are set
 	useEffect(() => {
@@ -303,21 +319,6 @@ export function UpdateConfirmationDialog({
 		markStale();
 	}
 
-	// Names of packages that can actually be updated (drives the header
-	// select-all checkbox; up-to-date rows have no checkbox).
-	const updatableNames = useMemo(
-		() => items.filter((u) => u.latestVersion !== null).map((u) => u.pkg.name),
-		[items],
-	);
-	const allChecked =
-		updatableNames.length > 0 && updatableNames.every((name) => checkedPkgs.has(name));
-	const someChecked = !allChecked && updatableNames.some((name) => checkedPkgs.has(name));
-
-	function toggleAllPackages() {
-		setCheckedPkgs(allChecked ? new Set() : new Set(updatableNames));
-		markStale();
-	}
-
 	function changeVersion(name: string, version: string) {
 		setSelectedVersions((prev) => ({ ...prev, [name]: version }));
 		markStale();
@@ -330,16 +331,20 @@ export function UpdateConfirmationDialog({
 		return () => clearTimeout(timer);
 	}, [open, previewStale, previewLoading, runPreview]);
 
-	const changes = useMemo(
-		() => summarizeChanges(preview, selectedPkgNames, depFilter, depSearch),
-		[preview, selectedPkgNames, depFilter, depSearch],
-	);
+	const backupNameError = backup ? backupNameErrorFor(backupName, existingEnvNames) : null;
+
+	function toggleAllPackages() {
+		setCheckedPkgs(allChecked ? new Set() : new Set(updatableNames));
+		markStale();
+	}
+
+	const changes = summarizeChanges(preview, selectedPkgNames, depFilter, depSearch);
 	const totalChanges = changes.total;
 
-	const visibleItems = useMemo(() => {
-		const needle = pkgSearch.trim().toLowerCase();
-		return needle ? items.filter((u) => u.pkg.name.toLowerCase().includes(needle)) : items;
-	}, [items, pkgSearch]);
+	const needle = pkgSearch.trim().toLowerCase();
+	const visibleItems = needle
+		? items.filter((u) => u.pkg.name.toLowerCase().includes(needle))
+		: items;
 
 	// ─── Background operations ─────────────────────────────────────────
 
@@ -416,7 +421,8 @@ export function UpdateConfirmationDialog({
 	function handleSubmit() {
 		if (upgradableItems.length === 0) return;
 		const specs = buildUpdateSpecs(upgradableItems, selectedVersions);
-		const toastId = `environments-update-${++updateJobSequence}`;
+		updateJobSequence += 1;
+		const toastId = `environments-update-${updateJobSequence}`;
 		onClose();
 		onSuccess();
 		if (backup && backupName.trim()) {

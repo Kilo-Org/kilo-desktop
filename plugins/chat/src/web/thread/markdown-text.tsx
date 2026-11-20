@@ -5,7 +5,7 @@ import {
 	type CodeHeaderProps,
 } from "@assistant-ui/react-markdown";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { memo, useMemo, useState, type ComponentProps, type FC } from "react";
+import { memo, useState, type ComponentProps, type FC } from "react";
 import { defaultUrlTransform, type UrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -47,11 +47,11 @@ const chatUrlTransform: UrlTransform = (url, key, node) =>
 const MarkdownTextImpl = () => {
 	const context = useChatMarkdownContext() ?? NO_MARKDOWN_CONTEXT;
 	const extensions = useChatMarkdownExtensions(context);
-	const renderer = useMemo(
-		() => composeMarkdownRenderer(markdownComponents as MarkdownRendererComponents, extensions),
-		[extensions],
+	const renderer = composeMarkdownRenderer(
+		markdownComponents as MarkdownRendererComponents,
+		extensions,
 	);
-	const remarkPlugins = useMemo(() => [remarkGfm, ...renderer.remarkPlugins], [renderer]);
+	const remarkPlugins = [remarkGfm, ...renderer.remarkPlugins];
 	return (
 		<MarkdownTextPrimitive
 			remarkPlugins={remarkPlugins}
@@ -104,19 +104,21 @@ function MarkdownImage({
 	// Tied to the source it loaded: a streamed reply can swap `src` on this
 	// element, and the new one is only openable once it has loaded too.
 	const [loaded, setLoaded] = useState<{ src: string; inLink: boolean } | null>(null);
-	const lightboxInput = useMemo<LightboxItemInput | null>(
-		() =>
-			typeof src === "string" && src && loaded?.src === src && !loaded.inLink
-				? { kind: "image", src, ...(alt ? { alt } : {}) }
-				: null,
-		[loaded, src, alt],
-	);
-	const lightbox = useLightboxItem(lightboxInput);
-	const interactive = lightbox.available;
+	const lightboxInput: LightboxItemInput | null =
+		typeof src === "string" && src && loaded?.src === src && !loaded.inLink
+			? { kind: "image", src, ...(alt ? { alt } : {}) }
+			: null;
+	const {
+		ref: lightboxRef,
+		open: openLightbox,
+		lightbox,
+		available: lightboxAvailable,
+	} = useLightboxItem(lightboxInput);
+	const interactive = lightboxAvailable;
 	return (
 		<>
 			<img
-				ref={lightbox.ref}
+				ref={lightboxRef}
 				// Sanitizing blanks an unsafe source; an empty `src` would refetch the page.
 				src={src || undefined}
 				alt={alt}
@@ -140,18 +142,18 @@ function MarkdownImage({
 					setLoaded(null);
 					onError?.(event);
 				}}
-				onClick={interactive ? lightbox.open : undefined}
+				onClick={interactive ? openLightbox : undefined}
 				onKeyDown={
 					interactive
 						? (event) => {
 								if (event.key !== "Enter" && event.key !== " ") return;
 								event.preventDefault();
-								lightbox.open();
+								openLightbox();
 							}
 						: undefined
 				}
 			/>
-			{lightbox.lightbox}
+			{lightbox}
 		</>
 	);
 }

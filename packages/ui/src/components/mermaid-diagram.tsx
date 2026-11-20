@@ -1,6 +1,7 @@
 import { CircleAlertIcon } from "lucide-react";
 import { isValidElement, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 
+import { useLatestRef } from "../hooks/use-latest-ref.js";
 import { cn } from "../lib/utils.js";
 import { Alert, AlertDescription, AlertTitle } from "./alert.js";
 import type { MarkdownRendererExtension } from "./markdown-extension.js";
@@ -20,6 +21,8 @@ const diagramStyle = {
 	"--pele-font-mono": "var(--font-mono)",
 	contain: "content",
 } as CSSProperties;
+
+const loadMermaidRenderer = () => import("./mermaid-renderer.js");
 
 export type MermaidDiagramState = "loading" | "ready" | "error";
 
@@ -43,18 +46,17 @@ export function MermaidDiagram({
 	const [result, setResult] = useState<{ code: string; error?: string } | null>(null);
 	const current = result?.code === code ? result : null;
 	const state: MermaidDiagramState = !current ? "loading" : current.error ? "error" : "ready";
-	const callbacks = useRef({ onStateChange, onReady });
-	callbacks.current = { onStateChange, onReady };
+	const callbacks = useLatestRef({ onStateChange, onReady });
 
 	useEffect(() => {
 		callbacks.current.onStateChange?.(state);
-	}, [state]);
+	}, [callbacks, state]);
 
 	useEffect(() => {
 		if (state !== "ready") return;
 		const svg = container.current?.querySelector("svg");
 		if (svg) callbacks.current.onReady?.(svg);
-	}, [state]);
+	}, [callbacks, state]);
 
 	useEffect(() => {
 		const element = container.current;
@@ -70,7 +72,7 @@ export function MermaidDiagram({
 			}
 		};
 
-		void import("./mermaid-renderer.js")
+		void loadMermaidRenderer()
 			.then(({ mountMermaid }) => {
 				if (disposed) return;
 				const diagram = mountMermaid(

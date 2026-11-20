@@ -14,6 +14,12 @@ import {
 	type ChatSummary,
 	type CreateChatInput,
 } from "@kilo-desktop/plugin-core/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import {
+	Notifications,
+	SHELL_DEFINITIONS,
+	type NotificationContent,
+} from "@kilo-desktop/plugin-shell/contracts";
 
 import manifest from "../../plugin.json";
 import {
@@ -69,6 +75,7 @@ export class FakeCore {
 	readonly renamed: [string, string][] = [];
 	readonly branches: [string, string][] = [];
 	readonly deleted: string[] = [];
+	readonly forked: { id: string; messageId: string }[] = [];
 	failWrites = false;
 	failDispose = false;
 	#provider: DomainObjectProvider<typeof Chats> | undefined;
@@ -95,6 +102,17 @@ export class FakeCore {
 							});
 							this.upsert(created);
 							return created;
+						},
+						// Like kilo.core, whose `created` event may reach listeners after this returns.
+						fork: ({ id, messageId }) => {
+							this.forked.push({ id, messageId });
+							const source = this.chats.find((candidate) => candidate.id === id);
+							if (!source) throw new KernelError("NOT_FOUND", "The chat was not found.");
+							return {
+								...source,
+								id: `ses_fork_${this.forked.length}`,
+								title: `${source.title} (fork #1)`,
+							};
 						},
 						setWorktreeBranch: ({ id, branch }) => {
 							if (this.failWrites) throw new Error("offline");
@@ -236,6 +254,32 @@ export class FakeVcs {
 	});
 }
 
+/** kilo.shell under its real manifest, providing only notifications; posted notices are recorded by id. */
+export function fakeShell(notices: Map<string, NotificationContent>): PluginRegistration {
+	return {
+		manifest: shellManifest,
+		definitions: SHELL_DEFINITIONS,
+		entry: {
+			activate: (sdk) => {
+				sdk.domainObjects.provide(Notifications, {
+					initialState: { notices: {} },
+					methods: {
+						toast: unused,
+						post: ({ id, ...content }) => {
+							const key = id ?? crypto.randomUUID();
+							notices.set(key, content);
+							return key;
+						},
+						dismiss: ({ id }) => {
+							notices.delete(id);
+						},
+					},
+				});
+			},
+		},
+	};
+}
+
 export const APP_WORKSPACE: Workspace = {
 	id: "w1",
 	name: "App",
@@ -278,7 +322,6 @@ export async function bootWorkSessions(options: BootOptions = {}) {
 	let paneId = 0;
 	let clock = 1_000;
 	const entry = createWorkSessionsMainEntry({
-		storage: () => ({ readLegacy: async () => null }),
 		fileWatcher: () => ({ subscribeFn: unused, realpath: (path) => path }),
 		workspaces: () => ({ folderCheckIntervalMs: 60_000 }),
 		workSessions: () => ({

@@ -38,6 +38,7 @@ import {
 	type WorkspaceDialogInput,
 	type WorkspacesState,
 } from "../../contracts";
+import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { WorkspaceFormFields } from "./WorkspaceFormFields";
 import { useFolderPicking, useWorkspaceForm } from "./useWorkspaceForm";
 import { workspaceGlyphStyle } from "./workspace-glyph-style";
@@ -61,7 +62,7 @@ const selectState = (state: WorkspacesState) => state;
 const errorText = (reason: unknown, fallback: string) =>
 	reason instanceof Error && reason.message ? reason.message : fallback;
 
-/** Manage, create / edit and delete workspaces; which one is open is `dialog`. */
+/** Manage, create, edit and delete workspaces; which one is open is `dialog`. */
 function WorkspaceDialogs({
 	dialog,
 	onClose,
@@ -78,13 +79,9 @@ function WorkspaceDialogs({
 	if (props.dialog?.mode === "manage") return <ManageWorkspacesDialog {...props} />;
 	if (props.dialog?.mode === "delete")
 		return <DeleteWorkspaceDialog {...props} workspace={props.dialog.workspace} />;
-	if (props.dialog?.mode === "create" || props.dialog?.mode === "edit") {
-		return props.dialog.mode === "edit" ? (
-			<WorkspaceFormDialog {...props} workspace={props.dialog.workspace} />
-		) : (
-			<WorkspaceFormDialog {...props} />
-		);
-	}
+	if (props.dialog?.mode === "edit")
+		return <EditWorkspaceDialog {...props} workspace={props.dialog.workspace} />;
+	if (props.dialog?.mode === "create") return <CreateWorkspaceDialog onClose={onClose} />;
 	return null;
 }
 
@@ -166,37 +163,31 @@ function ManageWorkspacesDialog({
 	);
 }
 
-function WorkspaceFormDialog({
+function EditWorkspaceDialog({
 	dialog,
 	onClose,
 	unavailableFolderIds,
 	workspace,
-}: WorkspaceDialogsProps & { workspace?: Workspace }) {
+}: WorkspaceDialogsProps & { workspace: Workspace }) {
 	const workspaces = useDomainObject(Workspaces);
 	const form = useWorkspaceForm({ workspace, shell: useFolderPicking() });
 	const [pending, setPending] = useState(false);
 	const unavailable = new Set(unavailableFolderIds);
 	const unavailablePaths = new Set(
-		workspace?.folders.filter((folder) => unavailable.has(folder.id)).map((folder) => folder.path),
+		workspace.folders.filter((folder) => unavailable.has(folder.id)).map((folder) => folder.path),
 	);
 
 	const save = async () => {
 		if (!workspaces) return;
 		setPending(true);
-		try {
-			const fields = { name: form.name, color: form.color, folders: form.folders };
-			if (workspace) {
-				await workspaces.methods.update({ id: workspace.id, ...fields });
-			} else {
-				const saved = await workspaces.methods.create({ ...fields, source: "dialog" });
-				await workspaces.methods.setActive({ id: saved.id });
-			}
+		const fields = { name: form.name, color: form.color, folders: form.folders };
+		const persist = async () => {
+			await workspaces.methods.update({ id: workspace.id, ...fields });
 			onClose();
-		} catch (reason) {
-			form.setError(errorText(reason, "Could not save workspace."));
-		} finally {
-			setPending(false);
-		}
+		};
+		await persist()
+			.catch((reason: unknown) => form.setError(errorText(reason, "Could not save workspace.")))
+			.finally(() => setPending(false));
 	};
 	const mutation = { isPending: pending, mutate: () => void save() };
 
@@ -211,7 +202,7 @@ function WorkspaceFormDialog({
 			<DialogContent data-qa-id="workspace-form-dialog" className="sm:max-w-lg">
 				<form onSubmit={submit} className="contents">
 					<DialogHeader>
-						<DialogTitle>{workspace ? "Edit workspace" : "Create workspace"}</DialogTitle>
+						<DialogTitle>Edit workspace</DialogTitle>
 					</DialogHeader>
 					<WorkspaceFormFields {...form} unavailablePaths={unavailablePaths} />
 					<DialogFooter>
@@ -220,7 +211,7 @@ function WorkspaceFormDialog({
 						</Button>
 						<Button type="submit" disabled={mutation.isPending || form.folders.length === 0}>
 							{mutation.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
-							{mutation.isPending ? "Saving…" : workspace ? "Save" : "Create workspace"}
+							{mutation.isPending ? "Saving…" : "Save"}
 						</Button>
 					</DialogFooter>
 				</form>
@@ -241,15 +232,14 @@ function DeleteWorkspaceDialog({
 		if (!workspaces) return;
 		setPending(true);
 		setError(null);
-		try {
+		const removeWorkspace = async () => {
 			// Removing the active workspace leaves none active (decided in main).
 			await workspaces.methods.remove({ id: workspace.id });
 			onClose();
-		} catch (reason) {
-			setError(errorText(reason, "Could not delete workspace."));
-		} finally {
-			setPending(false);
-		}
+		};
+		await removeWorkspace()
+			.catch((reason: unknown) => setError(errorText(reason, "Could not delete workspace.")))
+			.finally(() => setPending(false));
 	};
 	const mutation = { isPending: pending, mutate: () => void remove() };
 	return (

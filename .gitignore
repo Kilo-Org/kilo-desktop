@@ -152,6 +152,11 @@ apps/desktop/.electron-rebuild-cache/
 .DS_Store
 Thumbs.db
 
+# IDE
+.idea/
+.vscode/
+.envrc/
+
 # Agent plans
 .omo
 .kilo

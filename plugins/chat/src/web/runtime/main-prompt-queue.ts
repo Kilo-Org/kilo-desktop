@@ -27,6 +27,8 @@ export interface MainPromptQueueOptions {
 	/** Whether kilo.core reports the chat working (the queue in main waits on the same). */
 	readonly chatWorking: () => boolean;
 	readonly prompt: () => QueuePromptOptions;
+	/** The thread handed a message over to be sent or queued. */
+	readonly onTaken?: () => void;
 	readonly onError: (error: unknown) => void;
 }
 
@@ -197,6 +199,7 @@ export function createMainPromptQueue(
 	}
 
 	async function enqueue(message: AppendMessage, steer: boolean): Promise<void> {
+		options.onTaken?.();
 		if (message.startRun === false || sendsDirectly(steer)) {
 			await sendDirectly(message);
 			return;
@@ -226,6 +229,9 @@ export function createMainPromptQueue(
 		}
 		const handover = handOver(message);
 		try {
+			// The guard reads `removed` after the await on purpose: the person can remove the item
+			// while its prompt is being prepared.
+			// react-doctor-disable-next-line react-doctor/async-defer-await
 			const prompt = await prepareQueuedPrompt(message, chatId, options.prompt());
 			if (handover.removed) return;
 			await queue.methods.enqueue({

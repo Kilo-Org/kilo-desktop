@@ -1,6 +1,7 @@
 import { autoUpdater, type FeedURLOptions } from "electron";
 import { gt } from "semver";
 
+import type { LinuxPackageFormat } from "$config/linux-package.js";
 import {
 	getReleaseNotesUrl,
 	getTrackManifestUrl,
@@ -36,6 +37,7 @@ export interface DesktopUpdateState {
 		| "up-to-date"
 		| "error";
 	readonly track: ReleaseTrack;
+	readonly installedTrack: ReleaseTrack;
 	readonly currentVersion: string;
 	readonly availableVersion: string | null;
 	readonly downloadedVersion: string | null;
@@ -68,6 +70,8 @@ interface DesktopUpdaterServiceOptions {
 	readonly platform: NodeJS.Platform;
 	readonly arch: string;
 	readonly track: ReleaseTrack;
+	/** The track this build was published on; the selected `track` may differ. */
+	readonly installedTrack: ReleaseTrack;
 	readonly currentVersion: string;
 	readonly publishUrls: UpdatePublishUrls;
 	readonly fetch: typeof globalThis.fetch;
@@ -82,6 +86,8 @@ interface DesktopUpdaterServiceOptions {
 	readonly updater?: NativeUpdater;
 	/** Windows only: local mirror that Squirrel installs from instead of the remote feed. */
 	readonly windowsFeed?: Pick<WindowsUpdateFeed, "directory" | "prepare" | "clear">;
+	/** Linux only: the package format that installed this app; defaults to `deb`. */
+	readonly linuxPackageFormat?: LinuxPackageFormat;
 }
 
 /**
@@ -105,7 +111,8 @@ interface DesktopUpdaterServiceOptions {
  * On Linux the system package manager owns the install, so the native updater
  * is never touched and nothing is downloaded or installed in-app. A check reads
  * the track's `latest.json` manifest and, when it names a newer version with a
- * package for this architecture on the track's own update host, reports
+ * package in the installed format (DEB or RPM) for this architecture on the
+ * track's own update host, reports
  * `available` with that package's URL for the person to download. A newer
  * release without such a package is reported as an error, not "up to date".
  * Once an update is available, background polls stay quiet: they don't flash
@@ -141,6 +148,7 @@ export class DesktopUpdaterService {
 			enabled: disabledReason === null,
 			status: disabledReason === null ? "idle" : "disabled",
 			track: options.track,
+			installedTrack: options.installedTrack,
 			currentVersion: options.currentVersion,
 			availableVersion: null,
 			downloadedVersion: null,
@@ -318,10 +326,11 @@ export class DesktopUpdaterService {
 		if (!gt(manifest.version, this.#options.currentVersion)) return { kind: "current" };
 
 		const updateHost = new URL(publishUrl).origin;
-		const download = manifest.downloads.find(
+		const packageFormat = this.#options.linuxPackageFormat ?? "deb";
+		const download = [...manifest.downloads, ...manifest.additionalDownloads].find(
 			(entry) =>
 				entry.platform === "linux" &&
-				entry.type === "deb" &&
+				entry.type === packageFormat &&
 				entry.arch === this.#options.arch &&
 				isHostedAt(entry.url, updateHost),
 		);

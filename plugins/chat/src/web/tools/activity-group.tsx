@@ -1,11 +1,8 @@
 import {
 	createContext,
 	memo,
-	useCallback,
 	useContext,
 	useEffect,
-	useMemo,
-	useRef,
 	useState,
 	type CSSProperties,
 	type FC,
@@ -116,21 +113,17 @@ const ownsPendingPermission = (
  * steps are projected as one message under the first step's id, while a
  * permission names the step whose tool asked.
  */
-const useMessageStepIds = (): ReadonlySet<string | undefined> => {
-	const messageId = useAuiState((s) => s.message.id);
-	const opencodeParts = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
-	return useMemo(() => {
-		const ids = new Set<string | undefined>([messageId]);
-		if (Array.isArray(opencodeParts)) {
-			for (const part of opencodeParts as readonly { messageID?: unknown }[]) {
-				if (typeof part?.messageID === "string") ids.add(part.messageID);
-			}
+const messageStepIds = (
+	messageId: string | undefined,
+	opencodeParts: unknown,
+): ReadonlySet<string | undefined> => {
+	const ids = new Set<string | undefined>([messageId]);
+	if (Array.isArray(opencodeParts)) {
+		for (const part of opencodeParts as readonly { messageID?: unknown }[]) {
+			if (typeof part?.messageID === "string") ids.add(part.messageID);
 		}
-		return ids;
-	}, [messageId, opencodeParts]);
+	}
+	return ids;
 };
 
 const AUTO_COLLAPSE_DELAY = 1600;
@@ -268,17 +261,11 @@ export const ACTIVITY_CONTENT_ANIMATION =
 
 export const useDelayedActivityOpen = (active: boolean, enabled: boolean): boolean => {
 	const [heldOpen, setHeldOpen] = useState(active);
+	if (!enabled && heldOpen) setHeldOpen(false);
+	if (enabled && active && !heldOpen) setHeldOpen(true);
 
 	useEffect(() => {
-		if (!enabled) {
-			setHeldOpen(false);
-			return;
-		}
-		if (active) {
-			setHeldOpen(true);
-			return;
-		}
-		if (!heldOpen) return;
+		if (!enabled || active || !heldOpen) return;
 
 		const timeout = setTimeout(() => {
 			setHeldOpen(false);
@@ -335,23 +322,22 @@ export const ManualDisclosureProvider: FC<PropsWithChildren<{ scope?: string }>>
 	children,
 }) => {
 	const memory = useContext(ManualDisclosureMemoryContext);
-	const remembered = scope !== undefined ? memory?.get(scope) : undefined;
 	const [openById, setOpenById] = useState<ReadonlyMap<string, boolean>>(
-		() => remembered ?? new Map(),
+		() => (scope !== undefined ? memory?.get(scope) : undefined) ?? new Map(),
 	);
-	const setOpen = useCallback(
-		(id: string, open: boolean) => {
-			setOpenById((current) => {
-				if (current.get(id) === open) return current;
-				const next = new Map(current);
-				next.set(id, open);
-				if (scope !== undefined) memory?.set(scope, next);
-				return next;
-			});
-		},
-		[memory, scope],
-	);
-	const value = useMemo(() => ({ openById, setOpen }), [openById, setOpen]);
+	const setOpen = (id: string, open: boolean) => {
+		setOpenById((current) => {
+			if (current.get(id) === open) return current;
+			const next = new Map(current);
+			next.set(id, open);
+			return next;
+		});
+	};
+	// Entries are only ever added, so an empty map means nothing was toggled yet.
+	useEffect(() => {
+		if (scope !== undefined && openById.size > 0) memory?.set(scope, openById);
+	}, [memory, scope, openById]);
+	const value = { openById, setOpen };
 	return (
 		<ManualDisclosureContext.Provider value={value}>{children}</ManualDisclosureContext.Provider>
 	);
@@ -361,7 +347,7 @@ export const useManualDisclosure = (
 	id: string,
 ): readonly [boolean | undefined, (open: boolean) => void] => {
 	const context = useContext(ManualDisclosureContext);
-	const setOpen = useCallback((open: boolean) => context?.setOpen(id, open), [context, id]);
+	const setOpen = (open: boolean) => context?.setOpen(id, open);
 	return [context?.openById.get(id), setOpen];
 };
 
@@ -403,30 +389,52 @@ export const useActivityGroupSpacing = (group: GroupLike): string | undefined =>
 	return cn(textBefore && "mt-3", textAfter && "mb-3") || undefined;
 };
 
-const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
-	const parts = useAuiState((s) => s.message.parts);
-	const stepIds = useMessageStepIds();
-	const messageStatusType = useAuiState((s) => s.message.status?.type);
-	const opencodeParts = useAuiState((s) => {
+/**
+ * The furthest segment that has been live in a group. Progress only moves
+ * forward: an earlier segment never becomes the live row again.
+ */
+interface LastActiveSegment {
+	readonly furthestIndex: number;
+	readonly start: number | null;
+	readonly shouldExpand: boolean;
+}
+
+const NO_ACTIVE_SEGMENT: LastActiveSegment = {
+	furthestIndex: -1,
+	start: null,
+	shouldExpand: false,
+};
+
+const useOpenCodeParts = () =>
+	useAuiState((s) => {
 		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
 		return custom?.opencode?.parts;
 	});
-	const { questions: pendingQuestions, permissions: pendingPermissions } = usePendingInteractions();
-	const summary = useMemo(() => summarizeActivity(parts, group.indices), [parts, group.indices]);
-	const hasPendingAsk = useMemo(
-		() =>
-			ownsPendingAsk(
-				parts,
-				group.indices,
-				pendingQuestions,
-				messageStatusType === "requires-action",
-			),
-		[parts, group.indices, pendingQuestions, messageStatusType],
-	);
-	const hasPendingPermission = useMemo(
-		() => ownsPendingPermission(parts, group.indices, pendingPermissions, stepIds),
-		[parts, group.indices, pendingPermissions, stepIds],
-	);
+
+/** The group's activity summary, and whether it owns a pending question or permission. */
+function useActivityGroupSummary(group: GroupLike) {
+	const parts = useAuiState((s) => s.message.parts);
+	const messageId = useAuiState((s) => s.message.id);
+	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
+	const opencodeParts = useOpenCodeParts();
+	const { questions, permissions } = usePendingInteractions();
+	return {
+		parts,
+		opencodeParts,
+		summary: summarizeActivity(parts, group.indices),
+		hasPendingAsk: ownsPendingAsk(parts, group.indices, questions, messageRequiresAction),
+		hasPendingPermission: ownsPendingPermission(
+			parts,
+			group.indices,
+			permissions,
+			messageStepIds(messageId, opencodeParts),
+		),
+	};
+}
+
+const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
+	const { parts, opencodeParts, summary, hasPendingAsk, hasPendingPermission } =
+		useActivityGroupSummary(group);
 
 	const disclosureId = `activity:${group.indices[0] ?? 0}`;
 	const [persistedUserOpen, setPersistedUserOpen] = useManualDisclosure(disclosureId);
@@ -436,10 +444,8 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		setLocalUserOpen(open);
 		setPersistedUserOpen(open);
 	};
-	const keepActivityGroupOpen = useCallback(() => setUserOpen(true), [setPersistedUserOpen]);
-	const furthestActiveIndexRef = useRef(-1);
-	const lastActiveSegmentStartRef = useRef<number | null>(null);
-	const lastActiveSegmentShouldExpandRef = useRef(false);
+	const keepActivityGroupOpen = () => setUserOpen(true);
+	const [lastActive, setLastActive] = useState(NO_ACTIVE_SEGMENT);
 	const activeCandidate = [...summary.segments]
 		.reverse()
 		.find(
@@ -448,12 +454,18 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		);
 	const activeCandidateIndex = activeCandidate?.indices.at(-1) ?? -1;
 	const activeSegment =
-		activeCandidateIndex >= furthestActiveIndexRef.current ? activeCandidate : undefined;
+		activeCandidateIndex >= lastActive.furthestIndex ? activeCandidate : undefined;
 	if (activeSegment) {
-		furthestActiveIndexRef.current = activeCandidateIndex;
-		lastActiveSegmentStartRef.current = activeSegment.indices[0] ?? null;
-		lastActiveSegmentShouldExpandRef.current =
+		const start = activeSegment.indices[0] ?? null;
+		const shouldExpand =
 			activeSegment.kind === "thinking" || activeSegment.indices.length > 1 || hasPendingPermission;
+		if (
+			lastActive.furthestIndex !== activeCandidateIndex ||
+			lastActive.start !== start ||
+			lastActive.shouldExpand !== shouldExpand
+		) {
+			setLastActive({ furthestIndex: activeCandidateIndex, start, shouldExpand });
+		}
 	}
 	// Only the activity group that owns the in-flight questionnaire should look
 	// "live". The message can remain running between tools while it considers
@@ -465,7 +477,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		hasPendingPermission;
 	const automaticOpen = useDelayedActivityOpen(
 		streaming,
-		lastActiveSegmentShouldExpandRef.current && userOpen === null,
+		lastActive.shouldExpand && userOpen === null,
 	);
 	// Two holds with different gates: automaticOpen keeps an expanded segment's
 	// content visible, while settlingHold only keeps the finished segment's
@@ -473,7 +485,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	// doesn't jump straight to the "N tools used" summary either.
 	const settlingHold = useDelayedActivityOpen(
 		streaming,
-		lastActiveSegmentStartRef.current !== null && userOpen === null,
+		lastActive.start !== null && userOpen === null,
 	);
 	const open = userOpen ?? automaticOpen;
 	const spacing = useActivityGroupSpacing(group);
@@ -489,7 +501,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		(hasPendingAsk && activeSegment?.kind === "asking"),
 	);
 	const compactSegmentStart =
-		!headless && !streaming && userOpen !== true ? lastActiveSegmentStartRef.current : null;
+		!headless && !streaming && userOpen !== true ? lastActive.start : null;
 	const settlingSegmentStart = settlingHold ? compactSegmentStart : null;
 	const settlingSegment =
 		settlingSegmentStart !== null
@@ -548,9 +560,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 								: cn(ACTIVITY_CONTENT_ANIMATION, "duration-(--animation-duration)")
 						}
 					>
-						<ActivityProgressIndexContext.Provider
-							value={headless ? -1 : furthestActiveIndexRef.current}
-						>
+						<ActivityProgressIndexContext.Provider value={headless ? -1 : lastActive.furthestIndex}>
 							<ActivitySettlingSegmentContext.Provider value={compactSegmentStart}>
 								<ActivityStreamContext.Provider value={preview || compactSegmentStart !== null}>
 									<div className={headless ? undefined : "mt-1 flex flex-col gap-0.5 pb-1"}>
@@ -638,50 +648,71 @@ const SettledGroupHeader: FC<{
 export const ActivityGroup = memo(ActivityGroupImpl);
 ActivityGroup.displayName = "ActivityGroup";
 
+/** The group's parts of one kind, their stats, and whether they own a pending question or permission. */
+function useActivitySegment(group: GroupLike, kind: ActivityKind) {
+	const parts = useAuiState((s) => s.message.parts);
+	const messageId = useAuiState((s) => s.message.id);
+	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
+	const opencodeParts = useOpenCodeParts();
+	const { questions, permissions } = usePendingInteractions();
+	const segment = activitySegment(
+		parts,
+		group.indices,
+		kind,
+		questions.length + permissions.length > 0,
+	);
+	return {
+		parts,
+		segment,
+		hasPendingAsk:
+			kind === "asking" && ownsPendingAsk(parts, segment.indices, questions, messageRequiresAction),
+		hasPendingPermission: ownsPendingPermission(
+			parts,
+			segment.indices,
+			permissions,
+			messageStepIds(messageId, opencodeParts),
+		),
+		stats: getSegmentStats(parts, segment),
+		diffStats:
+			kind === "editing" || kind === "writing"
+				? getGroupDiffStats(parts, segment.indices, opencodeParts)
+				: null,
+	};
+}
+
+function activitySegment(
+	parts: readonly ActivityPart[],
+	groupIndices: readonly number[],
+	kind: ActivityKind,
+	promptShowing: boolean,
+): ActivitySegment {
+	const indices = groupIndices.filter((index) => {
+		const part = parts[index];
+		return part !== undefined && getActivityKind(part) === kind;
+	});
+	let running = false;
+	let requiresAction = false;
+	for (const index of indices) {
+		const status = parts[index]?.status;
+		if (status?.type === "running") running = true;
+		// "requires-action" with no prompt showing is a request auto-approve is
+		// answering: the tool is still running, and treating it as waiting would
+		// swap its row for an open disclosure until the answer lands.
+		if (status?.type === "requires-action") {
+			if (promptShowing) requiresAction = true;
+			else running = true;
+		}
+	}
+	return { kind, indices, running, requiresAction };
+}
+
 const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: ActivityKind }>> = ({
 	group,
 	kind,
 	children,
 }) => {
-	const parts = useAuiState((s) => s.message.parts);
-	const stepIds = useMessageStepIds();
-	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
-	const opencodeParts = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
-	const { questions: pendingQuestions, permissions: pendingPermissions } = usePendingInteractions();
-	// "requires-action" with no prompt showing is a request auto-approve is
-	// answering: the tool is still running, and treating it as waiting would
-	// swap its row for an open disclosure until the answer lands.
-	const promptShowing = pendingQuestions.length + pendingPermissions.length > 0;
-	const segment = useMemo<ActivitySegment>(() => {
-		const indices = group.indices.filter((index) => {
-			const part = parts[index];
-			return part !== undefined && getActivityKind(part) === kind;
-		});
-		let running = false;
-		let requiresAction = false;
-		for (const index of indices) {
-			const status = parts[index]?.status;
-			if (status?.type === "running") running = true;
-			if (status?.type === "requires-action") {
-				if (promptShowing) requiresAction = true;
-				else running = true;
-			}
-		}
-		return { kind, indices, running, requiresAction };
-	}, [parts, group.indices, kind, promptShowing]);
-	const hasPendingAsk = useMemo(
-		() =>
-			kind === "asking" &&
-			ownsPendingAsk(parts, segment.indices, pendingQuestions, messageRequiresAction),
-		[kind, parts, segment.indices, pendingQuestions, messageRequiresAction],
-	);
-	const hasPendingPermission = useMemo(
-		() => ownsPendingPermission(parts, segment.indices, pendingPermissions, stepIds),
-		[parts, segment.indices, pendingPermissions, stepIds],
-	);
+	const { parts, segment, hasPendingAsk, hasPendingPermission, stats, diffStats } =
+		useActivitySegment(group, kind);
 
 	const disclosureId = `subgroup:${kind}:${group.indices[0] ?? 0}`;
 	const [persistedToggled, setPersistedToggled] = useManualDisclosure(disclosureId);
@@ -693,7 +724,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		setPersistedToggled(open);
 		if (open) keepActivityGroupOpen?.();
 	};
-	const keepActivitySubgroupOpen = useCallback(() => setToggled(true), [setPersistedToggled]);
+	const keepActivitySubgroupOpen = () => setToggled(true);
 
 	const progressIndex = useContext(ActivityProgressIndexContext);
 	const segmentEndIndex = segment.indices.at(-1) ?? -1;
@@ -712,18 +743,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const streamCollapsed = useContext(ActivityStreamContext);
 
 	const meta = getKindMeta(kind);
-	const stats = useMemo(() => getSegmentStats(parts, segment), [parts, segment]);
-	const diffStats = useMemo(
-		() =>
-			kind === "editing" || kind === "writing"
-				? getGroupDiffStats(parts, segment.indices, opencodeParts)
-				: null,
-		[kind, parts, segment.indices, opencodeParts],
-	);
-	const subgroupContext = useMemo<ActivitySubgroupContextValue>(
-		() => ({ kind, size: segment.indices.length }),
-		[kind, segment.indices.length],
-	);
+	const subgroupContext: ActivitySubgroupContextValue = { kind, size: segment.indices.length };
 
 	const active = statusActive;
 	const soloPart = segment.indices.length === 1 ? parts[segment.indices[0]!] : undefined;

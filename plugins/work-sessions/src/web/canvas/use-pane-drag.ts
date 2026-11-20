@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import type { PaneDrop } from "./pane-drop";
 import {
 	capturePaneDragSource,
@@ -38,14 +38,14 @@ export function usePaneDrag({ onDrop, canDrop }: DropHandlers) {
 	const dragRef = useRef<Drag | null>(null);
 	const suppressClickRef = useRef<Pick<PaneDrop, "kind" | "sourceId"> | null>(null);
 
-	const clearMarker = useCallback(() => {
+	const clearMarker = () => {
 		const drag = dragRef.current;
 		if (!drag) return;
 		clearPaneDrop(drag.origin, drag.active);
 		delete drag.active;
-	}, []);
+	};
 
-	const cleanup = useCallback(() => {
+	const cleanup = () => {
 		const drag = dragRef.current;
 		if (!drag) return;
 		clearMarker();
@@ -58,8 +58,10 @@ export function usePaneDrag({ onDrop, canDrop }: DropHandlers) {
 			drag.capture.releasePointerCapture(drag.pointerId);
 		if (drag.ghost)
 			suppressClickRef.current = { kind: drag.origin.kind, sourceId: drag.origin.sourceId };
-	}, [clearMarker]);
+	};
 
+	// React Compiler keeps `cleanup` stable (it reads only refs), so the listeners bind once.
+	// react-doctor-disable-next-line react-doctor/advanced-event-handler-refs
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape" && dragRef.current) {
@@ -78,81 +80,76 @@ export function usePaneDrag({ onDrop, canDrop }: DropHandlers) {
 		};
 	}, [cleanup]);
 
-	const startPointerDrag = useCallback(
-		(event: ReactPointerEvent<HTMLElement>, kind: PaneDrop["kind"], sourceId: string) => {
-			if (event.button !== 0 || !onDrop) return;
-			const canvas = stripRef.current?.closest<HTMLElement>("[data-qa-id='kilo-chat-pane-canvas']");
-			const source = event.currentTarget.closest<HTMLElement>(
-				kind === "pane" ? "[data-pane-tab]" : "[data-pane-group-id]",
-			);
-			if (!canvas || !source) return;
-			cleanup();
-			suppressClickRef.current = null;
-			event.stopPropagation();
-			event.currentTarget.setPointerCapture(event.pointerId);
-			dragRef.current = {
-				origin: capturePaneDragSource(kind, sourceId, source, canvas),
-				pointerId: event.pointerId,
-				startX: event.clientX,
-				startY: event.clientY,
-				capture: event.currentTarget,
-			};
-		},
-		[cleanup, onDrop],
-	);
+	const startPointerDrag = (
+		event: ReactPointerEvent<HTMLElement>,
+		kind: PaneDrop["kind"],
+		sourceId: string,
+	) => {
+		if (event.button !== 0 || !onDrop) return;
+		const canvas = stripRef.current?.closest<HTMLElement>("[data-qa-id='kilo-chat-pane-canvas']");
+		const source = event.currentTarget.closest<HTMLElement>(
+			kind === "pane" ? "[data-pane-tab]" : "[data-pane-group-id]",
+		);
+		if (!canvas || !source) return;
+		cleanup();
+		suppressClickRef.current = null;
+		event.stopPropagation();
+		event.currentTarget.setPointerCapture(event.pointerId);
+		dragRef.current = {
+			origin: capturePaneDragSource(kind, sourceId, source, canvas),
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			startY: event.clientY,
+			capture: event.currentTarget,
+		};
+	};
 
-	const onPointerDrag = useCallback(
-		function movePointer(
-			event: Pick<
-				ReactPointerEvent<HTMLElement>,
-				"pointerId" | "clientX" | "clientY" | "preventDefault"
-			>,
-			scrolling = false,
-		) {
-			const drag = dragRef.current;
-			if (!drag || drag.pointerId !== event.pointerId) return;
-			if (drag.scrollFrame !== undefined) cancelAnimationFrame(drag.scrollFrame);
-			if (!drag.ghost && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5)
-				return;
-			event.preventDefault();
-			if (!drag.ghost) {
-				drag.ghost = createPaneDragGhost(drag.origin);
-				drag.origin.source.dataset.dragging = "true";
-				drag.origin.canvas.dataset.paneDragging = "true";
-			}
-			const point = { x: event.clientX, y: event.clientY };
-			movePaneDragGhost(drag.ghost, point);
-			const result = resolvePaneDrop(drag.origin, drag.active, point, scrolling);
-			if (result.scroll) {
-				const { element, direction } = result.scroll;
-				drag.scrollFrame = requestAnimationFrame(() => {
-					const previous = element.scrollLeft;
-					element.scrollLeft += direction * 8;
-					if (element.scrollLeft !== previous) movePointer(event, true);
-				});
-			}
-			if (result.action === "keep") {
-				if (result.refreshPoint && drag.active) drag.active.lastPoint = point;
-				return;
-			}
-			clearMarker();
-			if (result.action === "show" && (canDrop?.(result.target.drop) ?? true)) {
-				drag.active = showPaneDrop(drag.origin, result.target, drag.ghost, point);
-			}
-		},
-		[clearMarker, canDrop],
-	);
+	const onPointerDrag = function movePointer(
+		event: Pick<
+			ReactPointerEvent<HTMLElement>,
+			"pointerId" | "clientX" | "clientY" | "preventDefault"
+		>,
+		scrolling = false,
+	) {
+		const drag = dragRef.current;
+		if (!drag || drag.pointerId !== event.pointerId) return;
+		if (drag.scrollFrame !== undefined) cancelAnimationFrame(drag.scrollFrame);
+		if (!drag.ghost && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 5)
+			return;
+		event.preventDefault();
+		if (!drag.ghost) {
+			drag.ghost = createPaneDragGhost(drag.origin);
+			drag.origin.source.dataset.dragging = "true";
+			drag.origin.canvas.dataset.paneDragging = "true";
+		}
+		const point = { x: event.clientX, y: event.clientY };
+		movePaneDragGhost(drag.ghost, point);
+		const result = resolvePaneDrop(drag.origin, drag.active, point, scrolling);
+		if (result.scroll) {
+			const { element, direction } = result.scroll;
+			drag.scrollFrame = requestAnimationFrame(() => {
+				const previous = element.scrollLeft;
+				element.scrollLeft += direction * 8;
+				if (element.scrollLeft !== previous) movePointer(event, true);
+			});
+		}
+		if (result.action === "keep") {
+			if (result.refreshPoint && drag.active) drag.active.lastPoint = point;
+			return;
+		}
+		clearMarker();
+		if (result.action === "show" && (canDrop?.(result.target.drop) ?? true)) {
+			drag.active = showPaneDrop(drag.origin, result.target, drag.ghost, point);
+		}
+	};
 
-	const finishPointerDrag = useCallback(
-		(event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
-			const drag = dragRef.current;
-			if (!drag || drag.pointerId !== event.pointerId) return;
-			const drop = drag.active?.target.drop;
-			cleanup();
-			if (!cancelled && drop) onDrop?.(drop);
-		},
-		[cleanup, onDrop],
-	);
+	const finishPointerDrag = (event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
+		const drag = dragRef.current;
+		if (!drag || drag.pointerId !== event.pointerId) return;
+		const drop = drag.active?.target.drop;
+		cleanup();
+		if (!cancelled && drop) onDrop?.(drop);
+	};
 
 	return { stripRef, suppressClickRef, startPointerDrag, onPointerDrag, finishPointerDrag };
 }

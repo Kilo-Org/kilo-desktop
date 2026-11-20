@@ -55,13 +55,18 @@ describe("chat notifications", () => {
 		);
 
 		main!.windowEvents.focused("main");
-		chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "p1" });
-		chats!.events.emit("turn-ended", {
-			chatId: "c1",
-			error: { name: "ApiError", message: "x" },
-		});
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(shown).toHaveBeenCalledTimes(1);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "p1" });
+			chats!.events.emit("turn-ended", {
+				chatId: "c1",
+				error: { name: "ApiError", message: "x" },
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			expect(shown).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("stays quiet when notifications are off", async () => {
@@ -80,7 +85,6 @@ describe("chat notifications", () => {
 
 		chats!.events.emit("work-completed", { chatId: "c1" });
 		chats!.events.emit("question-requested", { chatId: "c1", questionId: "q" });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(shown).not.toHaveBeenCalled();
 	});
 
@@ -113,9 +117,14 @@ describe("chat notifications", () => {
 		});
 		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "bash")]);
 
-		chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "read" });
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(shown).not.toHaveBeenCalled();
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "read" });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(shown).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 
 		chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "rm" });
 		await vi.waitFor(() =>

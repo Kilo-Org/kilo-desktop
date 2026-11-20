@@ -29,15 +29,8 @@ import type { GitWorktreeResult } from "../../contracts/models";
 import { availableBranchName, generateBranchName, semanticBranchName } from "./branch-naming";
 import { hostPathIdentity, type PathIdentity } from "./path-identity";
 import type { BranchNameRandom } from "./branch-naming";
-import type { GitClientSlice } from "./git-service";
-import { unsupportedGitVersionToKernelError } from "./unsupported-git-version";
-
-/**
- * User-facing copy for a git binary that could not be resolved. git-client
- * memoizes the failed resolution for the client's lifetime, so installing
- * git only takes effect after a restart — the copy says so.
- */
-export const GIT_NOT_FOUND_MESSAGE = "Git was not found. Install Git, then restart Kilo Desktop.";
+import type { GitClientSlice } from "../shared/git-client";
+import { GIT_NOT_FOUND_MESSAGE, unsupportedGitVersionToKernelError } from "../shared/git-errors";
 
 const MANAGED_BRANCH_PREFIX = "kilo/";
 

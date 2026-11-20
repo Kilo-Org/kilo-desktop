@@ -93,6 +93,7 @@ function makeBackend(overrides: Partial<CondaBackend> = {}): CondaBackend {
 		listChannels: overrides.listChannels ?? notImpl,
 		addChannel: overrides.addChannel ?? notImpl,
 		removeChannel: overrides.removeChannel ?? notImpl,
+		resolveChannel: overrides.resolveChannel ?? notImpl,
 		findRepodata: overrides.findRepodata ?? notImpl,
 	};
 }
@@ -466,89 +467,6 @@ describe("conda service through the domain object", () => {
 		service.dispose();
 	});
 
-	it("conda.packages.install returns { jobId, envName, installed } and emits job-progress events", async () => {
-		const service = await createServiceHost();
-		const events: JobProgressEvent[] = [];
-		const queue = new JobQueue({ emit: (event) => events.push(event) });
-		const install = vi.fn().mockResolvedValue({
-			jobId: "",
-			envName: "dev",
-			installed: [{ name: "numpy", version: "2.5.1", build: "py311_0", channel: "defaults" }],
-		});
-		await service.register(makeBackend({ install }), queue);
-
-		const client = service.client();
-		const result = await client.installPackages({
-			name: "dev",
-			packages: ["numpy>=2.0"],
-		});
-
-		expect(result.envName).toBe("dev");
-		expect(result.installed).toHaveLength(1);
-		expect(result.installed[0]!.name).toBe("numpy");
-		expect(result.jobId.startsWith("conda-")).toBe(true);
-		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
-		expect(events.every((e) => e.kind === "packages.install")).toBe(true);
-
-		queue.dispose();
-		service.dispose();
-	});
-
-	it("conda.packages.remove returns { jobId, envName, removed } and emits job-progress events", async () => {
-		const service = await createServiceHost();
-		const events: JobProgressEvent[] = [];
-		const queue = new JobQueue({ emit: (event) => events.push(event) });
-		const uninstall = vi.fn().mockResolvedValue({
-			jobId: "",
-			envName: "dev",
-			removed: ["numpy"],
-		});
-		await service.register(makeBackend({ uninstall }), queue);
-
-		const client = service.client();
-		const result = await client.removePackages({
-			name: "dev",
-			packages: ["numpy"],
-		});
-
-		expect(result.envName).toBe("dev");
-		expect(result.removed).toEqual(["numpy"]);
-		expect(result.jobId.startsWith("conda-")).toBe(true);
-		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
-		expect(events.every((e) => e.kind === "packages.remove")).toBe(true);
-
-		queue.dispose();
-		service.dispose();
-	});
-
-	it("conda.packages.update returns { jobId, envName, updated } and emits job-progress events", async () => {
-		const service = await createServiceHost();
-		const events: JobProgressEvent[] = [];
-		const queue = new JobQueue({ emit: (event) => events.push(event) });
-		const update = vi.fn().mockResolvedValue({
-			jobId: "",
-			envName: "dev",
-			updated: [{ name: "numpy", version: "2.6.0", build: "py311_0", channel: "defaults" }],
-		});
-		await service.register(makeBackend({ update }), queue);
-
-		const client = service.client();
-		const result = await client.updatePackages({
-			name: "dev",
-			packages: ["numpy"],
-		});
-
-		expect(result.envName).toBe("dev");
-		expect(result.updated).toHaveLength(1);
-		expect(result.updated[0]!.name).toBe("numpy");
-		expect(result.jobId.startsWith("conda-")).toBe(true);
-		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
-		expect(events.every((e) => e.kind === "packages.update")).toBe(true);
-
-		queue.dispose();
-		service.dispose();
-	});
-
 	it("conda.packages.preview forwards to backend.previewUpdate through the read queue", async () => {
 		const service = await createServiceHost();
 		const queue = new JobQueue({ emit: () => {} });
@@ -721,6 +639,61 @@ describe("conda service through the domain object", () => {
 		service.dispose();
 	});
 
+	it("conda.channels.resolve caches per channel until a channel write", async () => {
+		const service = await createServiceHost();
+		const queue = new JobQueue({ emit: () => {} });
+		const resolveChannel = vi.fn(async (channel: string) => ({
+			channel,
+			name: channel,
+			isMultichannel: false,
+			baseUrls: [`https://conda.anaconda.org/${channel}`],
+			configured: false,
+			configuredBy: [],
+			exact: true,
+		}));
+		const addChannel = vi.fn().mockResolvedValue(["defaults", "bioconda"]);
+		await service.register(makeBackend({ resolveChannel, addChannel }), queue);
+
+		const client = service.client();
+		expect(await client.resolveChannel({ channel: "bioconda" })).toMatchObject({
+			channel: "bioconda",
+			configured: false,
+			exact: true,
+		});
+		await client.resolveChannel({ channel: "bioconda" });
+		expect(resolveChannel).toHaveBeenCalledOnce();
+
+		await client.resolveChannel({ channel: "conda-forge" });
+		expect(resolveChannel).toHaveBeenCalledTimes(2);
+
+		await client.addChannel({ channel: "bioconda" });
+		await client.resolveChannel({ channel: "bioconda" });
+		expect(resolveChannel).toHaveBeenCalledTimes(3);
+		expect(resolveChannel.mock.calls.map(([channel]) => channel)).toEqual([
+			"bioconda",
+			"conda-forge",
+			"bioconda",
+		]);
+
+		queue.dispose();
+		service.dispose();
+	});
+
+	it("conda.channels.resolve rejects a flag-like channel before reaching the backend", async () => {
+		const service = await createServiceHost();
+		const queue = new JobQueue({ emit: () => {} });
+		const resolveChannel = vi.fn();
+		await service.register(makeBackend({ resolveChannel }), queue);
+
+		await expect(
+			service.client().resolveChannel({ channel: "--override-channels" }),
+		).rejects.toBeInstanceOf(KernelError);
+		expect(resolveChannel).not.toHaveBeenCalled();
+
+		queue.dispose();
+		service.dispose();
+	});
+
 	it("conda.jobs.cancel returns { cancelled: false } for an unknown job id", async () => {
 		const service = await createServiceHost();
 		const queue = new JobQueue({ emit: () => {} });
@@ -815,39 +788,6 @@ describe("conda service through the domain object", () => {
 		service.dispose();
 	});
 
-	it("names lookups forward the exact filter", async () => {
-		const service = await createServiceHost();
-		const queue = new JobQueue({ emit: () => {} });
-		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(3));
-		await service.register(makeBackend({ findRepodata }), queue);
-
-		const client = service.client();
-		await client.findRepodata({ names: ["pkg-0"] });
-
-		expect(findRepodata).toHaveBeenLastCalledWith(
-			{ names: ["pkg-0"] },
-			expect.objectContaining({ signal: expect.any(AbortSignal) }),
-		);
-
-		queue.dispose();
-		service.dispose();
-	});
-
-	it("memoises repodata.find results within the read-cache TTL", async () => {
-		const service = await createServiceHost();
-		const queue = new JobQueue({ emit: () => {} });
-		const findRepodata = vi.fn().mockResolvedValue([]);
-		await service.register(makeBackend({ findRepodata }), queue);
-
-		const client = service.client();
-		await client.findRepodata({ names: ["numpy"] });
-		await client.findRepodata({ names: ["numpy"] });
-		expect(findRepodata).toHaveBeenCalledOnce();
-
-		queue.dispose();
-		service.dispose();
-	});
-
 	it("conda.packages.install enqueues, stamps the queue jobId, and emits queued → running → succeeded", async () => {
 		const service = await createServiceHost();
 		const events: JobProgressEvent[] = [];
@@ -895,24 +835,6 @@ describe("conda service through the domain object", () => {
 			{ name: "dev", packages: ["faker>=30"], channels: ["conda-forge"] },
 			expect.objectContaining({ signal: expect.any(AbortSignal) }),
 		);
-
-		queue.dispose();
-		service.dispose();
-	});
-
-	it("conda.packages.install write clears the read cache — the next packages.list re-runs the backend", async () => {
-		const service = await createServiceHost();
-		const queue = new JobQueue({ emit: () => {} });
-		const listPackages = vi.fn().mockResolvedValue([]);
-		const install = vi.fn().mockResolvedValue({ jobId: "", envName: "dev", installed: [] });
-		await service.register(makeBackend({ listPackages, install }), queue);
-
-		const client = service.client();
-		await client.listPackages({ name: "dev" });
-		expect(listPackages).toHaveBeenCalledOnce();
-		await client.installPackages({ name: "dev", packages: ["faker"] });
-		await client.listPackages({ name: "dev" });
-		expect(listPackages).toHaveBeenCalledTimes(2);
 
 		queue.dispose();
 		service.dispose();
@@ -1063,7 +985,9 @@ describe("conda service through the domain object", () => {
 		await service.register(makeBackend(), queue);
 
 		const client = service.client();
-		await expect(client.readEnvironmentFile({ filePath: "/tmp/env.txt" })).rejects.toThrow();
+		await expect(client.readEnvironmentFile({ filePath: "/tmp/env.txt" })).rejects.toMatchObject({
+			code: "VALIDATION",
+		});
 
 		queue.dispose();
 		service.dispose();

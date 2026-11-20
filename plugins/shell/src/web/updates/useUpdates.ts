@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { KernelUpdater, type UpdaterState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 
@@ -23,6 +21,7 @@ const PREVIEW_STATE: UpdaterState | null =
 				enabled: true,
 				status: PREVIEW_MODE,
 				track: "preview",
+				installedTrack: "preview",
 				currentVersion: "0.1.0",
 				availableVersion: "0.2.0-preview-260918-12000",
 				downloadedVersion: PREVIEW_MODE === "downloaded" ? "0.2.0-preview-260918-12000" : null,
@@ -77,14 +76,12 @@ const selectState = (state: UpdaterState) => state;
 export function useUpdates(): Updates | null {
 	const updater = useDomainObject(KernelUpdater);
 	const state = useDomainObjectState(KernelUpdater, selectState);
-	return useMemo(() => {
-		if (PREVIEW_UPDATES) return PREVIEW_UPDATES;
-		if (!updater) return null;
-		return {
-			state: state ?? null,
-			check: () => updater.methods.check(undefined),
-			setTrack: (track) => updater.methods.setTrack({ track }),
-			install: () => updater.methods.install(undefined),
-		};
-	}, [updater, state]);
+	if (PREVIEW_UPDATES) return PREVIEW_UPDATES;
+	if (!updater) return null;
+	return {
+		state: state ?? null,
+		check: () => updater.methods.check(undefined),
+		setTrack: (track) => updater.methods.setTrack({ track }),
+		install: () => updater.methods.install(undefined),
+	};
 }

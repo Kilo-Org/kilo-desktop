@@ -61,6 +61,7 @@ export type TrackInput = z.input<typeof trackInputSchema>;
 export const KernelTelemetry = defineDomainObject({
 	id: "kernel/telemetry",
 	home: "main",
+	description: "Sends the analytics events plugins declared.",
 	state: z.object({}),
 	methods: {
 		track: method(trackInputSchema, z.undefined()),

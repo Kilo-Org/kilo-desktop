@@ -77,6 +77,8 @@ function decimalPlaces(step: number): number {
 	return decimal?.length ?? 0;
 }
 
+const identity = (value: number) => value;
+
 function NumericSettingSlider({
 	id,
 	label,
@@ -93,9 +95,9 @@ function NumericSettingSlider({
 	sliderMin = min,
 	sliderMax = max,
 	sliderStep = step,
-	settingFromSlider = (value) => value,
-	sliderFromSetting = (value) => value,
-	valueText = (value) => String(value),
+	settingFromSlider = identity,
+	sliderFromSetting = identity,
+	valueText = String,
 	onCommit,
 }: NumericSettingSliderProps) {
 	const precision = decimalPlaces(step);
@@ -294,7 +296,7 @@ export function ModelSettingsPanel({
 	// Commits can fire back-to-back within one render (slider commit + blur),
 	// so merges read the ref rather than possibly-stale state.
 	const latestSettings = useRef(settings);
-	const [extraArguments, setExtraArguments] = useState(
+	const [extraArguments, setExtraArguments] = useState(() =>
 		serializeLlamaFlags(model.settings?.llamaFlags ?? {}),
 	);
 	const [extraArgumentsError, setExtraArgumentsError] = useState<string>();

@@ -153,6 +153,11 @@ function fakeWorkSessions(
 								folders.some((folder) => folder.path === candidate),
 						}),
 						checkFolders: unused,
+						newFolderLocation: () => ({ path: null }),
+						newFolderPath: () => {
+							throw new Error("newFolderPath is not faked here.");
+						},
+						rememberNewFolderLocation: () => undefined,
 					},
 				});
 			}
@@ -161,6 +166,7 @@ function fakeWorkSessions(
 				methods: {
 					create: unused,
 					createChat: unused,
+					forkChat: unused,
 					rename: unused,
 					setPinned: unused,
 					setArchived: unused,

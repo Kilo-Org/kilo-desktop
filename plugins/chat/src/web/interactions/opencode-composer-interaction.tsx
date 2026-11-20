@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from "react";
+import type { ReactNode } from "react";
 import type {
 	OpenCodePermissionRequest,
 	OpenCodeQuestionRequest,
@@ -6,13 +6,37 @@ import type {
 
 import { isPlanFollowupRequest } from "../plan/plan-followup";
 import { usePendingInteractions } from "./PendingInteractionsContext";
-import { subagentOriginOf, type SubagentOrigin } from "./pending-interactions";
+import {
+	subagentOriginOf,
+	type PendingInteractions,
+	type SubagentOrigin,
+} from "./pending-interactions";
 import { OpenCodePermissionCard } from "./opencode-permission-card";
 import { OpenCodeQuestionQuestionnaire } from "./opencode-question-card";
 
 type PendingComposerInteraction =
 	| { kind: "permission"; request: OpenCodePermissionRequest; origin: SubagentOrigin | undefined }
 	| { kind: "question"; request: OpenCodeQuestionRequest; origin: SubagentOrigin | undefined };
+
+function oldestPendingInteraction(
+	interactions: PendingInteractions,
+): PendingComposerInteraction | null {
+	// The plan follow-up is answered by Approve (plan card, plan pane) or the composer's Refine.
+	const questions = interactions.questions.filter((question) => !isPlanFollowupRequest(question));
+	const pending: PendingComposerInteraction[] = [
+		...interactions.permissions.map((request) => ({
+			kind: "permission" as const,
+			request,
+			origin: subagentOriginOf(interactions, request.sessionId),
+		})),
+		...questions.map((request) => ({
+			kind: "question" as const,
+			request,
+			origin: subagentOriginOf(interactions, request.sessionID),
+		})),
+	];
+	return pending.toSorted((a, b) => a.request.askedAt - b.request.askedAt)[0] ?? null;
+}
 
 export const OpenCodeComposerInteraction = ({ fallback }: { fallback: ReactNode }) => (
 	<PendingInteractionPrompt fallback={fallback} />
@@ -32,24 +56,7 @@ export const PendingInteractionPrompt = ({
 	acceptOnEnter?: boolean;
 }) => {
 	const interactions = usePendingInteractions();
-	const activeInteraction = useMemo(() => {
-		// The plan follow-up is answered by Approve (plan card, plan pane) or the composer's Refine.
-		const questions = interactions.questions.filter((question) => !isPlanFollowupRequest(question));
-		const pending: PendingComposerInteraction[] = [
-			...interactions.permissions.map((request) => ({
-				kind: "permission" as const,
-				request,
-				origin: subagentOriginOf(interactions, request.sessionId),
-			})),
-			...questions.map((request) => ({
-				kind: "question" as const,
-				request,
-				origin: subagentOriginOf(interactions, request.sessionID),
-			})),
-		];
-
-		return pending.toSorted((a, b) => a.request.askedAt - b.request.askedAt)[0] ?? null;
-	}, [interactions]);
+	const activeInteraction = oldestPendingInteraction(interactions);
 
 	if (!activeInteraction) return fallback;
 	switch (activeInteraction.kind) {

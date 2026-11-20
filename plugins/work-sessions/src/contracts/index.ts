@@ -22,11 +22,13 @@ import {
 	WorkSessionAction,
 	WorkSessionDecoration,
 	WorkSessionFacet,
+	WorkSessionGrouping,
 	WorkSessionListAction,
 	WorkSessionMenu,
 	WorkSessionStarter,
 	WorkSessionsView,
 	WorkSessionsWindow,
+	WorkspaceSource,
 } from "./ui";
 
 export * from "./model";
@@ -60,6 +62,7 @@ export const WORK_SESSIONS_DEFINITIONS: PluginDefinitions = {
 		WorkSessionMenu,
 		WorkSessionDecoration,
 		WorkSessionFacet,
+		WorkSessionGrouping,
 		WorkSessionsView,
 		WorkSessionAction,
 		WorkSessionListAction,
@@ -67,6 +70,7 @@ export const WORK_SESSIONS_DEFINITIONS: PluginDefinitions = {
 		NewWorkSessionSection,
 		WorkSessionStarter,
 		PermissionAutoAnswer,
+		WorkspaceSource,
 	],
 	domainObjects: [Workspaces, FileWatcher, WorkSessions, Panes, WorkSessionsWindow, LayoutPresets],
 	objectTypes: [

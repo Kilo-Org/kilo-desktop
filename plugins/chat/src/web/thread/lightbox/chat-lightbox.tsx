@@ -1,17 +1,16 @@
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
 	createContext,
-	useCallback,
 	useContext,
 	useId,
 	useLayoutEffect,
-	useMemo,
 	useRef,
 	useState,
 	type ReactNode,
 } from "react";
 
 import { MediaLightbox, type LightboxItem } from "@kilo-desktop/ui/components/media-lightbox";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import { toLightboxItem } from "../../media/lightbox-items";
 import { useOpenMediaPane, type ViewerItem } from "../../media/open-media-pane";
@@ -67,8 +66,8 @@ export function renderChatLightboxActions(item: LightboxItem): ReactNode {
  *
  * Surfaces register an item with the element it renders in; opening one
  * orders them by document position, so ←/→ walks the transcript top to
- * bottom. The transcript only hides off-screen messages (`content-visibility`)
- * rather than unmounting them, so the registry stays complete. In a session's
+ * bottom. Items in messages the transcript has windowed out unregister as they
+ * unmount, so ←/→ only reaches mounted messages. In a session's
  * transcript the items open in its media viewer pane; elsewhere (the New
  * Session page, the web build without plugin main entries) in a lightbox
  * dialog. Registration lives in state here and the context value is stable,
@@ -78,63 +77,52 @@ export function ChatLightboxProvider({ children }: { readonly children: ReactNod
 	const [entries, setEntries] = useState<ReadonlyMap<string, Entry>>(() => new Map());
 	const [openKey, setOpenKey] = useState<string | null>(null);
 	const openMediaPane = useOpenMediaPane();
-	const latestOpenMediaPane = useRef(openMediaPane);
-	latestOpenMediaPane.current = openMediaPane;
+	const latestOpenMediaPane = useLatestRef(openMediaPane);
 	// Registrations land here at once: an item clicked right after it
 	// registers is opened before the state below has re-rendered with it.
 	const registered = useRef(new Map<string, Entry>());
 
-	const registry = useMemo<Registry>(
-		() => ({
-			register(key, entry) {
-				registered.current.set(key, entry);
-				setEntries((previous) => new Map(previous).set(key, entry));
-				return () => {
-					if (registered.current.get(key) === entry) registered.current.delete(key);
-					setEntries((previous) => {
-						if (previous.get(key) !== entry) return previous;
-						const next = new Map(previous);
-						next.delete(key);
-						return next;
-					});
-				};
-			},
-			open(key) {
-				const openMediaPane = latestOpenMediaPane.current;
-				if (!openMediaPane) {
-					setOpenKey(key);
-					return;
-				}
-				const items = [...registered.current.values()]
-					.sort(byDocumentOrder)
-					.map((entry) => entry.item);
-				void openMediaPane(items, key).then(
-					(opened) => {
-						if (!opened) setOpenKey(key);
-					},
-					() => setOpenKey(key),
-				);
-			},
-		}),
-		[],
-	);
+	const [registry] = useState<Registry>(() => ({
+		register(key, entry) {
+			registered.current.set(key, entry);
+			setEntries((previous) => new Map(previous).set(key, entry));
+			return () => {
+				if (registered.current.get(key) === entry) registered.current.delete(key);
+				setEntries((previous) => {
+					if (previous.get(key) !== entry) return previous;
+					const next = new Map(previous);
+					next.delete(key);
+					return next;
+				});
+			};
+		},
+		open(key) {
+			const openMediaPane = latestOpenMediaPane.current;
+			if (!openMediaPane) {
+				setOpenKey(key);
+				return;
+			}
+			const items = [...registered.current.values()]
+				.sort(byDocumentOrder)
+				.map((entry) => entry.item);
+			void openMediaPane(items, key).then(
+				(opened) => {
+					if (!opened) setOpenKey(key);
+				},
+				() => setOpenKey(key),
+			);
+		},
+	}));
 
-	const ordered = useMemo(
-		() =>
-			openKey === null
-				? []
-				: [...entries].sort(([, a], [, b]) => byDocumentOrder(a, b)).map(([key]) => key),
-		[entries, openKey],
-	);
+	const ordered =
+		openKey === null
+			? []
+			: [...entries].sort(([, a], [, b]) => byDocumentOrder(a, b)).map(([key]) => key);
 	const index = ordered.indexOf(openKey ?? "");
-	const items = useMemo(
-		() =>
-			ordered.flatMap((key) => {
-				const item = entries.get(key)?.item;
-				return item ? [toLightboxItem(item)] : [];
-			}),
-		[entries, ordered],
-	);
+	const items = ordered.flatMap((key) => {
+		const item = entries.get(key)?.item;
+		return item ? [toLightboxItem(item)] : [];
+	});
 
 	return (
 		<RegistryContext.Provider value={registry}>
@@ -173,20 +161,22 @@ export function useLightboxItem(
 	// that makes it openable; the state only re-registers a replaced element.
 	const elementRef = useRef<HTMLElement | null>(null);
 	const [element, setElement] = useState<HTMLElement | null>(null);
-	const ref = useCallback((node: HTMLElement | null) => {
+	const ref = (node: HTMLElement | null) => {
 		elementRef.current = node;
 		setElement(node);
-	}, []);
+	};
 	const [localOpen, setLocalOpen] = useState(false);
-	const item = useMemo(() => (input ? ({ ...input, id: key } as ViewerItem) : null), [input, key]);
+	const item = input ? ({ ...input, id: key } as ViewerItem) : null;
 
 	useLayoutEffect(() => {
 		const current = elementRef.current;
 		if (!shared || !item || !current) return;
+		// A replaced element registers on the render that catches its state up.
+		if (element !== null && element !== current) return;
 		return shared.register(key, { item, element: current });
 	}, [shared, item, element, key]);
 
-	const open = useCallback(() => {
+	const open = () => {
 		if (!item) return;
 		if (shared) shared.open(key);
 		else if (openMediaPane) {
@@ -197,7 +187,7 @@ export function useLightboxItem(
 				() => setLocalOpen(true),
 			);
 		} else setLocalOpen(true);
-	}, [item, shared, key, openMediaPane]);
+	};
 
 	const lightbox =
 		!shared && item ? (

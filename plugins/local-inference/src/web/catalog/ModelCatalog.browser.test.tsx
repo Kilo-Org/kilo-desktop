@@ -561,15 +561,16 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	});
 
 	it("does not refetch the catalog when the first resolve finds an existing key", async () => {
-		const { screen, list } = await renderWithoutKey(
+		const { screen, list, resolveAccess } = await renderWithoutKey(
 			{ status: "authenticated", user: { email: "dev@anaconda.com" } },
 			true,
 			{ catalogAlwaysFails: true },
 		);
 
 		await expect.element(screen.getByTestId("model-catalog-error")).toBeVisible();
-		// Give a would-be refetch a chance to fire before asserting it didn't.
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		// The mount-time access resolve is the only thing that could invalidate
+		// the catalog; once it has run, no second read may have been issued.
+		await vi.waitFor(() => expect(resolveAccess).toHaveBeenCalledOnce());
 		expect(list).toHaveBeenCalledTimes(1);
 	});
 

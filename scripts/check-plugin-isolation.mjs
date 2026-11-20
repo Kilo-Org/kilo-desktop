@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Proves bundled plugins build outside the monorepo (docs/plugin-architecture.md,
-// step 13c), i.e. they only lean on what their package.json declares and on
+// Proves bundled plugins build outside the monorepo (docs/plugins/testing.md),
+// i.e. they only lean on what their package.json declares and on
 // published-shape packages: @kilo-desktop/kernel, @kilo-desktop/ui, other
 // plugins' exports, and the few private libraries listed below.
 //
@@ -249,8 +249,7 @@ function buildSelection(plugins, examples) {
 	const all = [...plugins, ...examples];
 	if (value === "all") return all;
 	if (!value) {
-		// Representatives not (yet) bundled are skipped: plugins return one at a
-		// time (docs/plugin-plan-v2.md).
+		// Representatives that are not bundled are skipped.
 		const representatives = REPRESENTATIVE.flatMap((folder) => {
 			const found = all.find(([, dir]) => path.basename(dir) === folder);
 			if (!found) console.log(`  ${folder}: not bundled, skipping its build`);

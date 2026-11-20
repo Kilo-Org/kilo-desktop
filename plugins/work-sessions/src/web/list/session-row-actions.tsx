@@ -9,15 +9,7 @@ import {
 	PinOffIcon,
 	Trash2Icon,
 } from "lucide-react";
-import {
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-	type ComponentProps,
-	type FC,
-	type RefObject,
-} from "react";
+import { useEffect, useRef, useState, type ComponentProps, type FC, type RefObject } from "react";
 
 import type { Contribution } from "@kilo-desktop/kernel";
 import { useExtensions } from "@kilo-desktop/kernel/web";
@@ -74,11 +66,11 @@ export function useRenameState(): {
 		restoreFocusRef.current = false;
 		triggerRef.current?.focus();
 	}, [isRenaming]);
-	const startRename = useCallback(() => setIsRenaming(true), []);
-	const finishRename = useCallback((restoreFocus: boolean) => {
+	const startRename = () => setIsRenaming(true);
+	const finishRename = (restoreFocus: boolean) => {
 		restoreFocusRef.current = restoreFocus;
 		setIsRenaming(false);
-	}, []);
+	};
 
 	return { isRenaming, startRename, finishRename, triggerRef };
 }
@@ -403,6 +395,8 @@ export const SessionRenameInput: FC<{
 	onRename: (title: string) => Promise<unknown>;
 	onDone: (restoreFocus: boolean) => void;
 }> = ({ title, onRename, onDone }) => {
+	// The edit draft is seeded from the title once, when renaming starts.
+	// react-doctor-disable-next-line react-doctor/no-derived-useState
 	const [value, setValue] = useState(title);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const settledRef = useRef(false);

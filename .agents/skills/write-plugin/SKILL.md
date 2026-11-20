@@ -18,11 +18,19 @@ Start from [examples/hello-plugin](../../../examples/hello-plugin). Read
 
 ## Workflow
 
-1. **Find the owner.** Decide which plugin owns the concept (§4 "split by
-   domain"). Extend that plugin rather than creating a new one unless the
-   feature is its own domain. Check the catalog
-   (`docs/plugins/extension-points.md`) for an existing point before
-   inventing one.
+1. **Design in building blocks first** — before scaffolding, decide:
+   - **Owner:** an existing plugin or a new one. A plugin is a product area,
+     not a concept; extend the owning plugin unless the feature is its own
+     area.
+   - **Domain objects** that own its state and methods.
+   - **Extension points** it contributes to (check
+     [docs/plugins/schema.md](../../../docs/plugins/schema.md)). Add a new
+     point only when something outside the owner contributes to it.
+   - **Commands, context keys, object types and services.**
+
+   Use the `design-feature` skill (`.agents/skills/design-feature/SKILL.md`)
+   and [Designing a feature](../../../docs/plugin-architecture.md#designing-a-feature).
+
 2. **Scaffold** (new plugin): copy `examples/hello-plugin` to
    `plugins/<dir>`; rename the package (`@kilo-desktop/plugin-<dir>`), the
    manifest id (`kilo.<name>` for bundled plugins) and every qualified id.
@@ -46,12 +54,14 @@ Start from [examples/hello-plugin](../../../examples/hello-plugin). Read
    `write-vitest` skill.
 8. **Register** (bundled): `packages/bundled-plugins` (`package.json`,
    `src/plugins.ts`), `apps/desktop/src/main/kernel/plugins.ts`,
-   `apps/web/src/kernel/plugins.ts`; add an `@smoke` e2e spec (the
-   `write-e2e-test` skill) and map it in `e2e/utils/registered-specs.ts`;
-   add one line to `CONTEXT.md`.
+   `apps/web/src/kernel/plugins.ts`; add an `@smoke` e2e spec in
+   `e2e/specs/<dir>/` (the `write-e2e-test` skill), map the area in
+   `AREA_OWNERS` (`e2e/utils/registered-specs.ts`) and `RELATED_SPECS`
+   (`e2e/scripts/select-pr-e2e.ts`); add one line to `CONTEXT.md`.
 9. **Record extensibility.** New or changed surfaces get rows in the
-   extensibility map (plugin-architecture.md §7). New points: run
-   `pnpm docs:extension-points`.
+   [extensibility map](../../../docs/plugin-architecture.md#extensibility-map).
+   After changing a manifest, run `pnpm docs:schema` to regenerate
+   `docs/plugins/schema.md`.
 
 ## Rules
 
@@ -72,5 +82,5 @@ Start from [examples/hello-plugin](../../../examples/hello-plugin). Read
 pnpm check && pnpm lint && pnpm format:check
 pnpm --filter <package> coverage          # 80% gate
 pnpm check:plugin-isolation --build <dir>  # when imports or package.json change
-cd e2e && npx tsc --noEmit -p tsconfig.json
+pnpm --filter @kilo-desktop/e2e check      # e2e types
 ```

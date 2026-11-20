@@ -15,7 +15,7 @@ import {
 } from "@kilo-desktop/git-client";
 import type { IGitStringResult } from "@kilo-desktop/git-client";
 
-import type { GitClientSlice } from "./git-service";
+import type { GitClientSlice } from "../shared/git-client";
 import { createPathIdentity, hostPathIdentity } from "./path-identity";
 import { WorktreeManager, type WorktreeManagerOptions } from "./worktree-manager";
 
@@ -36,7 +36,7 @@ afterEach(() => {
 
 function createMainRoot(): string {
 	// `.native` matches the source's `fs/promises` realpath, which expands
-	// Windows 8.3 short names (C:\Users\DGRAML~1) that the JS impl keeps.
+	// Windows 8.3 short names (C:\Users\RUNNER~1) that the JS impl keeps.
 	const dir = fs.realpathSync.native(
 		fs.mkdtempSync(path.join(os.tmpdir(), "worktree-manager-test-")),
 	);

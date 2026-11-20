@@ -132,7 +132,7 @@ describe("the Files pane kind", () => {
 		});
 		host.render(<PaneHost host={host} paneId="p1" />);
 
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await expect.element(page.getByTestId("files-view")).toBeInTheDocument();
 		expect(read).not.toHaveBeenCalled();
 		expect(document.querySelector('[data-qa-id="files-tree"]')).toBeNull();
 		expect(document.querySelector('[data-qa-id="files-breadcrumb"]')).toBeNull();
@@ -158,6 +158,19 @@ describe("the Files pane kind", () => {
 		await host.setPane(filesPane("p1", { ...metadata, line: "100", revealRequest: "two" }));
 
 		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2), { timeout: 5_000 });
+	});
+});
+
+describe("a Files pane's path (the tab menu's Copy path)", () => {
+	it("is the opened file's, else origin's folder and relative path; none for an explorer", async () => {
+		const host = await bootFilesHost({ documents: documents() });
+		const path = filesPaneKind(host).path!;
+
+		expect(path(openedFilePane("o", "/work/app/src/App.tsx"))).toBe("/work/app/src/App.tsx");
+		expect(
+			path(filesPane("f", { workspaceDirectory: "C:\\work\\app", relativePath: "src/App.tsx" })),
+		).toBe("C:\\work\\app\\src\\App.tsx");
+		expect(path(filesPane("e", { workspaceDirectory: "/work/app" }))).toBeUndefined();
 	});
 });
 

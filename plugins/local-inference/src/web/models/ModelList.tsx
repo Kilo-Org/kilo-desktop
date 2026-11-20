@@ -359,8 +359,7 @@ export function ModelList({
 	renderSettings: (model: LocalModel) => ReactNode;
 }) {
 	return (
-		<div
-			role="list"
+		<ul
 			aria-label="Available models"
 			className="border-border bg-card divide-border @container min-w-0 divide-y overflow-hidden rounded-lg border"
 			data-qa-id="local-model-list"
@@ -368,7 +367,7 @@ export function ModelList({
 			{models.map((model) => {
 				const open = expandedModelIds.has(model.id);
 				return (
-					<div key={model.id} role="listitem" className="min-w-0">
+					<li key={model.id} className="min-w-0">
 						<ModelCard
 							model={model}
 							catalogModel={model.catalog ? catalogModels.get(model.catalog.modelId) : undefined}
@@ -378,9 +377,9 @@ export function ModelList({
 							settings={open ? renderSettings(model) : null}
 							{...actions}
 						/>
-					</div>
+					</li>
 				);
 			})}
-		</div>
+		</ul>
 	);
 }

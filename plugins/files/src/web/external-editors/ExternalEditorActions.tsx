@@ -99,6 +99,7 @@ export function ExternalEditorActions({
 	const openLabel = preferredEditor
 		? `Open file in ${EXTERNAL_EDITORS.find(({ id }) => id === preferredEditor)?.label ?? "preferred editor"}`
 		: "Open file in preferred editor";
+	const installedEditors = new Set(availableEditors);
 
 	return (
 		<ButtonGroup aria-label="Open in external editor">
@@ -147,21 +148,19 @@ export function ExternalEditorActions({
 						{availableEditors?.length === 0 ? (
 							<DropdownMenuItem disabled>No installed editors found</DropdownMenuItem>
 						) : null}
-						{EXTERNAL_EDITORS.filter(({ id }) => availableEditors?.includes(id)).map(
-							({ id, label }) => {
-								const EditorIcon = EXTERNAL_EDITOR_ICONS[id];
-								return (
-									<DropdownMenuItem
-										key={id}
-										data-qa-id={`files-external-editor-${id}`}
-										onClick={() => void open(id)}
-									>
-										<EditorIcon aria-hidden="true" data-editor-icon={id} />
-										{label}
-									</DropdownMenuItem>
-								);
-							},
-						)}
+						{EXTERNAL_EDITORS.filter(({ id }) => installedEditors.has(id)).map(({ id, label }) => {
+							const EditorIcon = EXTERNAL_EDITOR_ICONS[id];
+							return (
+								<DropdownMenuItem
+									key={id}
+									data-qa-id={`files-external-editor-${id}`}
+									onClick={() => void open(id)}
+								>
+									<EditorIcon aria-hidden="true" data-editor-icon={id} />
+									{label}
+								</DropdownMenuItem>
+							);
+						})}
 					</DropdownMenuGroup>
 				</DropdownMenuContent>
 			</DropdownMenu>

@@ -2,7 +2,6 @@ import { AuiIf, ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/rea
 import { ArrowUpIcon, MicIcon, SquareIcon } from "lucide-react";
 import {
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 	type FC,
@@ -23,7 +22,7 @@ import {
 	useRunTypedClientSlashCommand,
 	useSlashCommands,
 } from "../slash-commands/client-slash-commands";
-import { useKiloSlashFormatter } from "../slash-commands/use-kilo-slash-formatter";
+import { kiloSlashFormatter } from "../slash-commands/use-kilo-slash-formatter";
 import { ComposerSubagentStrip } from "../subagents/ComposerSubagentStrip";
 import { useSubagentActivity } from "../subagents/SubagentActivityContext";
 import { ComposerAttachments } from "../thread/attachment";
@@ -64,22 +63,20 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 
 	const slash = useSlashCommands(context.directory);
 	const runTypedClientCommand = useRunTypedClientSlashCommand(slash.commands);
-	const slashFormatter = useKiloSlashFormatter(slash.commands);
 	const sources = useMentionSources();
-	const formatter = useMemo(
-		() => combineFormatters(slashFormatter, createMentionFormatter(sources), isMentionType),
-		[slashFormatter, sources],
+	// Past the hooks, so the compiler caches it on `slash.commands` and `sources`.
+	const formatter = combineFormatters(
+		kiloSlashFormatter(slash.commands),
+		createMentionFormatter(sources),
+		isMentionType,
 	);
-	const icons = useMemo(() => mentionIcons(sources), [sources]);
-	const mentionContext = useMemo(
-		() => ({
-			workSessionId: context.workSessionId,
-			directory: context.directory,
-			workspaceId: context.workspaceId,
-			workspaceFolders: context.workspaceFolders,
-		}),
-		[context.workSessionId, context.directory, context.workspaceId, context.workspaceFolders],
-	);
+	const icons = mentionIcons(sources);
+	const mentionContext = {
+		workSessionId: context.workSessionId,
+		directory: context.directory,
+		workspaceId: context.workspaceId,
+		workspaceFolders: context.workspaceFolders,
+	};
 
 	useEffect(() => {
 		if (!isDraft) return;
@@ -137,7 +134,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 							<div
 								data-slot="aui_composer-shell"
 								className={cn(
-									"border-border-subtle chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+									"border-border-subtle chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed",
 									"chat-composer-glass shadow-composer relative z-10",
 								)}
 							/>

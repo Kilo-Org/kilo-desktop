@@ -47,7 +47,7 @@ export const localModelLoadModeSchema = z.enum(["one", "all"]);
 export type LocalModelLoadMode = z.infer<typeof localModelLoadModeSchema>;
 
 export const localServerSettingsSchema = z
-	.object({
+	.strictObject({
 		port: z.number().int().min(1).max(65_535).optional(),
 		modelLoadMode: localModelLoadModeSchema.optional(),
 		serveOnLocalNetwork: z.boolean().optional(),
@@ -55,7 +55,6 @@ export const localServerSettingsSchema = z
 			.record(z.string().regex(FLAG_KEY), z.string().trim().min(1).max(4_096))
 			.optional(),
 	})
-	.strict()
 	.superRefine((settings, context) => {
 		for (const [key, value] of Object.entries(settings.llamaFlags ?? {})) {
 			const parsed = parseServerFlagRow(key, value);

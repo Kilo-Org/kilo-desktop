@@ -707,7 +707,10 @@ describe("tools that need sign-in", () => {
 		const models = host.core.models();
 		models.setState({ ...models.state, followingAccount: true });
 		host.setIdentity(SIGNED_IN);
-		await new Promise((resolve) => setTimeout(resolve, 500));
+		// The card shows the signed-in row as soon as the identity reaches it; a
+		// turn sent before the models settle would still carry the signed-out one.
+		await expect.element(page.getByTestId("kilo-tool-signin-signed-in")).toBeVisible();
+		await expect.element(page.getByTestId("kilo-tool-signin-continue")).not.toBeInTheDocument();
 		expect(promptsTo(server)).toEqual([]);
 
 		models.setState(kiloModels("kilo-auto/balanced"));

@@ -4,8 +4,6 @@ import {
 	useQueryClient,
 	type UseMutationResult,
 } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
-
 import {
 	KernelClipboard,
 	KernelError,
@@ -35,7 +33,7 @@ const UNAVAILABLE_CLIENT = new Proxy({} as MarketplaceClient, { get: () => unava
 /** This window's `kilo.marketplace/marketplace` methods; calls fail while it is absent. */
 export function useMarketplace(): MarketplaceClient {
 	const domain = useDomainObject(Marketplace);
-	return useMemo(() => domain?.methods ?? UNAVAILABLE_CLIENT, [domain]);
+	return domain?.methods ?? UNAVAILABLE_CLIENT;
 }
 
 export function marketplaceQueryKey<M extends MarketplaceMethod>(
@@ -85,10 +83,8 @@ export function useTrack(): (
 	data?: Record<string, unknown>,
 ) => void {
 	const telemetry = useDomainObject(KernelTelemetry);
-	return useCallback(
-		(event, data = {}) => void telemetry?.methods.track({ event, data }).catch(() => undefined),
-		[telemetry],
-	);
+	return (event, data = {}) =>
+		void telemetry?.methods.track({ event, data }).catch(() => undefined);
 }
 
 /** kilo.work-sessions' active workspace (origin's `kilo-ui.active-workspace`); null without one. */
@@ -99,32 +95,22 @@ export function useActiveWorkspaceId(): string | null {
 /** Opens a link in the person's browser. */
 export function useOpenExternal(): (url: string) => void {
 	const os = useDomainObject(KernelOs);
-	return useCallback(
-		(url: string) => void os?.methods.openExternal({ url }).catch(() => undefined),
-		[os],
-	);
+	return (url: string) => void os?.methods.openExternal({ url }).catch(() => undefined);
 }
 
 /** Copies text; rejects where the window has no clipboard. */
 export function useCopyText(): (text: string) => Promise<void> {
 	const clipboard = useDomainObject(KernelClipboard);
-	return useCallback(
-		async (text: string) => {
-			if (!clipboard) throw new KernelError("UNAVAILABLE", "The clipboard is unavailable.");
-			await clipboard.methods.writeText({ text });
-		},
-		[clipboard],
-	);
+	return async (text: string) => {
+		if (!clipboard) throw new KernelError("UNAVAILABLE", "The clipboard is unavailable.");
+		await clipboard.methods.writeText({ text });
+	};
 }
 
 /** kilo.chat's `startChat` (a new chat with `text` drafted); null without kilo.chat. */
 export function useStartNewChat(): ((text: string) => void) | null {
 	const composer = useDomainObject(Composer);
-	return useMemo(
-		() =>
-			composer
-				? (text: string) => void composer.methods.startChat({ text }).catch(() => undefined)
-				: null,
-		[composer],
-	);
+	return composer
+		? (text: string) => void composer.methods.startChat({ text }).catch(() => undefined)
+		: null;
 }

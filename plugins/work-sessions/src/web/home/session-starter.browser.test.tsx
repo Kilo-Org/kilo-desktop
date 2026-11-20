@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -31,27 +32,31 @@ const REPOSITORY: IsolationOptions = {
 
 let started: StartedWorkSession[] = [];
 let failures: unknown[] = [];
-let lastProps: WorkSessionStarterProps | undefined;
+const committedProps: WorkSessionStarterProps[] = [];
+const lastProps = () => committedProps.at(-1);
 
 beforeEach(() => {
 	started = [];
 	failures = [];
-	lastProps = undefined;
+	committedProps.length = 0;
 });
 
 /** A starter that starts a session on "Send". */
 function TestStarter(props: WorkSessionStarterProps) {
-	lastProps = props;
+	useLayoutEffect(() => {
+		committedProps.push(props);
+	});
 	return (
 		<div data-qa-id="test-starter">
 			<button
 				type="button"
-				onClick={() =>
-					void props.start().then(
-						(session) => started.push(session),
-						(error) => failures.push(error),
-					)
-				}
+				onClick={async () => {
+					try {
+						started.push(await props.start());
+					} catch (error) {
+						failures.push(error);
+					}
+				}}
 			>
 				Send
 			</button>
@@ -131,7 +136,9 @@ function TestSection(props: NewWorkSessionSectionProps) {
 			type="button"
 			data-qa-id="test-section"
 			disabled={props.disabled}
-			onClick={() => void props.start().then((session) => sectionStarted.push(session))}
+			onClick={async () => {
+				sectionStarted.push(await props.start());
+			}}
 		>
 			From a section in {props.workspaceId}
 		</button>
@@ -175,15 +182,15 @@ describe("the New Session page with a session starter", () => {
 	it("asks the starter to take focus each time New session is clicked on the page", async () => {
 		await renderNewSession();
 		await expect.element(page.getByTestId("test-starter")).toBeVisible();
-		expect(lastProps?.focusRequest).toBeFalsy();
+		expect(lastProps()?.focusRequest).toBeFalsy();
 
 		await page.getByTestId("new-chat").click();
-		await vi.waitFor(() => expect(lastProps?.focusRequest).toBeTruthy(), WAIT);
-		const first = lastProps!.focusRequest;
+		await vi.waitFor(() => expect(lastProps()?.focusRequest).toBeTruthy(), WAIT);
+		const first = lastProps()!.focusRequest;
 
 		await page.getByTestId("new-chat").click();
-		await vi.waitFor(() => expect(lastProps?.focusRequest).not.toBe(first), WAIT);
-		expect(lastProps?.focusRequest).toBeTruthy();
+		await vi.waitFor(() => expect(lastProps()?.focusRequest).not.toBe(first), WAIT);
+		expect(lastProps()?.focusRequest).toBeTruthy();
 	});
 
 	it("asks the starter New session shows from an open session to take focus", async () => {
@@ -194,7 +201,7 @@ describe("the New Session page with a session starter", () => {
 		await page.getByTestId("new-chat").click();
 
 		await expect.element(page.getByTestId("test-starter")).toBeVisible();
-		expect(lastProps?.focusRequest).toBeTruthy();
+		expect(lastProps()?.focusRequest).toBeTruthy();
 	});
 
 	it("doesn't ask again when the page shows without New session", async () => {
@@ -202,14 +209,14 @@ describe("the New Session page with a session starter", () => {
 			workSessions: [workSession("a", { workspaceId: "w-app" })],
 		});
 		await page.getByTestId("new-chat").click();
-		await vi.waitFor(() => expect(lastProps?.focusRequest).toBeTruthy(), WAIT);
+		await vi.waitFor(() => expect(lastProps()?.focusRequest).toBeTruthy(), WAIT);
 		await openRow("Session a");
 		await expect.element(page.getByTestId("test-starter")).not.toBeInTheDocument();
 
 		await host.renderer.kernelSdk.domainObjects.get(WorkSessions)!.methods.remove({ id: "a" });
 
 		await expect.element(page.getByTestId("test-starter")).toBeVisible();
-		expect(lastProps?.focusRequest).toBeFalsy();
+		expect(lastProps()?.focusRequest).toBeFalsy();
 	});
 
 	it("says where the session runs in one labelled row, between the headline and the starter", async () => {
@@ -221,7 +228,7 @@ describe("the New Session page with a session starter", () => {
 		const starter = page.getByTestId("test-starter");
 		expect(follows(page.getByTestId("launcher-headline").element(), location.element())).toBe(true);
 		expect(follows(location.element(), starter.element())).toBe(true);
-		expect(lastProps).toMatchObject({ workspaceId: "w-app", directory: "/projects/app" });
+		expect(lastProps()).toMatchObject({ workspaceId: "w-app", directory: "/projects/app" });
 	});
 
 	it("joins workspace, isolation and branch in one capsule, each label drawn in its picker", async () => {
@@ -413,7 +420,7 @@ describe("the New Session page with a session starter", () => {
 		await vi.waitFor(() => expect(failures).toHaveLength(1), WAIT);
 		expect(started).toEqual([]);
 		await expect.element(page.getByTestId("test-starter")).toBeVisible();
-		expect(lastProps?.starting).toBe(false);
+		expect(lastProps()?.starting).toBe(false);
 	});
 });
 
@@ -438,7 +445,7 @@ describe("the New Session page while a worktree is being created", () => {
 		await expect.element(page.getByTestId("launcher-body")).toHaveAttribute("inert");
 		await expect.element(page.getByTestId("launcher-pane-test.kinds/terminal")).toBeDisabled();
 		await expect.element(page.getByTestId("launcher-workspace-selector")).toBeDisabled();
-		expect(lastProps?.starting).toBe(true);
+		expect(lastProps()?.starting).toBe(true);
 
 		release();
 
@@ -453,7 +460,7 @@ describe("the New Session page while a worktree is being created", () => {
 		await page.getByRole("button", { name: "Send" }).click();
 		await vi.waitFor(() => expect(workSessions.calls.create).toHaveBeenCalledTimes(1), WAIT);
 		await expect.element(page.getByTestId("launcher-pane-test.kinds/terminal")).toBeDisabled();
-		await expect(lastProps!.start()).rejects.toThrow("A session is already starting.");
+		await expect(lastProps()!.start()).rejects.toThrow("A session is already starting.");
 
 		release();
 

@@ -14,3 +14,9 @@ export const CHAT_COMMANDS = {
 	 */
 	compact: "kilo.chat/compact",
 } as const;
+
+/** kilo.chat's `kernel/telemetry-event` ids. */
+export const CHAT_TELEMETRY_EVENTS = {
+	/** A fork from a user message was attempted: `{ success, midTurn }`. */
+	chatForked: "chat-forked",
+} as const;

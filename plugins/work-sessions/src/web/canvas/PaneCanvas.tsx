@@ -1,8 +1,8 @@
 import { ExternalLinkIcon, Minimize2Icon } from "lucide-react";
 import {
 	Fragment,
-	useCallback,
 	useEffect,
+	useEffectEvent,
 	useLayoutEffect,
 	useReducer,
 	useRef,
@@ -21,6 +21,7 @@ import {
 	getPaneColumns,
 	getScrollTarget,
 	PANE_GAP,
+	paneDirectionTarget,
 	projectLayout,
 	resizeColumn,
 	resizeStackDivider,
@@ -28,6 +29,7 @@ import {
 	togglePin,
 	type Arrangement,
 	type PaneDescriptor,
+	type PaneDirection,
 	type PaneLayout,
 	type ProjectedColumn,
 	type ProjectedGroup,
@@ -41,6 +43,7 @@ import {
 } from "@kilo-desktop/ui/components/empty";
 import { ResizableHandle } from "@kilo-desktop/ui/components/resizable";
 import { Tabs, TabsContent } from "@kilo-desktop/ui/components/tabs";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
@@ -49,6 +52,7 @@ import {
 	shouldStartCarouselPan,
 } from "./carousel-gestures";
 import { applyPaneDrop, changesPanePlacement, type PaneDrop } from "./pane-drop";
+import type { PaneMoveRequests } from "./pane-moves";
 import { usePaneExpand } from "./pane-expand";
 import type { PaneIconOverride } from "./pane-kind-icon";
 import { PaneAddTab } from "./PaneAddTab";
@@ -60,7 +64,7 @@ import {
 	type PaneContentMountRegistry,
 } from "./PaneContentMount";
 import { PaneHost } from "./PaneHost";
-import { PaneTabStrip } from "./PaneTabStrip";
+import { PaneTabStrip, type PaneTabMenuTarget } from "./PaneTabStrip";
 import type { PaneStatus } from "../../contracts";
 import type { CanvasPaneKind } from "../shared/pane-kinds";
 import { usePaneFrameFocus } from "./use-pane-frame-focus";
@@ -80,10 +84,6 @@ type ScrollMotion = {
 	velocity: number;
 	lastTime: number;
 };
-
-function createScrollMotion(): ScrollMotion {
-	return { frame: 0, target: 0, velocity: 0, lastTime: 0 };
-}
 
 function cancelHorizontalScroll(motionRef: { current: ScrollMotion }) {
 	const motion = motionRef.current;
@@ -268,49 +268,43 @@ const StackResizeHandle: FC<{
 		pointerId: number;
 	} | null>(null);
 
-	const measure = useCallback(
-		(handle: HTMLElement) => {
-			const divider = handle.parentElement;
-			const upperElement = divider?.previousElementSibling;
-			const lowerElement = divider?.nextElementSibling;
-			const column = divider?.closest<HTMLElement>("[data-column-id]");
-			if (
-				!(upperElement instanceof HTMLElement) ||
-				upperElement.dataset.paneGroupId !== upperGroup.id ||
-				!(lowerElement instanceof HTMLElement) ||
-				lowerElement.dataset.paneGroupId !== lowerGroup.id ||
-				!column
-			) {
-				return null;
-			}
-			return {
-				upperHeight: upperElement.getBoundingClientRect().height,
-				lowerHeight: lowerElement.getBoundingClientRect().height,
-				columnHeight: column.getBoundingClientRect().height,
-				gap: STACK_PANE_GAP,
-			};
-		},
-		[lowerGroup.id, upperGroup.id],
-	);
+	const measure = (handle: HTMLElement) => {
+		const divider = handle.parentElement;
+		const upperElement = divider?.previousElementSibling;
+		const lowerElement = divider?.nextElementSibling;
+		const column = divider?.closest<HTMLElement>("[data-column-id]");
+		if (
+			!(upperElement instanceof HTMLElement) ||
+			upperElement.dataset.paneGroupId !== upperGroup.id ||
+			!(lowerElement instanceof HTMLElement) ||
+			lowerElement.dataset.paneGroupId !== lowerGroup.id ||
+			!column
+		) {
+			return null;
+		}
+		return {
+			upperHeight: upperElement.getBoundingClientRect().height,
+			lowerHeight: lowerElement.getBoundingClientRect().height,
+			columnHeight: column.getBoundingClientRect().height,
+			gap: STACK_PANE_GAP,
+		};
+	};
 
-	const apply = useCallback(
-		(deltaY: number) => {
-			const current = drag.current;
-			if (!current) return;
-			const resized = calculateStackResize({
-				columnHeight: current.columnHeight,
-				paneCount: groupCount,
-				upperHeight: current.upperHeight,
-				lowerHeight: current.lowerHeight,
-				deltaY,
-				gap: current.gap,
-			});
-			const pairHeight = resized.upperHeight + resized.lowerHeight;
-			if (pairHeight <= 0) return;
-			onCommit(resized.upperHeight / pairHeight);
-		},
-		[onCommit, groupCount],
-	);
+	const apply = (deltaY: number) => {
+		const current = drag.current;
+		if (!current) return;
+		const resized = calculateStackResize({
+			columnHeight: current.columnHeight,
+			paneCount: groupCount,
+			upperHeight: current.upperHeight,
+			lowerHeight: current.lowerHeight,
+			deltaY,
+			gap: current.gap,
+		});
+		const pairHeight = resized.upperHeight + resized.lowerHeight;
+		if (pairHeight <= 0) return;
+		onCommit(resized.upperHeight / pairHeight);
+	};
 
 	return (
 		<div className="relative h-1 shrink-0">
@@ -404,6 +398,7 @@ const PaneCanvasColumn: FC<{
 	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
 	shortcutHints?: ReadonlyMap<string, string>;
 	statusForPane?: (paneId: string) => PaneStatus | undefined;
+	tabMenu?: (tab: PaneTabMenuTarget) => ReactNode;
 }> = ({
 	canDrop,
 	column,
@@ -431,6 +426,7 @@ const PaneCanvasColumn: FC<{
 	iconForPane,
 	shortcutHints,
 	statusForPane,
+	tabMenu,
 }) => {
 	const columnExpanded = expandedGroupId
 		? column.groups.some((group) => group.id === expandedGroupId)
@@ -503,6 +499,7 @@ const PaneCanvasColumn: FC<{
 									{...(iconForPane ? { iconForPane } : {})}
 									{...(shortcutHints ? { shortcutHints } : {})}
 									{...(statusForPane ? { statusForPane } : {})}
+									{...(tabMenu ? { tabMenu } : {})}
 									onSelect={(paneId) => {
 										onLayoutChange(setActivePane(layout, paneId));
 										onSelectPane(paneId);
@@ -606,6 +603,10 @@ export interface PaneCanvasProps {
 	readonly shortcutHints?: ReadonlyMap<string, string>;
 	/** A badge on a pane's tab: working, or waiting for the person. */
 	readonly statusForPane?: (paneId: string) => PaneStatus | undefined;
+	/** A tab's right-click menu items; see `PaneTabStrip`. */
+	readonly tabMenu?: (tab: PaneTabMenuTarget) => ReactNode;
+	/** Tab commands' moves (one step up, down, left or right) for this canvas to carry out. */
+	readonly moveRequests?: PaneMoveRequests;
 }
 
 export const PaneCanvas: FC<PaneCanvasProps> = ({
@@ -627,15 +628,16 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 	iconForPane,
 	shortcutHints,
 	statusForPane,
+	tabMenu,
+	moveRequests,
 }) => {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const trackRef = useRef<HTMLDivElement>(null);
 	const pinnedRef = useRef<HTMLDivElement>(null);
-	const contentParkingRef = useRef<HTMLDivElement>(null);
-	const [contentRegistry] = useState(() => createPaneContentMountRegistry(contentParkingRef));
+	const [contentRegistry] = useState(createPaneContentMountRegistry);
 	const [columnMountVersion, onColumnReady] = useReducer((version: number) => version + 1, 0);
-	const layoutRef = useRef(layout);
-	const scrollMotionRef = useRef<ScrollMotion>(createScrollMotion());
+	const layoutRef = useLatestRef(layout);
+	const scrollMotionRef = useRef<ScrollMotion>({ frame: 0, target: 0, velocity: 0, lastTime: 0 });
 	const panRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
 	const userScrolledRef = useRef(false);
 	const revealedGroupIdRef = useRef<string | null>(null);
@@ -652,9 +654,6 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 		arrangement === "carousel"
 			? projection.columns.filter((column) => !column.pinned)
 			: projection.columns;
-	const scrollingColumnsRef = useRef(scrollingColumns);
-	scrollingColumnsRef.current = scrollingColumns;
-	layoutRef.current = layout;
 
 	usePaneFrameFocus(viewportRef, (paneId) => {
 		if (layout.activePaneId === paneId) return;
@@ -688,74 +687,103 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 			cancelHorizontalScroll(scrollMotionRef);
 			userScrolledRef.current = true;
 		});
-	}, [arrangement, scrollingColumns.length]);
+	}, [arrangement]);
+
+	// Reveals the active group in the carousel. Runs on selection, a reveal
+	// request (`nonce`), or a column mounting into the track
+	// (`columnMountVersion`); the rest of the layout is read at that moment
+	// rather than re-triggering the reveal.
+	const revealActiveGroup = useEffectEvent(
+		(activePaneId: string, nonce: number, _columnMountVersion: number) => {
+			const track = trackRef.current;
+			const active = findPaneGroup(dockedLayout, activePaneId);
+			if (!track || !active || active.pinned) return;
+			const nonceChanged = revealNonceRef.current !== nonce;
+			if (nonceChanged) {
+				revealNonceRef.current = nonce;
+				userScrolledRef.current = false;
+			}
+			const isNewSelection = revealedGroupIdRef.current !== active.id;
+			if (isNewSelection) {
+				revealedGroupIdRef.current = active.id;
+				userScrolledRef.current = false;
+			} else if (userScrolledRef.current) {
+				return;
+			}
+			const columns = scrollingColumns;
+			const scrollingLayout = {
+				...dockedLayout,
+				groups: columns.flatMap((column) => column.groups),
+			};
+			const widths = new Map(columns.map((column) => [column.id, column.width] as const));
+			const rect = calculateGroupRects(scrollingLayout, 0, PANE_GAP, widths).find(
+				(entry) => entry.id === active.id,
+			);
+			if (!rect) return;
+			const target = getScrollTarget({
+				group: rect,
+				scrollLeft: nonceChanged ? Number.POSITIVE_INFINITY : track.scrollLeft,
+				viewportWidth: track.clientWidth,
+				occludedLeft: 0,
+			});
+			if (target === track.scrollLeft) return;
+			if (nonceChanged) {
+				cancelHorizontalScroll(scrollMotionRef);
+				applyCarouselScroll(track, target);
+				return;
+			}
+			animateHorizontalScroll(track, target, scrollMotionRef);
+		},
+	);
 
 	useLayoutEffect(() => {
 		if (arrangement !== "carousel") return;
-		const track = trackRef.current;
-		const active = findPaneGroup(dockedLayout, dockedLayout.activePaneId);
-		if (!track || !active || active.pinned) return;
-		const nonceChanged = revealNonceRef.current !== revealActivePaneNonce;
-		if (nonceChanged) {
-			revealNonceRef.current = revealActivePaneNonce;
-			userScrolledRef.current = false;
-		}
-		const isNewSelection = revealedGroupIdRef.current !== active.id;
-		if (isNewSelection) {
-			revealedGroupIdRef.current = active.id;
-			userScrolledRef.current = false;
-		} else if (userScrolledRef.current) {
-			return;
-		}
-		const columns = scrollingColumnsRef.current;
-		const scrollingLayout = {
-			...dockedLayout,
-			groups: columns.flatMap((column) => column.groups),
-		};
-		const widths = new Map(columns.map((column) => [column.id, column.width] as const));
-		const rect = calculateGroupRects(scrollingLayout, 0, PANE_GAP, widths).find(
-			(entry) => entry.id === active.id,
-		);
-		if (!rect) return;
-		const target = getScrollTarget({
-			group: rect,
-			scrollLeft: nonceChanged ? Number.POSITIVE_INFINITY : track.scrollLeft,
-			viewportWidth: track.clientWidth,
-			occludedLeft: 0,
-		});
-		if (target === track.scrollLeft) return;
-		if (nonceChanged) {
-			cancelHorizontalScroll(scrollMotionRef);
-			applyCarouselScroll(track, target);
-			return;
-		}
-		animateHorizontalScroll(track, target, scrollMotionRef);
+		revealActiveGroup(dockedLayout.activePaneId, revealActivePaneNonce, columnMountVersion);
 	}, [arrangement, dockedLayout.activePaneId, revealActivePaneNonce, columnMountVersion]);
 
 	useEffect(() => () => cancelHorizontalScroll(scrollMotionRef), []);
 
-	const canDrop = useCallback((drop: PaneDrop) => {
+	const canDrop = (drop: PaneDrop) => {
 		const current = layoutRef.current;
 		return changesPanePlacement(current, applyPaneDrop(current, drop));
-	}, []);
+	};
 
-	const onDrop = useCallback(
-		(drop: PaneDrop) => {
-			const current = layoutRef.current;
-			const next = applyPaneDrop(current, drop);
-			if (!changesPanePlacement(current, next)) return;
-			const currentLocations = paneMountLocations(current);
-			const nextLocations = paneMountLocations(next);
-			contentRegistry.parkPanes(
-				[...currentLocations].flatMap(([paneId, location]) =>
-					nextLocations.get(paneId) === location ? [] : [paneId],
-				),
+	const onDrop = (drop: PaneDrop) => {
+		const current = layoutRef.current;
+		const next = applyPaneDrop(current, drop);
+		if (!changesPanePlacement(current, next)) return;
+		const currentLocations = paneMountLocations(current);
+		const nextLocations = paneMountLocations(next);
+		contentRegistry.parkPanes(
+			[...currentLocations].flatMap(([paneId, location]) =>
+				nextLocations.get(paneId) === location ? [] : [paneId],
+			),
+		);
+		onLayoutChange(next);
+		onSelectPane(next.activePaneId);
+	};
+
+	// As a drop would, on the panes shown here: a popped-out pane doesn't move,
+	// and a group whose tabs are all popped out still counts as a neighbour.
+	const onMoveRequest = useEffectEvent(
+		({ paneId, direction }: { paneId: string; direction: PaneDirection }) => {
+			if (poppedOutPaneIds?.has(paneId)) return;
+			const target = paneDirectionTarget(
+				withoutPoppedOutPanes(layoutRef.current, poppedOutPaneIds),
+				paneId,
+				direction,
 			);
-			onLayoutChange(next);
-			onSelectPane(next.activePaneId);
+			if (!target) return;
+			onDrop({
+				kind: "pane",
+				sourceId: paneId,
+				targetKind: "group",
+				targetId: target.targetGroupId,
+				position: target.position,
+			});
 		},
-		[contentRegistry, onLayoutChange, onSelectPane],
 	);
+	useEffect(() => moveRequests?.subscribe(onMoveRequest), [moveRequests]);
 
 	const renderColumn = (
 		column: ProjectedColumn,
@@ -811,10 +839,11 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 			{...(iconForPane ? { iconForPane } : {})}
 			{...(shortcutHints ? { shortcutHints } : {})}
 			{...(statusForPane ? { statusForPane } : {})}
+			{...(tabMenu ? { tabMenu } : {})}
 		/>
 	);
 
-	const onTrackPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+	const onTrackPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
 		const track = trackRef.current;
 		if (!track || !track.contains(event.target as Node)) return;
 		cancelHorizontalScroll(scrollMotionRef);
@@ -828,16 +857,16 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 		track.setPointerCapture(event.pointerId);
 		track.dataset.panning = "true";
 		event.preventDefault();
-	}, []);
+	};
 
-	const onTrackPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+	const onTrackPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
 		if (!pan || pan.pointerId !== event.pointerId) return;
 		if (trackRef.current)
 			trackRef.current.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
-	}, []);
+	};
 
-	const finishTrackPan = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+	const finishTrackPan = (event: ReactPointerEvent<HTMLDivElement>) => {
 		const pan = panRef.current;
 		if (!pan || pan.pointerId !== event.pointerId) return;
 		const track = trackRef.current;
@@ -846,7 +875,7 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 		}
 		if (track) delete track.dataset.panning;
 		panRef.current = null;
-	}, []);
+	};
 
 	return (
 		<div
@@ -856,7 +885,7 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 			data-arrangement={arrangement}
 			data-expanded={paneExpand.isExpanded ? "true" : "false"}
 		>
-			<div ref={contentParkingRef} className="hidden" aria-hidden />
+			<div ref={(element) => contentRegistry.setParking(element)} className="hidden" aria-hidden />
 			{dockedPanes.map((pane) => (
 				<PaneContentMount key={pane.id} paneId={pane.id} registry={contentRegistry}>
 					{renderPane(pane.id)}

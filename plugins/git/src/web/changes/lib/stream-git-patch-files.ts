@@ -51,6 +51,8 @@ export async function streamGitPatchFiles(
 		}
 		let fileText: string | undefined;
 		while ((fileText = parser.takeAvailableFile()) != null) {
+			// Files are handed over in patch order, each awaited for backpressure.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			await onFileText(fileText);
 		}
 		return finishResult.fallbackPatchContent;
@@ -76,6 +78,8 @@ async function consumeAvailableStreamedFiles(
 ): Promise<void> {
 	let fileText: string | undefined;
 	while ((fileText = parser.takeAvailableFile()) != null) {
+		// Files are handed over in patch order, each awaited for backpressure.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
 		await onFileText(fileText);
 	}
 }

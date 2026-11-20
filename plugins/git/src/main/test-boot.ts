@@ -113,6 +113,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				methods: {
 					create: unused,
 					setWorktreeBranch: unused,
+					fork: unused,
 					chatConfig: unused,
 					rename: unused,
 					delete: unused,
@@ -243,6 +244,9 @@ export function fakeWorkSessions(options: FakeWorkSessionsOptions = {}) {
 					remove: unused,
 					setActive: unused,
 					checkFolders: unused,
+					newFolderLocation: unused,
+					newFolderPath: unused,
+					rememberNewFolderLocation: unused,
 					authorize: ({ path }) => options.authorize?.(path) ?? { allowed: true, path },
 				},
 			});
@@ -251,6 +255,7 @@ export function fakeWorkSessions(options: FakeWorkSessionsOptions = {}) {
 				methods: {
 					create: unused,
 					createChat: unused,
+					forkChat: unused,
 					rename: unused,
 					setPinned: unused,
 					setArchived: unused,

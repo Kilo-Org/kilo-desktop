@@ -6,17 +6,33 @@ For the design and its reasons, read
 [plugin-architecture.md](../plugin-architecture.md); these pages are the
 how-to.
 
-| Page                                                             | What it covers                                                  |
-| ---------------------------------------------------------------- | --------------------------------------------------------------- |
-| This page                                                        | What a plugin is, the package layout, the manifest, lifecycle   |
-| [extension-points.md](./extension-points.md)                     | Defining and contributing to points; the catalog of every point |
-| [domain-objects.md](./domain-objects.md)                         | Domain objects, object types, identity, flags and telemetry     |
-| [commands-and-keys.md](./commands-and-keys.md)                   | Commands, keybindings, `when` and context keys                  |
-| [panes-and-openers.md](./panes-and-openers.md)                   | Pane kinds, openers, close guards, pop-outs                     |
-| [chat-and-tools.md](./chat-and-tools.md)                         | Agent tools, tool renderers, composer actions and mentions      |
-| [testing.md](./testing.md)                                       | Test hosts, robustness rules, removability and isolation checks |
-| [examples/hello-plugin](../../examples/hello-plugin)             | A small plugin to copy                                          |
-| [examples/right-panel-plugin](../../examples/right-panel-plugin) | Panels in the shell's right sidebar, opened from its rail       |
+| Page                                                             | What it covers                                                                               |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| This page                                                        | What a plugin is, the package layout, the manifest, lifecycle                                |
+| [extension-points.md](./extension-points.md)                     | Defining and contributing to points                                                          |
+| [domain-objects.md](./domain-objects.md)                         | Domain objects, object types, identity, flags and telemetry                                  |
+| [commands-and-keys.md](./commands-and-keys.md)                   | Commands, keybindings, `when` and context keys                                               |
+| [panes-and-openers.md](./panes-and-openers.md)                   | Pane kinds, openers, close guards, pop-outs                                                  |
+| [chat-and-tools.md](./chat-and-tools.md)                         | Agent tools, tool renderers, composer actions and mentions                                   |
+| [testing.md](./testing.md)                                       | Test hosts, robustness rules, removability and isolation checks                              |
+| [schema.md](./schema.md)                                         | Generated catalog: every plugin, extension point, domain object, object type and context key |
+| [examples/hello-plugin](../../examples/hello-plugin)             | A small plugin to copy                                                                       |
+| [examples/right-panel-plugin](../../examples/right-panel-plugin) | Panels in the shell's right sidebar, opened from its rail                                    |
+
+## Before you write a plugin
+
+Design the feature first, in terms of the building blocks:
+
+- Is it a new plugin, or part of an existing product area?
+- Which domain objects own its state?
+- Which existing extension points does it contribute to?
+- Does it need an extension point of its own?
+- Which commands, context keys, object types and services does it add?
+
+[plugin-architecture.md](../plugin-architecture.md#designing-a-feature)
+walks through these questions, and the
+[`design-feature`](../../.agents/skills/design-feature/SKILL.md) skill
+applies them. Check [schema.md](./schema.md) for what already exists.
 
 ## What a plugin is
 
@@ -27,7 +43,8 @@ three kinds of things:
   pane kind, an agent tool.
 - **Extension points** of its own, for other plugins to contribute to.
 - **Domain objects**: named objects with state, methods and events
-  (`kilo.sessions/work-session`), provided in one process and usable from any.
+  (`kilo.work-sessions/work-sessions`), provided in one process and usable
+  from any.
 
 Plugins never import each other's code. They meet only through the kernel:
 the points and domain objects declared in manifests and defined in each
@@ -96,7 +113,7 @@ validate, order and list everything up front. Every field:
 	// (not activated) when the owner isn't active.
 	"requires": {
 		"kilo.shell/settings-section": "optional",
-		"kilo.sessions/work-session": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
 	},
 
 	// What it may use from the host (see Permissions below).
@@ -134,8 +151,9 @@ validate, order and list everything up front. Every field:
 	// optional `priority` (higher first) and `when`, plus the point's own fields.
 	"contributes": {
 		"extensions": {
-			// Under a Settings category: kilo.shell's general, ai or developer, or your own
-			// (a `kilo.shell/settings-category` contribution). Defaults to General.
+			// Under a Settings category: kilo.shell's general or ai, or any other
+			// `kilo.shell/settings-category` contribution (yours, or kilo.developer's
+			// developer). Defaults to General.
 			"kilo.shell/settings-section": [
 				{ "id": "todos", "title": "Todos", "category": "kilo.shell/general", "priority": 50 },
 			],
@@ -207,14 +225,14 @@ Rules:
 
 ### Process-specific APIs
 
-| Need                                      | Where | API                                                                                                               |
-| ----------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------- |
-| Own storage folder, kv stores             | main  | `mainHost(sdk).storage` (`dir`, `kv({ namespace, defaults })`)                                                    |
-| Sandboxed files, fetch                    | main  | `mainHost(sdk).fs`, `mainHost(sdk).net.fetch`                                                                     |
-| Shipped files                             | main  | `mainHost(sdk).assets?.resolve("resources/…")`                                                                    |
-| URL schemes, embedded frames              | main  | `mainHost(sdk).protocol`, `.embeddedHosts` (need permissions)                                                     |
-| A stream between your web and main halves | both  | `sdk.ports.handle(name, handler)` in main, `sdk.ports.open(name)` in a window                                     |
-| React access to the kernel                | web   | `@kilo-desktop/kernel/web`: `useSdk`, `useExtensions`, `useDomainObject`, `useDomainObjectState`, `useContextKey` |
+| Need                                      | Where | API                                                                                                                                                                  |
+| ----------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Own storage folder, kv stores             | main  | `mainHost(sdk).storage` (`dir`, `kv({ namespace, defaults })`)                                                                                                       |
+| Sandboxed files, fetch                    | main  | `mainHost(sdk).fs`, `mainHost(sdk).net.fetch`                                                                                                                        |
+| Shipped files                             | main  | `mainHost(sdk).assets?.resolve("resources/…")`                                                                                                                       |
+| URL schemes, embedded frames              | main  | `mainHost(sdk).protocol`, `.embeddedHosts` (need permissions)                                                                                                        |
+| A stream between your web and main halves | both  | `sdk.ports.handle(name, handler)` in main, `sdk.ports.open(name)` in a window                                                                                        |
+| React access to the kernel                | web   | `@kilo-desktop/kernel/web`: `useSdk`, `useKernel`, `useExtensions`, `useExclusive`, `useDomainObject`, `useDomainObjectState`, `useContextKey`, `RenderContribution` |
 
 Each plugin's data lives in its own storage. Never read or write another
 plugin's files or kv; ask it through its domain object.
@@ -224,20 +242,21 @@ plugin's files or kv; ask it through its domain object.
 Host primitives are kernel domain objects. Calling their methods needs the
 matching `permissions.host` entry; reading their state does not.
 
-| Permission        | Gives                                           |
-| ----------------- | ----------------------------------------------- |
-| `windows`         | `kernel/windows`: open, focus and close windows |
-| `dialogs`         | `kernel/dialogs`: open / save / message dialogs |
-| `clipboard`       | `kernel/clipboard`                              |
-| `os`              | `kernel/os`: open URLs, reveal files            |
-| `notifications`   | `kernel/notifications`: OS notifications        |
-| `keychain`        | `kernel/keychain`: secrets                      |
-| `appearance`      | `kernel/native-theme`                           |
-| `app-menu`        | `kernel/app-menu`: the calling window's menu    |
-| `updater`         | `kernel/updater`                                |
-| `data-collection` | `kernel/data-collection`: consent               |
-| `browser-host`    | `mainHost(sdk).browser`: the embedded browser   |
-| `plugins`         | `kernel/plugins`: turn plugins on or off        |
+| Permission        | Gives                                                                |
+| ----------------- | -------------------------------------------------------------------- |
+| `windows`         | `kernel/windows`: open, focus and close windows                      |
+| `dialogs`         | `kernel/dialogs`: open / save / message dialogs                      |
+| `clipboard`       | `kernel/clipboard`                                                   |
+| `os`              | `kernel/os`: open URLs, reveal files                                 |
+| `notifications`   | `kernel/notifications`: OS notifications                             |
+| `keychain`        | `kernel/keychain`: secrets                                           |
+| `appearance`      | `kernel/native-theme`                                                |
+| `app-menu`        | `kernel/app-menu`: the calling window's menu                         |
+| `updater`         | `kernel/updater`                                                     |
+| `data-collection` | `kernel/data-collection`: consent                                    |
+| `browser-host`    | `mainHost(sdk).browser`: the embedded browser                        |
+| `plugins`         | `kernel/plugins`: turn plugins on or off                             |
+| `embedded-hosts`  | Reserved; embedded frames are granted by `permissions.embeddedHosts` |
 
 `permissions.protocols` lists URL schemes the plugin serves (registered
 before the app is ready; `mainHost(sdk).protocol`), and
@@ -264,7 +283,7 @@ will have.
 
 [`examples/hello-plugin`](../../examples/hello-plugin) (`example.hello`) is a
 workspace package that is never bundled. It has a domain object in main with
-kv storage (`example.hello/greetings`), a command, a settings section, and
+kv storage (`example.hello/greetings`), a command, a telemetry event, and
 tests with `createPluginHost`. `pnpm check`, `pnpm test` and
 `pnpm check:plugin-isolation` cover it like a bundled plugin. Copy it to
 start a new plugin.

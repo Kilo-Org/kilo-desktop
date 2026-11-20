@@ -9,6 +9,8 @@ import { Separator } from "@kilo-desktop/ui/components/separator";
 function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
 	return (
 		<div
+			// Callers render `<div role="listitem">` Items (often grids); a `<ul>` would require `<li>` children.
+			// react-doctor-disable-next-line react-doctor/prefer-tag-over-role
 			role="list"
 			data-slot="item-group"
 			className={cn(

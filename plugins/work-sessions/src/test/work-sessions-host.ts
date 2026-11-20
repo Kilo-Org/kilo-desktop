@@ -8,6 +8,7 @@ import { vi } from "vitest";
 
 import {
 	definePlugin,
+	KernelClipboard,
 	KernelDataCollection,
 	KernelError,
 	KernelNotifications,
@@ -205,6 +206,9 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 					createChat: () => {
 						throw new KernelError("UNAVAILABLE", "No chats in this test.");
 					},
+					forkChat: () => {
+						throw new KernelError("UNAVAILABLE", "No chats in this test.");
+					},
 					rename: ({ id, title }) => change(id, { title }, () => calls.rename(id, title)),
 					setPinned: ({ id, pinned }) => change(id, { pinned }, () => calls.setPinned(id, pinned)),
 					setArchived: ({ id, archived }) =>
@@ -271,6 +275,9 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 					},
 					authorize: () => ({ allowed: false }),
 					checkFolders: () => undefined,
+					newFolderLocation: () => ({ path: null }),
+					newFolderPath: unused,
+					rememberNewFolderLocation: () => undefined,
 				},
 			},
 		);
@@ -309,6 +316,7 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 				},
 				close: ({ workSessionId, paneId }) => {
 					calls.closePane(paneId);
+					fail();
 					const current = of(workSessionId);
 					const closed = current.panes.find((entry) => entry.id === paneId);
 					if (!closed) return { closed: false };
@@ -488,6 +496,7 @@ export function fakeChats(initial: readonly ChatSummary[]) {
 				methods: {
 					create: unused,
 					setWorktreeBranch: unused,
+					fork: unused,
 					chatConfig: unused,
 					rename: unused,
 					delete: ({ id }) => deleted(id),
@@ -543,6 +552,19 @@ export function fakeNotifications(main: MainKernel) {
 	return shown;
 }
 
+/** kernel/clipboard as the desktop host provides it, recording the texts written to it in `copied`. */
+export function fakeClipboard(main: MainKernel, copied: string[] = []): string[] {
+	main.kernelSdk.domainObjects.provide(KernelClipboard, {
+		initialState: {},
+		methods: {
+			writeText: ({ text }) => {
+				copied.push(text);
+			},
+		},
+	});
+	return copied;
+}
+
 /**
  * A telemetry sink, so a test sees the events sent (by declared `name`).
  * Consent is granted in `beforeRender` with {@link grantDataCollection}.
@@ -594,6 +616,7 @@ export interface TestPaneKind {
 	readonly icon?: PaneImplementation["icon"];
 	readonly canClose?: PaneImplementation["canClose"];
 	readonly prefetch?: PaneImplementation["prefetch"];
+	readonly path?: PaneImplementation["path"];
 }
 
 /** A test plugin contributing pane kinds (`kilo.work-sessions/pane-kind`). */
@@ -624,6 +647,7 @@ export function paneKindPlugin(
 						...(kind.icon ? { icon: kind.icon } : {}),
 						...(kind.canClose ? { canClose: kind.canClose } : {}),
 						...(kind.prefetch ? { prefetch: kind.prefetch } : {}),
+						...(kind.path ? { path: kind.path } : {}),
 					});
 				}
 				extra.activate?.(sdk);
@@ -650,6 +674,8 @@ export interface RenderWorkSessionsOptions extends WorkSessionsMainState {
 	/** The host's windows: pop-outs are offered (desktop) when set. */
 	readonly windows?: MainKernelHost["windows"];
 	readonly desktop?: boolean;
+	/** The host provides kernel/clipboard (default true). */
+	readonly clipboard?: boolean;
 	readonly flags?: Readonly<Record<string, FlagValue>>;
 	/** Replaces kilo.work-sessions' web entry (e.g. to boot only some areas). */
 	readonly web?: PluginEntry;
@@ -663,6 +689,7 @@ export async function renderWorkSessions(options: RenderWorkSessionsOptions = {}
 	const main = fakeWorkSessionsMain(options);
 	const chats = options.chats ? fakeChats(options.chats) : undefined;
 	const storage: Record<string, string> = { ...options.localStorage };
+	const copied: string[] = [];
 	const host = await renderShell(
 		[
 			{
@@ -680,7 +707,10 @@ export async function renderWorkSessions(options: RenderWorkSessionsOptions = {}
 			},
 			// Seeded before the kernels start, so the window reads it at activation.
 			localAppearance: storage,
-			...(options.beforeRender ? { beforeRender: options.beforeRender } : {}),
+			beforeRender: (mainKernel) => {
+				if (options.clipboard !== false) fakeClipboard(mainKernel, copied);
+				options.beforeRender?.(mainKernel);
+			},
 			...(options.windows || options.desktop ? { desktop: true } : {}),
 			...(options.windows ? { windows: options.windows } : {}),
 			...(options.flags ? { flags: options.flags } : {}),
@@ -699,6 +729,8 @@ export async function renderWorkSessions(options: RenderWorkSessionsOptions = {}
 		main,
 		panesState,
 		calls: main.calls,
+		/** Text written to the host clipboard (kernel/clipboard). */
+		copied,
 		chats,
 		/** Aliases of `main` for list tests. */
 		workSessions: main,

@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,20 +8,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	KernelDataCollection,
 	KernelTelemetrySink,
+	type KernelLogger,
 	type PluginRegistration,
 	type PluginSdk,
 	type TelemetryEnvelope,
 } from "@kilo-desktop/kernel";
 import { createMemoryStorage, testPlugin } from "@kilo-desktop/kernel/testing";
+import type { NotificationContent } from "@kilo-desktop/plugin-shell/contracts";
 
 import {
 	DEFAULT_WORKSPACE_IDENTITY_COLOR,
 	HAS_VCS_KEY,
 	HAS_WORKSPACES_KEY,
 	Vcs,
+	type Workspace,
 	type WorkspaceChange,
 } from "../../contracts";
-import { bootWorkSessions } from "../test-boot";
+import type { SqliteLoader } from "../origin-database";
+import { bootWorkSessions, fakeShell } from "../test-boot";
 
 let root: string;
 
@@ -43,7 +47,10 @@ async function boot(
 	options: {
 		storage?: ReturnType<typeof createMemoryStorage>;
 		originDatabase?: string;
+		loadSqlite?: SqliteLoader;
 		plugins?: PluginRegistration[];
+		logger?: KernelLogger;
+		documentsDirectory?: string | null;
 	} = {},
 ) {
 	const storage = options.storage ?? createMemoryStorage("/data/kilo.work-sessions");
@@ -52,11 +59,16 @@ async function boot(
 		storage,
 		core: false,
 		...(options.plugins ? { plugins: options.plugins } : {}),
+		...(options.logger ? { logger: options.logger } : {}),
 		options: {
 			workspaces: () => ({
 				createId: () => `id-${++id}`,
 				now: () => 1_000,
 				...(options.originDatabase ? { originDatabase: options.originDatabase } : {}),
+				...(options.loadSqlite ? { loadSqlite: options.loadSqlite } : {}),
+				...(options.documentsDirectory === undefined
+					? {}
+					: { documentsDirectory: () => options.documentsDirectory ?? null }),
 			}),
 		},
 	});
@@ -138,6 +150,123 @@ describe("creating workspaces", () => {
 			]),
 		).rejects.toThrow(/exactly one primary/);
 		expect(workspaces.getState().workspaces).toEqual([]);
+	});
+});
+
+describe("workspaces in new folders", () => {
+	it("makes requested new folders empty before saving the workspace", async () => {
+		const project = await folder("Project");
+		const fresh = path.join(root, "Fresh Idea");
+		const { workspaces, events } = await boot();
+
+		const created = await workspaces.methods.create({
+			name: "Fresh Idea",
+			folders: [
+				{ path: fresh, isPrimary: true },
+				{ path: project, isPrimary: false },
+			],
+			createFolders: [fresh],
+		});
+
+		expect(created.folders.map((entry) => entry.path)).toEqual([fresh, project]);
+		await expect(readdir(fresh)).resolves.toEqual([]);
+		expect(events).toEqual([{ name: "created", change: { before: null, after: created } }]);
+	});
+
+	it("refuses to make a new folder over an existing one and saves nothing", async () => {
+		const project = await folder("Project");
+		const { workspaces } = await boot();
+
+		await expect(
+			workspaces.methods.create({
+				folders: [{ path: project, isPrimary: true }],
+				createFolders: [project],
+			}),
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: 'A folder named "Project" already exists in that location.',
+		});
+		expect(workspaces.getState().workspaces).toEqual([]);
+	});
+
+	it("removes the new folder again when the workspace can't be saved", async () => {
+		const project = await folder("Project");
+		const fresh = path.join(root, "Fresh");
+		const { workspaces } = await boot();
+
+		// Two primaries pass the input schema and fail only when saving, after the folder is made.
+		await expect(
+			workspaces.methods.create({
+				folders: [
+					{ path: fresh, isPrimary: true },
+					{ path: project, isPrimary: true },
+				],
+				createFolders: [fresh],
+			}),
+		).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: "A workspace must have exactly one primary folder.",
+		});
+		await expect(readdir(root)).resolves.toEqual(["Project"]);
+		expect(workspaces.getState().workspaces).toEqual([]);
+	});
+
+	it("offers Documents first, then the location of the last new folder, across launches", async () => {
+		const documents = await folder("Documents");
+		const projects = await folder("projects");
+		const storage = createMemoryStorage("/data/kilo.work-sessions");
+		const { workspaces } = await boot({ storage, documentsDirectory: documents });
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: documents,
+		});
+
+		const fresh = path.join(projects, "Fresh");
+		await workspaces.methods.create({
+			folders: [{ path: fresh, isPrimary: true }],
+			createFolders: [fresh],
+		});
+
+		const relaunched = await boot({ storage, documentsDirectory: documents });
+		await expect(relaunched.workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: projects,
+		});
+	});
+
+	it("remembers a location a source made a folder in, unless it has since gone", async () => {
+		const documents = await folder("Documents");
+		const clones = await folder("clones");
+		const { workspaces } = await boot({ documentsDirectory: documents });
+
+		await workspaces.methods.rememberNewFolderLocation({ path: clones });
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: clones,
+		});
+
+		await rm(clones, { recursive: true });
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({
+			path: documents,
+		});
+	});
+
+	it("offers no location when neither exists", async () => {
+		const { workspaces } = await boot({ documentsDirectory: path.join(root, "missing") });
+
+		await expect(workspaces.methods.newFolderLocation(undefined)).resolves.toEqual({ path: null });
+	});
+
+	it("says where a new folder would go without making it", async () => {
+		await folder("taken");
+		const { workspaces } = await boot();
+
+		await expect(
+			workspaces.methods.newFolderPath({ parentPath: root, name: " app " }),
+		).resolves.toEqual({
+			path: path.join(root, "app"),
+		});
+		await expect(
+			workspaces.methods.newFolderPath({ parentPath: root, name: "taken" }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		await expect(readdir(root)).resolves.toEqual(["taken"]);
 	});
 });
 
@@ -373,7 +502,6 @@ describe("importing origin's workspaces", () => {
 
 		await workspaces.methods.remove({ id: "w1" });
 		const relaunched = await boot({ storage, originDatabase: database });
-		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(relaunched.workspaces.getState().workspaces).toEqual([]);
 	});
 
@@ -396,10 +524,14 @@ describe("importing origin's workspaces", () => {
 		});
 		const database = await originDatabase([{ id: created.id, name: "Old", folders: [app] }]);
 
-		const { workspaces } = await boot({ storage, originDatabase: database });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		const relaunched = await boot({ storage, originDatabase: database });
+		await vi.waitFor(() =>
+			expect(relaunched.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
 
-		expect(workspaces.getState().workspaces).toEqual([created]);
+		expect(relaunched.workspaces.getState().workspaces).toEqual([created]);
 	});
 
 	it("starts empty when origin's database is missing or unreadable", async () => {
@@ -408,10 +540,141 @@ describe("importing origin's workspaces", () => {
 
 		const missing = await boot({ originDatabase: path.join(root, "absent.db") });
 		const unreadable = await boot({ originDatabase: garbage });
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		await vi.waitFor(() =>
+			expect(missing.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
+		await vi.waitFor(() =>
+			expect(unreadable.storage.saved.get("workspaces")).toMatchObject({
+				importedFromOrigin: true,
+			}),
+		);
 
 		expect(missing.workspaces.getState().workspaces).toEqual([]);
 		expect(unreadable.workspaces.getState().workspaces).toEqual([]);
+	});
+
+	it("counts a file that isn't a database as imported", async () => {
+		const app = await folder("app");
+		const storage = createMemoryStorage("/data/kilo.work-sessions");
+		const file = path.join(root, "data.db");
+		await writeFile(file, "not a database");
+		await boot({ storage, originDatabase: file });
+		await vi.waitFor(() =>
+			expect(storage.saved.get("workspaces")).toMatchObject({ importedFromOrigin: true }),
+		);
+		await rm(file);
+		await originDatabase([{ id: "w1", name: "App", folders: [app] }]);
+
+		let originReads = 0;
+		const relaunched = await boot({
+			storage,
+			originDatabase: file,
+			loadSqlite: async () => {
+				originReads += 1;
+				throw new Error("origin must not be read again");
+			},
+		});
+
+		// A relaunch that re-imported would have loaded the driver before boot returned.
+		expect(originReads).toBe(0);
+		expect(relaunched.workspaces.getState().workspaces).toEqual([]);
+	});
+
+	it("retries next launch when better-sqlite3 can't load, and tells the person", async () => {
+		const app = await folder("app");
+		const database = await originDatabase([{ id: "w1", name: "App", folders: [app] }]);
+		const storage = createMemoryStorage("/data/kilo.work-sessions");
+		const notices = new Map<string, NotificationContent>();
+		const warnings: string[] = [];
+
+		const { kernel, workspaces } = await boot({
+			storage,
+			originDatabase: database,
+			plugins: [fakeShell(notices)],
+			loadSqlite: async () => {
+				throw new Error("Cannot find module 'better-sqlite3'");
+			},
+			logger: {
+				debug: () => {},
+				info: () => {},
+				warn: (message) => warnings.push(message),
+				error: (message) => warnings.push(`error: ${message}`),
+			},
+		});
+
+		await vi.waitFor(() => expect(notices.get("origin-import-failed")?.level).toBe("warning"));
+		expect(kernel.pluginState("kilo.work-sessions")).toBe("active");
+		expect(workspaces.getState().workspaces).toEqual([]);
+		expect(storage.saved.get("workspaces")).not.toMatchObject({ importedFromOrigin: true });
+		expect(warnings.filter((warning) => warning.includes("better-sqlite3"))).toHaveLength(1);
+		expect(warnings.filter((warning) => warning.startsWith("error"))).toEqual([]);
+
+		const relaunched = await boot({ storage, originDatabase: database });
+
+		await vi.waitFor(() =>
+			expect(relaunched.workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w1"]),
+		);
+	});
+
+	describe("for a person a release marked imported without reading origin", () => {
+		const mine: Workspace = {
+			id: "mine",
+			name: "Mine",
+			folders: [],
+			createdAt: 1,
+			updatedAt: 1,
+		};
+		const markedImported = (workspaces: Workspace[]) => {
+			const storage = createMemoryStorage("/data/kilo.work-sessions");
+			storage.saved.set("workspaces", { workspaces, activeId: null, importedFromOrigin: true });
+			return storage;
+		};
+
+		it("brings origin's workspaces over once", async () => {
+			const app = await folder("app");
+			const database = await originDatabase([{ id: "w1", name: "App", folders: [app] }]);
+			const storage = markedImported([mine]);
+
+			const { workspaces } = await boot({ storage, originDatabase: database });
+
+			await vi.waitFor(() =>
+				expect(workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w1", "mine"]),
+			);
+			await workspaces.methods.remove({ id: "w1" });
+			let originReads = 0;
+			const relaunched = await boot({
+				storage,
+				originDatabase: database,
+				loadSqlite: async () => {
+					originReads += 1;
+					throw new Error("origin must not be read again");
+				},
+			});
+			await vi.waitFor(() =>
+				expect(relaunched.workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["mine"]),
+			);
+			expect(originReads).toBe(0);
+		});
+
+		it("leaves them alone when some of origin's workspaces are already here", async () => {
+			const app = await folder("app");
+			const docs = await folder("docs");
+			const database = await originDatabase([
+				{ id: "w1", name: "App", folders: [app] },
+				{ id: "w2", name: "Docs", folders: [docs] },
+			]);
+			const kept: Workspace = { ...mine, id: "w1", name: "App" };
+			const storage = markedImported([kept]);
+
+			const { workspaces } = await boot({ storage, originDatabase: database });
+			await vi.waitFor(() =>
+				expect(storage.saved.get("workspaces")).toMatchObject({ originImportVerified: true }),
+			);
+
+			expect(workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w1"]);
+		});
 	});
 });
 

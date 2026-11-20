@@ -1,5 +1,5 @@
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -26,10 +26,22 @@ const STEP_MOTION = {
 	transition: { duration: 0.4, ease: EASE },
 } as const;
 
+/** The parts of a step's view drawn outside its card: the footer and what busy disables. */
+export interface StepChrome {
+	readonly skippable: boolean;
+	readonly busy: boolean;
+	/** `continue` is the default Continue (`next`); null hides the button. */
+	readonly primary: { readonly label: string; readonly disabled: boolean } | "continue" | null;
+}
+
 export interface OnboardingFrameProps {
 	readonly stepKey: string;
 	readonly layout: "card" | "splash";
-	readonly view: OnboardingStepView;
+	/** The current step, already rendered (its `StepContent`); it animates in and out with the step. */
+	readonly content: ReactNode;
+	readonly chrome: StepChrome;
+	/** Runs the current step's own primary action. */
+	readonly onPrimary: () => void;
 	/** Card steps in the progress bar. */
 	readonly progress: readonly WizardStep<string>[];
 	readonly canJumpTo: (stepKey: string) => boolean;
@@ -46,13 +58,16 @@ export interface OnboardingFrameProps {
  * Full-window onboarding frame: a modal dialog (focus trap) stretched over
  * the window, with a draggable title bar holding "Exit setup" and an animated
  * step canvas. Splash steps fill the canvas; card steps sit in one borderless
- * card between the progress bar and the footer, split with a showcase `aside`
- * when they have one.
+ * card between the progress bar and the footer. It stays mounted for the
+ * whole flow, so each step's content (keyed by step) fades out and the next
+ * slides in.
  */
 export function OnboardingFrame({
 	stepKey,
 	layout,
-	view,
+	content,
+	chrome,
+	onPrimary,
 	progress,
 	canJumpTo,
 	dismissible,
@@ -63,9 +78,11 @@ export function OnboardingFrame({
 	onDismiss,
 }: OnboardingFrameProps) {
 	const panel = useRef<HTMLDivElement>(null);
-	const busy = view.busy === true;
+	const busy = chrome.busy;
 	const primary =
-		view.primary === undefined ? { label: "Continue", onClick: onNext } : view.primary;
+		chrome.primary === "continue"
+			? { label: "Continue", disabled: false, onClick: onNext }
+			: chrome.primary && { ...chrome.primary, onClick: onPrimary };
 
 	return (
 		<Dialog
@@ -113,7 +130,7 @@ export function OnboardingFrame({
 							<AnimatePresence mode="wait" initial={false}>
 								{layout === "splash" ? (
 									<motion.div key={stepKey} className="flex flex-1 flex-col" {...STEP_MOTION}>
-										{view.body}
+										{content}
 									</motion.div>
 								) : (
 									// Top-anchored so the progress bars and card top never move between
@@ -140,44 +157,12 @@ export function OnboardingFrame({
 												className="bg-muted/50 dark:bg-card w-full overflow-hidden rounded-[28px]"
 												{...STEP_MOTION}
 											>
-												{view.centered ? (
-													<div className="flex flex-col justify-center gap-6 p-6 lg:min-h-[36rem] lg:px-8">
-														<StepHeading
-															title={view.title ?? ""}
-															subtitle={view.subtitle ?? ""}
-															centered
-														/>
-														<div data-qa-id="onboarding-step-body">{view.body}</div>
-													</div>
-												) : (
-													<div
-														className={cn(
-															"grid grid-cols-1 lg:min-h-[36rem]",
-															view.aside ? "lg:grid-cols-2" : "",
-														)}
-													>
-														<section className="flex flex-col justify-center gap-6 p-8 lg:px-14 lg:py-12">
-															<StepHeading
-																title={view.title ?? ""}
-																subtitle={view.subtitle ?? ""}
-															/>
-															<div data-qa-id="onboarding-step-body">{view.body}</div>
-														</section>
-														{view.aside ? (
-															<aside
-																aria-hidden="true"
-																className="bg-foreground/3 hidden items-center justify-center overflow-hidden p-10 lg:flex"
-															>
-																<div className="w-full max-w-md">{view.aside}</div>
-															</aside>
-														) : null}
-													</div>
-												)}
+												{content}
 											</motion.div>
 										</AnimatePresence>
 										<OnboardingFooter
 											showBack={showBack}
-											showSkip={view.skippable === true}
+											showSkip={chrome.skippable}
 											showContinue={primary !== null}
 											busy={busy}
 											continueDisabled={primary?.disabled === true}
@@ -212,6 +197,42 @@ function StepHeading({
 			<DialogDescription className={cn("max-w-md", centered && "text-balance")}>
 				{subtitle}
 			</DialogDescription>
+		</div>
+	);
+}
+
+/**
+ * A step's view as drawn inside the frame's canvas: a splash step's body, or
+ * a card's heading, body and showcase `aside`. Rendered within the step, so
+ * it leaves with the step when the next one comes in.
+ */
+export function StepContent({
+	layout,
+	view,
+}: {
+	readonly layout: "card" | "splash";
+	readonly view: OnboardingStepView;
+}) {
+	if (layout === "splash") return view.body;
+	return view.centered ? (
+		<div className="flex flex-col justify-center gap-6 p-6 lg:min-h-[36rem] lg:px-8">
+			<StepHeading title={view.title ?? ""} subtitle={view.subtitle ?? ""} centered />
+			<div data-qa-id="onboarding-step-body">{view.body}</div>
+		</div>
+	) : (
+		<div className={cn("grid grid-cols-1 lg:min-h-[36rem]", view.aside ? "lg:grid-cols-2" : "")}>
+			<section className="flex flex-col justify-center gap-6 p-8 lg:px-14 lg:py-12">
+				<StepHeading title={view.title ?? ""} subtitle={view.subtitle ?? ""} />
+				<div data-qa-id="onboarding-step-body">{view.body}</div>
+			</section>
+			{view.aside ? (
+				<aside
+					aria-hidden="true"
+					className="bg-foreground/3 hidden items-center justify-center overflow-hidden p-10 lg:flex"
+				>
+					<div className="w-full max-w-md">{view.aside}</div>
+				</aside>
+			) : null}
 		</div>
 	);
 }

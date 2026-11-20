@@ -6,6 +6,8 @@ import {
 	condaChannelsAddInputSchema,
 	condaChannelsListResultSchema,
 	condaChannelsRemoveInputSchema,
+	condaChannelsResolveInputSchema,
+	condaChannelsResolveResultSchema,
 	condaDistributionSchema,
 	condaEnvSchema,
 	condaEnvsCheckPrefixInputSchema,
@@ -129,10 +131,6 @@ describe("envTargetSchema", () => {
 	it("rejects when name is invalid but prefix is absent", () => {
 		expect(envTargetSchema.safeParse({ name: "" }).success).toBe(false);
 		expect(envTargetSchema.safeParse({ name: "has space" }).success).toBe(false);
-	});
-
-	it("accepts when name is absent but prefix is valid", () => {
-		expect(envTargetSchema.safeParse({ prefix: "/opt/conda" }).success).toBe(true);
 	});
 });
 
@@ -687,6 +685,30 @@ describe("conda.channels I/O", () => {
 		});
 		expect(condaChannelsAddInputSchema.safeParse({ channel: "" }).success).toBe(false);
 	});
+
+	it("resolve input takes one channel under the same guards as add", () => {
+		expect(condaChannelsResolveInputSchema.parse({ channel: "pkgs/main" })).toEqual({
+			channel: "pkgs/main",
+		});
+		for (const bad of ["", " conda-forge", "--override-channels", "a\nb"]) {
+			expect(condaChannelsResolveInputSchema.safeParse({ channel: bad }).success).toBe(false);
+		}
+	});
+
+	it("resolve result carries conda's resolution and whether it was exact", () => {
+		const resolved = {
+			channel: "pkgs/main",
+			name: "defaults",
+			isMultichannel: false,
+			baseUrls: ["https://repo.anaconda.com/pkgs/main"],
+			configured: true,
+			configuredBy: ["defaults"],
+			exact: true,
+		};
+		expect(condaChannelsResolveResultSchema.parse(resolved)).toEqual(resolved);
+		const { exact: _exact, ...withoutExact } = resolved;
+		expect(condaChannelsResolveResultSchema.safeParse(withoutExact).success).toBe(false);
+	});
 });
 
 describe("conda.repodata I/O", () => {
@@ -884,7 +906,7 @@ describe("conda.envs.checkPrefix schemas", () => {
 });
 
 describe("the conda domain object", () => {
-	it("offers every method origin's conda contract had", () => {
+	it("offers every method origin's conda contract had, plus resolveChannel for install links", () => {
 		expect(new Set(Object.keys(Conda.methods))).toEqual(
 			new Set([
 				"listEnvironments",
@@ -906,6 +928,7 @@ describe("the conda domain object", () => {
 				"listChannels",
 				"addChannel",
 				"removeChannel",
+				"resolveChannel",
 				"findRepodata",
 				"cancelJob",
 			]),

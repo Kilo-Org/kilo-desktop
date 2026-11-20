@@ -143,9 +143,50 @@ describe("the New Session page's composer", () => {
 
 		await send("Hello?");
 
-		await expect.element(page.getByText("Could not start the chat").first()).toBeVisible();
+		await expect.element(page.getByText("Could not start the chat")).toBeVisible();
 		await expect.element(composerInput()).toHaveTextContent("Hello?");
 		expect(host.workSessions.calls.create).not.toHaveBeenCalled();
+	});
+
+	it("still sends the first message when the page goes away while the work session starts", async () => {
+		let finishWorktree!: () => void;
+		const worktree = new Promise<void>((resolve) => (finishWorktree = resolve));
+		const host = await renderChat({
+			starter: { isolation: { kind: "new-copy", baseBranch: "main" }, holdStart: worktree },
+		});
+
+		await send("Fix the login form");
+		await vi.waitFor(() => expect(host.starter.start).toHaveBeenCalled());
+		// Another session opened: kilo.work-sessions unmounts the New Session page.
+		host.view.unmount();
+		finishWorktree();
+
+		await vi.waitFor(
+			() =>
+				expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
+			{ timeout: 5_000 },
+		);
+		const [prompt] = host.server.requestsTo("POST", "/session/ses_new_1/prompt_async");
+		expect(promptText(prompt!)).toBe("Fix the login form");
+		expect(prompt!.directory).toBe("/projects/app/.kilo/worktrees/new");
+		expect((prompt!.body as { system: string }).system).toContain(
+			JSON.stringify("/projects/app/.kilo/worktrees/new"),
+		);
+		expect(host.starter.open).not.toHaveBeenCalled();
+	});
+
+	it("sends the first message once when the page closes after sending it", async () => {
+		const host = await renderChat({ starter: {} });
+
+		await send("Fix the login form");
+		await vi.waitFor(() => expect(host.starter.open).toHaveBeenCalledWith("wses_new_1"));
+		// Opening the work session closes the New Session page.
+		host.view.unmount();
+		await vi.waitFor(() =>
+			expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
+		);
+
+		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1);
 	});
 
 	it("starts outside a workspace, in the chat's own folder", async () => {

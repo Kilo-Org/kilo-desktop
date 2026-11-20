@@ -155,6 +155,11 @@ export function createSessionsHost(options: SessionsHostOptions = {}): SessionsH
 						setActive: unused,
 						authorize: async (input) => ({ allowed: await authorize(input) }),
 						checkFolders: () => undefined,
+						newFolderLocation: () => ({ path: null }),
+						newFolderPath: () => {
+							throw new Error("newFolderPath is not faked here.");
+						},
+						rememberNewFolderLocation: () => undefined,
 					},
 				});
 			}
@@ -163,6 +168,7 @@ export function createSessionsHost(options: SessionsHostOptions = {}): SessionsH
 				methods: {
 					create: unused,
 					createChat: unused,
+					forkChat: unused,
 					rename: unused,
 					setPinned: unused,
 					setArchived: unused,

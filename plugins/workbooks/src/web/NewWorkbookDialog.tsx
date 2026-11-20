@@ -35,7 +35,7 @@ import {
 } from "@kilo-desktop/ui/components/wizard-step-indicator";
 
 import type { BriefField, TemplateSummary } from "../contracts";
-import { templateIcon } from "./template-icons";
+import { TemplateIcon } from "./template-icons";
 
 type NewWorkbookStep = "template" | "brief";
 
@@ -198,7 +198,6 @@ function TemplateChoiceItem({
 	readonly template: TemplateSummary;
 	readonly onSelect: () => void;
 }) {
-	const Icon = templateIcon(template.icon);
 	return (
 		<Item
 			render={<button type="button" />}
@@ -210,7 +209,7 @@ function TemplateChoiceItem({
 			data-qa-id={`workbooks-template-${template.id}`}
 		>
 			<ItemMedia className="border-border bg-background size-8 rounded-lg border">
-				<Icon className="size-4" />
+				<TemplateIcon icon={template.icon} className="size-4" />
 			</ItemMedia>
 			<ItemContent className="min-w-0">
 				<ItemTitle>{template.name}</ItemTitle>

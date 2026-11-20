@@ -391,13 +391,21 @@ describe("diagnostics settings — tabs", () => {
 	});
 
 	it("keeps the plugin changes section, and a pending restart, in view on every tab", async () => {
-		await openDiagnostics();
+		const { options } = pluginsHost();
+		await openDiagnostics([agentServer()], options);
+		const restart = page.getByTestId("diagnostics-restart");
+		await expect.element(restart).toBeDisabled();
 
-		await expect.element(page.getByTestId("diagnostics-plugin-changes")).toBeVisible();
+		await page
+			.getByTestId("diagnostics-plugin-acme.server")
+			.getByRole("switch", { name: "Enable acme.server" })
+			.click();
+		await expect.element(restart).toBeEnabled();
 
 		await page.getByTestId("diagnostics-tab-services").click();
 
 		await expect.element(page.getByTestId("diagnostics-plugin-changes")).toBeVisible();
+		await expect.element(restart).toBeEnabled();
 	});
 });
 

@@ -5,7 +5,7 @@ type PermissionAction = "allow" | "ask" | "deny";
 /**
  * Kilo's built-in bash table allows these archive commands, yet it never
  * checks where they write: `tar -xf x.tar -C ~/.config/kilo` can drop a
- * `kilo.json` that allows every tool, with no prompt (DESK-3368). Until the
+ * `kilo.json` that allows every tool, with no prompt. Until the
  * CLI resolves their destinations, Desktop makes them ask.
  *
  * The rules sit under `bash*`, not `bash`: Kilo deep-merges inline config, so

@@ -8,7 +8,7 @@
 // their manifests. Panes render as kilo.work-sessions' canvas renders them,
 // from the Panes state.
 import { act, cleanup, render } from "@testing-library/react";
-import { useCallback, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import {
 	definePlugin,
@@ -183,6 +183,11 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 					setActive: unused("setActive"),
 					authorize: () => ({ allowed: true }),
 					checkFolders: () => undefined,
+					newFolderLocation: () => ({ path: null }),
+					newFolderPath: () => {
+						throw new Error("newFolderPath is not faked here.");
+					},
+					rememberNewFolderLocation: () => undefined,
 				},
 			});
 			files = sdk.domainObjects.provide(FileWatcher, {
@@ -197,6 +202,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 				methods: {
 					create: unused("create"),
 					createChat: unused("createChat"),
+					forkChat: unused("forkChat"),
 					rename: unused("rename"),
 					setPinned: unused("setPinned"),
 					setArchived: unused("setArchived"),
@@ -451,13 +457,8 @@ const selectComponent = (implementation: PaneImplementation) => implementation.c
 
 /** One pane of the session as kilo.work-sessions' canvas renders it: its kind's component, from the Panes state. */
 export function PaneHost({ host, paneId }: { readonly host: FilesHost; readonly paneId: string }) {
-	const pane = useDomainObjectState(
-		Panes,
-		useCallback(
-			(state: DomainObjectState<typeof Panes>) =>
-				state.byWorkSession[WORK_SESSION_ID]?.panes.find((candidate) => candidate.id === paneId),
-			[paneId],
-		),
+	const pane = useDomainObjectState(Panes, (state: DomainObjectState<typeof Panes>) =>
+		state.byWorkSession[WORK_SESSION_ID]?.panes.find((candidate) => candidate.id === paneId),
 	);
 	const kind = host.renderer.extensions
 		.list(PaneKind)

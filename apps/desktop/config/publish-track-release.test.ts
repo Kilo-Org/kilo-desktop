@@ -3,8 +3,29 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { publishTrackObjects, writeReleaseTagOutput } from "./publish-track-release.js";
+
+/** The `latest.json` schema in clients released before RPM support. */
+const preRpmManifestSchema = z.object({
+	schemaVersion: z.literal(1),
+	track: z.enum(["preview", "stable"]),
+	version: z.string(),
+	publishedAt: z.string().min(1),
+	releaseNotesUrl: z.string().min(1),
+	downloads: z.array(
+		z.object({
+			platform: z.enum(["linux", "macos", "windows"]),
+			arch: z.string().min(1),
+			type: z.enum(["deb", "dmg", "setup", "zip"]),
+			fileName: z.string().min(1),
+			url: z.string().min(1),
+			size: z.number().int().nonnegative(),
+			sha256: z.string().min(1),
+		}),
+	),
+});
 
 describe("track object publication", () => {
 	it("publishes immutable notes, stable aliases, the note pointer, then the manifest", async () => {
@@ -80,6 +101,80 @@ describe("track object publication", () => {
 		});
 		const writtenManifest = JSON.parse(await readFile(copies.at(-1)!.source, "utf8"));
 		expect(writtenManifest).toEqual(manifest);
+	});
+
+	it("lists an rpm where clients that predate RPM support ignore it", async () => {
+		const workingDirectory = await mkdtemp(path.join(tmpdir(), "track-publication-test-"));
+		const rpmDirectory = path.join(workingDirectory, "make", "rpm", "x64");
+		const debDirectory = path.join(workingDirectory, "make", "deb", "x64");
+		await mkdir(rpmDirectory, { recursive: true });
+		await mkdir(debDirectory, { recursive: true });
+		const artifact = path.join(rpmDirectory, "kilo-desktop-1.2.3-1.x86_64.rpm");
+		const deb = path.join(debDirectory, "kilo-desktop_1.2.3_amd64.deb");
+		const notesFile = path.join(workingDirectory, "1.2.3.json");
+		await writeFile(artifact, "artifact");
+		await writeFile(deb, "artifact");
+		await writeFile(notesFile, "{}\n");
+		const copy = vi.fn(async () => {});
+
+		const manifest = await publishTrackObjects(
+			{
+				artifactFiles: [artifact, deb],
+				bucket: "desktop-releases",
+				track: "stable",
+				notesFile,
+				publishedAt: "2026-08-26T12:00:00.000Z",
+				publishUrl: "https://downloads.example.test",
+				version: "1.2.3",
+				workingDirectory,
+			},
+			copy,
+		);
+
+		expect(copy).toHaveBeenCalledWith(
+			artifact,
+			"desktop-releases",
+			"kilo-desktop/latest/latest/linux/x64/kilo-desktop.rpm",
+			"public,max-age=60,must-revalidate",
+			"application/x-rpm",
+		);
+		expect(manifest.downloads).toEqual([expect.objectContaining({ type: "deb" })]);
+		expect(manifest.additionalDownloads).toEqual([
+			expect.objectContaining({
+				platform: "linux",
+				arch: "x64",
+				type: "rpm",
+				fileName: "kilo-desktop.rpm",
+				url: "https://downloads.example.test/kilo-desktop/latest/linux/x64/kilo-desktop-1.2.3-1.x86_64.rpm",
+			}),
+		]);
+		expect(preRpmManifestSchema.safeParse(manifest).success).toBe(true);
+	});
+
+	it("publishes a release that has only additional downloads", async () => {
+		const workingDirectory = await mkdtemp(path.join(tmpdir(), "track-publication-test-"));
+		const artifact = path.join(workingDirectory, "rpm", "x64", "kilo-desktop-1.2.3-1.x86_64.rpm");
+		await mkdir(path.dirname(artifact), { recursive: true });
+		await writeFile(artifact, "artifact");
+		const notesFile = path.join(workingDirectory, "1.2.3.json");
+		await writeFile(notesFile, "{}\n");
+
+		const manifest = await publishTrackObjects(
+			{
+				artifactFiles: [artifact],
+				bucket: "desktop-releases",
+				track: "stable",
+				notesFile,
+				publishedAt: "2026-08-26T12:00:00.000Z",
+				publishUrl: "https://downloads.example.test",
+				version: "1.2.3",
+				workingDirectory,
+			},
+			vi.fn(async () => {}),
+		);
+
+		expect(manifest.downloads).toEqual([]);
+		expect(manifest.additionalDownloads).toHaveLength(1);
 	});
 
 	it("refuses to advance pointers when no downloadable artifact exists", async () => {

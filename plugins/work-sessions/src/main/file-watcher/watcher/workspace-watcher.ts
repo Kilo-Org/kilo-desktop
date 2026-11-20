@@ -1,10 +1,8 @@
-import { KernelError, type KernelLogger as MainSdkLogger } from "@kilo-desktop/kernel";
+import type { KernelLogger as MainSdkLogger } from "@kilo-desktop/kernel";
 
 import {
-	createWorkspaceChangeFilter,
 	type FileChange,
 	type FileChangeEvent as WorkspaceFileChangeEvent,
-	type WatchFilter as WorkspaceWatchFilter,
 	type WatchedFolder,
 } from "../../../contracts/model";
 import { watcherIgnorePatterns } from "./default-excludes";
@@ -14,7 +12,7 @@ import { normalizeNFC, normalizeWindowsRootPath, remapRealPath } from "./path-no
 type FileChangeType = FileChange["type"];
 
 export interface WorkspaceWatcherStatus {
-	readonly directories: readonly (WatchedFolder & { readonly subscriberCount: number })[];
+	readonly directories: readonly WatchedFolder[];
 }
 
 /** Raw event shape @parcel/watcher reports. */
@@ -68,18 +66,12 @@ const DEFAULT_RETRY_DELAY_MS = 5000;
 const DEFAULT_MAX_RETRIES = 5;
 const DROPPED_EVENTS_LOG_INTERVAL_MS = 60_000;
 
-interface DirectorySubscription {
-	callback: (changes: FileChange[]) => void;
-	filter: (changes: readonly FileChange[]) => FileChange[];
-}
-
 type DirectoryState = "starting" | "active" | "retrying" | "failed";
 
 interface WatchedDirectory {
 	state: DirectoryState;
 	/** Whether the directory belongs to the registered workspace-folder union. */
 	registered: boolean;
-	subscriptions: Map<number, DirectorySubscription>;
 	retryCount: number;
 	retryTimer: NodeJS.Timeout | null;
 	/** Bumped whenever the parcel subscription changes; stale callbacks ignore. */
@@ -96,15 +88,13 @@ interface WatchedDirectory {
  *
  * Ownership and lifecycle:
  * - The workspace feature owns exactly one parcel subscription per unique
- *   directory (`#directories`). The workspace-folder union (synced by
- *   `reconcileDirectories`) holds each directory alive, and main-side
- *   capability subscribers hold it alive past `unwatchDirectory` — the
- *   native watcher is torn down only when neither remains.
+ *   directory (`#directories`), held alive by the workspace-folder union
+ *   (synced by `reconcileDirectories`) and torn down when a folder leaves it.
  * - Events flow once per batch: paths are normalized (NFC on macOS, symlink
- *   remap onto the registered prefix, Windows drive-root fixup), each
- *   subscriber's pre-compiled include/exclude/type filter is applied, and
- *   the full batch is handed to the bus emitter. Parcel coalesces raw
- *   platform noise natively; no JS-layer coalescing happens here.
+ *   remap onto the registered prefix, Windows drive-root fixup) and the full
+ *   batch is handed to the bus emitter; windows filter it themselves
+ *   (`createWorkspaceChangeFilter`). Parcel coalesces raw platform noise
+ *   natively; no JS-layer coalescing happens here.
  * - Subscription failures enter a bounded retry loop (5s backoff, 5
  *   attempts) per directory. ENOSPC/EMFILE signal host resource exhaustion
  *   (inotify limits, fd limits) and fail immediately without retrying.
@@ -143,7 +133,6 @@ export class WorkspaceWatcher {
 	readonly #retryDelayMs: number;
 	readonly #maxRetries: number;
 	#directories = new Map<string, WatchedDirectory>();
-	#nextSubscriptionId = 1;
 	#disposed = false;
 	/** In-flight subscribe chains; dispose awaits them so native work never outlives the process. */
 	#pendingSubscriptions = new Set<Promise<void>>();
@@ -166,7 +155,6 @@ export class WorkspaceWatcher {
 			this.#directories.set(dir, {
 				state: "starting",
 				registered: true,
-				subscriptions: new Map(),
 				retryCount: 0,
 				retryTimer: null,
 				droppedEventsLoggedAt: 0,
@@ -186,12 +174,22 @@ export class WorkspaceWatcher {
 		}
 	}
 
-	/** Remove a directory from the workspace union; tears down if no subscribers. */
+	/** Remove a directory from the workspace union and tear its native watcher down. */
 	unwatchDirectory(dir: string): void {
+		if (this.#disposed) return;
 		const entry = this.#directories.get(dir);
 		if (!entry) return;
 		entry.registered = false;
-		this.#teardownIfUnused(dir, entry);
+		this.#directories.delete(dir);
+		this.#statusChanged();
+		if (entry.retryTimer) {
+			clearTimeout(entry.retryTimer);
+			entry.retryTimer = null;
+		}
+		entry.generation += 1;
+		// Runtime teardown path, not shutdown — the process stays alive, so the
+		// unsubscribe settles in the background.
+		void this.#unsubscribeParcel(dir, entry);
 	}
 
 	/**
@@ -207,32 +205,6 @@ export class WorkspaceWatcher {
 		for (const folder of folders) this.watchDirectory(folder);
 	}
 
-	/**
-	 * Subscribe to change batches for a registered workspace directory with
-	 * include/exclude/type filtering. Rejects paths outside the workspace
-	 * union. Returns an unsubscribe function.
-	 */
-	subscribe(
-		dir: string,
-		options: WorkspaceWatchFilter,
-		callback: (changes: FileChange[]) => void,
-	): () => void {
-		if (this.#disposed) return () => {};
-		const entry = this.#directories.get(dir);
-		if (!entry?.registered) {
-			throw new KernelError(
-				"VALIDATION",
-				`Not watching ${dir}: it is not a registered workspace folder.`,
-			);
-		}
-		const id = this.#nextSubscriptionId++;
-		entry.subscriptions.set(id, { callback, filter: createWorkspaceChangeFilter(options) });
-		return () => {
-			entry.subscriptions.delete(id);
-			this.#teardownIfUnused(dir, entry);
-		};
-	}
-
 	/** Directories currently in the workspace union. */
 	registeredDirectories(): string[] {
 		return [...this.#directories].filter(([, entry]) => entry.registered).map(([dir]) => dir);
@@ -243,7 +215,6 @@ export class WorkspaceWatcher {
 			directories: [...this.#directories].map(([path, entry]) => ({
 				path,
 				state: entry.state,
-				subscriberCount: entry.subscriptions.size,
 			})),
 		};
 	}
@@ -267,7 +238,6 @@ export class WorkspaceWatcher {
 			if (entry.retryTimer) clearTimeout(entry.retryTimer);
 			entry.retryTimer = null;
 			entry.generation += 1;
-			entry.subscriptions.clear();
 			const promise = this.#unsubscribeParcel(dir, entry);
 			if (promise) cleanup.push(promise);
 		}
@@ -413,11 +383,6 @@ export class WorkspaceWatcher {
 		}
 		if (changes.length === 0) return;
 
-		// Snapshot: a callback may unsubscribe mid-batch without breaking siblings.
-		for (const subscription of [...entry.subscriptions.values()]) {
-			const filtered = subscription.filter(changes);
-			if (filtered.length > 0) subscription.callback(filtered);
-		}
 		this.#deps.emit?.({ root: dir, changes });
 	}
 
@@ -429,21 +394,6 @@ export class WorkspaceWatcher {
 			normalized = remapRealPath(normalized, entry.realRoot, dir);
 		}
 		return normalized;
-	}
-
-	#teardownIfUnused(dir: string, entry: WatchedDirectory): void {
-		if (this.#disposed) return;
-		if (entry.registered || entry.subscriptions.size > 0) return;
-		this.#directories.delete(dir);
-		this.#statusChanged();
-		if (entry.retryTimer) {
-			clearTimeout(entry.retryTimer);
-			entry.retryTimer = null;
-		}
-		entry.generation += 1;
-		// Runtime teardown path, not shutdown — the process stays alive, so the
-		// unsubscribe settles in the background.
-		void this.#unsubscribeParcel(dir, entry);
 	}
 
 	/**

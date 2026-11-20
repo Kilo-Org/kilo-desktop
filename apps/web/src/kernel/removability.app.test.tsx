@@ -95,8 +95,8 @@ async function expectBooted(
 	expect(notRunning).toEqual([]);
 }
 
-// A full window per case; generous so a loaded CI worker doesn't flake.
-describe("bundled plugins in the window", { timeout: 30_000 }, () => {
+// A full window per case.
+describe("bundled plugins in the window", () => {
 	it("boot together", async () => {
 		await expectBooted(await boot(BUNDLED_PLUGINS, []), {
 			expected: BUNDLED_PLUGINS.length,

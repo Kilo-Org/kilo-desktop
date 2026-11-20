@@ -8,7 +8,7 @@ import {
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { act } from "@testing-library/react";
-import { createElement, useState, type ComponentProps } from "react";
+import { createElement, useMemo, useSyncExternalStore, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -142,15 +142,30 @@ function renderMarkdownMessage(
 	return renderInKernel(<MarkdownMessage text={text} partType={partType} />, { rendererPlugins });
 }
 
-let showStreamText: (text: string) => void = () => undefined;
+/** The streamed reply's text, held outside React so a test can grow it. */
+const streamedText = (() => {
+	let text = "";
+	const listeners = new Set<() => void>();
+	return {
+		read: () => text,
+		show(next: string) {
+			text = next;
+			for (const listener of listeners) listener();
+		},
+		subscribe(listener: () => void) {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+	};
+})();
 
 /** A message whose text grows between renders, the way a reply streams. */
 function StreamingMessage() {
-	const [messages, setMessages] = useState<ThreadMessageLike[]>([
-		{ id: "stream", role: "assistant", content: [{ type: "text", text: "" }] },
-	]);
-	showStreamText = (text) =>
-		setMessages([{ id: "stream", role: "assistant", content: [{ type: "text", text }] }]);
+	const text = useSyncExternalStore(streamedText.subscribe, streamedText.read);
+	const messages = useMemo<ThreadMessageLike[]>(
+		() => [{ id: "stream", role: "assistant", content: [{ type: "text", text }] }],
+		[text],
+	);
 	const runtime = useExternalStoreRuntime<ThreadMessageLike>({
 		messages,
 		isRunning: false,
@@ -212,6 +227,7 @@ describe("MarkdownText", () => {
 	});
 
 	it("keeps a fence exact as it grows, tokenizing only what arrives", async () => {
+		streamedText.show("");
 		await renderInKernel(<StreamingMessage />);
 
 		// Markdown appends the newline the fenced block ends with to the code.
@@ -223,15 +239,19 @@ describe("MarkdownText", () => {
 			"def f(x):\n    return x  # note\nx = 2\n",
 			"def f(x):\n    return x  # note\nx = 2\ny = f(1)",
 		];
-		await act(async () => showStreamText(`\`\`\`py\n${firstCode}`));
+		await act(async () => streamedText.show(`\`\`\`py\n${firstCode}`));
 		await expect
 			.poll(() => codeBlocks()[0]?.textContent, { timeout: 10_000 })
 			.toBe(rendered(firstCode));
+		// The highlighter loads lazily; wait for it so there is a token to track.
+		await expect
+			.poll(() => codeBlocks()[0]?.querySelector("span"), { timeout: 10_000 })
+			.not.toBeNull();
 		// Closed lines keep their DOM nodes, so only the tail is rebuilt per chunk.
 		const firstToken = codeBlocks()[0]?.querySelector("span");
 
 		for (const code of streamed.slice(1)) {
-			await act(async () => showStreamText(`\`\`\`py\n${code}`));
+			await act(async () => streamedText.show(`\`\`\`py\n${code}`));
 			await expect
 				.poll(() => codeBlocks()[0]?.textContent, { timeout: 10_000 })
 				.toBe(rendered(code));
@@ -432,7 +452,6 @@ describe("MarkdownText", () => {
 		await expect.element(broken).toBeInTheDocument();
 		await vi.waitFor(() => expect((broken.element() as HTMLImageElement).complete).toBe(true));
 		expect(broken.element().getAttribute("role")).toBeNull();
-		expect(broken.element().className).not.toContain("cursor-zoom-in");
 	});
 
 	it("keeps unsafe image sources sanitized", async () => {

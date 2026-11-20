@@ -26,7 +26,6 @@ export class OnboardingPage {
 		getLocatorByTestId(`onboarding-work-style-${style}`);
 	private readonly workspaceStep = () => getLocatorByTestId("onboarding-workspace-step");
 	private readonly skipButton = () => getLocatorByTestId("onboarding-skip");
-	private readonly featuresStep = () => getLocatorByTestId("onboarding-features");
 
 	async verifyWelcomeShown(): Promise<void> {
 		await expectElementToBeVisible(
@@ -73,14 +72,6 @@ export class OnboardingPage {
 			"Onboarding should offer to create a workspace on a profile without one",
 		);
 		await click(this.skipButton());
-	}
-
-	async finishFeatures(): Promise<void> {
-		await expectElementToBeVisible(
-			this.featuresStep(),
-			"Onboarding should end on the features step",
-		);
-		await this.continueToNextStep();
 	}
 
 	async verifyClosed(): Promise<void> {

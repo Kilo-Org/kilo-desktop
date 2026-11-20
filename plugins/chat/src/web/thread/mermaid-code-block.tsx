@@ -5,7 +5,7 @@ import {
 } from "@kilo-desktop/ui/components/mermaid-diagram";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CheckIcon, CodeXmlIcon, CopyIcon, EyeIcon, Maximize2Icon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useLightboxItem, type LightboxItemInput } from "./lightbox/chat-lightbox";
 import { TooltipIconButton } from "./tooltip-icon-button";
@@ -100,11 +100,14 @@ export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 	const showDiagram = isComplete && !showSource;
 	const label = diagramLabel(code);
 	const viewable = showDiagram && diagramState === "ready";
-	const lightboxInput = useMemo<LightboxItemInput | null>(
-		() => (viewable ? { kind: "mermaid", code, label } : null),
-		[viewable, code, label],
-	);
-	const lightbox = useLightboxItem(lightboxInput);
+	const lightboxInput: LightboxItemInput | null = viewable
+		? { kind: "mermaid", code, label }
+		: null;
+	const {
+		ref: lightboxRef,
+		open: openLightbox,
+		available: lightboxAvailable,
+	} = useLightboxItem(lightboxInput);
 
 	return (
 		<div
@@ -114,11 +117,11 @@ export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 			<div className="border-border-subtle bg-muted/50 flex items-center justify-between border-b px-3.5 py-1.5 text-xs">
 				<span className="text-muted-foreground font-medium">{label}</span>
 				<div className="flex items-center gap-0.5">
-					{lightbox.available ? (
+					{lightboxAvailable ? (
 						<TooltipIconButton
 							data-qa-id="chat-mermaid-expand"
 							tooltip="Open in viewer"
-							onClick={lightbox.open}
+							onClick={openLightbox}
 						>
 							<Maximize2Icon />
 						</TooltipIconButton>
@@ -148,12 +151,13 @@ export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 				</div>
 			</div>
 			{showDiagram ? (
-				// Pointer shortcut only: the Expand button is the keyboard path.
+				// Pointer shortcut only: the Expand button is the keyboard and screen reader path.
+				// react-doctor-disable-next-line react-doctor/click-events-have-key-events, react-doctor/no-static-element-interactions
 				<div
-					ref={lightbox.ref}
-					className={cn(lightbox.available && "cursor-zoom-in")}
+					ref={lightboxRef}
+					className={cn(lightboxAvailable && "cursor-zoom-in")}
 					data-qa-id="chat-mermaid-preview"
-					onClick={lightbox.open}
+					onClick={openLightbox}
 				>
 					<MermaidDiagram
 						className="p-3.5"

@@ -113,6 +113,11 @@ function fakeWorkSessionsMain(initial: Record<string, WorkSessionPanes>, primary
 							? { allowed: true, workspaceId: "w", folder: target, path: target }
 							: { allowed: false },
 					checkFolders: () => undefined,
+					newFolderLocation: () => ({ path: null }),
+					newFolderPath: () => {
+						throw new Error("newFolderPath is not faked here.");
+					},
+					rememberNewFolderLocation: () => undefined,
 				},
 			});
 			workSessions = sdk.domainObjects.provide(WorkSessions, {
@@ -120,6 +125,7 @@ function fakeWorkSessionsMain(initial: Record<string, WorkSessionPanes>, primary
 				methods: {
 					create: () => WORK_SESSION,
 					createChat: unused,
+					forkChat: unused,
 					rename: () => WORK_SESSION,
 					setPinned: () => WORK_SESSION,
 					setArchived: () => WORK_SESSION,

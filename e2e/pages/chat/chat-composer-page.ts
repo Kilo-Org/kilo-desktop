@@ -6,11 +6,14 @@ import {
 	expectElementToBeHidden,
 	expectElementToBeVisible,
 	expectElementToContainText,
+	expectElementToHaveAttribute,
 	expectElementToHaveCount,
 	fill,
 	getLocator,
 	getLocatorByRole,
 	getLocatorByTestId,
+	pressLocatorKeyboard,
+	pressSequentially,
 	uploadFiles,
 } from "@anaconda/playwright-utils";
 
@@ -34,12 +37,16 @@ const SESSION_TITLED_TIMEOUT_MS = 30_000;
  */
 export class ChatComposerPage {
 	private readonly agentPane = () => getLocatorByTestId("kilo-agent-pane");
+	private readonly starter = () => getLocatorByTestId("kilo-session-starter");
 	// Exactly one shows at a time: the launcher and an open session's canvas
 	// never share the window, and hidden ones are filtered out.
 	private readonly composerRoot = () =>
 		getLocatorByTestId("kilo-session-starter").or(this.agentPane());
 	private readonly thread = () => this.agentPane().getByTestId("kilo-chat-thread");
 	private readonly messageInput = () => getLocatorByRole("textbox", { name: "Message input" });
+	// The rich input's chips, e.g. a file mention or a server slash command.
+	private readonly directiveChip = () =>
+		this.composerRoot().locator('[data-slot="directive-text-chip"]');
 	private readonly sendButton = () => getLocatorByTestId("kilo-composer-send");
 	private readonly userMessage = (text: string) =>
 		this.thread().locator('[data-role="user"]').getByText(text, { exact: true });
@@ -63,9 +70,6 @@ export class ChatComposerPage {
 	// sr-only span ("Remove file"), not an aria-label attribute.
 	private readonly attachmentRemoveButton = () =>
 		this.attachmentRoots().getByRole("button", { name: "Remove file" });
-	private readonly attachmentErrorIcon = () =>
-		this.attachmentTile().locator(".aui-attachment-tile-error");
-	private readonly attachmentNameTooltip = () => getLocatorByRole("tooltip");
 	// Specs send one message per test, so strict mode throws rather than
 	// grabbing the wrong reply if a future spec sends more than once.
 	private readonly assistantMessage = () => this.thread().locator('[data-role="assistant"]');
@@ -99,9 +103,107 @@ export class ChatComposerPage {
 		await fill(this.messageInput(), text);
 	}
 
+	/** Types one key at a time, so the rich input's `@` trigger sees the typing and opens its menu. */
+	async typeMessageSequentially(text: string): Promise<void> {
+		await pressSequentially(this.messageInput(), text);
+	}
+
+	/**
+	 * Types `@query` into the composer and picks `fileName` from kilo.files'
+	 * mention menu, leaving a chip in the composer for the send to resolve to
+	 * the file's `@/path`.
+	 */
+	async mentionFile(query: string, fileName: string): Promise<void> {
+		await this.typeMessageSequentially(`@${query}`);
+		await click(getLocatorByRole("option", { name: fileName, exact: false }));
+	}
+
+	/** The composer holds a mention chip for `fileName`. */
+	async verifyComposerMention(fileName: string): Promise<void> {
+		await expectElementToContainText(this.directiveChip(), fileName, {
+			message: `The composer should show a mention chip for "${fileName}"`,
+		});
+	}
+
+	/** Sends what the composer holds, e.g. a mention chip added after its text. */
+	async sendComposer(): Promise<void> {
+		await click(this.sendButton());
+	}
+
 	async send(text: string): Promise<void> {
 		await this.typeMessage(text);
 		await click(this.sendButton());
+	}
+
+	async pressKey(key: string): Promise<void> {
+		await pressLocatorKeyboard(this.messageInput(), key);
+	}
+
+	async verifyComposerHoldsText(text: string): Promise<void> {
+		await expectElementToContainText(this.messageInput(), text, {
+			message: `The composer should still hold "${text}" unsent`,
+		});
+	}
+
+	/** The first send opened the session, and its transcript holds each of `lines` as a sent line. */
+	async verifySessionStartedWithLines(lines: readonly string[]): Promise<void> {
+		await waitForSessionStartedBySend();
+		for (const line of lines) {
+			await expectElementToContainText(this.thread().locator('[data-role="user"]'), line, {
+				message: `The sent message should show "${line}" in the transcript`,
+			});
+		}
+	}
+
+	/**
+	 * The welcome composer is still the draft and the launcher idle. A send
+	 * marks the launcher busy (inert, aria-busy) as soon as it begins, so call
+	 * this only after a later keystroke has landed in the composer: keys are
+	 * processed in order, so a send that Enter started can't be read as idle.
+	 */
+	async verifyStillOnDraft(): Promise<void> {
+		await expectElementToBeVisible(this.starter(), {
+			message: "The New Session page's starter should still be showing",
+		});
+		await expectElementToHaveAttribute(getLocatorByTestId("launcher-body"), "aria-busy", "false", {
+			message: "The launcher should be idle, not starting a session",
+		});
+		await expectElementToBeHidden(this.agentPane(), {
+			message: "No session should have started",
+		});
+	}
+
+	/**
+	 * Types `/query` one key at a time, so the rich input sees the leading slash
+	 * and opens Kilo's command menu filtered to `query`.
+	 */
+	async typeSlashQuery(query: string): Promise<void> {
+		await this.typeMessageSequentially(`/${query}`);
+	}
+
+	/** The open `/` menu offers the command `name` with `description`, e.g. the CLI's `init`. */
+	async verifySlashCommandListed(name: string, description: string): Promise<void> {
+		await expectElementToContainText(
+			getLocatorByRole("option", { name, exact: false }),
+			description,
+			{ message: `The slash menu should list "/${name}" with "${description}"` },
+		);
+	}
+
+	/**
+	 * Picks the command `name` from the open `/` menu, leaving its chip in the
+	 * composer. The locator names the row rather than taking the menu's first
+	 * match, which a catalog change could rerank.
+	 */
+	async chooseSlashCommand(name: string): Promise<void> {
+		await click(getLocatorByRole("option", { name, exact: false }));
+	}
+
+	/** The composer holds a chip for the chosen `/name`, ready to send. */
+	async verifyComposerCommand(name: string): Promise<void> {
+		await expectElementToContainText(this.directiveChip(), name, {
+			message: `The composer should show a "/${name}" chip`,
+		});
 	}
 
 	/**
@@ -117,10 +219,6 @@ export class ChatComposerPage {
 	/** Requires exactly one composer attachment. */
 	async removeAttachment(): Promise<void> {
 		await click(this.attachmentRemoveButton());
-	}
-
-	async hoverAttachment(): Promise<void> {
-		await this.attachmentTile().hover();
 	}
 
 	async verifySendDisabled(): Promise<void> {
@@ -165,27 +263,6 @@ export class ChatComposerPage {
 		await expectElementToBeVisible(
 			this.attachmentTile(),
 			"Composer should show an attachment tile",
-		);
-	}
-
-	/** Requires `hoverAttachment` first — the filename only renders inside the hover tooltip (attachment.tsx). */
-	async verifyHoveredAttachmentName(name: string): Promise<void> {
-		await expectElementToContainText(this.attachmentNameTooltip(), name, {
-			message: `Attachment tooltip should show the filename "${name}"`,
-		});
-	}
-
-	async verifyAttachmentErrored(): Promise<void> {
-		await expectElementToBeVisible(
-			this.attachmentErrorIcon(),
-			"Attachment should show its error state",
-		);
-	}
-
-	async verifyNoAttachmentErrored(): Promise<void> {
-		await expectElementToBeHidden(
-			this.attachmentErrorIcon(),
-			"Attachment should not show an error state",
 		);
 	}
 

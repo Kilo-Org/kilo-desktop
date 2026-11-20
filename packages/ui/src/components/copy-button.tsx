@@ -3,7 +3,11 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
-import { useCopyToClipboard, type WriteText } from "@kilo-desktop/ui/hooks/use-copy-to-clipboard";
+import {
+	useCopyToClipboard,
+	type CopyToClipboardState,
+	type WriteText,
+} from "@kilo-desktop/ui/hooks/use-copy-to-clipboard";
 
 interface CopyButtonProps extends Omit<
 	ComponentProps<typeof Button>,
@@ -36,20 +40,22 @@ export function CopyButton({
 	...props
 }: CopyButtonProps) {
 	const [state, copyToClipboard] = useCopyToClipboard(writeText);
-	const [isCopied, setIsCopied] = useState(false);
+	// The copy whose confirmation has timed out. Every copy is a new state, so
+	// a repeat copy shows the confirmation again and restarts its timer;
+	// unmounting (a virtualized row scrolled away) clears the timer.
+	const [expired, setExpired] = useState<CopyToClipboardState | null>(null);
+	const isCopied = state.value !== undefined && !state.error && expired !== state;
 	const reportError = useEffectEvent((error: Error) => onError?.(error));
 	const confirmFor = useEffectEvent(() => copiedDuration);
-	// Every copy is a new state, so a repeat copy restarts the confirmation;
-	// unmounting (a virtualized row scrolled away) clears its timer.
 	useEffect(() => {
 		if (state.value === undefined) return;
 		if (state.error) {
-			setIsCopied(false);
+			// Reports a failure from the clipboard hook's async state; the parent only logs or toasts it.
+			// react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-prop-callback-in-effect
 			reportError(state.error);
 			return;
 		}
-		setIsCopied(true);
-		const timer = setTimeout(() => setIsCopied(false), confirmFor());
+		const timer = setTimeout(() => setExpired(state), confirmFor());
 		return () => clearTimeout(timer);
 	}, [state]);
 	const currentLabel = isCopied ? copiedLabel : label;

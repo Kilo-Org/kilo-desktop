@@ -1,9 +1,10 @@
 import { useAui } from "@assistant-ui/react";
-import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 
 import { KernelCommand } from "@kilo-desktop/kernel";
 import { useExtensions, useKernel } from "@kilo-desktop/kernel/web";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { useStableCallback } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { ClientSlashCommand, type ClientSlashCommandContext } from "../../contracts";
 import { useComposerContext } from "../composer/composer-actions";
@@ -35,27 +36,22 @@ export function useSlashCommands(directory: string | null): SlashCommandsState {
 	const catalog = useKiloCommandCatalog(connection, directory ?? undefined);
 	const placements = useExtensions(ClientSlashCommand);
 	const available = useExtensions(KernelCommand);
-	const client = useMemo(() => {
-		const titles = new Map<string, string>(
-			available.map((command) => [command.key, command.metadata.title]),
-		);
-		return placements.flatMap((placement): ClientSlashEntry[] => {
-			const title = titles.get(placement.metadata.command);
-			if (title === undefined) return [];
-			return [
-				{
-					key: placement.key,
-					name: placement.metadata.name,
-					description: placement.metadata.description ?? title,
-					aliases: placement.metadata.aliases,
-				},
-			];
-		});
-	}, [placements, available]);
-	const commands = useMemo(
-		() => mergeSlashCommands(client, catalog.data ?? []),
-		[client, catalog.data],
+	const titles = new Map<string, string>(
+		available.map((command) => [command.key, command.metadata.title]),
 	);
+	const client = placements.flatMap((placement): ClientSlashEntry[] => {
+		const title = titles.get(placement.metadata.command);
+		if (title === undefined) return [];
+		return [
+			{
+				key: placement.key,
+				name: placement.metadata.name,
+				description: placement.metadata.description ?? title,
+				aliases: placement.metadata.aliases,
+			},
+		];
+	});
+	const commands = mergeSlashCommands(client, catalog.data ?? []);
 	return { commands, isServerPending: catalog.isPending };
 }
 
@@ -102,34 +98,27 @@ export function useRunClientSlashCommand(): (
 	const aui = useAui();
 	const kernel = useKernel();
 	const composer = useComposerContext();
-	const latestComposer = useRef(composer);
-	latestComposer.current = composer;
 	const getSelection = useContext(SelectionContext);
 	const placements = useExtensions(ClientSlashCommand);
-	const latestPlacements = useRef(placements);
-	latestPlacements.current = placements;
 
-	return useCallback(
-		(key, options) => {
-			const placement = latestPlacements.current.find((entry) => entry.key === key);
-			if (!placement) return;
-			const { command, name } = placement.metadata;
-			aui.composer.setText("");
-			if (options?.clearAttachments) void aui.composer.clearAttachments().catch(() => undefined);
-			const context: ClientSlashCommandContext = {
-				...latestComposer.current,
-				selection: toCommandSelection(getSelection?.() ?? {}),
-				running: aui.thread.getState().isRunning,
-			};
-			kernel.commands.execute(command, context).catch((error: unknown) => {
-				console.error(`[kilo.chat] /${name} failed`, error);
-				toast.error(`/${name} failed`, {
-					description: error instanceof Error ? error.message : undefined,
-				});
+	return useStableCallback((key: string, options?: { readonly clearAttachments?: boolean }) => {
+		const placement = placements.find((entry) => entry.key === key);
+		if (!placement) return;
+		const { command, name } = placement.metadata;
+		aui.composer.setText("");
+		if (options?.clearAttachments) void aui.composer.clearAttachments().catch(() => undefined);
+		const context: ClientSlashCommandContext = {
+			...composer,
+			selection: toCommandSelection(getSelection?.() ?? {}),
+			running: aui.thread.getState().isRunning,
+		};
+		kernel.commands.execute(command, context).catch((error: unknown) => {
+			console.error(`[kilo.chat] /${name} failed`, error);
+			toast.error(`/${name} failed`, {
+				description: error instanceof Error ? error.message : undefined,
 			});
-		},
-		[aui, kernel, getSelection],
-	);
+		});
+	});
 }
 
 /**
@@ -143,19 +132,14 @@ export function useRunTypedClientSlashCommand(
 ): (options: { readonly fromEnter: boolean }) => boolean {
 	const aui = useAui();
 	const run = useRunClientSlashCommand();
-	const latestCommands = useRef(commands);
-	latestCommands.current = commands;
-	return useCallback(
-		({ fromEnter }) => {
-			const text = aui.composer.getState().text;
-			if (fromEnter && isLeadingSlashQuery(text)) return false;
-			const draft = parseSlashDraft(text);
-			if (!draft) return false;
-			const target = resolveTypedSlash(draft.command, latestCommands.current);
-			if (target?.kind !== "client") return false;
-			run(target.key, { clearAttachments: true });
-			return true;
-		},
-		[aui, run],
-	);
+	return useStableCallback(({ fromEnter }: { readonly fromEnter: boolean }) => {
+		const text = aui.composer.getState().text;
+		if (fromEnter && isLeadingSlashQuery(text)) return false;
+		const draft = parseSlashDraft(text);
+		if (!draft) return false;
+		const target = resolveTypedSlash(draft.command, commands);
+		if (target?.kind !== "client") return false;
+		run(target.key, { clearAttachments: true });
+		return true;
+	});
 }

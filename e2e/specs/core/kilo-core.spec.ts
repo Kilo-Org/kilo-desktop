@@ -17,7 +17,6 @@ test.describe("kilo.core @smoke @packaged", () => {
 		await onboardingPage.continueToNextStep();
 		await onboardingPage.chooseWorkStyle();
 		await onboardingPage.skipWorkspace();
-		await onboardingPage.finishFeatures();
 		await onboardingPage.verifyClosed();
 
 		await appShellPage.verifyShellIsLoaded();

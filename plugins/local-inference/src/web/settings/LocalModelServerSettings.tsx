@@ -8,7 +8,7 @@ import {
 	RefreshCwIcon,
 	SearchIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { KernelClipboard, KernelOs } from "@kilo-desktop/kernel";
@@ -205,11 +205,12 @@ function LocalModelServerSettingsContent() {
 	) => track(LOCAL_INFERENCE_TELEMETRY_EVENTS[event], data);
 	const catalogEnabled = useFlag(MODEL_CATALOG_FLAG);
 	const modelFileInput = useRef<HTMLInputElement>(null);
-	const modelSaveQueue = useRef(Promise.resolve());
+	const modelSaveQueue = useRef<Promise<void> | null>(null);
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
 	const catalogModelId = useCatalogModelId();
 	const [appliedCatalogModelId, setAppliedCatalogModelId] = useState<string>();
+	const [openedCatalogLink, setOpenedCatalogLink] = useState<string>();
 	const [expandedModelIds, setExpandedModelIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [lastExpandedModelId, setLastExpandedModelId] = useState<string>();
 	const [modelSearch, setModelSearch] = useState("");
@@ -263,10 +264,11 @@ function LocalModelServerSettingsContent() {
 		setCatalogOpen(true);
 	}
 
-	useEffect(() => {
-		if (!catalogEnabled || !catalogModelId) return;
-		setCatalogOpen(true);
-	}, [catalogEnabled, catalogModelId]);
+	const catalogLink = catalogEnabled ? catalogModelId : undefined;
+	if (openedCatalogLink !== catalogLink) {
+		setOpenedCatalogLink(catalogLink);
+		if (catalogLink) setCatalogOpen(true);
+	}
 
 	// Apply a catalogModel deep link during render, in the same pass where
 	// catalog metadata arrives: the details skeleton hands straight over to the
@@ -398,7 +400,7 @@ function LocalModelServerSettingsContent() {
 	};
 	const addModelError = modelFileError ?? addModel.error?.message;
 	const saveModelSettings = (id: string, settings: LocalModelSettings) => {
-		const save = modelSaveQueue.current.then(() =>
+		const save = (modelSaveQueue.current ?? Promise.resolve()).then(() =>
 			updateModel.mutateAsync({ id, settings }).then(() => undefined),
 		);
 		modelSaveQueue.current = save.catch(() => undefined);

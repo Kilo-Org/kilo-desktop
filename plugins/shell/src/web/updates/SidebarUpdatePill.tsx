@@ -1,4 +1,6 @@
 import { useRef, type ReactNode, type RefObject } from "react";
+// The tooltip must close synchronously before the blocking confirm() dialog opens.
+// react-doctor-disable-next-line react-doctor/no-flush-sync
 import { flushSync } from "react-dom";
 import { CircleArrowUpIcon, RotateCwIcon } from "lucide-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";

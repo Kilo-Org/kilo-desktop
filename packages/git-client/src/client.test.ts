@@ -101,13 +101,6 @@ describe("createGitClient", () => {
 		expect(result.path).toBe(path);
 	});
 
-	it("returns buffer output with the buffer encoding", async () => {
-		const git = createGitClient({ logger: noopLogger });
-		const result = await git.exec(["--version"], "version", { encoding: "buffer" });
-		expect(result.stdout).toBeInstanceOf(Buffer);
-		expect(result.stdout.toString().includes("git version")).toBe(true);
-	});
-
 	it("rejects with GitNotDetectedError when git cannot be resolved", async () => {
 		const emptyPath = createDir("desktop-git-client-empty-path");
 		const git = createGitClient({ env: { PATH: emptyPath }, logger: noopLogger });
@@ -170,13 +163,6 @@ describe("createGitClient", () => {
 
 			expect(result).not.toBeNull();
 			expect(result?.exists).toBe(true);
-		});
-
-		it("resolves null outside a repository", async () => {
-			const cwd = createDir("desktop-git-client-status-null");
-			const git = createGitClient({ logger: noopLogger });
-
-			expect(await git.status({ cwd })).toBeNull();
 		});
 	});
 

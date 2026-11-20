@@ -1,6 +1,7 @@
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { Dialog, Navigation } from "@kilo-desktop/plugin-shell/contracts";
 import {
+	WorkSessionGrouping,
 	WorkSessionListAction,
 	WorkSessionMenu,
 	WorkSessionsView,
@@ -15,11 +16,12 @@ import {
 	showBoard,
 	toggleBoard,
 } from "./board-actions";
-import { createBoardStore, setBoardStore } from "./board-store";
+import { boardStore, createBoardStore, setBoardStore } from "./board-store";
 import { BoardHeaderActions } from "./BoardHeaderActions";
 import { BoardToggle } from "./BoardToggle";
 import { BoardView } from "./BoardView";
 import { ClearBoardShellDialog } from "./ClearBoardDialog";
+import { createBoardGrouping } from "./session-grouping";
 import { BOARD_MENU_ITEMS } from "./session-menu";
 import { startTelemetry } from "./telemetry";
 import { clearDialog, resetUiState } from "./ui-state";
@@ -40,7 +42,7 @@ function columnsWidth(): number | undefined {
  * kilo.workspace-board's renderer entry: the board as a work sessions view
  * and its work-session-menu items in every window (kilo.work-sessions shows
  * it in place or in its own window), and in the main window its list toggle,
- * clear confirmation (a `kilo.shell/dialog`) and commands. Every other
+ * its columns as a session list grouping, clear confirmation (a `kilo.shell/dialog`) and commands. Every other
  * plugin's domain object is looked up per call, so the board activates
  * without kilo.work-sessions' objects, kilo.shell or telemetry consent.
  */
@@ -70,6 +72,7 @@ export const boardWebEntry = definePlugin({
 					.catch(() => undefined),
 		);
 		sdk.extensions.implement(WorkSessionListAction, "board", BoardToggle);
+		sdk.extensions.implement(WorkSessionGrouping, "board", createBoardGrouping(boardStore()));
 		sdk.extensions.implement(Dialog, "clear-board", ClearBoardShellDialog);
 		const window = () => sdk.domainObjects.get(WorkSessionsWindow);
 		const command = (id: string, run: () => void) =>

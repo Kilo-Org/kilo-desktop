@@ -15,8 +15,37 @@ export const OPEN_WORK_SESSION_COMMAND = "kilo.work-sessions/open-work-session";
 export const SHOW_WORK_SESSIONS_VIEW_COMMAND = "kilo.work-sessions/show-work-sessions-view";
 /** Opens the "+" picker of the open work session. */
 export const NEW_PANE_COMMAND = "kilo.work-sessions/new-pane";
-/** Closes the open work session's active pane. */
+/** Closes a pane of the open work session. Args `{ paneId }`, else the active pane. */
 export const CLOSE_PANE_COMMAND = "kilo.work-sessions/close-pane";
+
+/*
+ * Tab commands (the tab's right-click menu). Each acts on a pane of the open
+ * work session: args `{ paneId }`, else the active pane. A command with
+ * nothing to do does nothing. The close-in-group commands also take
+ * `groupPaneIds`: the pane's group as it is shown (the tab menu passes it, as
+ * the strip may show a layout not saved yet); else the saved layout's group.
+ */
+
+/** Closes the other tabs of the pane's group. */
+export const CLOSE_OTHER_PANES_COMMAND = "kilo.work-sessions/close-other-panes";
+/** Closes the tabs after the pane in its group. */
+export const CLOSE_PANES_TO_THE_RIGHT_COMMAND = "kilo.work-sessions/close-panes-to-the-right";
+/** Closes every tab of the pane's group. */
+export const CLOSE_ALL_PANES_COMMAND = "kilo.work-sessions/close-all-panes";
+/** Copies the absolute path of the file the pane shows. */
+export const COPY_PANE_PATH_COMMAND = "kilo.work-sessions/copy-pane-path";
+/** Copies the pane's file path relative to the work session folder holding it. */
+export const COPY_PANE_RELATIVE_PATH_COMMAND = "kilo.work-sessions/copy-pane-relative-path";
+/** Moves the pane into the group above, else into a new group above. */
+export const MOVE_PANE_UP_COMMAND = "kilo.work-sessions/move-pane-up";
+/** Moves the pane into the group below, else into a new group below. */
+export const MOVE_PANE_DOWN_COMMAND = "kilo.work-sessions/move-pane-down";
+/** Moves the pane into the column to the left, else into a new column there. */
+export const MOVE_PANE_LEFT_COMMAND = "kilo.work-sessions/move-pane-left";
+/** Moves the pane into the column to the right, else into a new column there. */
+export const MOVE_PANE_RIGHT_COMMAND = "kilo.work-sessions/move-pane-right";
+/** Pops the pane out into its own window, or brings that window forward. */
+export const MOVE_PANE_TO_NEW_WINDOW_COMMAND = "kilo.work-sessions/move-pane-to-new-window";
 
 /** Opens the workspace dialog to add a workspace. */
 export const ADD_WORKSPACE_COMMAND = "kilo.work-sessions/add-workspace";

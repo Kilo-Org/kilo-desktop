@@ -2,7 +2,7 @@ import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { ComposerMention, MarkdownExtension } from "@kilo-desktop/plugin-chat/contracts";
 import { PaneKind, Panes, WorkSessionsWindow } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { Documents, FILES_PANE_KIND } from "../contracts/index.js";
+import { Documents, FILES_PANE_KIND, filePanePath } from "../contracts/index.js";
 import { CloseGuards } from "./close-guards.js";
 import { createFilesQueryClient } from "./documents.js";
 import { FilesTabIcon } from "./file-icons/FilesTabIcon.js";
@@ -28,6 +28,7 @@ export const filesWebEntry = definePlugin({
 			component: withFilesRuntime(runtime, FilesPane),
 			icon: FilesTabIcon,
 			canClose: runtime.guards.canClose,
+			path: filePanePath,
 		});
 		sdk.extensions.implement(KernelCommand, "open", () =>
 			sdk.domainObjects.get(WorkSessionsWindow)?.methods.openPane({ kind: FILES_PANE_KIND }),

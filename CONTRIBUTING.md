@@ -109,12 +109,14 @@ packages.
 | `pnpm dev`                    | Start web + Electron                                                                                                                               |
 | `pnpm dev:web`                | Start the standalone React/Vite app                                                                                                                |
 | `pnpm check`                  | Type-check every workspace package, including e2e                                                                                                  |
-| `pnpm lint`                   | Run oxlint, the plugin boundary check, and the extension-point catalog check                                                                       |
+| `pnpm check:fast`             | Type-check every tsconfig in one process with Oxlint's tsrs backend (what the pre-push hook runs; CI still gates on `pnpm check`)                  |
+| `pnpm lint`                   | Run oxlint, the plugin boundary check, and the check that `docs/plugins/schema.md` is current                                                      |
 | `pnpm check:plugin-isolation` | Check plugin manifests and imports, and build a representative set of plugins outside the monorepo (`--build all` builds every plugin, as CI does) |
-| `pnpm docs:extension-points`  | Regenerate the extension-point catalog after changing a point                                                                                      |
+| `pnpm docs:schema`            | Regenerate `docs/plugins/schema.md` (the extension-point catalog) after changing a manifest                                                        |
 | `pnpm format`                 | Format with oxfmt                                                                                                                                  |
 | `pnpm format:check`           | Verify formatting                                                                                                                                  |
 | `pnpm test`                   | Run package tests (does not include e2e)                                                                                                           |
+| `pnpm test:changed`           | Run only the tests a change since `origin/main` can reach                                                                                          |
 | `pnpm coverage`               | Run tests with the 80% coverage gate                                                                                                               |
 | `pnpm test:e2e`               | Package the app and exercise the hardened executable                                                                                               |
 | `pnpm run package`            | Build web, then package Electron into `apps/desktop/out/`                                                                                          |

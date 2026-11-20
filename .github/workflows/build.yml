@@ -68,7 +68,7 @@ jobs:
         if: startsWith(matrix.target, 'linux')
         run: |
           sudo apt-get update
-          sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
+          sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config rpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -111,5 +111,6 @@ jobs:
             apps/desktop/out/make/**/*.nupkg
             apps/desktop/out/make/**/RELEASES
             apps/desktop/out/make/**/*.deb
+            apps/desktop/out/make/**/*.rpm
           if-no-files-found: error
           retention-days: 7

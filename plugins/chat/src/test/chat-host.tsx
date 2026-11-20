@@ -5,7 +5,7 @@
 // memory, and the window's `window` object), and kilo.chat's panes rendered
 // as kilo.work-sessions' canvas renders them.
 import { render } from "@testing-library/react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { vi } from "vitest";
 
 import { KernelClipboard, type DomainObjectState, type PluginEntry } from "@kilo-desktop/kernel";
@@ -52,6 +52,7 @@ import {
 	workSession,
 } from "./fake-work-sessions";
 import { EMPTY_ENTRY } from "./kernel-harness";
+import { grantDataCollection, telemetrySink } from "./telemetry";
 
 export { chatSummary, SIGNED_IN, SIGNED_OUT, TEST_MODELS } from "./fake-core";
 export { WORKSPACE, agentPane, workSession } from "./fake-work-sessions";
@@ -115,7 +116,11 @@ export interface ChatHostOptions {
 	 * composer) instead of the work session's panes, starting work sessions
 	 * as kilo.work-sessions does.
 	 */
-	readonly starter?: { readonly isolation?: WorkSessionIsolation };
+	readonly starter?: {
+		readonly isolation?: WorkSessionIsolation;
+		/** Holds each start until it settles, as a worktree still being made does. */
+		readonly holdStart?: Promise<unknown>;
+	};
 }
 
 const CHAT_PANE_KINDS: readonly string[] = [
@@ -184,6 +189,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	});
 	const window = fakeWorkSessionsWindow(options.starter ? null : initialWorkSession.id);
 	const copied: string[] = [];
+	const telemetry = telemetrySink();
 	const host = await renderShell(
 		[
 			{
@@ -199,6 +205,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 				web: options.chatWeb ?? EMPTY_ENTRY,
 			},
 			...(options.plugins ?? []),
+			telemetry.plugin,
 		],
 		{
 			core: core.activate,
@@ -206,6 +213,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 			...(options.desktop ? { desktop: true } : {}),
 			...(options.windows ? { windows: options.windows } : {}),
 			beforeRender: (main) => {
+				grantDataCollection(main);
 				main.kernelSdk.domainObjects.provide(KernelClipboard, {
 					initialState: {},
 					methods: {
@@ -231,10 +239,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	function Canvas({ kernel }: { kernel: typeof renderer }) {
 		const state = useDomainObjectState(
 			Panes,
-			useCallback(
-				(value: DomainObjectState<typeof Panes>) => value.byWorkSession[initialWorkSession.id],
-				[],
-			),
+			(value: DomainObjectState<typeof Panes>) => value.byWorkSession[initialWorkSession.id],
 		);
 		const kinds = kernel.extensions.list(PaneKind);
 		return (
@@ -268,13 +273,18 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const starterCalls = { open: vi.fn<(workSessionId: string) => void>(), start: vi.fn() };
 	let starterFocusRequest = 0;
 	/** The New Session page around kilo.chat's starter, starting work sessions as kilo.work-sessions does. */
-	function Starter({ isolation }: NonNullable<ChatHostOptions["starter"]>) {
+	function Starter({
+		isolation,
+		holdStart,
+		focusRequest,
+	}: NonNullable<ChatHostOptions["starter"]> & { focusRequest: number }) {
 		const [starting, setStarting] = useState(false);
 		const contribution = renderer.extensions.list(WorkSessionStarter)[0];
 		if (!contribution?.implementation) return null;
 		const start = async (): Promise<StartedWorkSession> => {
 			starterCalls.start();
 			setStarting(true);
+			await holdStart;
 			const domain = renderer.kernelSdk.domainObjects.get(WorkSessions)!;
 			const created = await domain.methods
 				.create({ workspaceId, ...(isolation ? { isolation } : {}) })
@@ -293,7 +303,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		return (
 			<RenderContribution<WorkSessionStarterProps>
 				contribution={contribution}
-				props={{ workspaceId, directory, starting, start, focusRequest: starterFocusRequest }}
+				props={{ workspaceId, directory, starting, start, focusRequest }}
 			/>
 		);
 	}
@@ -302,7 +312,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const tree = () => (
 		<KernelProvider kernel={renderer}>
 			{options.starter ? (
-				<Starter {...options.starter} />
+				<Starter {...options.starter} focusRequest={starterFocusRequest} />
 			) : ownsCanvas ? (
 				<Canvas kernel={renderer} />
 			) : null}
@@ -334,6 +344,8 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		window: window.calls,
 		view,
 		copied,
+		/** kilo.chat's telemetry events as delivered. */
+		telemetry,
 		/** Work sessions the window was asked to open. */
 		navigatorOpened: window.calls.openWorkSession,
 		/** `kilo.work-sessions/edit-workspace` runs, with their input. */

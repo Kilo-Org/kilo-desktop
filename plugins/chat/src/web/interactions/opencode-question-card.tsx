@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useState } from "react";
 import type { OpenCodeQuestionRequest, QuestionAnswer } from "@assistant-ui/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
@@ -65,8 +65,8 @@ export const OpenCodeQuestionQuestionnaire = ({
 	const [submissionState, setSubmissionState] = useState<"reply" | "reject" | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
-	const items = useMemo(() => buildQuestionnaireItems(request), [request]);
 	const renderers = usePermissionRenderers();
+	const items = buildQuestionnaireItems(request);
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -75,12 +75,15 @@ export const OpenCodeQuestionQuestionnaire = ({
 		const answers = encodeAnswersFromFormData(request, new FormData(event.currentTarget));
 		if (answers.some((answer) => answer.length === 0)) return;
 
+		if (!chats) {
+			setError(NO_CHATS);
+			return;
+		}
 		setSubmissionState("reply");
 		setError(null);
 
 		void (async () => {
 			try {
-				if (!chats) throw new Error(NO_CHATS);
 				await chats.methods.replyQuestion({
 					chatId: request.sessionID,
 					questionId: request.id,
@@ -94,11 +97,14 @@ export const OpenCodeQuestionQuestionnaire = ({
 	};
 
 	const rejectRequest = async () => {
+		if (!chats) {
+			setError(NO_CHATS);
+			return;
+		}
 		setSubmissionState("reject");
 		setError(null);
 
 		try {
-			if (!chats) throw new Error(NO_CHATS);
 			await chats.methods.rejectQuestion({ chatId: request.sessionID, questionId: request.id });
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Could not reject the request.");

@@ -35,16 +35,21 @@ export function KiloSessionSelectionSync({
 	const modelID = session?.model?.id;
 	const effort = normalizeVariant(session?.model?.variant);
 
+	// Syncs the parent's selection with Kilo's session, an external store the runtime owns that
+	// only resolves below the runtime provider; the parent keeps local overrides authoritative.
 	useEffect(() => {
 		if (!remoteId || remoteId !== sessionId) return;
+		// react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
 		if (agent) hydrateAgent(remoteId, agent);
 		if (agent && providerID && modelID) {
+			// react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
 			hydrateModel(remoteId, {
 				agent,
 				model: { providerID, modelID },
 				...(effort ? { effort } : {}),
 			});
 		} else {
+			// react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
 			markLoaded(remoteId);
 		}
 	}, [

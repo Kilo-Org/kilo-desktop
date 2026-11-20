@@ -1,18 +1,14 @@
 import { cleanup, render } from "@testing-library/react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useBottomPin } from "./use-bottom-pin";
 
 afterEach(cleanup);
 
-let addLines: (count: number) => void = () => {};
-
-function Box({ active }: { active: boolean }) {
+function Box({ active, lines }: { active: boolean; lines: number }) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const contentRef = useRef<HTMLDivElement>(null);
-	const [lines, setLines] = useState(5);
-	addLines = (count) => setLines((current) => current + count);
 	useBottomPin(scrollRef, contentRef, active);
 	return (
 		<div ref={scrollRef} data-testid="box" style={{ height: 100, overflowY: "auto" }}>
@@ -30,10 +26,23 @@ function Box({ active }: { active: boolean }) {
 const atBottom = (box: HTMLElement) =>
 	Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) <= 1;
 
+/** Renders a box of five lines; the returned function adds lines to it. */
+function renderBox(active: boolean) {
+	let lines = 5;
+	const view = render(<Box active={active} lines={lines} />);
+	const addLines = (count: number) => {
+		lines += count;
+		view.rerender(<Box active={active} lines={lines} />);
+	};
+	return { box: view.getByTestId("box"), addLines };
+}
+
+/** Lets layout and its ResizeObserver callbacks run. */
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
 describe("useBottomPin", () => {
 	it("follows new content, and keeps following once the reader scrolls back down", async () => {
-		const { getByTestId } = render(<Box active />);
-		const box = getByTestId("box");
+		const { box, addLines } = renderBox(true);
 		await vi.waitFor(() => expect(atBottom(box)).toBe(true));
 
 		addLines(5);
@@ -48,9 +57,10 @@ describe("useBottomPin", () => {
 	});
 
 	it("leaves the box alone while inactive", async () => {
-		const { getByTestId } = render(<Box active={false} />);
+		const { box, addLines } = renderBox(false);
 		addLines(5);
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(getByTestId("box").scrollTop).toBe(0);
+		await vi.waitFor(() => expect(box.querySelectorAll("p")).toHaveLength(10));
+		await nextFrame();
+		expect(box.scrollTop).toBe(0);
 	});
 });

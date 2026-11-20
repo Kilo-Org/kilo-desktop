@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import {
@@ -26,26 +26,23 @@ export function useWorkspaceSource(): WorkspacePickerSource {
 	const workspaces = useDomainObject(Workspaces);
 	const state = useDomainObjectState(Workspaces, selectState);
 
-	return useMemo(() => {
-		const run = (command: string, args?: unknown) =>
-			void kernel.commands.execute(command, args).catch(() => undefined);
-		const unavailable = new Set(state?.unavailableFolderIds ?? []);
-		const list = state?.workspaces ?? [];
-		return {
-			workspaces: list,
-			activeWorkspaceId: state?.activeId ?? null,
-			setActiveWorkspaceId: (id) =>
-				void workspaces?.methods.setActive({ id }).catch(() => undefined),
-			isLoading: false,
-			isUnavailable: workspaces === null,
-			hasUnavailableFolders: (id) =>
-				list.find((workspace) => workspace.id === id)?.folders.some((f) => unavailable.has(f.id)) ??
-				false,
-			openCreate: () => run(ADD_WORKSPACE_COMMAND),
-			openEdit: (workspace) => run(EDIT_WORKSPACE_COMMAND, { workspaceId: workspace.id }),
-			openDelete: (workspace) => run(DELETE_WORKSPACE_COMMAND, { workspaceId: workspace.id }),
-		} satisfies WorkspacePickerSource;
-	}, [kernel, state, workspaces]);
+	const run = (command: string, args?: unknown) =>
+		void kernel.commands.execute(command, args).catch(() => undefined);
+	const unavailable = new Set(state?.unavailableFolderIds ?? []);
+	const list = state?.workspaces ?? [];
+	return {
+		workspaces: list,
+		activeWorkspaceId: state?.activeId ?? null,
+		setActiveWorkspaceId: (id) => void workspaces?.methods.setActive({ id }).catch(() => undefined),
+		isLoading: false,
+		isUnavailable: workspaces === null,
+		hasUnavailableFolders: (id) =>
+			list.find((workspace) => workspace.id === id)?.folders.some((f) => unavailable.has(f.id)) ??
+			false,
+		openCreate: () => run(ADD_WORKSPACE_COMMAND),
+		openEdit: (workspace) => run(EDIT_WORKSPACE_COMMAND, { workspaceId: workspace.id }),
+		openDelete: (workspace) => run(DELETE_WORKSPACE_COMMAND, { workspaceId: workspace.id }),
+	} satisfies WorkspacePickerSource;
 }
 
 export function WorkspaceSourceProvider({ children }: { readonly children: ReactNode }) {

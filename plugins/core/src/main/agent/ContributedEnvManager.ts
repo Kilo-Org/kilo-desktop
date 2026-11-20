@@ -86,9 +86,4 @@ export class ContributedEnvManager {
 		}
 		return merged;
 	}
-
-	/** Returns the number of active environment contributions. */
-	get size(): number {
-		return this.#contributions.size;
-	}
 }

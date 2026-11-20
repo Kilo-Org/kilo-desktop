@@ -81,7 +81,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const sleep = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Kilo Preview"],
+			volumeTitles: ["Kilo Preview", "Kilo"],
 			runForge,
 			forceDetach,
 			sleep,
@@ -90,7 +90,10 @@ describe("runForgeMakeWithDetachRetry", () => {
 
 		expect(outcome.failed).toBe(false);
 		expect(runForge).toHaveBeenCalledTimes(2);
-		expect(forceDetach.mock.calls.map((call) => call[0])).toEqual(["/Volumes/Kilo Preview"]);
+		expect(forceDetach.mock.calls.map((call) => call[0])).toEqual([
+			"/Volumes/Kilo Preview",
+			"/Volumes/Kilo",
+		]);
 		expect(sleep).toHaveBeenCalledWith(42);
 	});
 
@@ -135,7 +138,7 @@ describe("runForgeMakeWithDetachRetry", () => {
 		const sleep = vi.fn().mockResolvedValue(undefined);
 
 		const outcome = await runForgeMakeWithDetachRetry(invocation, {
-			volumeTitles: ["Kilo Preview"],
+			volumeTitles: ["Kilo Preview", "Kilo"],
 			runForge,
 			forceDetach,
 			sleep,
@@ -143,7 +146,10 @@ describe("runForgeMakeWithDetachRetry", () => {
 
 		expect(outcome.failed).toBe(false);
 		// Both titles must still be attempted even though the first throws.
-		expect(forceDetach.mock.calls.map((call) => call[0])).toEqual(["/Volumes/Kilo Preview"]);
+		expect(forceDetach.mock.calls.map((call) => call[0])).toEqual([
+			"/Volumes/Kilo Preview",
+			"/Volumes/Kilo",
+		]);
 		expect(runForge).toHaveBeenCalledTimes(2);
 	});
 });

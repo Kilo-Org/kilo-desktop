@@ -7,7 +7,7 @@ const SESSION = "New session";
  * The side menu's per-row surfaces once it holds a session: the row menu, the
  * Pinned shelf and the Archived shelf.
  *
- * session-list.spec.ts covers the lifecycle end to end (start, rename, pin,
+ * work-sessions.spec.ts covers the lifecycle end to end (start, rename,
  * archive, delete) in one pass; these assert the shelves and the row menu the
  * side menu grows around it, plus the Shift+Click pin shortcut that has no
  * other coverage.
@@ -77,6 +77,17 @@ test.describe("Side menu with sessions @packaged", () => {
 		await sessionListPage.verifyRenameClosed();
 		await sessionListPage.verifyListed(SESSION);
 		await sessionListPage.verifyNotListed("Discarded name");
+	});
+
+	// Committing the title it already had is a rename the list declines to
+	// make: the field closes and the row is left alone.
+	test("keeps the title when the new one repeats it", async ({ sessionListPage }) => {
+		await sessionListPage.startRename(SESSION);
+		await sessionListPage.typeRenameTitle(SESSION);
+		await sessionListPage.commitRename();
+
+		await sessionListPage.verifyRenameClosed();
+		await sessionListPage.verifyListed(SESSION);
 	});
 
 	test("keeps the old title when the new one is blank", async ({ sessionListPage }) => {

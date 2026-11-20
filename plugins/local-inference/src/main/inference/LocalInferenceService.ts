@@ -386,6 +386,9 @@ export class LocalInferenceService {
 		}
 		if (this.#stopped) return;
 		const settings = this.serverSettings();
+		// The proxy must listen even without a kilo session (direct and LAN
+		// clients use it), so this await cannot move below the `!kilo` guard.
+		// react-doctor-disable-next-line react-doctor/async-defer-await
 		const proxy = await this.#options.proxy.ensureListening(
 			settings.port,
 			proxyBindHost(settings.serveOnLocalNetwork),

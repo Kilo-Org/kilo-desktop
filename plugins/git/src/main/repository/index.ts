@@ -15,12 +15,11 @@ import {
 import { GIT_PROTOCOL_SCHEME, Repository } from "../../contracts";
 import type { PullRequestSource } from "../shared/pull-request-source";
 import { createGitProtocolHandler } from "./git-protocol";
-import { GitService, type GitClientSlice, type WorkspaceAccess } from "./git-service";
+import type { GitClientSlice } from "../shared/git-client";
+import { GitService, type WorkspaceAccess } from "./git-service";
 import { isManagedBranch } from "./worktree-manager";
 
 export interface RepositoryOptions {
-	/** Where patch files are written; git-client defaults to the OS temp folder. */
-	readonly tempDir?: string;
 	/** Replaces the git client (tests). */
 	readonly createClient?: () => GitClientSlice;
 }
@@ -174,7 +173,6 @@ export function activateRepository(sdk: PluginSdk, options: RepositoryOptions): 
 		logger: sdk.logger,
 		environmentReady: () => environmentReady(sdk),
 		workspaces: workspaceAccess(sdk),
-		...(options.tempDir === undefined ? {} : { tempDir: options.tempDir }),
 		...(options.createClient === undefined ? {} : { createClient: options.createClient }),
 	});
 	const repository = provideRepository(sdk, service);

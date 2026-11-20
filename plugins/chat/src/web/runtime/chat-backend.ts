@@ -5,6 +5,7 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 import type { ChatServices } from "./chat-services";
 import { createDeferredKiloClient } from "./deferred-client";
 import { withPrefetchedHistory } from "./history-prefetch";
+import { withLiveParts } from "./live-parts";
 import { withPendingPrompts } from "./pending-prompts";
 import { withPromptOptions, type PromptOptions } from "./prompt-options";
 import { withMcpWarmup } from "./with-mcp-warmup";
@@ -12,6 +13,8 @@ import { withMcpWarmup } from "./with-mcp-warmup";
 export interface CreatedChat {
 	readonly id: string;
 	readonly directory: string | null;
+	/** The work session the chat was created in, when the creator knows it. */
+	readonly workSessionId?: string;
 }
 
 export interface ChatBackendOptions extends PromptOptions {
@@ -64,13 +67,17 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 					services.connection(),
 					directoryOf(ref.id),
 				]);
-				return withPrefetchedHistory(
-					withPromptOptions(
-						withMcpWarmup(services.clients.directory(connection, directory)),
-						options,
+				return withLiveParts(
+					withPrefetchedHistory(
+						withPromptOptions(
+							withMcpWarmup(services.clients.directory(connection, directory)),
+							options,
+						),
+						ref.id,
+						services.history,
 					),
 					ref.id,
-					services.history,
+					services.liveParts,
 				);
 			});
 			sessionClients.set(ref.id, client);

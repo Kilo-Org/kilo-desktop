@@ -6,9 +6,11 @@ import type { GitWindow } from "../shared/git-window";
 import { withRepositoryQueries } from "../shared/repository-queries";
 import { ChangesIcon, ChangesPane } from "./ChangesPane";
 
-/** Shows the Changes pane of the work session this window has open. */
+/** Shows the Changes pane of the work session this window has open, opening it in its own tab group. */
 async function openChanges(sdk: PluginSdk): Promise<void> {
-	await sdk.domainObjects.get(WorkSessionsWindow)?.methods.openPane({ kind: CHANGES_PANE_KIND });
+	await sdk.domainObjects
+		.get(WorkSessionsWindow)
+		?.methods.openPane({ kind: CHANGES_PANE_KIND, placement: "group" });
 }
 
 /** The Changes pane kind and Open Changes. */

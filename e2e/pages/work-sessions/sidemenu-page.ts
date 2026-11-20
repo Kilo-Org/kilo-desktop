@@ -6,14 +6,17 @@ import {
 	expectElementToBeVisible,
 	expectElementToHaveAttribute,
 	expectElementToHaveCount,
+	expectElementToHaveValue,
 	fill,
 	getAttribute,
 	getLocatorByRole,
 	getLocatorByText,
 	getLocatorByTestId,
+	pressLocatorKeyboard,
 	pressPageKeyboard,
 } from "@anaconda/playwright-utils";
 
+import type { KeyboardShortcutsPage } from "../shell/keyboard-shortcuts-page.js";
 import { shellSidebarData } from "../../testdata/shell/sidebar.js";
 import { sessionListData } from "../../testdata/work-sessions/session-list.js";
 
@@ -38,9 +41,12 @@ export class SidemenuPage {
 	private readonly chatActions = () => getLocatorByTestId(SESSION_LIST.navigationTestId);
 	private readonly newSession = () => getLocatorByTestId(SESSION_LIST.newSessionTestId);
 	private readonly search = () => getLocatorByTestId(SESSION_LIST.searchTestId);
-	private readonly searchInput = () =>
-		getLocatorByRole("combobox", { name: "Search sessions and workspaces" });
+	private readonly searchInput = () => getLocatorByTestId(SESSION_LIST.searchInputTestId);
 	private readonly searchScopeAll = () => getLocatorByTestId(SESSION_LIST.searchScopeAllTestId);
+	private readonly searchSessionResult = (title: string) =>
+		getLocatorByTestId(SESSION_LIST.searchSessionTestIdPattern).filter({ hasText: title });
+	private readonly searchWorkspaceResult = (name: string) =>
+		getLocatorByTestId(SESSION_LIST.searchWorkspaceTestIdPattern).filter({ hasText: name });
 	private readonly groupingHeader = () => getLocatorByTestId(SESSION_LIST.groupingHeaderTestId);
 	private readonly viewMenu = () => getLocatorByTestId(SESSION_LIST.viewMenuTestId);
 	private readonly viewMenuGrouping = () => getLocatorByRole("menuitem", { name: /^Grouping/ });
@@ -53,6 +59,8 @@ export class SidemenuPage {
 	private readonly activeRows = () => this.sessionList().getByTestId(SESSION_LIST.itemTestId);
 	private readonly searchScopeWorkspaces = () =>
 		getLocatorByTestId(SESSION_LIST.searchScopeWorkspacesTestId);
+	private readonly searchScopeSessions = () =>
+		getLocatorByTestId(SESSION_LIST.searchScopeSessionsTestId);
 	private readonly workspaceAllCommand = () =>
 		getLocatorByTestId(SESSION_LIST.workspaceAllCommandTestId);
 	private readonly workspaceUnscopedCommand = () =>
@@ -151,6 +159,73 @@ export class SidemenuPage {
 
 	async openViewMenu(): Promise<void> {
 		await click(this.viewMenu());
+	}
+
+	/**
+	 * Picks an option from one of the view menu's radio submenus (Ordering,
+	 * Status, Grouping). The submenu is opened from the keyboard, as the
+	 * workspace board's row menu is: clicking its parent can land while the
+	 * menu is still animating, which leaves the submenu's items detaching
+	 * under the click. Two Escapes close the submenu and then the menu.
+	 */
+	async chooseFromViewMenu(menu: string, option: string): Promise<void> {
+		await this.openViewMenu();
+		await pressLocatorKeyboard(
+			getLocatorByRole("menuitem", { name: new RegExp(`^${menu}`) }),
+			"ArrowRight",
+		);
+		await click(getLocatorByRole("menuitemradio", { name: option }));
+		await pressPageKeyboard("Escape");
+		await pressPageKeyboard("Escape");
+	}
+
+	/**
+	 * Opens the session search with its own shortcut, delivered as the OS
+	 * delivers it: Mod+K on macOS, Ctrl+Shift+K elsewhere (its manifest
+	 * keybinding). Only the main process sees this chord, so the page object
+	 * that can reach main sends it.
+	 */
+	async openSearchWithShortcut(shortcuts: KeyboardShortcutsPage): Promise<void> {
+		await shortcuts.pressAppShortcut("K", { shift: process.platform !== "darwin" });
+		await this.verifySearchDialogOpen();
+	}
+
+	/** Narrows the search to sessions, leaving the workspaces out of the results. */
+	async selectSearchScopeSessions(): Promise<void> {
+		await click(this.searchScopeSessions());
+	}
+
+	async verifySearchListsSession(title: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.searchSessionResult(title),
+			`The search should list the session ${title}`,
+		);
+	}
+
+	async verifySearchDoesNotListSession(title: string): Promise<void> {
+		await expectElementToBeHidden(this.searchSessionResult(title), {
+			message: `The search should not list the session ${title}`,
+		});
+	}
+
+	async verifySearchListsWorkspace(name: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.searchWorkspaceResult(name),
+			`The search should list the workspace ${name}`,
+		);
+	}
+
+	async verifySearchDoesNotListWorkspace(name: string): Promise<void> {
+		await expectElementToBeHidden(this.searchWorkspaceResult(name), {
+			message: `The search should not list the workspace ${name}`,
+		});
+	}
+
+	/** Reopening the dialog starts from an empty query. */
+	async verifySearchQueryEmpty(): Promise<void> {
+		await expectElementToHaveValue(this.searchInput(), "", {
+			message: "The search should reopen with no query",
+		});
 	}
 
 	async closeWithEscape(): Promise<void> {

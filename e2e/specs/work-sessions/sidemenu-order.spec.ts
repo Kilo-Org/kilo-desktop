@@ -77,15 +77,16 @@ test.describe("Side menu session order @packaged", () => {
 	test("counts a pinned session first, as the Pinned shelf shows it", async ({
 		sessionListPage,
 	}) => {
-		const pinned = "Golf pinned";
-		const plain = "Hotel plain";
-		await seed(sessionListPage, [pinned, plain]);
+		const [older, pinned, newer] = ["Golf older", "Hotel pinned", "India newer"];
+		await seed(sessionListPage, [older, pinned, newer]);
+		await sessionListPage.verifyRowOrder([newer, pinned, older]);
 		await sessionListPage.pin(pinned);
+		await sessionListPage.verifyRowOrder([pinned, newer, older]);
 
-		// Pinned sits above the rest, so from the last row Next wraps to it.
-		await sessionListPage.switchTo(plain);
+		// From the newer row, Next follows the pin-first order to the older row.
+		await sessionListPage.switchTo(newer);
 		await runFromCommandPalette(NEXT_SESSION);
-		await sessionListPage.verifyOpen(pinned);
+		await sessionListPage.verifyOpen(older);
 
 		await sessionListPage.unpin(pinned);
 	});

@@ -86,8 +86,9 @@ test.describe("Side menu session search @packaged", () => {
 		await sidemenuPage.openSearch();
 
 		await sidemenuPage.verifySearchQueryEmpty();
-		// Back in the All scope with no query, so the sessions are listed again.
+		// Back in the All scope with no query, so both sessions and workspaces are listed.
 		await sidemenuPage.verifySearchListsSession(inside);
+		await sidemenuPage.verifySearchListsWorkspace(workspace);
 		await sidemenuPage.closeWithEscape();
 	});
 });

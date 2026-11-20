@@ -36,13 +36,17 @@ test.describe("Chat welcome send keys", () => {
 	}) => {
 		await chatComposerPage.typeMessage(chatSendKeysData.newlineFirstLine);
 		await chatComposerPage.pressKey("Shift+Enter");
-		await chatComposerPage.appendMessageSequentially(chatSendKeysData.newlineSecondLine);
+		await chatComposerPage.typeMessageSequentially(chatSendKeysData.newlineSecondLine);
 
 		await chatComposerPage.verifyComposerHoldsText(chatSendKeysData.newlineFirstLine);
 		await chatComposerPage.verifyComposerHoldsText(chatSendKeysData.newlineSecondLine);
 		await chatComposerPage.verifyStillOnDraft();
 
 		await chatComposerPage.pressKey("Enter");
+		await chatComposerPage.verifySessionStartedWithLines([
+			chatSendKeysData.newlineFirstLine,
+			chatSendKeysData.newlineSecondLine,
+		]);
 		await chatComposerPage.verifyAssistantReplyVisible(chatSendKeysData.newlineReply);
 		await chatStubProviderPage.verifyCapturedPromptContains(
 			chatSendKeysData.newlineMarker,
@@ -56,7 +60,7 @@ test.describe("Chat welcome send keys", () => {
 		await chatComposerPage.typeMessage(chatSendKeysData.blankDraft);
 		await chatComposerPage.verifySendDisabled();
 		await chatComposerPage.pressKey("Enter");
-		await chatComposerPage.appendMessageSequentially(chatSendKeysData.blankDraftFollowUp);
+		await chatComposerPage.typeMessageSequentially(chatSendKeysData.blankDraftFollowUp);
 
 		await chatComposerPage.verifyComposerHoldsText(chatSendKeysData.blankDraftFollowUp);
 		await chatComposerPage.verifyStillOnDraft();

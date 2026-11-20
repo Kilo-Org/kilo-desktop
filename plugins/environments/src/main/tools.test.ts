@@ -212,14 +212,19 @@ describe("package policy and Anaconda sign-in guidance", () => {
 		},
 	);
 
-	// A clone's failure never carries a policy reason (the backend reports it as
-	// SOLVE_FAILED without a `[policy]` line), so it must not promise either.
-	it("conda.envs.clone promises no POLICY_BLOCKED or [policy] line, and still forbids routing around", () => {
+	// A clone's `success: false` never carries a policy reason (the backend reports
+	// it as SOLVE_FAILED without a `[policy]` line), so it must not promise either.
+	// A raised `auth:*` bridge error is classified for every call, clone included,
+	// so the Anaconda sign-in remedy stays.
+	it("conda.envs.clone promises no POLICY_BLOCKED or [policy] line, keeps the sign-in remedy and forbids routing around", () => {
 		const description = descriptionOf("conda.envs.clone");
 		expect(description).not.toMatch(/POLICY_BLOCKED/);
 		expect(description).not.toMatch(/\[policy\]/);
-		expect(description).not.toMatch(/NOT_SIGNED_IN|CHANNEL_ACCESS_DENIED/);
 		expect(description).toMatch(/generic SOLVE_FAILED/);
+		expect(description).toMatch(/NOT_SIGNED_IN/);
+		expect(description).toMatch(/CHANNEL_ACCESS_DENIED/);
+		expect(description).toMatch(/sign in to Anaconda \(not Kilo\)/i);
+		expect(description).toMatch(/never ask .* for a token/i);
 		expect(description).toMatch(/do not .*another channel, pip or a URL/i);
 	});
 });

@@ -25,6 +25,9 @@
  * - Every chat is created with origin's ask rules for mutating conda-family
  *   commands run through `bash` (`chat-config` permissions); the mutating
  *   conda tools ask through their own `approval`.
+ * - A conda tool failure that is a package-policy block or an Anaconda
+ *   sign-in refusal is reported as `environment-policy-blocked` through
+ *   `kernel/telemetry` (counts and policy ids only) and rethrown unchanged.
  * - `conda.setup.open` asks kilo.shell's `navigation` to open the settings
  *   section; without kilo.shell it opens nothing.
  * - The `kilo.local-inference/llama-runtime` contribution `conda` installs
@@ -41,6 +44,7 @@ import {
 	KernelFlags,
 	KernelService,
 	KernelServices,
+	KernelTelemetry,
 	mainHost,
 	type PluginEntry,
 	type PluginSdk,
@@ -253,6 +257,16 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 
 			const tools = condaTools({
 				conda: () => methods,
+				track: (event, data) => {
+					try {
+						void sdk.domainObjects
+							.get(KernelTelemetry)
+							?.methods.track({ event, data })
+							.catch(() => undefined);
+					} catch {
+						// Tracking is best effort, including while the plugin deactivates.
+					}
+				},
 				openSettings: async () => {
 					await sdk.domainObjects
 						.get(Navigation)

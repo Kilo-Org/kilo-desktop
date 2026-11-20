@@ -29,7 +29,9 @@ import type {
 	CondaPackageChange,
 	CondaPackagesPreviewResult,
 } from "../../../contracts/providers/conda";
+import { errorCardTitle, type FriendlyEnvironmentsError } from "./environments-error-message";
 import { PanelList, PanelListRow } from "./PackageSearch";
+import { PolicyErrorDetails } from "./PolicyErrorDetails";
 import {
 	PACKAGE_CHANGE_COLORS,
 	PACKAGE_CHANGE_ICONS,
@@ -232,19 +234,23 @@ function ChangeVersions({
 	);
 }
 
-/** Solver failure with the raw conda output one click away. */
+/**
+ * A failed preview with the raw conda output one click away. The title names
+ * the failure ({@link errorCardTitle}); a policy block, a policy note or an
+ * Anaconda sign-in refusal adds {@link PolicyErrorDetails}, whose sign-in
+ * re-runs the preview.
+ */
 export function SolverErrorCard({
-	message,
-	detail,
+	error,
 	qaId,
 	onRetry,
 }: {
-	message: string;
-	detail?: string;
+	error: FriendlyEnvironmentsError;
 	qaId?: string;
 	/** Re-runs the solve; the preview has no other retry control. */
 	onRetry?: () => void;
 }) {
+	const { message, detail } = error;
 	const [expanded, setExpanded] = useState(false);
 
 	function handleCopy() {
@@ -258,9 +264,14 @@ export function SolverErrorCard({
 	return (
 		<Alert variant="destructive" className={cn("min-h-0", expanded && "flex-1")} data-qa-id={qaId}>
 			<CircleAlertIcon aria-hidden="true" />
-			<AlertTitle>Dependency conflict</AlertTitle>
+			<AlertTitle>{errorCardTitle(error)}</AlertTitle>
 			<AlertDescription className="flex min-h-0 flex-col gap-2">
-				<span>{message}</span>
+				<span className="whitespace-pre-line">{message}</span>
+				<PolicyErrorDetails
+					code={error.code}
+					policy={error.policy}
+					{...(onRetry ? { onSignedIn: onRetry } : {})}
+				/>
 				{detail ? (
 					<pre
 						className={cn(

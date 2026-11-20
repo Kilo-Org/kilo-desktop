@@ -48,6 +48,19 @@
  *                         name match against conda_tools.list_channels)
  * - findRepodata()      → repodata.find
  *
+ * Failed transactions (`success: false`) are classified by the bridge's
+ * `reason`: `blocked_by_policy` → POLICY_BLOCKED, `not_signed_in` →
+ * NOT_SIGNED_IN, `access_denied` → CHANNEL_ACCESS_DENIED,
+ * `no_channels_configured`, `package_not_found` and `channel_not_found` →
+ * their codes, and anything else — `solve_failed`, `execution_failed`,
+ * `internal_error`, or no reason from an older bridge — SOLVE_FAILED. The
+ * bridge's `details.blocked`, `details.policy_note` and the refused
+ * `details.org`/`details.channel` ride along as a {@link PolicyNotice} line on
+ * the error message (never parse the bridge's message text for them). Calls
+ * that raise instead (in practice only `repodata.find`) use the domain codes
+ * `auth:not-signed-in` / `auth:access-denied`, mapped the same way. Clones
+ * never carry a reason; their failures stay SOLVE_FAILED.
+ *
  * Bridge method names are NOT derivable from the conda CLI verb or from a
  * single namespace: they span `conda.*`, `conda_tools.*`, and bare
  * feature namespaces like `repodata.*`. Verify any new method against the
@@ -74,6 +87,8 @@ import {
 	environmentsErrorCodeToKernelErrorCode,
 	formatEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
+	type PolicyBlockedPackage,
+	type PolicyNotice,
 } from "../../../contracts/common";
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda";
 import type {
@@ -154,7 +169,29 @@ const DOMAIN_CODE_MAP: Record<string, EnvironmentsErrorCode> = {
 	"conda:validation": "INVALID_MATCHSPEC",
 	"conda:environment:failed-to-clone": "SOLVE_FAILED",
 	"conda:environment-file:invalid": "INVALID_MATCHSPEC",
+	"auth:not-signed-in": "NOT_SIGNED_IN",
+	"auth:access-denied": "CHANNEL_ACCESS_DENIED",
 };
+
+/**
+ * Failed-transaction `reason`s with a code of their own. Every other reason
+ * (`solve_failed`, `execution_failed`, `internal_error`, a newer bridge's) and
+ * a missing one (older bridges) stay SOLVE_FAILED.
+ */
+const TRANSACTION_REASON_CODES: ReadonlyMap<string, EnvironmentsErrorCode> = new Map([
+	["blocked_by_policy", "POLICY_BLOCKED"],
+	["not_signed_in", "NOT_SIGNED_IN"],
+	["access_denied", "CHANNEL_ACCESS_DENIED"],
+	["no_channels_configured", "NO_CHANNELS_CONFIGURED"],
+	["package_not_found", "PACKAGE_NOT_FOUND"],
+	["channel_not_found", "CHANNEL_NOT_FOUND"],
+]);
+
+/** repo.anaconda.cloud refused the request: the Anaconda account is missing or was refused. */
+const REFUSED_CODES: ReadonlySet<EnvironmentsErrorCode> = new Set([
+	"NOT_SIGNED_IN",
+	"CHANNEL_ACCESS_DENIED",
+]);
 
 /** Per-call changes to how a bridge failure is reported; every other call uses the defaults. */
 interface CallOptions {
@@ -518,9 +555,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			ctx,
 		);
 
-		if (result.success === false) {
-			throw featureError("SOLVE_FAILED", result.message ?? "solver preview failed");
-		}
+		this.#assertTransactionSuccess(result, "solver preview failed");
 
 		return parseTransactionActions(result.actions ?? {});
 	}
@@ -540,9 +575,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			ctx,
 		);
 
-		if (result.success === false) {
-			throw featureError("SOLVE_FAILED", result.message ?? "solver preview failed");
-		}
+		this.#assertTransactionSuccess(result, "solver preview failed");
 
 		return parseTransactionActions(result.actions ?? {});
 	}
@@ -737,7 +770,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			if (domainCode) {
 				const mapped = domainCodes?.[domainCode] ?? DOMAIN_CODE_MAP[domainCode];
 				if (mapped) {
-					return featureError(mapped, detail);
+					return featureError(mapped, detail, policyNoticeFrom(mapped, data?.details));
 				}
 			}
 
@@ -766,10 +799,10 @@ export class SidecarCondaBackend implements CondaBackend {
 		return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${message}`);
 	}
 
-	#assertTransactionSuccess(result: TransactionResult): void {
-		if (result.success === false) {
-			throw featureError("SOLVE_FAILED", result.message ?? "transaction failed");
-		}
+	#assertTransactionSuccess(result: TransactionResult, fallback = "transaction failed"): void {
+		if (result.success !== false) return;
+		const code = (result.reason && TRANSACTION_REASON_CODES.get(result.reason)) || "SOLVE_FAILED";
+		throw featureError(code, result.message ?? fallback, policyNoticeFrom(code, result.details));
 	}
 
 	async #call<T>(
@@ -1098,11 +1131,66 @@ function hasNotExited(child: ChildProcess): boolean {
 	return child.exitCode === null && child.signalCode === null;
 }
 
-function featureError(code: EnvironmentsErrorCode, detail?: string): KernelError {
+function featureError(
+	code: EnvironmentsErrorCode,
+	detail?: string,
+	policy?: PolicyNotice,
+): KernelError {
 	return new KernelError(
 		environmentsErrorCodeToKernelErrorCode(code),
-		formatEnvironmentsErrorMessage(code, detail),
+		formatEnvironmentsErrorMessage(code, detail, policy),
 	);
+}
+
+/**
+ * The policy context of a failure from the bridge's `details`: the blocked
+ * packages (POLICY_BLOCKED only), the policy note, and the refused org and
+ * channel (NOT_SIGNED_IN / CHANNEL_ACCESS_DENIED only). Empty when the bridge
+ * reported none.
+ */
+function policyNoticeFrom(code: EnvironmentsErrorCode, details: unknown): PolicyNotice {
+	if (!isRecord(details)) return {};
+	const blocked = code === "POLICY_BLOCKED" ? blockedPackagesFrom(details["blocked"]) : [];
+	const refused = REFUSED_CODES.has(code) ? refusedFrom(details) : undefined;
+	return {
+		...(blocked.length > 0 ? { blocked } : {}),
+		...(details["policy_note"] === true ? { policyNote: true } : {}),
+		...(refused ? { refused } : {}),
+	};
+}
+
+/** Entries without a package name are dropped rather than failing the mapping. */
+function blockedPackagesFrom(value: unknown): PolicyBlockedPackage[] {
+	if (!Array.isArray(value)) return [];
+	return value.flatMap((entry: unknown) => {
+		if (!isRecord(entry) || typeof entry["package"] !== "string" || !entry["package"]) return [];
+		return [
+			{
+				package: entry["package"],
+				version: stringOrNull(entry["version"]),
+				channel: stringOrNull(entry["channel"]),
+				org: stringOrNull(entry["org"]),
+				policy: stringOrNull(entry["policy"]),
+				policyId: stringOrNull(entry["policy_id"]),
+				reason: stringOrNull(entry["reason"]),
+			},
+		];
+	});
+}
+
+/** The bridge omits `org` and `channel` when it does not know them (shared channels have no org). */
+function refusedFrom(details: Record<string, unknown>): PolicyNotice["refused"] {
+	const org = stringOrNull(details["org"]);
+	const channel = stringOrNull(details["channel"]);
+	return org === null && channel === null ? undefined : { org, channel };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringOrNull(value: unknown): string | null {
+	return typeof value === "string" ? value : null;
 }
 
 /**
@@ -1230,6 +1318,10 @@ interface TransactionResult {
 	prefix: string;
 	success: boolean;
 	message?: string;
+	/** Why a failed transaction failed (`blocked_by_policy`, `not_signed_in`, …); absent from older bridges. */
+	reason?: string;
+	/** A failed transaction's context: `blocked`, `policy_note`, refused `org`/`channel`, and more. */
+	details?: Record<string, unknown>;
 	dry_run?: boolean;
 	transaction_id?: string;
 	actions?: Record<string, unknown>;

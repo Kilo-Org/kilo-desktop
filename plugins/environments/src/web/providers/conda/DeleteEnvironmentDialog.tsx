@@ -15,7 +15,7 @@ import type { CondaEnv } from "../../../contracts/providers/conda";
 import { useConda, useCondaMutation } from "../../conda";
 import { useTrack } from "../../app";
 import { environmentDisplayName } from "./environment-display";
-import { deleteEnvironmentJob, jobToastOptions } from "./environments-toasts";
+import { deleteEnvironmentJob, useJobToasts } from "./environments-toasts";
 
 interface DeleteEnvironmentDialogProps {
 	env: CondaEnv;
@@ -30,6 +30,7 @@ interface DeleteEnvironmentDialogProps {
 export function DeleteEnvironmentDialog({ env, open, onClose }: DeleteEnvironmentDialogProps) {
 	const conda = useConda();
 	const track = useTrack();
+	const { jobToastOptions } = useJobToasts();
 	const displayName = environmentDisplayName(env);
 
 	const mutation = useCondaMutation(conda, "deleteEnvironment", {

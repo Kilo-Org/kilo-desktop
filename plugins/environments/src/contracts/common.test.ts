@@ -7,10 +7,14 @@ import {
 	environmentsErrorCodeSchema,
 	environmentsErrorCodeToKernelErrorCode,
 	formatEnvironmentsErrorMessage,
+	jobErrorSchema,
 	jobIdSchema,
 	jobKindSchema,
 	jobProgressEventSchema,
 	parseEnvironmentsErrorMessage,
+	POLICY_NOTICE_LINE_PREFIX,
+	policyBlockedPackageSchema,
+	policyNoticeSchema,
 	providerSchema,
 } from "./common";
 
@@ -153,13 +157,17 @@ describe("environmentsErrorCodeSchema", () => {
 		"INVALID_MATCHSPEC",
 		"INVALID_CHANNEL",
 		"PROVIDER_NOT_READY",
+		"POLICY_BLOCKED",
+		"NOT_SIGNED_IN",
+		"CHANNEL_ACCESS_DENIED",
 	] as const;
 
-	it("includes every documented v1 code", () => {
+	it("includes every documented code", () => {
 		for (const code of codes) expect(environmentsErrorCodeSchema.parse(code)).toBe(code);
 	});
 
-	it("has no accidental extras — freezes the vocabulary at exactly the v1 set", () => {
+	it("has no accidental extras — freezes the vocabulary at exactly these 18 codes", () => {
+		expect(environmentsErrorCodeSchema.options).toHaveLength(18);
 		expect(environmentsErrorCodeSchema.options.slice().sort()).toEqual([...codes].sort());
 	});
 
@@ -243,6 +251,108 @@ describe("formatEnvironmentsErrorMessage / parseEnvironmentsErrorMessage", () =>
 	});
 });
 
+describe("the policy notice line", () => {
+	const blocked = {
+		package: "pillow",
+		version: "8.4.0",
+		channel: "https://repo.anaconda.cloud/repo/acme/main",
+		org: "acme",
+		policy: "No critical CVEs",
+		policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+		reason: "CVE-2022-22817 (critical)",
+	};
+	const summary = "pillow 8.4.0 is blocked by your organization's policy 'No critical CVEs'";
+
+	it("appends the notice as one final `[policy] {json}` line the agent reads verbatim", () => {
+		const wire = formatEnvironmentsErrorMessage("POLICY_BLOCKED", summary, { blocked: [blocked] });
+		const lines = wire.split("\n");
+		expect(lines[0]).toBe(`POLICY_BLOCKED: ${summary}`);
+		expect(lines.at(-1)).toBe(
+			`${POLICY_NOTICE_LINE_PREFIX}${JSON.stringify({ blocked: [blocked] })}`,
+		);
+	});
+
+	it("round-trips code, detail and notice", () => {
+		const wire = formatEnvironmentsErrorMessage("POLICY_BLOCKED", summary, { blocked: [blocked] });
+		expect(parseEnvironmentsErrorMessage(wire)).toEqual({
+			code: "POLICY_BLOCKED",
+			detail: summary,
+			policy: { blocked: [blocked] },
+		});
+	});
+
+	it("round-trips a notice without a detail", () => {
+		const policy = { refused: { org: null, channel: "acme/main" } };
+		const wire = formatEnvironmentsErrorMessage("NOT_SIGNED_IN", undefined, policy);
+		expect(wire).toBe(`NOT_SIGNED_IN\n${POLICY_NOTICE_LINE_PREFIX}${JSON.stringify(policy)}`);
+		expect(parseEnvironmentsErrorMessage(wire)).toEqual({ code: "NOT_SIGNED_IN", policy });
+	});
+
+	it("keeps a multi-line solver report intact above the notice", () => {
+		const report = "Could not solve.\n\nThe following packages are incompatible\n└─ holoviews";
+		const wire = formatEnvironmentsErrorMessage("SOLVE_FAILED", report, { policyNote: true });
+		expect(parseEnvironmentsErrorMessage(wire)).toEqual({
+			code: "SOLVE_FAILED",
+			detail: report,
+			policy: { policyNote: true },
+		});
+	});
+
+	it("adds no line for an empty notice", () => {
+		expect(formatEnvironmentsErrorMessage("SOLVE_FAILED", "conflict", {})).toBe(
+			"SOLVE_FAILED: conflict",
+		);
+	});
+
+	it("leaves a malformed trailing line in the detail", () => {
+		for (const trailer of ["[policy] {not json", '[policy] {"blocked": "pillow"}']) {
+			expect(parseEnvironmentsErrorMessage(`SOLVE_FAILED: conflict\n${trailer}`)).toEqual({
+				code: "SOLVE_FAILED",
+				detail: `conflict\n${trailer}`,
+			});
+		}
+	});
+
+	it("only reads the notice from the final line", () => {
+		const wire = `SOLVE_FAILED: [policy] {"policyNote":true}\nmore text`;
+		expect(parseEnvironmentsErrorMessage(wire)).toEqual({
+			code: "SOLVE_FAILED",
+			detail: `[policy] {"policyNote":true}\nmore text`,
+		});
+	});
+
+	it("accepts the optional and nullable fields of a blocked package", () => {
+		const sparse = {
+			package: "pillow",
+			version: null,
+			channel: null,
+			org: null,
+			policy: null,
+			policyId: null,
+			reason: null,
+		};
+		expect(policyNoticeSchema.parse({ blocked: [sparse] })).toEqual({ blocked: [sparse] });
+		expect(policyBlockedPackageSchema.safeParse({ ...sparse, package: undefined }).success).toBe(
+			false,
+		);
+	});
+});
+
+describe("jobErrorSchema", () => {
+	it("carries an optional policy notice", () => {
+		const error = {
+			code: "NOT_SIGNED_IN",
+			message: "Sign in to Anaconda",
+			policy: { refused: { org: "acme", channel: "acme/main" } },
+		};
+		expect(jobErrorSchema.parse(error)).toEqual(error);
+		expect(jobErrorSchema.parse({ code: "SOLVE_FAILED", message: "x" })).toEqual({
+			code: "SOLVE_FAILED",
+			message: "x",
+		});
+	});
+});
+
 describe("environmentsErrorCodeToKernelErrorCode", () => {
 	it("maps validation-shaped reasons to VALIDATION", () => {
 		expect(environmentsErrorCodeToKernelErrorCode("INVALID_MATCHSPEC")).toBe("VALIDATION");
@@ -265,5 +375,11 @@ describe("environmentsErrorCodeToKernelErrorCode", () => {
 		expect(environmentsErrorCodeToKernelErrorCode("SOLVE_FAILED")).toBe("BUSINESS");
 		expect(environmentsErrorCodeToKernelErrorCode("JOB_CANCELLED")).toBe("BUSINESS");
 		expect(environmentsErrorCodeToKernelErrorCode("PROVIDER_NOT_READY")).toBe("BUSINESS");
+	});
+
+	it("maps policy and Anaconda sign-in failures to BUSINESS", () => {
+		expect(environmentsErrorCodeToKernelErrorCode("POLICY_BLOCKED")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("NOT_SIGNED_IN")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("CHANNEL_ACCESS_DENIED")).toBe("BUSINESS");
 	});
 });

@@ -2,9 +2,9 @@
 // with stand-ins under the real manifests: kilo.core (its points, and a flag
 // source the test can change), kilo.shell (its points, and a `navigation`
 // recording the settings sections it is asked to open), kilo.chat and
-// kilo.local-inference (their points). The bridge is a fake conda runner
-// (`FakeBridge`). Any stand-in can be left out to check kilo.environments
-// works without it.
+// kilo.local-inference (their points), and a telemetry sink with consent. The
+// bridge is a fake conda runner (`FakeBridge`). Any stand-in can be left out
+// to check kilo.environments works without it.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -13,8 +13,11 @@ import { vi } from "vitest";
 
 import {
 	definePlugin,
+	KernelDataCollection,
 	KernelDialogs,
+	KernelError,
 	KernelFlagSource,
+	KernelTelemetrySink,
 	type FlagValue,
 	type KernelLogger,
 	type PluginRegistration,
@@ -23,6 +26,7 @@ import {
 	createMemoryStorage,
 	createTestHost,
 	createTestKernelPair,
+	testPlugin,
 } from "@kilo-desktop/kernel/testing";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
@@ -44,6 +48,12 @@ import { Navigation, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contra
 
 import manifest from "../../plugin.json";
 import {
+	environmentsErrorCodeToKernelErrorCode,
+	formatEnvironmentsErrorMessage,
+	type EnvironmentsErrorCode,
+	type PolicyNotice,
+} from "../contracts/common";
+import {
 	Conda,
 	CONDA_CHAT_CONFIG,
 	CONDA_LLAMA_RUNTIME,
@@ -62,6 +72,47 @@ export const LAUNCH: BridgeLaunchInfo = {
 	payloadRoot: "/bridge",
 	version: "1",
 };
+
+export const BLOCKED_POLICY_ID = "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10";
+
+function backendFailure(
+	code: EnvironmentsErrorCode,
+	detail: string,
+	policy: PolicyNotice,
+): KernelError {
+	return new KernelError(
+		environmentsErrorCodeToKernelErrorCode(code),
+		formatEnvironmentsErrorMessage(code, detail, policy),
+	);
+}
+
+/** What the backend throws for a `blocked_by_policy` result (pillow 8.4.0 blocked in `acme`). */
+export function blockedByPolicy(): KernelError {
+	return backendFailure(
+		"POLICY_BLOCKED",
+		"pillow 8.4.0 is blocked by your organization's policy 'No critical CVEs': CVE-2022-22817 (critical)",
+		{
+			blocked: [
+				{
+					package: "pillow",
+					version: "8.4.0",
+					channel: "https://repo.anaconda.cloud/repo/acme/main",
+					org: "acme",
+					policy: "No critical CVEs",
+					policyId: BLOCKED_POLICY_ID,
+					reason: "CVE-2022-22817 (critical)",
+				},
+			],
+		},
+	);
+}
+
+/** What the backend throws for a `not_signed_in` result or an `auth:not-signed-in` error. */
+export function notSignedIn(): KernelError {
+	return backendFailure("NOT_SIGNED_IN", "Sign in to Anaconda to use acme/main.", {
+		refused: { org: "acme", channel: "acme/main" },
+	});
+}
 
 /** What the fake bridge answers per backend method: a value, or a function of the call's arguments. */
 export type BridgeAnswers = Partial<Record<keyof CondaBackend, unknown>>;
@@ -196,6 +247,17 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 	const flagValues = { [ENVIRONMENTS_FLAG]: options.flag ?? true };
 	const core = coreStandIn(flagValues);
 	const openSettings = vi.fn<(section: string | undefined) => void>();
+	const tracked: { event: string; data: Readonly<Record<string, unknown>> }[] = [];
+	const telemetrySink = testPlugin("test.telemetry-sink", {
+		manifest: { contributes: { extensions: { "kernel/telemetry-sink": [{ id: "sink" }] } } },
+		entry: definePlugin({
+			activate(sdk) {
+				sdk.extensions.implement(KernelTelemetrySink, "sink", {
+					deliver: ({ name, data }) => void tracked.push({ event: name, data }),
+				});
+			},
+		}),
+	});
 	const stub = (registration: PluginRegistration): PluginRegistration => ({
 		...registration,
 		entry: definePlugin({ activate() {} }),
@@ -216,6 +278,7 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 			...(options.withoutShell ? [] : [shellStandIn(openSettings)]),
 			...(options.withoutChat ? [] : [stub(chat)]),
 			...(options.withoutLocalInference ? [] : [stub(localInference)]),
+			telemetrySink,
 			{
 				manifest,
 				definitions: ENVIRONMENTS_DEFINITIONS,
@@ -264,6 +327,10 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 			message: () => ({ response: 0, checkboxChecked: false }),
 		},
 	});
+	main.kernelSdk.domainObjects.provide(KernelDataCollection, {
+		initialState: { choice: true, allowed: true, installationId: "i", environment: "test" },
+		methods: { setChoice: () => {} },
+	});
 	await main.flush();
 
 	const own = <T extends { key: string }>(list: readonly T[], id: string) =>
@@ -300,6 +367,8 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 		storageDir,
 		bridges,
 		openSettings,
+		/** Telemetry events as the sink received them, by declared name. */
+		tracked,
 		conda,
 		condaRuntime,
 		tool,

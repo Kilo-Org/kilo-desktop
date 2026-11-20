@@ -16,7 +16,6 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { CondaEnv, CondaPackagesPreviewResult } from "../../../contracts/providers/conda";
 import { useConda, useCondaMutation, useCondaQuery } from "../../conda";
-import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
 import {
 	ChangeFilterMenu,
@@ -27,13 +26,11 @@ import {
 	type ChangeSummary,
 } from "./DependencyPreview";
 import { environmentDisplayName } from "./environment-display";
-import { friendlyEnvironmentsError } from "./environments-error-message";
 import {
-	installPackagesJob,
-	jobToastOptions,
-	showJobError,
-	showJobSuccess,
-} from "./environments-toasts";
+	friendlyEnvironmentsError,
+	type FriendlyEnvironmentsError,
+} from "./environments-error-message";
+import { installPackagesJob, showJobSuccess, useJobToasts } from "./environments-toasts";
 import {
 	PackageResultsTable,
 	PackageSearchInput,
@@ -44,6 +41,7 @@ import {
 	type PackageInstallPreset,
 } from "./PackageSearch";
 import { useChannelSelection } from "./use-channel-selection";
+import { useTrackPolicyFailure } from "./use-track-policy-failure";
 import { usePackageSearch } from "./use-package-search";
 
 interface AddPackageDialogProps {
@@ -73,6 +71,8 @@ export function AddPackageDialog({
 	onInstalled,
 }: AddPackageDialogProps) {
 	const conda = useConda();
+	const trackPolicyFailure = useTrackPolicyFailure();
+	const { jobToastOptions, showJobError } = useJobToasts();
 	const install = useCondaMutation(conda, "installPackages", {
 		invalidates: ["listPackages", "findRepodata"],
 	});
@@ -106,14 +106,12 @@ export function AddPackageDialog({
 	// ─── Install preview ─────────────────────────────────────────────
 	const [preview, setPreview] = useState<CondaPackagesPreviewResult | null>(null);
 	const [previewLoading, setPreviewLoading] = useState(false);
-	const [previewError, setPreviewError] = useState<{ message: string; detail?: string } | null>(
-		null,
-	);
+	const [previewError, setPreviewError] = useState<FriendlyEnvironmentsError | null>(null);
 	const [depFilter, setDepFilter] = useState<ChangeFilter>("all");
 	const previewGenRef = useRef(0);
 	const lastSolveKeyRef = useRef("");
 	const previewRef = useRef<CondaPackagesPreviewResult | null>(null);
-	const previewErrorRef = useRef<{ message: string; detail?: string } | null>(null);
+	const previewErrorRef = useRef<FriendlyEnvironmentsError | null>(null);
 	// Key of the selection+channels the current `preview` was solved for. Install
 	// eligibility compares this against the live `solveKey` so a preview can only
 	// unlock the button for the exact specs and channels the solver validated.
@@ -151,12 +149,8 @@ export function AddPackageDialog({
 			})
 			.catch((reason) => {
 				if (gen !== previewGenRef.current) return;
-				const raw =
-					reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
-				const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
-				const message = friendlyEnvironmentsError(reason, "Could not preview the install.");
-				const detail = parsed?.detail;
-				const err = detail ? { message, detail } : { message };
+				const err = friendlyEnvironmentsError(reason, "Could not preview the install.");
+				trackPolicyFailure(reason);
 				previewErrorRef.current = err;
 				setPreviewError(err);
 				previewRef.current = null;
@@ -355,10 +349,12 @@ export function AddPackageDialog({
 					<DialogFooter className="sm:items-center">
 						{install.isError ? (
 							<FieldError className="sm:mr-auto" data-qa-id="environments-conda-add-pkg-error">
-								{friendlyEnvironmentsError(
-									install.error,
-									"Could not install the selected packages.",
-								)}
+								{
+									friendlyEnvironmentsError(
+										install.error,
+										"Could not install the selected packages.",
+									).message
+								}
 							</FieldError>
 						) : null}
 						{install.isPending ? (
@@ -407,7 +403,7 @@ function DependencyChangesSection({
 }: {
 	preview: CondaPackagesPreviewResult | null;
 	loading: boolean;
-	error: { message: string; detail?: string } | null;
+	error: FriendlyEnvironmentsError | null;
 	changes: ChangeSummary;
 	filter: ChangeFilter;
 	onFilterChange: (filter: ChangeFilter) => void;
@@ -441,8 +437,7 @@ function DependencyChangesSection({
 			{error ? (
 				<div className="px-4">
 					<SolverErrorCard
-						message={error.message}
-						{...(error.detail ? { detail: error.detail } : {})}
+						error={error}
 						qaId="environments-conda-add-pkg-preview-error"
 						onRetry={onRetry}
 					/>

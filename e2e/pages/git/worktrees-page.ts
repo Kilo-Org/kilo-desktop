@@ -200,16 +200,28 @@ export class WorktreesPage {
 		expect(managed, `The repository should have ${count} session worktree(s)`).toHaveLength(count);
 	}
 
-	/** Deletes the last session in its worktree from the row menu, choosing to delete both. */
-	async deleteSessionAndWorktree(title: string): Promise<void> {
+	/**
+	 * Opens a session row's menu and asks to delete it, leaving the worktree
+	 * question open. The row's timestamp slot only fades on hover rather than
+	 * leaving the layer, so it can sit over the "…" trigger and swallow the
+	 * click; the trigger is visible and stable, so only the hit-target check
+	 * is in the way.
+	 */
+	private async askToDeleteWorktreeSession(title: string): Promise<Locator> {
 		const row = sessionListRow(title);
 		await row.hover();
-		await click(this.rowMore(row));
+		await click(this.rowMore(row), { force: true });
 		await click(this.menuDelete());
 		await expectElementToBeVisible(
 			this.deleteWorktreeDialog(),
 			"Deleting the last session in a worktree should ask about the worktree",
 		);
+		return row;
+	}
+
+	/** Deletes the last session in its worktree from the row menu, choosing to delete both. */
+	async deleteSessionAndWorktree(title: string): Promise<void> {
+		const row = await this.askToDeleteWorktreeSession(title);
 		await click(this.deleteWorktreeConfirm());
 		await expectElementToBeHidden(row, { message: `"${title}" should leave the session list` });
 	}
@@ -220,14 +232,7 @@ export class WorktreesPage {
 	 * that has to leave the session and its worktree where they are.
 	 */
 	async cancelDeletingSessionAndWorktree(title: string): Promise<void> {
-		const row = sessionListRow(title);
-		await row.hover();
-		await click(this.rowMore(row), { force: true });
-		await click(this.menuDelete());
-		await expectElementToBeVisible(
-			this.deleteWorktreeDialog(),
-			"Deleting the last session in a worktree should ask about the worktree",
-		);
+		const row = await this.askToDeleteWorktreeSession(title);
 
 		await click(this.deleteWorktreeCancel());
 

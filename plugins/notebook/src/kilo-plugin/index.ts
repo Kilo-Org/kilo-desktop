@@ -1,4 +1,4 @@
-import { realpath, stat } from "node:fs/promises";
+import { readlink, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -59,6 +59,7 @@ type RuntimedNode = {
 		options?: { socketPath?: string; peerLabel?: string; description?: string },
 	): Promise<Session>;
 	getExecutionResult?(executionId: string): Promise<CellResult>;
+	listActiveNotebooks?(): Promise<{ notebookId: string; notebookPath?: string }[]>;
 };
 
 type PluginDependencies = {
@@ -77,7 +78,53 @@ const NOTEBOOK_ID = z
 	);
 const NOTEBOOK_PEER_LABEL = "Kilo Desktop";
 
-type SessionContext = Pick<ToolContext, "sessionID" | "worktree">;
+type SessionContext = Pick<ToolContext, "sessionID" | "directory" | "worktree" | "ask">;
+type WorkspaceContext = Pick<ToolContext, "directory" | "worktree">;
+
+function isInside(root: string, target: string): boolean {
+	const relative = path.relative(root, target);
+	return (
+		relative === "" ||
+		(relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+	);
+}
+
+const MAX_SYMLINK_HOPS = 40;
+
+/**
+ * Follows symlinks in `target`, which need not exist yet: a missing part is
+ * kept as written, and a symlink whose target is missing is followed to it.
+ */
+function canonicalPath(target: string): Promise<string> {
+	return followLinks(target, 0);
+}
+
+async function followLinks(target: string, hops: number): Promise<string> {
+	const missing: string[] = [];
+	let existing = target;
+	for (;;) {
+		try {
+			return path.join(await realpath(existing), ...missing);
+		} catch {
+			const link = await readlink(existing).catch(() => null);
+			if (link !== null && hops < MAX_SYMLINK_HOPS) {
+				const linked = path.resolve(path.dirname(existing), link);
+				return followLinks(path.join(linked, ...missing), hops + 1);
+			}
+			const parent = path.dirname(existing);
+			if (parent === existing) return target;
+			missing.unshift(path.basename(existing));
+			existing = parent;
+		}
+	}
+}
+
+/** Kilo treats a session's directory and its worktree as the workspace, except a filesystem-root worktree. */
+async function isInsideWorkspace(target: string, context: WorkspaceContext): Promise<boolean> {
+	const roots = [context.directory, context.worktree].filter((root) => path.dirname(root) !== root);
+	const canonicalRoots = await Promise.all(roots.map(canonicalPath));
+	return canonicalRoots.some((root) => isInside(root, target));
+}
 
 /** Canonical path of an existing `.ipynb` file inside the workspace, after following symlinks. */
 async function workspaceNotebookPath(name: string, worktree: string): Promise<string | null> {
@@ -87,13 +134,7 @@ async function workspaceNotebookPath(name: string, worktree: string): Promise<st
 			realpath(worktree),
 			realpath(path.resolve(worktree, name)),
 		]);
-		const relative = path.relative(root, target);
-		const inside =
-			relative !== "" &&
-			relative !== ".." &&
-			!relative.startsWith(`..${path.sep}`) &&
-			!path.isAbsolute(relative);
-		if (!inside) return null;
+		if (target === root || !isInside(root, target)) return null;
 		return (await stat(target)).isFile() ? target : null;
 	} catch {
 		return null;
@@ -164,6 +205,11 @@ function isDisconnectedStatus(status: unknown): boolean {
  * therefore watches each peer's session status and evicts disconnected peers so
  * the next tool call reopens a live one; `assertConnected` lets mutating tools
  * report a lost connection instead of claiming their edits were applied.
+ *
+ * A notebook whose file lies outside the Kilo workspace is opened only after
+ * Kilo's `external_directory` permission allows its folder, as Kilo's own file
+ * tools do. The answer is remembered per Kilo session and file location, so
+ * "Allow once" covers the rest of that session rather than a single call.
  */
 class NotebookSessionRegistry {
 	readonly #runtimed: RuntimedNode;
@@ -171,6 +217,7 @@ class NotebookSessionRegistry {
 	readonly #statusSubscriptions = new Map<string, StatusSubscription>();
 	readonly #disconnected = new WeakSet<Session>();
 	readonly #notebooksByKiloSession = new Map<string, Set<string>>();
+	readonly #allowedLocationsByKiloSession = new Map<string, Set<string>>();
 
 	constructor(runtimed: RuntimedNode) {
 		this.#runtimed = runtimed;
@@ -178,6 +225,7 @@ class NotebookSessionRegistry {
 
 	async open(notebookId: string, context: SessionContext): Promise<Session> {
 		await assertNotebookUuid(notebookId, context.worktree);
+		await this.#allowLocation(notebookId, context);
 		const owned = this.#notebooksByKiloSession.get(context.sessionID) ?? new Set<string>();
 		owned.add(notebookId);
 		this.#notebooksByKiloSession.set(context.sessionID, owned);
@@ -212,7 +260,46 @@ class NotebookSessionRegistry {
 		}
 	}
 
+	async #allowLocation(notebookId: string, context: SessionContext): Promise<void> {
+		const active = await this.#runtimed.listActiveNotebooks?.();
+		const notebookPath = active?.find(
+			(notebook) => notebook.notebookId === notebookId,
+		)?.notebookPath;
+		if (!notebookPath) return;
+		const filepath = await canonicalPath(notebookPath);
+		if (await isInsideWorkspace(filepath, context)) return;
+
+		if (this.isLocationAllowed(context.sessionID, filepath)) return;
+		const parentDir = path.dirname(filepath);
+		const pattern = path.join(parentDir, "*");
+		await context.ask({
+			permission: "external_directory",
+			patterns: [pattern],
+			always: [pattern],
+			metadata: {
+				toolName: "Notebook outside workspace",
+				title: "Use a notebook outside this workspace?",
+				description: `The agent wants to read or change ${filepath}, which is outside this chat's workspace.`,
+				filepath,
+				parentDir,
+				notebook_id: notebookId,
+			},
+		});
+		this.allowLocation(context.sessionID, filepath);
+	}
+
+	isLocationAllowed(kiloSessionId: string, filepath: string): boolean {
+		return this.#allowedLocationsByKiloSession.get(kiloSessionId)?.has(filepath) ?? false;
+	}
+
+	allowLocation(kiloSessionId: string, filepath: string): void {
+		const allowed = this.#allowedLocationsByKiloSession.get(kiloSessionId) ?? new Set<string>();
+		allowed.add(filepath);
+		this.#allowedLocationsByKiloSession.set(kiloSessionId, allowed);
+	}
+
 	async closeForKiloSession(kiloSessionId: string): Promise<void> {
+		this.#allowedLocationsByKiloSession.delete(kiloSessionId);
 		const notebookIds = this.#notebooksByKiloSession.get(kiloSessionId);
 		if (!notebookIds) return;
 		this.#notebooksByKiloSession.delete(kiloSessionId);
@@ -977,16 +1064,18 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (path.extname(targetPath).toLowerCase() !== ".ipynb") {
 					throw new Error("Notebook save paths must end in .ipynb.");
 				}
-				const relativePath = path.relative(context.worktree, targetPath);
-				const isInsideWorkspace =
-					relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-				if (!isInsideWorkspace) {
+				const canonicalTarget = await canonicalPath(targetPath);
+				if (
+					!(await isInsideWorkspace(canonicalTarget, context)) &&
+					!sessions.isLocationAllowed(context.sessionID, canonicalTarget)
+				) {
 					await context.ask({
 						permission: "external_directory",
-						patterns: [targetPath],
+						patterns: [canonicalTarget],
 						always: [],
-						metadata: { notebook_id: args.notebook_id, path: targetPath },
+						metadata: { notebook_id: args.notebook_id, path: canonicalTarget },
 					});
+					sessions.allowLocation(context.sessionID, canonicalTarget);
 				}
 				await session.saveNotebook(targetPath);
 				return {

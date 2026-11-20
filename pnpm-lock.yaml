@@ -1550,6 +1550,9 @@ importers:
       '@kilo-desktop/plugin-core':
         specifier: workspace:*
         version: link:../core
+      '@kilocode/client':
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239(effect@4.1.0)
       '@kilocode/sdk':
         specifier: 7.8.27
         version: 7.8.27
@@ -1562,6 +1565,9 @@ importers:
       atomically:
         specifier: 'catalog:'
         version: 2.1.1
+      effect:
+        specifier: 4.1.0
+        version: 4.1.0
       execa:
         specifier: 'catalog:'
         version: 10.2.1
@@ -1604,20 +1610,20 @@ importers:
         version: 5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.1)(@vitest/coverage-v8@5.1.1)(@vitest/ui@5.1.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
       '@kilocode/cli-darwin-arm64':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239
       '@kilocode/cli-linux-arm64':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239
       '@kilocode/cli-linux-x64-baseline':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239
       '@kilocode/cli-windows-arm64':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239
       '@kilocode/cli-windows-x64-baseline':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239
 
   plugins/developer:
     dependencies:
@@ -3551,14 +3557,29 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
+  '@kilocode/cli-darwin-arm64@0.0.0-v2-239':
+    resolution: {integrity: sha512-0fzLe6Y5XNoGevR320EisVo7waotRKOuck8pdPbT5JmNTqHrTOAn1KAV4KijRMW1CmGr1Nke7d9gRXwyqVqZCw==}
+    cpu: [arm64]
+    os: [darwin]
+
   '@kilocode/cli-darwin-arm64@7.8.27':
     resolution: {integrity: sha512-yj2gwxHn96MnB64hKsd42M6T3XDm05ToYNE6vvjEoMZnCgGsYsnOX1Rpzf+MqcZHni7bdzUoQduxjN19YpjPkA==}
     cpu: [arm64]
     os: [darwin]
 
+  '@kilocode/cli-linux-arm64@0.0.0-v2-239':
+    resolution: {integrity: sha512-RQzJpbexZmYdeXIX1qpzZQhRCYJNAHQVs4OebpJAc/QIm89Xp7uifW+TitIMgh2GsV4kEHBhAWObgO3km9Eo4g==}
+    cpu: [arm64]
+    os: [linux]
+
   '@kilocode/cli-linux-arm64@7.8.27':
     resolution: {integrity: sha512-rSYuAYjiHBWQmshk4vutNqqy8lsNpgrRpTwUI5304GIKZm3eoJQsnSZl8lv5190Ck5Hc2t66OUoexndMIApP6w==}
     cpu: [arm64]
+    os: [linux]
+
+  '@kilocode/cli-linux-x64-baseline@0.0.0-v2-239':
+    resolution: {integrity: sha512-Kkybrj0bPwXa6GtBrUPnWEuODokySU0j6rpu1m/sYJcfAsBS3QFKAInloDnYMMN0mEeVaR5p4IsUc9Y0GimX5Q==}
+    cpu: [x64]
     os: [linux]
 
   '@kilocode/cli-linux-x64-baseline@7.8.27':
@@ -3566,15 +3587,42 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@kilocode/cli-windows-arm64@0.0.0-v2-239':
+    resolution: {integrity: sha512-o2yGv4Yswm57SqzDpyU4LqORoBLLiDU96JApJy0PDI5eSwry7JiWPOjsdQu0IJvjBtToPK2ozCb/oL8KxPQdSA==}
+    cpu: [arm64]
+    os: [win32]
+
   '@kilocode/cli-windows-arm64@7.8.27':
     resolution: {integrity: sha512-EJwX2s40NZFXjxFlu6AvM/dpIqJ2wyhFuEMJtZ/5GBlb7J8MchFQxeSRGBoKMpLrEUBp0wkORypdnKHNnpq36A==}
     cpu: [arm64]
+    os: [win32]
+
+  '@kilocode/cli-windows-x64-baseline@0.0.0-v2-239':
+    resolution: {integrity: sha512-yifhk6WWmA73/a3HoyA1nXBXPixD+HBeb6SjT6437h0MMwcN6IKPv+hkJqXA5dyQEP6zOZcfyAf5Luqh6q0Zrg==}
+    cpu: [x64]
     os: [win32]
 
   '@kilocode/cli-windows-x64-baseline@7.8.27':
     resolution: {integrity: sha512-KFq+oDysY3n1bbvEQ0WB1VNesfK0BEahP4f4P3BushnRC83rERVnns1CTQV3oU0w1a6rsF+8qX3X3PTqtrFWsA==}
     cpu: [x64]
     os: [win32]
+
+  '@kilocode/client@0.0.0-v2-239':
+    resolution: {integrity: sha512-2Qtlpr4PbGBi6F3i3pjb1HDN/5fiaANNxOLlHl0FXe1rLznJjPTuzU6Ga7Y/W3Ntv882jvM/oX4KQ4zqxNM/Sw==}
+    peerDependencies:
+      effect: 4.1.0
+      solid-js: '>=1.9.0'
+    peerDependenciesMeta:
+      effect:
+        optional: true
+      solid-js:
+        optional: true
+
+  '@kilocode/protocol@0.0.0-v2-239':
+    resolution: {integrity: sha512-PKjIWcQPtC9Vt/rLzxvP+u9H5MQ5XxfEJxZ850VCjxhzCPaE5sp2QBeI8CmrGqZbStO8DzxrN/kFs9+CrkSZRQ==}
+
+  '@kilocode/schema@0.0.0-v2-239':
+    resolution: {integrity: sha512-Uac7EpqclPn3t30C5J7K456S0xxByK3XfK2BCeVrahM46z9hwuDjoxiJdfVwj2nE523M12n5pAsMsooN07HQUg==}
 
   '@kilocode/sdk@7.8.27':
     resolution: {integrity: sha512-P5LD034HM8pDARw3KwrMZWSp1KM8jLqMpSzMkRHHLaK2Ra/+FgTLWV0WbfBD4XylZqo4+9J9djnP+msPvlZD/A==}
@@ -7848,6 +7896,9 @@ packages:
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
+
+  effect@4.1.0:
+    resolution: {integrity: sha512-lGx2MJJyrXA8RZb2UpQ/0Nkb5Utaimby7oD92+18noBxLPE85IFOvptdzau8dvcxAOwfwHo9iqapbKeFzqQM/Q==}
 
   electron-debug@5.0.0:
     resolution: {integrity: sha512-OJURKDBbEMcejThLVqFuTM3rvv0J4JU3OK7wp0JAV59fusU0kgZTuRqZPHSVS362onE7xuEC4VKBnziAswIXwg==}
@@ -12272,20 +12323,52 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  '@kilocode/cli-darwin-arm64@0.0.0-v2-239':
+    optional: true
+
   '@kilocode/cli-darwin-arm64@7.8.27':
+    optional: true
+
+  '@kilocode/cli-linux-arm64@0.0.0-v2-239':
     optional: true
 
   '@kilocode/cli-linux-arm64@7.8.27':
     optional: true
 
+  '@kilocode/cli-linux-x64-baseline@0.0.0-v2-239':
+    optional: true
+
   '@kilocode/cli-linux-x64-baseline@7.8.27':
+    optional: true
+
+  '@kilocode/cli-windows-arm64@0.0.0-v2-239':
     optional: true
 
   '@kilocode/cli-windows-arm64@7.8.27':
     optional: true
 
+  '@kilocode/cli-windows-x64-baseline@0.0.0-v2-239':
+    optional: true
+
   '@kilocode/cli-windows-x64-baseline@7.8.27':
     optional: true
+
+  '@kilocode/client@0.0.0-v2-239(effect@4.1.0)':
+    dependencies:
+      '@opencode/protocol': '@kilocode/protocol@0.0.0-v2-239'
+      '@opencode/schema': '@kilocode/schema@0.0.0-v2-239'
+    optionalDependencies:
+      effect: 4.1.0
+
+  '@kilocode/protocol@0.0.0-v2-239':
+    dependencies:
+      '@opencode/schema': '@kilocode/schema@0.0.0-v2-239'
+      effect: 4.1.0
+
+  '@kilocode/schema@0.0.0-v2-239':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      effect: 4.1.0
 
   '@kilocode/sdk@7.8.27':
     dependencies:
@@ -15945,6 +16028,8 @@ snapshots:
       call-bind-apply-helpers: 1.0.2
       es-errors: 1.3.0
       gopd: 1.2.0
+
+  effect@4.1.0: {}
 
   electron-debug@5.0.0:
     dependencies:

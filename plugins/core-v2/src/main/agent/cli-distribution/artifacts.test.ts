@@ -6,7 +6,7 @@ import { getKiloCliArtifact, KILO_CLI_VERSION } from "./artifacts.js";
 
 describe("Kilo CLI distribution artifacts", () => {
 	it("pins the supported native targets and compatibility-first x64 variants", () => {
-		expect(KILO_CLI_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+		expect(KILO_CLI_VERSION).toMatch(/^0\.0\.0-v2-\d+$/);
 		expect(new Set(Object.values(packageJson.optionalDependencies))).toEqual(
 			new Set([KILO_CLI_VERSION]),
 		);

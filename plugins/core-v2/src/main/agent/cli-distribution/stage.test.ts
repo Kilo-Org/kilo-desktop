@@ -14,7 +14,7 @@ const artifact: KiloCliArtifact = {
 	packageName: "@kilocode/cli-test",
 	platform: "linux",
 	arch: "x64",
-	executable: "kilo",
+	executable: "kilo2",
 };
 
 afterEach(async () => {
@@ -32,7 +32,7 @@ async function createInstalledPackage(): Promise<{ root: string; packageDirector
 		path.join(packageDirectory, "package.json"),
 		JSON.stringify({ version: KILO_CLI_VERSION }),
 	);
-	await writeFile(path.join(packageDirectory, "bin", "kilo"), "binary");
+	await writeFile(path.join(packageDirectory, "bin", "kilo2"), "binary");
 	await writeFile(path.join(packageDirectory, "bin", "tree-sitter", "tree-sitter.wasm"), "wasm");
 	return { root, packageDirectory };
 }
@@ -49,7 +49,9 @@ describe("stageKiloCli", () => {
 		const result = await stageKiloCli({ resourceRoot, artifact, packageDirectory });
 
 		expect(result.staged).toBe(true);
-		expect(await readFile(path.join(result.targetDirectory, "bin", "kilo"), "utf8")).toBe("binary");
+		expect(await readFile(path.join(result.targetDirectory, "bin", "kilo2"), "utf8")).toBe(
+			"binary",
+		);
 		expect(
 			JSON.parse(await readFile(path.join(result.targetDirectory, "staged.json"), "utf8")),
 		).toEqual({

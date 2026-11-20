@@ -11,7 +11,6 @@ import { testPlugin } from "@kilo-desktop/kernel/testing";
 import {
 	AgentExtension,
 	AiProviderPoint,
-	ExternalApps,
 	KiloServer,
 	McpServer,
 	SERVER_SERVICE_KEY,
@@ -34,7 +33,7 @@ afterEach(async () => {
 	await cleanUpAgents();
 });
 
-const CONFIG_FILE = "agent/runtime/config/kilo/kilo.jsonc";
+const CONFIG_FILE = "agent-v2/runtime/config/kilo2/kilo.jsonc";
 
 /** A plugin contributing an AI provider it can change later. */
 function aiProviderContributor(id: string, initial: AiProviderConfig | undefined) {
@@ -138,7 +137,7 @@ describe("the Kilo server", () => {
 
 		expect(server.input.corsOrigins).toEqual(["kilo-desktop://app"]);
 		expect(server.input.installationId).toBe("install-1");
-		expect(server.input.directories.runtimeDirectory).toMatch(/agent[/\\]runtime$/);
+		expect(server.input.directories.runtimeDirectory).toMatch(/agent-v2[/\\]runtime$/);
 	});
 
 	it("connects callers once the server is ready, starting it if needed", async () => {
@@ -483,8 +482,8 @@ describe("agent extensions", () => {
 		});
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const configFile = path.join(storage, CONFIG_FILE);
-		const pluginFile = path.join(storage, "agent/runtime/kilo-plugins/anaconda-notebooks.js");
-		const skillLink = path.join(storage, "agent/runtime/config/kilo/skills/review");
+		const pluginFile = path.join(storage, "agent-v2/runtime/kilo-plugins/anaconda-notebooks.js");
+		const skillLink = path.join(storage, "agent-v2/runtime/config/kilo2/skills/review");
 
 		expect(await readJsonc(configFile)).toMatchObject({
 			mcp: {
@@ -531,7 +530,7 @@ describe("agent extensions", () => {
 	it("leaves the user's own agent of the same name alone", async () => {
 		const notebook = await notebookPlugin();
 		const storage = await tempDir();
-		await mkdir(path.join(storage, "agent/runtime/config/kilo"), { recursive: true });
+		await mkdir(path.join(storage, "agent-v2/runtime/config/kilo2"), { recursive: true });
 		await writeFile(
 			path.join(storage, CONFIG_FILE),
 			JSON.stringify({ agent: { analyst: { prompt: "Mine." } } }),
@@ -554,7 +553,7 @@ describe("agent extensions", () => {
 			testPlugin("acme.dynamic", { entry: { activate: () => {} } }),
 		]);
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
-		const file = path.join(storage, "agent/runtime/kilo-plugins/anaconda-extra.js");
+		const file = path.join(storage, "agent-v2/runtime/kilo-plugins/anaconda-extra.js");
 
 		const contribution = kernel.sdkFor("acme.dynamic").extensions.add(AgentExtension, {
 			id: "extra",
@@ -573,52 +572,32 @@ describe("the user's config file", () => {
 		const { kernel, storage } = await boot();
 
 		await expect(serverOf(kernel).methods.userConfigFile(undefined)).resolves.toEqual({
-			path: path.join(storage, "user-config", "kilo.jsonc"),
+			path: path.join(storage, "user-config", "kilo2.jsonc"),
 			exists: false,
 		});
 	});
 });
 
-describe("kilo.agent's storage", () => {
-	it("is adopted once, so the app-owned config and Kilo's state survive the upgrade", async () => {
+describe("v1 state", () => {
+	it("is left alone: kilo.agent's old folder and v1's agent folder are never read or moved", async () => {
 		const root = await tempDir();
 		const storage = path.join(root, "plugins", "kilo.core");
 		const legacy = path.join(root, "plugins", "kilo.agent");
+		const v1Config = path.join(storage, "agent/runtime/config/kilo/kilo.jsonc");
 		await mkdir(path.join(legacy, "runtime/config/kilo"), { recursive: true });
-		await mkdir(path.join(legacy, "kilo"), { recursive: true });
-		await mkdir(storage, { recursive: true });
-		await writeFile(
-			path.join(legacy, "runtime/config/kilo/kilo.jsonc"),
-			JSON.stringify({ mcp: { mine: { type: "local", command: ["mine"] } } }),
-		);
-		await writeFile(path.join(legacy, "kilo/model.json"), "{}");
-		await writeFile(
-			path.join(legacy, "external-clients.json"),
-			JSON.stringify({
-				enabled: false,
-				port: 9412,
-				clients: [
-					{
-						id: "app-1",
-						name: "Cursor",
-						tokenHash: "c".repeat(64),
-						createdAt: "2026-10-01T00:00:00.000Z",
-					},
-				],
-				importedFromOrigin: true,
-			}),
-		);
+		await mkdir(path.dirname(v1Config), { recursive: true });
+		const legacyConfig = JSON.stringify({ mcp: { mine: { type: "local", command: ["mine"] } } });
+		await writeFile(path.join(legacy, "runtime/config/kilo/kilo.jsonc"), legacyConfig);
+		await writeFile(v1Config, legacyConfig);
 
 		const { kernel } = await boot([], { storage });
 
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
+		await expect(
+			readFile(path.join(legacy, "runtime/config/kilo/kilo.jsonc"), "utf8"),
+		).resolves.toBe(legacyConfig);
+		await expect(readFile(v1Config, "utf8")).resolves.toBe(legacyConfig);
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).toMatchObject({ mcp: { mine: { command: ["mine"] } } });
-		await expect(readFile(path.join(storage, "agent/kilo/model.json"), "utf8")).resolves.toBe("{}");
-		await expect(readFile(path.join(legacy, "external-clients.json"))).rejects.toThrow();
-		expect(kernel.kernelSdk.domainObjects.get(ExternalApps)!.getState()).toMatchObject({
-			port: 9412,
-			apps: [{ id: "app-1", name: "Cursor" }],
-		});
+		expect(config).not.toMatchObject({ mcp: { mine: expect.anything() } });
 	});
 });

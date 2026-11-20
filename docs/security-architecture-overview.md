@@ -2,13 +2,13 @@
 
 ## Document metadata
 
-| Field            | Value                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code |
-| Document version | 1.4                                                                                        |
-| Document owner   | Kilo engineering                                                                           |
-| Codebase version | General review: 0195dc5b (2026-11-10); notebook helper update: 2026-11-13                  |
-| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes          |
+| Field            | Value                                                                                               |
+| ---------------- | --------------------------------------------------------------------------------------------------- |
+| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code          |
+| Document version | 1.5                                                                                                 |
+| Document owner   | Kilo engineering                                                                                    |
+| Codebase version | General review: 0195dc5b (2026-11-10); notebook helper update: 2026-11-13; Kilo v2 line: 2026-11-20 |
+| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes                   |
 
 ## Version history
 
@@ -19,6 +19,7 @@
 | 1.2     | 2026-11-09 | Targeted update: frames in application windows have no peer-to-peer (WebRTC) networking or application bridge, and agent-generated pages stay in the frame they were delivered to. |
 | 1.3     | 2026-11-10 | Feature flags: a signed-in Anaconda account's identifier and email join feature-flag evaluation as a linked account.                                                               |
 | 1.4     | 2026-11-13 | Clarified notebook daemon identity verification while moving the embedded runtime to its stable release channel.                                                                   |
+| 1.5     | 2026-11-20 | Kilo Code v2 server line (a build-time option): the application starts its own private v2 CLI tied to its lifetime, with data kept apart from v1 Kilo.                             |
 
 ## Maintainer agent update prompt
 
@@ -207,7 +208,7 @@ All plugins are first-party code bundled with the application, and their main-pr
 
 ### 5.3 Local service authentication
 
-Local helper channels are authenticated rather than trusted by address. The application's helper and tool listeners bind the loopback interface by default and require credentials generated at launch, or issued when the user pairs an external app, and the application passes launch credentials only to the components that need them. Helpers that need no listener communicate over standard input and output. When the application starts or attaches to a helper over a shared local socket, it verifies the helper process. For the notebook daemon, this means the spawned child identity or a pinned executable digest, with trusted macOS signing identities as an alternative for a shared daemon. Moving the embedded notebook runtime to the stable channel preserves those checks; it does not trust a process merely because it owns the endpoint. Serving the local model server on the local network is an explicit user setting.
+Local helper channels are authenticated rather than trusted by address. The application's helper and tool listeners bind the loopback interface by default and require credentials generated at launch, or issued when the user pairs an external app, and the application passes launch credentials only to the components that need them. Helpers that need no listener communicate over standard input and output. When the application starts or attaches to a helper over a shared local socket, it verifies the helper process. For the notebook daemon, this means the spawned child identity or a pinned executable digest, with trusted macOS signing identities as an alternative for a shared daemon. Moving the embedded notebook runtime to the stable channel preserves those checks; it does not trust a process merely because it owns the endpoint. Serving the local model server on the local network is an explicit user setting. Builds made for the Kilo Code v2 server line start their own private Kilo CLI rather than attaching to a shared background service: it listens on loopback with launch credentials, accepts cross-site calls only from the application's own window origins, and exits when the application closes its standard input.
 
 ### 5.4 Credential storage
 
@@ -237,14 +238,14 @@ Credentials at rest rely on operating-system account protections, and applicatio
 
 ### 6.2 Persistence surfaces
 
-| Persistence surface       | Primary role                                  | Notes for security review                                           |
-| ------------------------- | --------------------------------------------- | ------------------------------------------------------------------- |
-| Per-plugin storage        | Preferences and plugin state                  | One directory per plugin in the application data directory          |
-| Kilo CLI data             | Chats, configuration, credentials             | Managed by the CLI in the user's data and configuration directories |
-| Anaconda credential store | Anaconda API key                              | Shared with Anaconda tools                                          |
-| Browser pane session      | Cookies and site data                         | Persistent and separate from the application session                |
-| Environments and models   | Python environments, packages, local models   | In the user's home and application data directories                 |
-| Workspaces                | Repositories and notebooks the user registers | User-selected folders edited in place                               |
+| Persistence surface       | Primary role                                  | Notes for security review                                                                                                          |
+| ------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Per-plugin storage        | Preferences and plugin state                  | One directory per plugin in the application data directory                                                                         |
+| Kilo CLI data             | Chats, configuration, credentials             | Managed by the CLI in the user's data and configuration directories; the Kilo Code v2 line keeps separate directories from v1 Kilo |
+| Anaconda credential store | Anaconda API key                              | Shared with Anaconda tools                                                                                                         |
+| Browser pane session      | Cookies and site data                         | Persistent and separate from the application session                                                                               |
+| Environments and models   | Python environments, packages, local models   | In the user's home and application data directories                                                                                |
+| Workspaces                | Repositories and notebooks the user registers | User-selected folders edited in place                                                                                              |
 
 Local data is protected by operating-system account permissions and the disk encryption the user enables. Local data is retained until the user deletes it or uninstalls the application.
 
@@ -473,5 +474,5 @@ Before external publication or use as contractual evidence, validate the followi
 4. The Anaconda credential store backend in effect per platform and configuration.
 5. Live Anaconda service configuration, including the model catalog and the OAuth client.
 6. Default conda channel and package index configuration, and any organization-specific overrides.
-7. Behavior of bundled third-party components that this repository configures but does not implement — the Kilo CLI, conda bridge, notebook daemon, and local model runtime — including credential storage, permission handling, process environment handling, network behavior, and content isolation.
+7. Behavior of bundled third-party components that this repository configures but does not implement — the Kilo CLI, conda bridge, notebook daemon, and local model runtime — including credential storage, permission handling, process environment handling, network behavior, and content isolation; and, for the Kilo Code v2 CLI, which offers no telemetry setting the application could propagate, that it collects no usage data of its own.
 8. Current DPA, subprocessor list, and vendor assurance documentation for the services in section 9.

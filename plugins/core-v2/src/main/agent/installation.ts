@@ -39,7 +39,7 @@ export function resolveKiloInstallation(
 	if (!binDirectory) {
 		throw new KernelError(
 			"UNAVAILABLE",
-			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm --filter @kilo-desktop/plugin-core run fetch-cli.`,
+			`Bundled Kilo CLI is missing from the configured resource roots. Run pnpm --filter @kilo-desktop/plugin-core-v2 run fetch-cli.`,
 		);
 	}
 	return {

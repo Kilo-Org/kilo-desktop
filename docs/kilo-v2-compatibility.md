@@ -21,7 +21,8 @@ the v2 plugin copies described in
   `GET /api/event` with a new envelope, and messages are a flat tagged union
   instead of `{info, parts}`. Most v1 calls have an equivalent; few keep their
   shape. The react-opencode fork needs a new adapter, not a rename pass.
-- **Blockers for the shared background service** (decision of 2026-11-20):
+- **Blockers for the shared background service** (which led desktop to run its own server instead,
+  decision 77 in `docs/plugin-architecture.md`):
   desktop's per-process configuration, client identity and server plugins
   cannot be set per client on a shared service; a TUI or CLI of another
   version replaces the service; the production renderer origin is refused.
@@ -241,7 +242,7 @@ is still read.
 
 ## 7. Gaps
 
-Blocking the shared-service decision (raised as an open question):
+Blocking the shared service (resolved: desktop runs its own `kilo2 serve --stdio`):
 
 1. No per-client config (`KILO_CONFIG_CONTENT`, config dir).
 2. Client identity, machine id and API URL are per process.
@@ -250,7 +251,9 @@ Blocking the shared-service decision (raised as an open question):
 5. The production renderer origin is refused by CORS.
 6. Desktop would share the user's own v2 state, not fresh state.
 
-Missing in v2 whichever way desktop connects (raised as open questions):
+Missing in v2 whichever way desktop connects (decided in the workbook: MCP Apps and the per-model
+usage breakdown hidden under v2, schema output emulated in the prompt; v2 has no CLI telemetry, so
+there is nothing to toggle):
 
 7. MCP Apps (`resource/read`, `mcp/call-tool`).
 8. Per-session model usage.

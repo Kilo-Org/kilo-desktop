@@ -32,12 +32,7 @@ import { KiloPluginConfig } from "./KiloPluginConfig";
 import { KiloSkillConfig, kiloSkillDirectory } from "./KiloSkillConfig";
 import { removeLegacyKiloConfigPlugins } from "./managed-kilo-plugins";
 import { followSignedIn } from "./signed-in";
-import {
-	adoptKiloAgentStorage,
-	agentDirectories,
-	KILO_AGENT_EXTERNAL_APPS_FILE,
-	type AgentDirectories,
-} from "./storage";
+import { agentDirectories, KILO_AGENT_EXTERNAL_APPS_FILE, type AgentDirectories } from "./storage";
 import { createAgentToolGateway, type KiloToolEndpointConnection } from "./tool-gateway";
 import { DeclinedSignIns } from "./tool-gateway/declined-sign-ins";
 import { reconcileKiloCallerContextPlugin } from "./tool-gateway/kilo-caller-context-plugin";
@@ -149,14 +144,11 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * so a worktree can be removed (decision 54); a stopped server holds no
  * instance, so it does nothing then rather than starting one.
  *
- * Storage: kilo.agent's folder is adopted once as `<storage>/agent` (see
- * `storage.ts`) before anything reads it.
+ * Storage: the v2 line keeps its own `<storage>/agent-v2` folder (see
+ * `storage.ts`).
  */
 export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Promise<void> {
 	const storageDirectory = mainHost(sdk).storage.dir;
-	await adoptKiloAgentStorage(storageDirectory).catch((error) =>
-		sdk.logger.warn(`Could not adopt kilo.agent's storage: ${errorMessage(error)}`),
-	);
 	const directories = agentDirectories(storageDirectory);
 	const disposeInstance = options.disposeInstance ?? createInstanceDisposer();
 	const consent = () => sdk.domainObjects.get(KernelDataCollection)?.getState();

@@ -10,15 +10,15 @@ import { KiloServerManager, type KiloInstallation } from "./KiloServerManager";
 import { originExternalClientsFile } from "./tool-gateway";
 
 /**
- * Mirrors the Kilo CLI's `Global.Path.config`, which uses `xdg-basedir` on
- * every platform (Windows included, not `%APPDATA%`). `||` because
- * xdg-basedir treats an empty `XDG_CONFIG_HOME` as unset.
+ * Mirrors Kilo v2's global config directory, `<XDG config>/kilo2` on every
+ * platform (Windows included, not `%APPDATA%`), apart from v1's `kilo`. `||`
+ * because xdg-basedir treats an empty `XDG_CONFIG_HOME` as unset.
  */
 export function resolveUserConfigDirectory(
 	env: NodeJS.ProcessEnv = process.env,
 	homeDirectory: string = os.homedir(),
 ): string {
-	return path.join(env.XDG_CONFIG_HOME || path.join(homeDirectory, ".config"), "kilo");
+	return path.join(env.XDG_CONFIG_HOME || path.join(homeDirectory, ".config"), "kilo2");
 }
 
 /**

@@ -105,7 +105,7 @@ describe("the agent tool gateway", () => {
 		expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
 		expect(endpoint.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 		const config = parse(
-			await readFile(path.join(storage, "agent/runtime/config/kilo/kilo.jsonc"), "utf8"),
+			await readFile(path.join(storage, "agent-v2/runtime/config/kilo2/kilo.jsonc"), "utf8"),
 		) as Record<string, Record<string, unknown>>;
 		expect(config.mcp?.desktop).toEqual({
 			type: "remote",
@@ -116,7 +116,7 @@ describe("the agent tool gateway", () => {
 		});
 		await expect(
 			readFile(
-				path.join(storage, "agent/runtime/kilo-plugins", KILO_CALLER_CONTEXT_PLUGIN_FILENAME),
+				path.join(storage, "agent-v2/runtime/kilo-plugins", KILO_CALLER_CONTEXT_PLUGIN_FILENAME),
 				"utf8",
 			),
 		).resolves.toContain(KILO_CALLER_CONTEXT_KEY);

@@ -19,7 +19,7 @@ export interface KiloCliArtifact {
 	readonly packageName: string;
 	readonly platform: NodeJS.Platform;
 	readonly arch: NodeJS.Architecture;
-	readonly executable: "kilo" | "kilo.exe";
+	readonly executable: "kilo2" | "kilo2.exe";
 }
 
 export const KILO_CLI_ARTIFACTS = [
@@ -28,35 +28,35 @@ export const KILO_CLI_ARTIFACTS = [
 		packageName: "@kilocode/cli-darwin-arm64",
 		platform: "darwin",
 		arch: "arm64",
-		executable: "kilo",
+		executable: "kilo2",
 	},
 	{
 		target: "windows-arm64",
 		packageName: "@kilocode/cli-windows-arm64",
 		platform: "win32",
 		arch: "arm64",
-		executable: "kilo.exe",
+		executable: "kilo2.exe",
 	},
 	{
 		target: "windows-x64-baseline",
 		packageName: "@kilocode/cli-windows-x64-baseline",
 		platform: "win32",
 		arch: "x64",
-		executable: "kilo.exe",
+		executable: "kilo2.exe",
 	},
 	{
 		target: "linux-x64-baseline",
 		packageName: "@kilocode/cli-linux-x64-baseline",
 		platform: "linux",
 		arch: "x64",
-		executable: "kilo",
+		executable: "kilo2",
 	},
 	{
 		target: "linux-arm64",
 		packageName: "@kilocode/cli-linux-arm64",
 		platform: "linux",
 		arch: "arm64",
-		executable: "kilo",
+		executable: "kilo2",
 	},
 ] as const satisfies readonly KiloCliArtifact[];
 

@@ -29,6 +29,16 @@ export function useChatSelections(): ChatSelections | undefined {
 	return useContext(ServicesContext)?.selections;
 }
 
+/** Drops a permission request the server no longer waits on from the window's threads. */
+export function useSettlePermission():
+	| ((permissionId: string, chatId: string) => void)
+	| undefined {
+	const services = useContext(ServicesContext);
+	return services
+		? (permissionId, chatId) => services.settlePermission(permissionId, chatId)
+		: undefined;
+}
+
 const selectStatus = (state: { status: string; version?: string | undefined }) =>
 	`${state.status}\n${state.version ?? ""}`;
 

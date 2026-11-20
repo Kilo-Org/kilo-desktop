@@ -186,7 +186,6 @@ jobs:
       # time on Windows. The root project comes along, with turbo and vitest.
       - uses: ./.github/actions/setup-node-pnpm
         with:
-          store-scope: platform
           install: "true"
           install-filters-file: .github/platform-test-packages.txt
       - uses: ./.github/actions/turbo-cache

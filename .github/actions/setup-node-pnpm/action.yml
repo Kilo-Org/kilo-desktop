@@ -21,14 +21,6 @@ inputs:
       merge queue never saves (see the "Decide whether to save" steps).
     required: false
     default: "true"
-  store-scope:
-    description: >
-      Name for the set of packages the caller installs. "full" (the default)
-      is `pnpm install` of the whole workspace. A filtered install passes its
-      own name so its smaller store never lands under the full key; it restores
-      the current full store first, and skips saving when that store exists.
-    required: false
-    default: "full"
   install:
     description: >
       Also run `pnpm install --frozen-lockfile`, restoring node_modules from
@@ -46,8 +38,9 @@ inputs:
   install-filters-file:
     description: >
       With install: a file listing one workspace package per line; installs
-      only those packages and their dependencies (`--filter=<name>...`). Pass a
-      store-scope other than "full" with it.
+      only those packages and their dependencies (`--filter=<name>...`). It
+      restores the full store on a node_modules miss but never saves it, so a
+      smaller store never lands under the full store's key.
     required: false
     default: ""
 
@@ -161,17 +154,16 @@ runs:
       id: node-modules-key
       shell: bash
       env:
-        SCOPE: ${{ inputs.store-scope }}
         INPUTS_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', '.nvmrc', 'package.json', '.github/actions/setup-node-pnpm/action.yml') }}
         FILTERS_FILE: ${{ inputs.install-filters-file }}
       run: |
-        filters_hash=none
+        scope=full
         if [[ -n "$FILTERS_FILE" ]]; then
-          filters_hash=$(git hash-object "$FILTERS_FILE")
+          scope=filtered-$(git hash-object "$FILTERS_FILE")
         fi
         abi=$(node -p process.versions.modules)
         {
-          echo "key=node-modules-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-abi$abi-$INPUTS_HASH-$filters_hash"
+          echo "key=node-modules-$scope-$RUNNER_OS-$RUNNER_ARCH-abi$abi-$INPUTS_HASH"
           echo "paths<<EOF"
           echo "node_modules"
           echo "apps/*/node_modules"
@@ -196,27 +188,13 @@ runs:
       id: pnpm-store
       shell: bash
       env:
-        SCOPE: ${{ inputs.store-scope }}
         LOCK_HASH: ${{ hashFiles('pnpm-lock.yaml') }}
       run: |
         {
           echo "path=$(pnpm store path --silent)"
-          echo "full-key=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
-          echo "full-prefix=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-"
-          echo "key=pnpm-store-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
-          echo "prefix=pnpm-store-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-"
+          echo "key=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
+          echo "prefix=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-"
         } >> "$GITHUB_OUTPUT"
-
-    # A filtered install restored from the current full store adds nothing
-    # worth saving a second, smaller copy of.
-    - name: Look up the full pnpm store
-      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && inputs.store-scope != 'full' && steps.node-modules.outputs.cache-hit != 'true'
-      id: full-store
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ steps.pnpm-store.outputs.path }}
-        key: ${{ steps.pnpm-store.outputs.full-key }}
-        lookup-only: true
 
     # A pull request that leaves pnpm-lock.yaml alone gets its exact store from
     # main once warm-caches.yml finishes; a run that starts first (right after
@@ -227,16 +205,17 @@ runs:
     # current base. github.event.pull_request.base.sha is not: it can be the
     # older commit the branch started from, so a branch behind a lockfile change
     # on main would look like it changed the lockfile itself.
+    # A filtered install never saves: its store lacks the packages it left out.
     # Fails toward saving if the parent can't be fetched.
     - name: Decide whether to save the pnpm store
       if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       id: save-store
       shell: bash
       env:
-        FULL_STORE_EXISTS: ${{ steps.full-store.outputs.cache-hit }}
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
       run: |
         save=true
-        if [[ "$FULL_STORE_EXISTS" == "true" ]]; then save=false; fi
+        if [[ -n "$FILTERS_FILE" ]]; then save=false; fi
         case "$GITHUB_EVENT_NAME" in
           merge_group) save=false ;;
           pull_request)
@@ -254,11 +233,6 @@ runs:
     # ~1,250 packages again. The prefix fallback restores the closest store and
     # pnpm fetches only what changed. Caches saved on a PR branch are invisible
     # to other PRs; .github/workflows/warm-caches.yml saves them on main.
-    # The first matching restore key wins, so a filtered scope takes the current
-    # full store, then any older full store (both hold every package it needs),
-    # and its own older store only when no full store exists. For the full
-    # scope the primary key equals the first restore key and the second restore
-    # key equals the third, which actions/cache tolerates.
     - name: Cache the pnpm store
       if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -266,8 +240,6 @@ runs:
         path: ${{ steps.pnpm-store.outputs.path }}
         key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
-          ${{ steps.pnpm-store.outputs.full-key }}
-          ${{ steps.pnpm-store.outputs.full-prefix }}
           ${{ steps.pnpm-store.outputs.prefix }}
 
     - name: Restore the pnpm store
@@ -277,8 +249,6 @@ runs:
         path: ${{ steps.pnpm-store.outputs.path }}
         key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
-          ${{ steps.pnpm-store.outputs.full-key }}
-          ${{ steps.pnpm-store.outputs.full-prefix }}
           ${{ steps.pnpm-store.outputs.prefix }}
 
     # On a node_modules hit of the full workspace, the install confirms the

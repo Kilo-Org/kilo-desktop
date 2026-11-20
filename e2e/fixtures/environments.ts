@@ -3,12 +3,9 @@ import os from "node:os";
 import path from "node:path";
 
 import { EnvironmentsPage } from "../pages/environments/environments-page.js";
-import { environmentsData } from "../testdata/environments.js";
+import { type CondaSandbox, environmentsData } from "../testdata/environments.js";
 import { removePathAfterAppStops } from "./shell.js";
 import { test as settingsTest } from "./shell/settings.js";
-
-/** The worker's conda folders: `envsDir` is conda's first envs directory and holds the seed. */
-export type CondaSandbox = { envsDir: string; pkgsDir: string };
 
 async function createCondaSandbox(): Promise<CondaSandbox> {
 	// The bridge reports realpaths (macOS temp dirs are /var → /private/var symlinks).

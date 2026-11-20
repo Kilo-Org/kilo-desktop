@@ -18,6 +18,10 @@ export const SETTINGS_GROUPS = [
 	{ id: "developer", label: "Developer" },
 ] as const;
 
+/**
+ * Behind `environments-feature` (forced on by `package:e2e`). Kept out of `SETTINGS_SECTIONS`:
+ * opening it starts the conda bridge, so only the environments fixture's conda sandbox opens it.
+ */
 export const CONDA_ENVIRONMENTS_SECTION: SettingsSection = {
 	id: "environments",
 	title: "Conda Environments",
@@ -27,10 +31,9 @@ export const CONDA_ENVIRONMENTS_SECTION: SettingsSection = {
 
 /**
  * Every bundled settings section (`kilo.shell/settings-section`), as origin
- * listed them. Diagnostics (kilo.developer), Conda Environments
- * (`environments-feature`) and External AI apps (kilo.core's
- * `external-api-apps-settings`) are flag-gated; `package:e2e` forces those
- * flags on. Conda Environments and Notebooks are sign-in gated.
+ * listed them, except `CONDA_ENVIRONMENTS_SECTION`. Diagnostics (kilo.developer)
+ * and External AI apps (kilo.core's `external-api-apps-settings`) are flag-gated;
+ * `package:e2e` forces both flags on. Notebooks is sign-in gated.
  */
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: "about", title: "About" },
@@ -38,7 +41,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: "appearance", title: "Appearance" },
 	{ id: "keyboard-shortcuts", title: "Shortcuts" },
 	{ id: "diagnostics", title: "Diagnostics" },
-	CONDA_ENVIRONMENTS_SECTION,
 	{
 		id: "notebooks",
 		title: "Notebooks",

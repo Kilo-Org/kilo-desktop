@@ -1,29 +1,22 @@
 import path from "node:path";
 
 import {
-	click,
-	expectElementToBeEditable,
-	expectElementToBeEnabled,
-	expectElementToBeHidden,
 	expectElementToBeVisible,
-	expectElementToContainText,
-	expectElementToHaveAttribute,
 	expectElementToHaveText,
 	getLocatorByTestId,
 	getLocatorByText,
 	getText,
 	isElementVisible,
-	pressPageKeyboard,
 } from "@anaconda/playwright-utils";
 import type { Locator } from "@playwright/test";
 
-import type { CondaSandbox } from "../../fixtures/environments.js";
-import { environmentsData } from "../../testdata/environments.js";
+import { type CondaSandbox, environmentsData } from "../../testdata/environments.js";
 
 /**
- * The Conda Environments settings page body (kilo.environments). Opening the section and its
- * heading belong to `SettingsPage`; this covers the conda bridge's list and toolbar, which
- * settle only after Kilo sign-in and the bridge's warm-up.
+ * The Conda Environments settings page body (kilo.environments) in the packaged app. Opening the
+ * section and its heading belong to `SettingsPage`; the panel's own controls are covered by the
+ * plugin's browser tests, so this checks only what needs the real conda bridge: the list settles
+ * and shows the sandbox's seeded environment.
  */
 export class EnvironmentsPage {
 	private readonly sectionDescription = () => getLocatorByTestId("settings-section-description");
@@ -43,71 +36,32 @@ export class EnvironmentsPage {
 		});
 	private readonly rowName = (prefix: string) =>
 		this.rowAt(prefix).getByTestId("environments-conda-name");
-	private readonly searchInput = () => getLocatorByTestId("environments-search-input");
-	private readonly sortMenu = () => getLocatorByTestId("environments-sort-menu");
-	private readonly newMenu = () => getLocatorByTestId("environments-new-menu");
-	private readonly createItem = () => getLocatorByTestId("environments-create-item");
-	private readonly importItem = () => getLocatorByTestId("environments-import-item");
 
 	constructor(private readonly sandbox: CondaSandbox) {}
 
-	/** Waits past sign-in and the bridge's warm-up; fails with the page's error if loading failed. */
+	/**
+	 * Waits past sign-in and the bridge's warm-up within one `settledTimeoutMs` budget, and fails
+	 * with the page's own text if the bridge is unavailable or the list failed to load.
+	 */
 	async waitForEnvironmentsLoaded(): Promise<void> {
+		const deadline = Date.now() + environmentsData.settledTimeoutMs;
+		const remaining = () => Math.max(deadline - Date.now(), 1);
 		await expectElementToBeVisible(this.provider().or(this.unavailableMessage()), {
 			message:
 				"Conda Environments should open once Kilo sign-in and the conda bridge status resolve",
-			timeout: environmentsData.settledTimeoutMs,
+			timeout: remaining(),
 		});
 		await this.throwIfShown(this.unavailableMessage(), "Conda Environments is unavailable");
 		await expectElementToBeVisible(this.list().or(this.emptyList()).or(this.loadError()), {
 			message: "The environment list should finish loading once the conda bridge is ready",
-			timeout: environmentsData.settledTimeoutMs,
+			timeout: remaining(),
 		});
 		await this.throwIfShown(this.loadError(), "Conda Environments failed to load");
 	}
 
-	private async throwIfShown(failure: Locator, reason: string): Promise<void> {
-		if (await isElementVisible(failure, { timeout: 0 })) {
-			throw new Error(`${reason}: ${await getText(failure)}`);
-		}
-	}
-
-	/** Description, toolbar, New environment menu and list of the environments tab. */
-	async verifyEnvironmentsTabUi(): Promise<void> {
+	async verifySectionDescription(): Promise<void> {
 		await expectElementToHaveText(this.sectionDescription(), environmentsData.description, {
-			message: "The page should describe what Conda Environments manages",
-		});
-		await expectElementToHaveAttribute(
-			this.searchInput(),
-			"placeholder",
-			environmentsData.searchPlaceholder,
-			{ message: "The toolbar should offer an environment search field" },
-		);
-		await expectElementToBeEditable(this.searchInput(), {
-			message: "The search field should accept input",
-		});
-		await expectElementToHaveAttribute(this.sortMenu(), "aria-label", environmentsData.sortLabel, {
-			message: "The toolbar should offer a sort button",
-		});
-		await expectElementToBeEnabled(this.sortMenu(), {
-			message: "The sort button should be enabled",
-		});
-		await expectElementToContainText(this.newMenu(), environmentsData.newEnvironmentLabel, {
-			message: "The header should offer a New environment button",
-		});
-		await click(this.newMenu());
-		await expectElementToHaveText(this.createItem(), environmentsData.createItemLabel, {
-			message: "New environment should offer creating an environment",
-		});
-		await expectElementToHaveText(this.importItem(), environmentsData.importItemLabel, {
-			message: "New environment should offer importing an environment file",
-		});
-		await pressPageKeyboard("Escape");
-		await expectElementToBeHidden(this.createItem(), {
-			message: "Escape should close the New environment menu",
-		});
-		await expectElementToBeVisible(this.list(), {
-			message: "The tab should list the conda environments",
+			message: "The page should show the description kilo.environments contributes",
 		});
 	}
 
@@ -120,5 +74,11 @@ export class EnvironmentsPage {
 		await expectElementToHaveText(this.rowName(prefix), name, {
 			message: `The environment at "${prefix}" should be named "${name}"`,
 		});
+	}
+
+	private async throwIfShown(failure: Locator, reason: string): Promise<void> {
+		if (await isElementVisible(failure, { timeout: 0 })) {
+			throw new Error(`${reason}: ${await getText(failure)}`);
+		}
 	}
 }

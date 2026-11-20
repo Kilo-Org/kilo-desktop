@@ -1342,8 +1342,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 7.8.31
+        version: 7.8.31
       '@lexical/history':
         specifier: ^0.53.0
         version: 0.53.0(typescript@7.0.2)
@@ -1451,8 +1451,8 @@ importers:
   plugins/chat/opencode-sdk-compat:
     dependencies:
       '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 7.8.31
+        version: 7.8.31
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -1464,8 +1464,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/kernel
       '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
+        specifier: 7.8.31
+        version: 7.8.31
       '@launchdarkly/node-client-sdk':
         specifier: ^4.4.4
         version: 4.4.4
@@ -3499,8 +3499,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@kilocode/sdk@7.8.27':
-    resolution: {integrity: sha512-P5LD034HM8pDARw3KwrMZWSp1KM8jLqMpSzMkRHHLaK2Ra/+FgTLWV0WbfBD4XylZqo4+9J9djnP+msPvlZD/A==}
+  '@kilocode/sdk@7.8.31':
+    resolution: {integrity: sha512-L51g9fdjQwYZj+FhBK6fU5BHXGKL6cMs4o5IzMRhzqQjoq1+0FZVfgGdzIZo6FERbZLFNObQFtkyHNr9wOWk/w==}
 
   '@koromix/koffi-android-arm64@3.3.8':
     resolution: {integrity: sha512-Y0lt2JexRGXlg1PxFuegfi5p6bIcLMj7Mig0WapZRKEM3Yv2L9J3Ej4XHPYMsB0TRNttBRHiliaJOH6EedEIXg==}
@@ -12228,7 +12228,7 @@ snapshots:
   '@kilocode/cli-windows-x64-baseline@7.8.27':
     optional: true
 
-  '@kilocode/sdk@7.8.27':
+  '@kilocode/sdk@7.8.31':
     dependencies:
       cross-spawn: 7.0.6
 

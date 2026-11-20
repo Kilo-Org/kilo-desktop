@@ -10,6 +10,7 @@ import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import { RenderContribution, useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 
@@ -18,6 +19,7 @@ import type {
 	PermissionInteraction,
 	PermissionRendererImplementation,
 } from "../../contracts";
+import { useSettlePermission } from "../runtime/chat-connection";
 import { ComposerShell } from "../thread/composer-shelf";
 import {
 	findPermissionToolArgs,
@@ -32,12 +34,27 @@ import { visiblePermissionPatterns } from "./permission-labels";
 const selectDetail = (implementation: PermissionRendererImplementation) =>
 	implementation.PermissionDetail;
 
+/** Whether the server still lists `request`; true when it can't be asked. */
+async function stillPending(
+	chats: DomainObjectHandle<typeof Chats>,
+	request: OpenCodePermissionRequest,
+): Promise<boolean> {
+	try {
+		const pending = await chats.methods.permissionRequests({ id: request.sessionId });
+		return pending.some((candidate) => candidate.id === request.id);
+	} catch {
+		return true;
+	}
+}
+
 /**
  * A permission request waiting on the person, answered through kilo.core's
  * chats (to the chat that asked: a subagent's request goes to its chat). The
  * person's approvals are `interactive`, without which the Kilo server
  * ignores approvals of sensitive requests. The card leaves when the server
- * announces the reply on the stream.
+ * announces the reply on the stream, or when a reply fails and the server no
+ * longer lists the request (it was answered while the window wasn't
+ * listening).
  */
 export const OpenCodePermissionCard = ({
 	request,
@@ -50,6 +67,7 @@ export const OpenCodePermissionCard = ({
 	acceptOnEnter?: boolean;
 }) => {
 	const chats = useDomainObject(Chats);
+	const settlePermission = useSettlePermission();
 	const [submittingReply, setSubmittingReply] = useState<OpenCodePermissionResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +87,13 @@ export const OpenCodePermissionCard = ({
 				interactive: true,
 			});
 		} catch (err) {
+			if (settlePermission && !(await stillPending(chats, request))) {
+				// Answered or dropped while this window wasn't listening: the card is stale.
+				settlePermission(request.id, request.sessionId);
+				// Settling unmounts the card; if it somehow stays, it must stay answerable.
+				setSubmittingReply(null);
+				return;
+			}
 			setError(err instanceof Error ? err.message : "Could not submit the reply.");
 			setSubmittingReply(null);
 		}

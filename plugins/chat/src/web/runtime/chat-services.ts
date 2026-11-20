@@ -15,6 +15,7 @@ import { createEventBatcher } from "./event-batcher";
 import { HistoryPrefetch } from "./history-prefetch";
 import { KiloClients } from "./kilo-client";
 import { LiveParts } from "./live-parts";
+import { settledPromptEvent } from "./pending-prompts";
 
 type ServerHandle = DomainObjectHandle<typeof KiloServer>;
 
@@ -111,6 +112,15 @@ export class ChatServices {
 			subscribe: (listener) => batcher.subscribe(listener),
 			dispose: () => undefined,
 		};
+	}
+
+	/**
+	 * Drops a permission request the server no longer waits on from every
+	 * thread in the window, as if its reply had arrived on the stream (one
+	 * answered while no thread was listening would otherwise keep its card).
+	 */
+	settlePermission(permissionId: string, chatId: string): void {
+		this.#batcher.push(settledPromptEvent("permission", permissionId, chatId));
 	}
 
 	/** Chat histories loaded ahead of opening (see history-prefetch.ts). */

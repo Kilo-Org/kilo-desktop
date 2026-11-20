@@ -34,7 +34,7 @@ describe("policyCardContent", () => {
 			by: { org: "acme", policy: "organization_policy" },
 			rows: [
 				{
-					key: "pillow@8.4.0#0",
+					key: expect.any(String),
 					label: "pillow 8.4.0",
 					reason: "CVE score of 9.1 is greater than 9",
 					org: null,
@@ -45,6 +45,13 @@ describe("policyCardContent", () => {
 				"Ask your organization's administrator for an exception, or use a version the policy allows.",
 		});
 		expect(plainText(content!.headline)).toBe("pillow 8.4.0 is blocked");
+	});
+
+	it("shows an exact duplicate block once", () => {
+		const content = policyCardContent(blocked([entry(), entry()]));
+
+		expect(content?.kind === "blocked" && content.rows).toHaveLength(1);
+		expect(content && plainText(content.headline)).toBe("pillow 8.4.0 is blocked");
 	});
 
 	it("names only the package without a version, and keeps the unknown fields null", () => {

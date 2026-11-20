@@ -1,5 +1,8 @@
 import type { PolicyBlockedPackage } from "../../contracts/common";
-import type { FriendlyEnvironmentsError } from "../providers/conda/environments-error-message";
+import {
+	keyedBlockedPackages,
+	type FriendlyEnvironmentsError,
+} from "../providers/conda/environments-error-message";
 
 /** A run of headline text; `code` runs (package names, channels) are set in mono. */
 export interface TextPart {
@@ -89,9 +92,11 @@ export function policyCardContent(failure: FriendlyEnvironmentsError): PolicyCar
 }
 
 function blockedContent(
-	entries: readonly PolicyBlockedPackage[],
+	blocked: readonly PolicyBlockedPackage[],
 	summary: string,
 ): PolicyCardContent {
+	const keyed = keyedBlockedPackages(blocked);
+	const entries = keyed.map(({ entry }) => entry);
 	if (entries.length === 0) {
 		return {
 			kind: "blocked",
@@ -112,8 +117,8 @@ function blockedContent(
 			? [{ text: packageLabel(first), code: true }, { text: " is blocked" }]
 			: [{ text: `${entries.length} packages are blocked` }],
 		by: { org: orgShared ? first.org : null, policy: policyShared ? first.policy : null },
-		rows: entries.map((entry, index) => ({
-			key: `${entry.package}@${entry.version ?? ""}#${index}`,
+		rows: keyed.map(({ key, entry }) => ({
+			key,
 			label: packageLabel(entry),
 			reason: entry.reason,
 			org: orgShared ? null : entry.org,

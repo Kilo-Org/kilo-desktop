@@ -6,7 +6,8 @@ import {
 	type AssistantState,
 } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, type FC, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FC, type RefObject } from "react";
+import { createPortal } from "react-dom";
 
 import { useFindScopeOpen } from "@kilo-desktop/ui/components/find-bar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -70,18 +71,76 @@ function useThreadHeightVariable(ref: RefObject<HTMLDivElement | null>) {
 	}, [ref]);
 }
 
+const COMPOSER_INSET_VAR = "--composer-inset";
+
+/**
+ * Publishes the docked composer's height so the transcript reserves that much
+ * space at its end; the composer floats over the scroller rather than in it.
+ */
+function useComposerInsetVariable(
+	rootRef: RefObject<HTMLDivElement | null>,
+	dock: HTMLDivElement | null,
+) {
+	useLayoutEffect(() => {
+		const root = rootRef.current;
+		if (!root || !dock) return;
+		const publish = () => root.style.setProperty(COMPOSER_INSET_VAR, `${dock.offsetHeight}px`);
+		publish();
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(publish);
+		observer.observe(dock);
+		return () => observer.disconnect();
+	}, [rootRef, dock]);
+}
+
+const SCROLLBAR_GUTTER_VAR = "--transcript-scrollbar-gutter";
+
+/**
+ * Publishes the width of each of the transcript's scrollbar gutters so the
+ * dock can stop short of them: it floats over the scroller, so at full pane
+ * width it covered the scrollbar's lower end, where the thumb sits while the
+ * reader is at the bottom.
+ */
+function useScrollbarGutterVariable(
+	rootRef: RefObject<HTMLDivElement | null>,
+	viewportRef: RefObject<HTMLDivElement | null>,
+) {
+	useLayoutEffect(() => {
+		const root = rootRef.current;
+		const viewport = viewportRef.current;
+		if (!root || !viewport) return;
+		const publish = () => {
+			// Both edges reserve a gutter (scrollbar-gutter: stable both-edges).
+			const gutter = (viewport.offsetWidth - viewport.clientWidth) / 2;
+			root.style.setProperty(SCROLLBAR_GUTTER_VAR, `${gutter}px`);
+		};
+		publish();
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(publish);
+		observer.observe(viewport);
+		return () => observer.disconnect();
+	}, [rootRef, viewportRef]);
+}
+
 export const Thread: FC = () => {
 	const isDraft = useAuiState(isDraftView);
 	const rootRef = useRef<HTMLDivElement>(null);
+	const viewportRef = useRef<HTMLDivElement>(null);
+	const [dock, setDock] = useState<HTMLDivElement | null>(null);
 	useThreadHeightVariable(rootRef);
+	useComposerInsetVariable(rootRef, dock);
+	useScrollbarGutterVariable(rootRef, viewportRef);
 
 	return (
 		<ThreadPrimitive.Root
 			ref={rootRef}
 			className={cn(
-				"aui-root aui-thread-root bg-pane @container flex h-full flex-col",
+				"aui-root aui-thread-root bg-pane @container relative flex h-full flex-col",
 				CHAT_TYPOGRAPHY_CLASS,
 				"[--composer-bg:var(--pane-raised)]",
+				// A backdrop root: the composer glass blurs only this opaque pane. Reaching
+				// the vibrant (transparent) macOS window behind it made the glass flicker.
+				"will-change-[filter]",
 			)}
 			style={{
 				["--thread-max-width" as string]: "48rem",
@@ -92,6 +151,7 @@ export const Thread: FC = () => {
 			data-draft={isDraft || undefined}
 		>
 			<ThreadPrimitive.Viewport
+				ref={viewportRef}
 				turnAnchor="bottom"
 				autoScroll
 				scrollToBottomOnRunStart={false}
@@ -99,8 +159,6 @@ export const Thread: FC = () => {
 				className={cn(THREAD_VIEWPORT_CLASS, "[scrollbar-gutter:stable_both-edges]")}
 			>
 				<ScrollToBottomOnSend />
-				{/* A gradient, not a `scroll-fade` mask: masking the scroller disables the
-				    docked composer's backdrop blur in Chromium. */}
 				<div
 					aria-hidden
 					className="from-pane pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
@@ -113,29 +171,42 @@ export const Thread: FC = () => {
 					<div data-slot="aui_message-group" className={cn("mb-16", MESSAGE_GROUP_CLASS)}>
 						<TranscriptMessages />
 					</div>
-					{/* Not ThreadPrimitive.ViewportFooter: autoscroll counts the footer's height as
-					    still at the bottom, so a reader scrolling up less than that is pulled back by
-					    the next streamed token, and its height includes this `mt-auto` margin as last
-					    measured, which a short thread (one still loading) leaves near the viewport's. */}
-					<div
-						/* Transparent so sticky glass can blur scrolled messages behind the shell. */
-						className="aui-thread-viewport-footer relative sticky bottom-0 mt-auto flex flex-col gap-4 overflow-visible rounded-t-(--composer-radius) pb-1.5"
-					>
-						<ThreadScrollToBottom />
-						<div className="relative flex w-full flex-col">
-							<ComposerDockMask />
-							<ComposerHeader />
-							{/* The footer's backdrop reaches up into this gap, not over the composer. */}
-							<div className="flex flex-col gap-1.5" data-qa-id="kilo-composer-dock">
-								<div className="flex flex-col gap-3">
-									<OpenCodeComposerInteraction fallback={<Composer isDraft={isDraft} />} />
-								</div>
-								<ComposerFooter />
-							</div>
-						</div>
-					</div>
+					<div aria-hidden className="h-(--composer-inset) shrink-0" />
 				</div>
+				{/* Not ThreadPrimitive.ViewportFooter: autoscroll counts the footer's height as
+				    still at the bottom, so a reader scrolling up less than that is pulled back by
+				    the next streamed token.
+				    Portaled out of the scroller (keeping the viewport's context) so the glass
+				    sits over it like t3code's: a sticky backdrop-filter inside the scroller
+				    flickers on macOS while it scrolls. */}
+				{dock
+					? createPortal(
+							<div className="aui-thread-viewport-footer pointer-events-auto relative flex w-full max-w-(--thread-max-width) flex-col gap-4 px-1 pb-1.5">
+								<ThreadScrollToBottom />
+								<div className="relative flex w-full flex-col">
+									<ComposerDockMask />
+									<ComposerHeader />
+									<div className="flex flex-col" data-qa-id="kilo-composer-dock">
+										<div className="relative flex flex-col gap-3">
+											<OpenCodeComposerInteraction fallback={<Composer isDraft={isDraft} />} />
+											<ComposerCornerFills />
+										</div>
+										{/* Padding, not a gap: the transcript scrolls under the dock and showed through. */}
+										<div className="bg-pane -mx-4 px-4 pt-1.5">
+											<ComposerFooter />
+										</div>
+									</div>
+								</div>
+							</div>,
+							dock,
+						)
+					: null}
 			</ThreadPrimitive.Viewport>
+			<div
+				ref={setDock}
+				// Clear of the scrollbar gutters, and clipped across so the full-bleed pane fills stop there too.
+				className="pointer-events-none absolute inset-x-[var(--transcript-scrollbar-gutter,0px)] bottom-0 z-20 flex justify-center overflow-x-clip"
+			/>
 		</ThreadPrimitive.Root>
 	);
 };
@@ -152,17 +223,27 @@ const TranscriptMessages: FC = () => (
 );
 
 // The fill under the dock is exactly the footer's pb-1.5, so it reaches the
-// pane's bottom edge: any taller and it overflows the viewport, which scrolls.
+// pane's bottom edge without overflowing it.
 const ComposerDockMask: FC = () => (
+	<div aria-hidden className="bg-pane pointer-events-none absolute -inset-x-4 top-full h-1.5" />
+);
+
+// Pane fills the transcript scrolls under: outside the composer's rounded bottom corners, and a
+// thin strip behind its bottom edge, where the glass blur repeats its last row of pixels and
+// text there streaks through instead of blurring away.
+const ComposerCornerFills: FC = () => (
 	<>
-		<div aria-hidden className="bg-pane pointer-events-none absolute -inset-x-4 top-full h-1.5" />
+		<div
+			aria-hidden
+			className="bg-pane pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-1"
+		/>
 		<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
 		<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
 	</>
 );
 
 // Long distances jump instead of gliding: the messages a long glide crosses
-// mount and are measured as it passes (windowing, `content-visibility`), and
+// mount and are measured as it passes (windowing), and
 // every height change restarts the smooth scroll toward the new bottom, so it
 // stutters all the way down.
 const SMOOTH_SCROLL_VIEWPORT_HEIGHTS = 1.5;

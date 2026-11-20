@@ -22,8 +22,35 @@ const SESSION_LIST = sessionListData.locators;
  * could be a leftover from another run.
  */
 export class BoardPage {
+	// --- Locators ---
+
 	private readonly rowMore = (row: Locator): Locator =>
 		row.getByTestId(SESSION_LIST.itemMoreTestId);
+	private activeRow(): Locator {
+		return getLocator(`[data-qa-id="${SESSION_LIST.itemTestId}"][data-active="true"]`);
+	}
+
+	private sessionRow(): Locator {
+		return getLocator(
+			`[data-qa-id="${SESSION_LIST.itemTestId}"][data-session-id="${this.requireSessionId()}"]`,
+		);
+	}
+
+	private column(columnId: string): Locator {
+		return getLocatorByTestId(`workspace-board-column-${columnId}`);
+	}
+
+	private card(columnId: string): Locator {
+		return this.column(columnId).getByTestId(`workspace-board-card-${this.requireSessionId()}`);
+	}
+
+	private boardWindowCard(columnId: string): Locator {
+		return this.requireBoardWindow()
+			.getByTestId(`workspace-board-column-${columnId}`)
+			.getByTestId(`workspace-board-card-${this.requireSessionId()}`);
+	}
+
+	// --- Steps and assertions ---
 
 	private sessionId: string | undefined;
 	private boardWindow: Page | undefined;
@@ -164,33 +191,9 @@ export class BoardPage {
 		return boardWindow;
 	}
 
-	private boardWindowCard(columnId: string): Locator {
-		return this.requireBoardWindow()
-			.getByTestId(`workspace-board-column-${columnId}`)
-			.getByTestId(`workspace-board-card-${this.requireSessionId()}`);
-	}
-
 	private requireBoardWindow(): Page {
 		if (!this.boardWindow) throw new Error("Pop the board out first.");
 		return this.boardWindow;
-	}
-
-	private activeRow(): Locator {
-		return getLocator(`[data-qa-id="${SESSION_LIST.itemTestId}"][data-active="true"]`);
-	}
-
-	private sessionRow(): Locator {
-		return getLocator(
-			`[data-qa-id="${SESSION_LIST.itemTestId}"][data-session-id="${this.requireSessionId()}"]`,
-		);
-	}
-
-	private column(columnId: string): Locator {
-		return getLocatorByTestId(`workspace-board-column-${columnId}`);
-	}
-
-	private card(columnId: string): Locator {
-		return this.column(columnId).getByTestId(`workspace-board-card-${this.requireSessionId()}`);
 	}
 
 	private requireSessionId(): string {

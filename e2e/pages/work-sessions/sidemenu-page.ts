@@ -29,6 +29,8 @@ const SHELL_SIDEBAR = shellSidebarData.locators;
  * renaming, pinning, archiving and deleting sessions by title.
  */
 export class SidemenuPage {
+	// --- Locators ---
+
 	private readonly sidemenu = () => getLocatorByTestId(SHELL_SIDEBAR.sidebarTestId);
 	private readonly titlebar = () => getLocatorByTestId(SHELL_SIDEBAR.titlebarTestId);
 	private readonly primaryRail = () => getLocatorByTestId(SHELL_SIDEBAR.primaryRailTestId);
@@ -57,6 +59,12 @@ export class SidemenuPage {
 		getLocatorByTestId(SESSION_LIST.workspaceUnscopedCommandTestId);
 	private readonly workspaceFormDialog = () =>
 		getLocatorByTestId(SESSION_LIST.workspaceFormDialogTestId);
+	private readonly workspaceFilter = () =>
+		getLocatorByRole("combobox", { name: sessionListData.workspaceFilterLabel });
+	private readonly unavailableWarning = () =>
+		getLocatorByTestId(SESSION_LIST.workspaceFilterUnavailableIndicatorTestId);
+
+	// --- Steps and assertions ---
 
 	async openSearch(): Promise<void> {
 		await click(this.search());
@@ -86,11 +94,6 @@ export class SidemenuPage {
 			message: `The search dialog should no longer say "${message}"`,
 		});
 	}
-
-	private readonly unavailableWarning = () =>
-		getLocatorByTestId(SESSION_LIST.workspaceFilterUnavailableIndicatorTestId);
-	private readonly workspaceFilter = () =>
-		getLocatorByRole("combobox", { name: "Filter by workspace" });
 
 	/** Takes the filter back to every workspace's sessions. */
 	async focusAllWorkspacesInFilter(): Promise<void> {

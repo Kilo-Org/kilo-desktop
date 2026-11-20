@@ -31,6 +31,8 @@ const SESSION_LIST = sessionListData.locators;
 export class SessionListPage {
 	readonly #newWorkSession = new NewWorkSessionPage();
 
+	// --- Locators ---
+
 	private readonly list = () => getLocatorByTestId(SESSION_LIST.listTestId);
 	private readonly row = (title: string): Locator =>
 		this.list().getByTestId(SESSION_LIST.itemTestIdPattern).filter({ hasText: title });
@@ -62,6 +64,8 @@ export class SessionListPage {
 	private readonly bulkRestore = () => getLocatorByTestId(SESSION_LIST.bulkRestoreTestId);
 	private readonly bulkArchive = () => getLocatorByTestId(SESSION_LIST.bulkArchiveTestId);
 	private readonly breadcrumb = () => getLocatorByTestId(SESSION_LIST.breadcrumbTestId);
+
+	// --- Steps and assertions ---
 
 	/** Opens the New Session page and starts an empty session from it. */
 	async startSessionFromNewSessionPage(): Promise<void> {

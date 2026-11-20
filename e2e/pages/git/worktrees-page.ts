@@ -54,6 +54,8 @@ interface GitWorktree {
  * is read straight from the repository (the e2e runs on the app's machine).
  */
 export class WorktreesPage {
+	// --- Locators ---
+
 	private readonly isolation = () =>
 		getLocatorByTestId("launcher-location").getByTestId("launcher-isolation");
 	private readonly modeTrigger = () => this.isolation().getByTestId("git-draft-mode-trigger");
@@ -65,6 +67,8 @@ export class WorktreesPage {
 		getLocatorByTestId(SESSION_LIST.deleteWorktreeDialogTestId);
 	private readonly deleteWorktreeConfirm = () =>
 		getLocatorByTestId(SESSION_LIST.deleteWorktreeConfirmTestId);
+
+	// --- Steps and assertions ---
 
 	/** The New Session page in a new workspace for the repository. */
 	async openNewSession(repoPath: string, name: string): Promise<void> {

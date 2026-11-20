@@ -95,7 +95,11 @@ const MAX_SYMLINK_HOPS = 40;
  * Follows symlinks in `target`, which need not exist yet: a missing part is
  * kept as written, and a symlink whose target is missing is followed to it.
  */
-async function canonicalPath(target: string, hops = 0): Promise<string> {
+function canonicalPath(target: string): Promise<string> {
+	return followLinks(target, 0);
+}
+
+async function followLinks(target: string, hops: number): Promise<string> {
 	const missing: string[] = [];
 	let existing = target;
 	for (;;) {
@@ -105,7 +109,7 @@ async function canonicalPath(target: string, hops = 0): Promise<string> {
 			const link = await readlink(existing).catch(() => null);
 			if (link !== null && hops < MAX_SYMLINK_HOPS) {
 				const linked = path.resolve(path.dirname(existing), link);
-				return canonicalPath(path.join(linked, ...missing), hops + 1);
+				return followLinks(path.join(linked, ...missing), hops + 1);
 			}
 			const parent = path.dirname(existing);
 			if (parent === existing) return target;

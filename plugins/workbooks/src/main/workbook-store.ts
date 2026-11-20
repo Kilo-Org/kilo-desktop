@@ -19,6 +19,7 @@ import {
 	openReviewTasks,
 	openTasks,
 	planSteps,
+	stepTasks,
 	whereILeftOff,
 } from "./progress";
 import { sectionMarkdown } from "./section-scope";
@@ -163,10 +164,12 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 					whereILeftOff: whereILeftOff(brief),
 					steps,
 					...(next ? { next: { number: next.number, title: next.title } } : {}),
-					openTasks: openTasks(tasks),
+					openTasks: openTasks(tasks) + openTasks(stepTasks(plan)),
 					openQuestions: openQuestions(questions),
-					// Review comments are a page of their own in older workbooks, tasks naming a file now.
-					openReview: reviewSection ? openTasks(review) : openReviewTasks(tasks),
+					// Older workbooks have Tasks and Review pages; now both are tasks under steps.
+					openReview: reviewSection
+						? openTasks(review)
+						: openReviewTasks(tasks) + openReviewTasks(stepTasks(plan)),
 				};
 			},
 			kickoff: async ({ workbookId, focus, fresh }) => {

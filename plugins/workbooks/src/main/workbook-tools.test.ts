@@ -60,7 +60,7 @@ describe("workbook tools", () => {
 		const on = await boot();
 		await expect
 			.poll(() => on.tools().filter((tool) => tool.pluginId === "kilo.workbooks").length)
-			.toBe(6);
+			.toBe(8);
 
 		const off = await boot({ flag: false });
 		expect(off.tools().filter((tool) => tool.pluginId === "kilo.workbooks")).toEqual([]);
@@ -77,7 +77,6 @@ describe("workbook tools", () => {
 		expect(brief.markdown).toContain("Fix the bug");
 		expect((brief.sections as { id: string }[]).map((section) => section.id)).toEqual([
 			"plan",
-			"tasks",
 			"follow-ups",
 			"decisions",
 			"findings",
@@ -85,7 +84,8 @@ describe("workbook tools", () => {
 		]);
 		const plan = (await call("read_workbook", { section: "plan" })).markdown;
 		expect(plan).toContain("**1. Refine");
-		expect(plan).not.toContain("Tasks");
+		expect(plan).toContain("  - [ ] Confirm the Plan (you)");
+		expect(plan).not.toContain("Follow-ups");
 		expect((await call("read_workbook", { section: "questions" })).markdown).toBe(
 			"_Things the user needs to decide. Each goes once answered, recorded as a decision._",
 		);
@@ -103,11 +103,11 @@ describe("workbook tools", () => {
 		).resolves.toEqual({ section: "plan", step: 2 });
 		// Pages keeps the template's Plan (headings, text, lists) as one block: the step joins its list.
 		expect(page("plan")).toContain(
-			"the user confirms before building.\n- [ ] **2. Build it**: make it work",
+			"  - [ ] Confirm the Plan (you)\n- [ ] **2. Build it**: make it work",
 		);
 		const plan = workbook.sections.find((section) => section.id === "plan")!;
 		expect(pages.pages.get(plan.pageId!)!.blocks).toHaveLength(1);
-		expect(page("tasks")).not.toContain("Build it");
+		expect(page("follow-ups")).not.toContain("Build it");
 		await call("set_step_status", { step: "2", status: "in_progress" });
 		expect(page("plan")).toContain("- [ ] **2. Build it**: make it work · in progress");
 
@@ -134,6 +134,59 @@ describe("workbook tools", () => {
 		);
 	});
 
+	it("add steps with their tasks, and add and tick tasks under a step", async () => {
+		const { call, page } = await boot();
+
+		await expect(
+			call("add_plan_step", {
+				title: "Ship it",
+				intent: "release",
+				tasks: ["Write notes", "Approve the release (you)"],
+			}),
+		).resolves.toEqual({ section: "plan", step: 2 });
+		expect(page("plan")).toContain(
+			"- [ ] **2. Ship it**: release\n  - [ ] Write notes\n  - [ ] Approve the release (you)",
+		);
+
+		await call("add_task", { step: "1", text: "**brief.md**: say who it's for" });
+		expect(page("plan")).toContain(
+			"  - [ ] Confirm the Plan (you)\n  - [ ] **brief.md**: say who it's for\n- [ ] **2. Ship it**",
+		);
+		await call("add_task", { step: "ship", text: "Tag it" });
+		expect(page("plan")).toMatch(/Approve the release \(you\)\n {2}- \[ \] Tag it$/);
+
+		await expect(call("set_task_done", { step: "2", task: "write notes" })).resolves.toMatchObject({
+			line: "  - [x] Write notes",
+		});
+		await call("set_task_done", { step: "2", task: "write notes", done: false });
+		expect(page("plan")).toContain("  - [ ] Write notes");
+		await expect(call("set_task_done", { step: "2", task: "lunch" })).rejects.toThrow(
+			'Step 2 has no task matching "lunch"',
+		);
+		await expect(call("set_task_done", { step: "1", task: "the" })).rejects.toThrow(
+			"use more of its words",
+		);
+		// Words from a task never pick out a step: only steps are matched.
+		await expect(
+			call("set_step_status", { step: "write notes", status: "in_progress" }),
+		).rejects.toThrow('No plan step matches "write notes"');
+	});
+
+	it("mark a step done only once its tasks are ticked", async () => {
+		const { call, page } = await boot();
+		await call("add_plan_step", { title: "Ship it", intent: "release", tasks: ["Write notes"] });
+
+		await expect(
+			call("set_step_status", { step: "2", status: "done", note: "shipped" }),
+		).rejects.toThrow("Step 2 still has open tasks: Write notes");
+
+		await call("set_task_done", { step: "2", task: "notes" });
+		await call("set_step_status", { step: "2", status: "done", note: "shipped (abc123)" });
+		expect(page("plan")).toContain(
+			"- [x] **2. Ship it**: release · done: shipped (abc123)\n  - [x] Write notes",
+		);
+	});
+
 	it("record decisions and file items in each section's format, under its heading", async () => {
 		const { call, page, pages, workbook } = await boot();
 		const date = new Date().toISOString().slice(0, 10);
@@ -143,12 +196,10 @@ describe("workbook tools", () => {
 			`- **Use SSE.** Why: simpler. Rejected: websockets. (${date})`,
 		);
 
-		await call("file_item", { section: "tasks", text: "Get an API key", detail: "user" });
-		expect(page("tasks")).toBe(
-			"_In-scope work that isn't a step: chores, review comments, and things only the user can do._\n\n- [ ] Get an API key (user)",
+		await call("file_item", { section: "follow-ups", text: "Dark mode", detail: "asked for" });
+		expect(page("follow-ups")).toBe(
+			"_Out-of-scope work noticed along the way, never done in the current change._\n\n- [ ] Dark mode (asked for)",
 		);
-		await call("file_item", { section: "tasks", text: "Second" });
-		expect(page("tasks")).toContain("- [ ] Get an API key (user)\n- [ ] Second");
 		await call("file_item", {
 			section: "findings",
 			text: "The clock mock flakes",
@@ -161,7 +212,7 @@ describe("workbook tools", () => {
 			/## Constraints and non-goals[\s\S]*## Open questions[\s\S]*Support Windows/,
 		);
 		await call("file_item", { section: "follow-ups", text: "Later thing" });
-		expect(page("follow-ups")).toContain("- [ ] Later thing");
+		expect(page("follow-ups")).toContain("- [ ] Dark mode (asked for)\n- [ ] Later thing");
 		expect(page("decisions")).not.toContain("clock mock");
 
 		await expect(call("file_item", { section: "plan", text: "x" })).rejects.toThrow(
@@ -211,9 +262,9 @@ describe("workbook tools", () => {
 			return original(tool, args);
 		};
 
-		await call("file_item", { section: "tasks", text: "After a race" });
+		await call("file_item", { section: "follow-ups", text: "After a race" });
 
-		expect(page("tasks")).toContain("- [ ] After a race");
+		expect(page("follow-ups")).toContain("- [ ] After a race");
 	});
 });
 

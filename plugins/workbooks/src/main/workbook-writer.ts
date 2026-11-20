@@ -16,10 +16,14 @@ export { STEP_STATUSES };
 export type StepStatus = (typeof STEP_STATUSES)[number];
 
 const TASK_LINE = /^(\s*)- \[([ xX])\] (.*)$/;
+/** A plan step: a top-level checkbox item, never one of a step's (indented) tasks. */
+const STEP_LINE = /^- \[[ xX]\] /;
+const TASK_INDENT = "  ";
 const LIST_LINE = /^\s*- /;
 const TRAILING_DATE = /\s*\(\d{4}-\d{2}-\d{2}\)[.\s]*$/;
 const STATUS_SUFFIX = / · (in progress|blocked:.*|done:.*)$/;
 const STEP_NUMBER = /^\*\*(\d+)\./;
+const INDENTED = /^(\s+)\S/;
 
 /**
  * Writes workbook items into Pages in the formats the guide defines, so agents
@@ -67,15 +71,52 @@ export class WorkbookWriter {
 			.trim();
 	}
 
-	/** Adds a plan step, numbered after the last one. Returns its number. */
-	async addPlanStep(title: string, intent: string): Promise<number> {
+	/** Adds a plan step, numbered after the last one, with its tasks under it. Returns its number. */
+	async addPlanStep(title: string, intent: string, tasks: readonly string[] = []): Promise<number> {
 		const plan = this.sectionFor("plan-step");
 		let number = 0;
 		await this.#appendListItem(plan, (lines) => {
 			number = Math.max(0, ...lines.map(stepNumber)) + 1;
-			return `- [ ] **${number}. ${oneLine(title)}**: ${oneLine(intent)}`;
+			return [
+				`- [ ] **${number}. ${oneLine(title)}**: ${oneLine(intent)}`,
+				...tasks
+					.filter((task) => task.trim())
+					.map((task) => `${TASK_INDENT}- [ ] ${oneLine(task)}`),
+			].join("\n");
 		});
 		return number;
+	}
+
+	/** Adds a task under a plan step, after its other tasks. Returns the task's line. */
+	async addTask(step: string, text: string): Promise<string> {
+		return this.#withStep(step, (lines, at) => {
+			const tasks = stepTasks(lines, at);
+			const indent = tasks.length > 0 ? INDENTED.exec(lines[tasks.at(-1)!]!)![1]! : TASK_INDENT;
+			const line = `${indent}- [ ] ${oneLine(text)}`;
+			lines.splice((tasks.at(-1) ?? at) + 1, 0, line);
+			return line;
+		});
+	}
+
+	/** Ticks (or unticks) one of a plan step's tasks, found by words from it. Returns its line. */
+	async setTaskDone(step: string, task: string, done: boolean): Promise<string> {
+		return this.#withStep(step, (lines, at) => {
+			const wanted = oneLine(task).toLowerCase();
+			const matches = stepTasks(lines, at).filter((index) =>
+				lines[index]!.toLowerCase().includes(wanted),
+			);
+			if (matches.length !== 1) {
+				throw new KernelError(
+					matches.length === 0 ? "NOT_FOUND" : "VALIDATION",
+					matches.length === 0
+						? `Step ${step} has no task matching "${task}".`
+						: `"${task}" matches ${matches.length} of step ${step}'s tasks; use more of its words.`,
+				);
+			}
+			const index = matches[0]!;
+			lines[index] = lines[index]!.replace(/^(\s*)- \[[ xX]\]/, `$1- [${done ? "x" : " "}]`);
+			return lines[index]!;
+		});
 	}
 
 	/** Sets a plan step's status: its checkbox and its ` · status` suffix together. Returns the step's line. */
@@ -88,11 +129,33 @@ export class WorkbookWriter {
 					: "Say what blocks it.",
 			);
 		}
+		return this.#withStep(step, (lines, at) => {
+			if (status === "done") {
+				const open = stepTasks(lines, at).filter((index) => /^\s*- \[ \]/.test(lines[index]!));
+				if (open.length > 0) {
+					const list = open.map((index) => lines[index]!.replace(/^\s*- \[ \] /, "")).join("; ");
+					throw new KernelError(
+						"VALIDATION",
+						`Step ${step} still has open tasks: ${list}. Tick them, or move them to Follow-ups, first.`,
+					);
+				}
+			}
+			lines[at] = withStatus(lines[at]!, status, note);
+			return lines[at]!;
+		});
+	}
+
+	/**
+	 * Finds one plan step (a top-level item, by number or words from it) and
+	 * rewrites its block with `change`, which edits the block's lines in place;
+	 * a step's tasks are the indented lines under it in the same block.
+	 */
+	async #withStep<T>(step: string, change: (lines: string[], at: number) => T): Promise<T> {
 		const plan = this.sectionFor("plan-step");
 		return this.#withRetry(async () => {
 			const page = await this.#read(plan);
 			const matches = sectionScope(page.blocks, plan.heading).lines.filter(
-				(line) => TASK_LINE.test(line.text) && matchesStep(line.text, step),
+				(line) => STEP_LINE.test(line.text) && matchesStep(line.text, step),
 			);
 			if (matches.length !== 1) {
 				throw new KernelError(
@@ -104,12 +167,11 @@ export class WorkbookWriter {
 			}
 			const { block, index } = matches[0]!;
 			const lines = (block.markdown ?? "").split("\n");
-			const updated = withStatus(lines[index]!, status, note);
-			lines[index] = updated;
+			const result = change(lines, index);
 			await this.#edit(plan, page.revision, [
 				{ op: "replace_block_markdown", node_id: block.node_id, markdown: lines.join("\n") },
 			]);
-			return updated;
+			return result;
 		});
 	}
 
@@ -289,6 +351,18 @@ function stepNumber(line: string): number {
 	const match = TASK_LINE.exec(line);
 	const number = match ? STEP_NUMBER.exec(match[3]!) : null;
 	return number ? Number(number[1]) : 0;
+}
+
+/** The indices of a step's tasks: the indented checkbox lines under it, up to the next unindented line. */
+function stepTasks(lines: readonly string[], at: number): number[] {
+	const tasks: number[] = [];
+	for (let index = at + 1; index < lines.length; index += 1) {
+		const line = lines[index]!;
+		if (!line.trim()) continue;
+		if (!INDENTED.test(line)) break;
+		if (TASK_LINE.test(line)) tasks.push(index);
+	}
+	return tasks;
 }
 
 function matchesStep(line: string, step: string): boolean {

@@ -1,12 +1,11 @@
 ## Steps
 
-_The work, in order, each step sized for one chat._
+_The work, in order. Each step is sized for one chat and ends in one commit; the checkboxes under it are its tasks._
 
-- [ ] **1. Refine the Brief and draft this Plan**: the first agent's job; the user confirms before building.
-
-## Tasks
-
-_In-scope work that isn't a step: chores, review comments, and things only the user can do._
+- [ ] **1. Refine the Brief and draft this Plan**: the first agent's job.
+  - [ ] Propose acceptance criteria and constraints in the Brief
+  - [ ] Draft the steps, each with its tasks
+  - [ ] Confirm the Plan (you)
 
 ## Follow-ups
 

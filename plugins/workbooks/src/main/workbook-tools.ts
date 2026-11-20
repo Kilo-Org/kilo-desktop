@@ -16,6 +16,8 @@ export interface WorkbookToolDeps {
 export const WORKBOOK_TOOL_IDS = [
 	"read_workbook",
 	"add_plan_step",
+	"add_task",
+	"set_task_done",
 	"set_step_status",
 	"record_decision",
 	"file_item",
@@ -99,15 +101,58 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		"add_plan_step",
 		defineTool({
 			description:
-				"Add a step to the end of the workbook's Plan, sized for one chat. It is numbered for you.",
+				"Add a step to the end of the workbook's Plan: the work for one chat, ending in one commit. It is numbered for you; list what it needs as its tasks.",
 			input: z.object({
 				title: z.string().min(1).describe('Short title, e.g. "Template registry".'),
 				intent: z.string().min(1).describe("One line on what the step achieves."),
+				tasks: z
+					.array(z.string().min(1))
+					.optional()
+					.describe(
+						'What the step needs done, each a checkbox under it; end a job only the user can do with "(you)".',
+					),
 				workbookId: workbookIdInput,
 			}),
-			run: async ({ title, intent, workbookId }, context) => {
+			run: async ({ title, intent, tasks, workbookId }, context) => {
 				const { writer } = writerFor(workbookId, context);
-				return { section: "plan", step: await writer.addPlanStep(title, intent) };
+				return { section: "plan", step: await writer.addPlanStep(title, intent, tasks) };
+			},
+		}),
+	);
+
+	sdk.extensions.implement(
+		Tool,
+		"add_task",
+		defineTool({
+			description:
+				'Add a task under a Plan step: a chore, a review comment ("**file or area**: issue and suggested fix") or a job only the user can do (end it with "(you)"). A task has no commit of its own; work that belongs to no step is a new step or a follow-up.',
+			input: z.object({
+				step: z.string().min(1).describe('The step number ("3") or words from its title.'),
+				text: z.string().min(1),
+				workbookId: workbookIdInput,
+			}),
+			run: async ({ step, text, workbookId }, context) => {
+				const { writer } = writerFor(workbookId, context);
+				return { section: "plan", step, line: await writer.addTask(step, text) };
+			},
+		}),
+	);
+
+	sdk.extensions.implement(
+		Tool,
+		"set_task_done",
+		defineTool({
+			description:
+				"Tick one of a Plan step's tasks when it's done (or untick it with done: false). A step can only be marked done once all its tasks are ticked.",
+			input: z.object({
+				step: z.string().min(1).describe('The step number ("3") or words from its title.'),
+				task: z.string().min(1).describe("Words from the task."),
+				done: z.boolean().default(true),
+				workbookId: workbookIdInput,
+			}),
+			run: async ({ step, task, done, workbookId }, context) => {
+				const { writer } = writerFor(workbookId, context);
+				return { section: "plan", step, line: await writer.setTaskDone(step, task, done) };
 			},
 		}),
 	);
@@ -117,7 +162,7 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		"set_step_status",
 		defineTool({
 			description:
-				"Set a Plan step's status. in_progress before starting it (so others see it's taken); done ticks it and records the outcome; blocked records why; todo resets it.",
+				"Set a Plan step's status. in_progress before starting it (so others see it's taken); done ticks it and records the outcome, once all its tasks are ticked; blocked records why; todo resets it.",
 			input: z.object({
 				step: z.string().min(1).describe('The step number ("3") or words from its title.'),
 				status: z.enum(STEP_STATUSES),
@@ -158,12 +203,12 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		"file_item",
 		defineTool({
 			description:
-				"File an item in a workbook section the moment it comes up, formatted for that section: a task or follow-up (detail = context), finding (detail = evidence), open question (detail = context), artifact (text = kind: link, detail = note), snippet (text = title, detail = the code or command) or note. Use read_workbook to see the section ids.",
+				"File an item in a workbook section the moment it comes up, formatted for that section: a follow-up or other task (detail = context; a step's own tasks go through add_task), finding (detail = evidence), open question (detail = context), artifact (text = kind: link, detail = note), snippet (text = title, detail = the code or command) or note. Use read_workbook to see the section ids.",
 			input: z.object({
 				section: z
 					.string()
 					.min(1)
-					.describe('The section id, e.g. "tasks", "findings" or "questions".'),
+					.describe('The section id, e.g. "follow-ups", "findings" or "questions".'),
 				text: z.string().min(1),
 				detail: z.string().optional(),
 				workbookId: workbookIdInput,

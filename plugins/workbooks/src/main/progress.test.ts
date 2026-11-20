@@ -61,7 +61,7 @@ describe("progress", () => {
 			whereILeftOff: [],
 			steps: [{ number: 1, title: "Refine the Brief and draft this Plan", status: "todo" }],
 			next: { number: 1, title: "Refine the Brief and draft this Plan" },
-			openTasks: 0,
+			openTasks: 3,
 			openQuestions: 0,
 			openReview: 0,
 		});

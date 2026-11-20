@@ -41,7 +41,6 @@ describe("createWorkbookContent", () => {
 		expect(guide).toBe(created.guidePageId);
 		expect(created.sections).toEqual([
 			{ id: "plan", title: "Steps", itemType: "plan-step", pageId: plan, heading: "Steps" },
-			{ id: "tasks", title: "Tasks", itemType: "task", pageId: plan, heading: "Tasks" },
 			{
 				id: "follow-ups",
 				title: "Follow-ups",

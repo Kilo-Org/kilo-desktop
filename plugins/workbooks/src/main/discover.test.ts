@@ -54,7 +54,6 @@ describe("matchSections", () => {
 			guidePageId: "g",
 			sections: [
 				{ id: "plan", title: "Steps", itemType: "plan-step", pageId: "p", heading: "Steps" },
-				{ id: "tasks", title: "Tasks", itemType: "task", pageId: "p", heading: "Tasks" },
 				{
 					id: "follow-ups",
 					title: "Follow-ups",
@@ -105,7 +104,6 @@ describe("matchSections", () => {
 			matched.sections.map((section) => [section.id, section.pageId, section.heading]),
 		).toEqual([
 			["plan", "p", "Steps"],
-			["tasks", "t", undefined],
 			["follow-ups", "u", undefined],
 			["decisions", "d", undefined],
 			["findings", "f", undefined],
@@ -158,7 +156,7 @@ describe("discoverWorkbooks", () => {
 		});
 		expect(found[0]!.sections.slice(0, 2)).toMatchObject([
 			{ id: "plan", heading: "Steps" },
-			{ id: "tasks", pageId: expect.any(String) },
+			{ id: "follow-ups", heading: "Follow-ups" },
 		]);
 		expect(found[0]!.guidePageId).toEqual(expect.any(String));
 		expect(Date.parse(found[0]!.createdAt)).not.toBeNaN();

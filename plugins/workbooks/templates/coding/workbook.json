@@ -31,7 +31,6 @@
 	],
 	"sections": [
 		{ "id": "plan", "title": "Steps", "itemType": "plan-step", "in": "plan" },
-		{ "id": "tasks", "title": "Tasks", "itemType": "task", "in": "plan" },
 		{ "id": "follow-ups", "title": "Follow-ups", "itemType": "task", "in": "plan" },
 		{ "id": "decisions", "title": "Decisions", "itemType": "decision", "in": "record" },
 		{ "id": "findings", "title": "Findings", "itemType": "finding", "in": "record" },

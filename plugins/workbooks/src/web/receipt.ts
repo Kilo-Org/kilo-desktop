@@ -12,6 +12,15 @@ export function receiptText(
 			return `${isError ? "Couldn't read" : "Read"} the workbook${args.section ? ` · ${text(args.section)}` : " Brief"}`;
 		case "add_plan_step":
 			return `${verb}${isError ? "add" : "Added"} plan step: ${text(args.title)}`;
+		case "add_task":
+			return isError
+				? `Couldn't add a task to plan step ${text(args.step)}`
+				: `Added task to plan step ${text(args.step)}: ${text(args.text)}`;
+		case "set_task_done":
+			if (isError) return `Couldn't update a task on plan step ${text(args.step)}`;
+			return args.done === false
+				? `Unticked task on plan step ${text(args.step)}: ${text(args.task)}`
+				: `✓ Ticked task on plan step ${text(args.step)}: ${text(args.task)}`;
 		case "set_step_status": {
 			const status = text(args.status).replace("_", " ");
 			if (isError) return `Couldn't update plan step ${text(args.step)}`;

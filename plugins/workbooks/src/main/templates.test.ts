@@ -86,7 +86,6 @@ describe("workbook templates", () => {
 		expect(coding.pages.map((page) => page.title)).toEqual(["Plan", "Decisions & findings"]);
 		expect(coding.sections.map((section) => [section.id, section.in])).toEqual([
 			["plan", "plan"],
-			["tasks", "plan"],
 			["follow-ups", "plan"],
 			["decisions", "record"],
 			["findings", "record"],

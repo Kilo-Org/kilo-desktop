@@ -77,6 +77,20 @@
 					}
 				},
 				{
+					"id": "add_task",
+					"title": "Add a task to a plan step",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "set_task_done",
+					"title": "Tick a plan step's task",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
 					"id": "set_step_status",
 					"title": "Set a plan step's status",
 					"when": {
@@ -120,6 +134,8 @@
 					"tools": [
 						"kilo.workbooks/read_workbook",
 						"kilo.workbooks/add_plan_step",
+						"kilo.workbooks/add_task",
+						"kilo.workbooks/set_task_done",
 						"kilo.workbooks/set_step_status",
 						"kilo.workbooks/record_decision",
 						"kilo.workbooks/file_item",

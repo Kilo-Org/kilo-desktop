@@ -157,7 +157,7 @@ describe("creating a workbook", () => {
 		});
 		expect(created.id).toBe(created.projectId);
 		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Coding (coding)");
-		expect(created.sections).toHaveLength(6);
+		expect(created.sections).toHaveLength(5);
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
 	});
 

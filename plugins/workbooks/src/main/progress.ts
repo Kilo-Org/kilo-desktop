@@ -34,6 +34,14 @@ export function whereILeftOff(brief: string): string[] {
 		.filter((line) => line && line !== "Nothing yet.");
 }
 
+/** The tasks under the Plan's steps: its indented lines. */
+export function stepTasks(plan: string): string {
+	return plan
+		.split("\n")
+		.filter((line) => /^\s+- /.test(line))
+		.join("\n");
+}
+
 /** Unticked task-list items. */
 export function openTasks(markdown: string): number {
 	return markdown.split("\n").filter((line) => /^\s*- \[ \] /.test(line)).length;

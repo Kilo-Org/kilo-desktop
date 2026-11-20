@@ -13,12 +13,12 @@ inputs:
     default: "true"
   save-pnpm-store:
     description: >
-      Allow saving the pnpm store when no cache matches the lockfile exactly.
-      Pass "false" in all but one job per runner type in a run: after a lockfile
-      change every job misses, each compresses a 0.5-0.9 GB store at job end,
-      and only the first save is kept. Even when allowed, a pull request saves
-      only if it changes pnpm-lock.yaml, and the merge queue never saves (see
-      the "Decide whether to save the pnpm store" step).
+      Allow saving the pnpm store (and, with install, node_modules) when no
+      cache matches exactly. Pass "false" in all but one job per runner type in
+      a run: after a lockfile change every job misses, each compresses a
+      0.5-0.9 GB archive, and only the first save is kept. Even when allowed, a
+      pull request saves only if it changes the cache key's inputs, and the
+      merge queue never saves (see the "Decide whether to save" steps).
     required: false
     default: "true"
   store-scope:
@@ -29,6 +29,26 @@ inputs:
       the current full store first, and skips saving when that store exists.
     required: false
     default: "full"
+  install:
+    description: >
+      Also run `pnpm install --frozen-lockfile`, restoring node_modules from
+      the Actions cache when one matches exactly (see "Key node_modules").
+    required: false
+    default: "false"
+  needs-store:
+    description: >
+      With install: restore the pnpm store even when node_modules is restored.
+      Jobs that run `pnpm deploy` (plugin isolation, packaging the app) copy
+      packages from the store and would download them all without it.
+    required: false
+    default: "false"
+  install-filters-file:
+    description: >
+      With install: a file listing one workspace package per line; installs
+      only those packages and their dependencies (`--filter=<name>...`). Pass a
+      store-scope other than "full" with it.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -128,8 +148,50 @@ runs:
         installed=$(pnpm --version)
         [[ "$installed" == "$VERSION" ]] || { echo "::error::pnpm --version is $installed, want $VERSION"; exit 1; }
 
+    # node_modules is cached whole, keyed on everything that decides its
+    # contents: the lockfile, workspace settings (catalog, overrides,
+    # allowBuilds), the root manifest's lifecycle scripts, the Node ABI native
+    # addons were built for, the filter list and this action. Extracting it
+    # beats extracting the store and linking it: the hoisted tree is about half
+    # the store's size (no index files, no packages a filtered install leaves
+    # out). Only an exact match restores; anything else falls back to the store.
+    - name: Key node_modules
+      if: inputs.install == 'true' && inputs.pnpm-cache == 'true'
+      id: node-modules-key
+      shell: bash
+      env:
+        SCOPE: ${{ inputs.store-scope }}
+        INPUTS_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', '.nvmrc', 'package.json', '.github/actions/setup-node-pnpm/action.yml') }}
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+      run: |
+        filters_hash=none
+        if [[ -n "$FILTERS_FILE" ]]; then
+          filters_hash=$(git hash-object "$FILTERS_FILE")
+        fi
+        abi=$(node -p process.versions.modules)
+        {
+          echo "key=node-modules-$SCOPE-$RUNNER_OS-$RUNNER_ARCH-abi$abi-$INPUTS_HASH-$filters_hash"
+          echo "paths<<EOF"
+          echo "node_modules"
+          echo "apps/*/node_modules"
+          echo "packages/*/node_modules"
+          echo "plugins/*/node_modules"
+          echo "plugins/chat/opencode-sdk-compat/node_modules"
+          echo "examples/*/node_modules"
+          echo "e2e/node_modules"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Restore node_modules
+      if: inputs.install == 'true' && inputs.pnpm-cache == 'true'
+      id: node-modules
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.node-modules-key.outputs.paths }}
+        key: ${{ steps.node-modules-key.outputs.key }}
+
     - name: Locate the pnpm store
-      if: inputs.pnpm-cache == 'true'
+      if: inputs.pnpm-cache == 'true' && (steps.node-modules.outputs.cache-hit != 'true' || inputs.needs-store == 'true')
       id: pnpm-store
       shell: bash
       env:
@@ -147,7 +209,7 @@ runs:
     # A filtered install restored from the current full store adds nothing
     # worth saving a second, smaller copy of.
     - name: Look up the full pnpm store
-      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && inputs.store-scope != 'full'
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && inputs.store-scope != 'full' && (steps.node-modules.outputs.cache-hit != 'true' || inputs.needs-store == 'true')
       id: full-store
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -166,7 +228,7 @@ runs:
     # on main would look like it changed the lockfile itself.
     # Fails toward saving if the parent can't be fetched.
     - name: Decide whether to save the pnpm store
-      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true'
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && (steps.node-modules.outputs.cache-hit != 'true' || inputs.needs-store == 'true')
       id: save-store
       shell: bash
       env:
@@ -197,7 +259,7 @@ runs:
     # scope the primary key equals the first restore key and the second restore
     # key equals the third, which actions/cache tolerates.
     - name: Cache the pnpm store
-      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true'
+      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true' && (steps.node-modules.outputs.cache-hit != 'true' || inputs.needs-store == 'true')
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
@@ -208,7 +270,7 @@ runs:
           ${{ steps.pnpm-store.outputs.prefix }}
 
     - name: Restore the pnpm store
-      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save != 'true'
+      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save != 'true' && (steps.node-modules.outputs.cache-hit != 'true' || inputs.needs-store == 'true')
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
@@ -217,3 +279,57 @@ runs:
           ${{ steps.pnpm-store.outputs.full-key }}
           ${{ steps.pnpm-store.outputs.full-prefix }}
           ${{ steps.pnpm-store.outputs.prefix }}
+
+    # On a node_modules hit the install only confirms the tree matches the
+    # lockfile; --offline makes a mismatch fail here instead of downloading.
+    - name: Install dependencies
+      if: inputs.install == 'true'
+      shell: bash
+      env:
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+        NODE_MODULES_HIT: ${{ steps.node-modules.outputs.cache-hit }}
+      run: |
+        args=(--frozen-lockfile)
+        if [[ "$NODE_MODULES_HIT" == "true" ]]; then args+=(--offline); fi
+        if [[ -n "$FILTERS_FILE" ]]; then
+          while IFS= read -r package || [[ -n "$package" ]]; do
+            package=${package%$'\r'}
+            [[ -z "$package" || "$package" == \#* ]] && continue
+            args+=("--filter=$package...")
+          done < "$FILTERS_FILE"
+        fi
+        pnpm install "${args[@]}"
+
+    # The same policy as the store: main (warm-caches.yml) saves for every PR,
+    # a pull request saves only if it changes the key's inputs, and the merge
+    # queue never saves.
+    - name: Decide whether to save node_modules
+      if: inputs.install == 'true' && inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && steps.node-modules.outputs.cache-hit != 'true'
+      id: save-node-modules
+      shell: bash
+      env:
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+      run: |
+        save=true
+        inputs=(pnpm-lock.yaml pnpm-workspace.yaml .npmrc .nvmrc package.json .github/actions/setup-node-pnpm/action.yml)
+        if [[ -n "$FILTERS_FILE" ]]; then inputs+=("$FILTERS_FILE"); fi
+        case "$GITHUB_EVENT_NAME" in
+          merge_group) save=false ;;
+          pull_request)
+            if git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" &&
+              git diff --quiet HEAD^1 HEAD -- "${inputs[@]}"; then
+              save=false
+            fi
+            ;;
+        esac
+        echo "Save node_modules: $save"
+        echo "save=$save" >> "$GITHUB_OUTPUT"
+
+    # Saved straight after the install, before later steps add build output,
+    # tsbuildinfo, Vitest caches or downloaded runtimes under node_modules.
+    - name: Save node_modules
+      if: steps.save-node-modules.outputs.save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.node-modules-key.outputs.paths }}
+        key: ${{ steps.node-modules-key.outputs.key }}

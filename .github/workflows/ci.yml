@@ -42,7 +42,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
+        with:
+          install: "true"
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm test:scripts
@@ -61,7 +62,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
-      - run: pnpm install --frozen-lockfile
+          install: "true"
+          # pnpm deploy copies packages from the store.
+          needs-store: "true"
       - run: pnpm check:plugin-isolation --build all
 
   typecheck:
@@ -80,7 +83,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
-      - run: pnpm install --frozen-lockfile
+          install: "true"
       - uses: ./.github/actions/turbo-cache
       # PRs check the packages the diff affects and their dependents (global
       # inputs such as the lockfile or tsconfig.base.json affect every package);
@@ -129,7 +132,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
-      - run: pnpm install --frozen-lockfile
+          install: "true"
       - uses: ./.github/actions/turbo-cache
         with:
           key-suffix: linux-${{ matrix.shard }}
@@ -164,13 +167,6 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       GIT_CONFIG_NOSYSTEM: "true"
-      # The packages with real Git and filesystem checks per platform.
-      PLATFORM_PACKAGES: >-
-        @kilo-desktop/git-client
-        @kilo-desktop/plugin-core
-        @kilo-desktop/plugin-git
-        @kilo-desktop/plugin-notebook
-        @kilo-desktop/plugin-work-sessions
     steps:
       # Job-level env cannot use the runner context, so pin GIT_CONFIG_GLOBAL
       # here before checkout. An empty writable file (not /dev/null) lets
@@ -191,12 +187,8 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           store-scope: platform
-      - name: Install the platform-tested packages
-        shell: bash
-        run: |
-          filters=()
-          for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package..."); done
-          pnpm install --frozen-lockfile "${filters[@]}"
+          install: "true"
+          install-filters-file: .github/platform-test-packages.txt
       - uses: ./.github/actions/turbo-cache
         with:
           vitest: "true"
@@ -209,7 +201,11 @@ jobs:
         shell: bash
         run: |
           filters=()
-          for package in $PLATFORM_PACKAGES; do filters+=("--filter=$package"); done
+          while IFS= read -r package || [[ -n "$package" ]]; do
+            package=${package%$'\r'}
+            [[ -z "$package" || "$package" == \#* ]] && continue
+            filters+=("--filter=$package")
+          done < .github/platform-test-packages.txt
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             TURBO_SCM_BASE=HEAD^1 pnpm exec turbo run test:platform --affected "${filters[@]}"
           else
@@ -263,7 +259,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
-      - run: pnpm install --frozen-lockfile
+          install: "true"
+          # pnpm deploy copies packages from the store.
+          needs-store: "true"
       - uses: ./.github/actions/run-e2e
         with:
           script: test:e2e
@@ -314,7 +312,9 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
-      - run: pnpm install --frozen-lockfile
+          install: "true"
+          # pnpm deploy copies packages from the store.
+          needs-store: "true"
       - uses: ./.github/actions/run-e2e
         with:
           shard: ${{ matrix.shard }}
@@ -336,7 +336,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
         with:
           save-pnpm-store: "false"
-      - run: pnpm install --frozen-lockfile
+          install: "true"
       - name: Download shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

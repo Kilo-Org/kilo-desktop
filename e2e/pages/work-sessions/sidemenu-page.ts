@@ -14,6 +14,12 @@ import {
 	pressPageKeyboard,
 } from "@anaconda/playwright-utils";
 
+import { shellSidebarData } from "../../testdata/shell/sidebar.js";
+import { sessionListData } from "../../testdata/work-sessions/session-list.js";
+
+const SESSION_LIST = sessionListData.locators;
+const SHELL_SIDEBAR = shellSidebarData.locators;
+
 /**
  * The side menu itself — the shell sidebar and the chrome around
  * kilo.work-sessions' session list: its Chat actions, grouping header, search
@@ -23,26 +29,42 @@ import {
  * renaming, pinning, archiving and deleting sessions by title.
  */
 export class SidemenuPage {
-	private readonly sidemenu = () => getLocatorByTestId("app-sidebar");
-	private readonly titlebar = () => getLocatorByTestId("sidebar-titlebar");
-	private readonly primaryRail = () => getLocatorByTestId("app-sidebar-primary");
-	private readonly sessionList = () => getLocatorByTestId("kilo-thread-list");
-	private readonly chatActions = () => getLocatorByTestId("session-list-navigation");
-	private readonly newSession = () => getLocatorByTestId("new-chat");
-	private readonly search = () => getLocatorByTestId("session-list-search");
+	// --- Locators ---
+
+	private readonly sidemenu = () => getLocatorByTestId(SHELL_SIDEBAR.sidebarTestId);
+	private readonly titlebar = () => getLocatorByTestId(SHELL_SIDEBAR.titlebarTestId);
+	private readonly primaryRail = () => getLocatorByTestId(SHELL_SIDEBAR.primaryRailTestId);
+	private readonly sessionList = () => getLocatorByTestId(SESSION_LIST.listTestId);
+	private readonly chatActions = () => getLocatorByTestId(SESSION_LIST.navigationTestId);
+	private readonly newSession = () => getLocatorByTestId(SESSION_LIST.newSessionTestId);
+	private readonly search = () => getLocatorByTestId(SESSION_LIST.searchTestId);
 	private readonly searchInput = () =>
 		getLocatorByRole("combobox", { name: "Search sessions and workspaces" });
-	private readonly searchScopeAll = () => getLocatorByTestId("session-search-filter-all");
-	private readonly groupingHeader = () => getLocatorByTestId("session-list-grouping-header");
-	private readonly viewMenu = () => getLocatorByTestId("session-list-view-menu");
+	private readonly searchScopeAll = () => getLocatorByTestId(SESSION_LIST.searchScopeAllTestId);
+	private readonly groupingHeader = () => getLocatorByTestId(SESSION_LIST.groupingHeaderTestId);
+	private readonly viewMenu = () => getLocatorByTestId(SESSION_LIST.viewMenuTestId);
 	private readonly viewMenuGrouping = () => getLocatorByRole("menuitem", { name: /^Grouping/ });
-	private readonly inbox = () => getLocatorByTestId("session-list-inbox");
-	private readonly virtualList = () => getLocatorByTestId("session-list-virtual-list");
-	private readonly settingsEntry = () => getLocatorByTestId("nav-settings");
-	private readonly signIn = () => getLocatorByTestId("sidebar-kilo-login");
-	private readonly pinnedShelf = () => getLocatorByTestId("session-list-pinned-toggle");
-	private readonly archivedShelf = () => getLocatorByTestId("session-list-archived-toggle");
-	private readonly activeRows = () => this.sessionList().getByTestId("session-list-item");
+	private readonly inbox = () => getLocatorByTestId(SESSION_LIST.inboxTestId);
+	private readonly virtualList = () => getLocatorByTestId(SESSION_LIST.virtualListTestId);
+	private readonly settingsEntry = () => getLocatorByTestId(SHELL_SIDEBAR.settingsEntryTestId);
+	private readonly signIn = () => getLocatorByTestId(SHELL_SIDEBAR.signInTestId);
+	private readonly pinnedShelf = () => getLocatorByTestId(SESSION_LIST.pinnedToggleTestId);
+	private readonly archivedShelf = () => getLocatorByTestId(SESSION_LIST.archivedToggleTestId);
+	private readonly activeRows = () => this.sessionList().getByTestId(SESSION_LIST.itemTestId);
+	private readonly searchScopeWorkspaces = () =>
+		getLocatorByTestId(SESSION_LIST.searchScopeWorkspacesTestId);
+	private readonly workspaceAllCommand = () =>
+		getLocatorByTestId(SESSION_LIST.workspaceAllCommandTestId);
+	private readonly workspaceUnscopedCommand = () =>
+		getLocatorByTestId(SESSION_LIST.workspaceUnscopedCommandTestId);
+	private readonly workspaceFormDialog = () =>
+		getLocatorByTestId(SESSION_LIST.workspaceFormDialogTestId);
+	private readonly workspaceFilter = () =>
+		getLocatorByRole("combobox", { name: sessionListData.workspaceFilterLabel });
+	private readonly unavailableWarning = () =>
+		getLocatorByTestId(SESSION_LIST.workspaceFilterUnavailableIndicatorTestId);
+
+	// --- Steps and assertions ---
 
 	async openSearch(): Promise<void> {
 		await click(this.search());
@@ -57,7 +79,7 @@ export class SidemenuPage {
 	}
 
 	async selectSearchScopeWorkspaces(): Promise<void> {
-		await click(getLocatorByTestId("session-search-filter-workspaces"));
+		await click(this.searchScopeWorkspaces());
 	}
 
 	/** The dialog's own explanation of an empty result list. */
@@ -73,10 +95,17 @@ export class SidemenuPage {
 		});
 	}
 
-	private readonly unavailableWarning = () =>
-		getLocatorByTestId("workspace-filter-unavailable-folders-indicator");
-	private readonly workspaceFilter = () =>
-		getLocatorByRole("combobox", { name: "Filter by workspace" });
+	/** Takes the filter back to every workspace's sessions. */
+	async focusAllWorkspacesInFilter(): Promise<void> {
+		await click(this.workspaceFilter());
+		await click(this.workspaceAllCommand());
+	}
+
+	/** Narrows the filter to the sessions that belong to no workspace. */
+	async focusUnscopedInFilter(): Promise<void> {
+		await click(this.workspaceFilter());
+		await click(this.workspaceUnscopedCommand());
+	}
 
 	/**
 	 * Points the list's workspace filter at one workspace. The filter's warning
@@ -113,7 +142,7 @@ export class SidemenuPage {
 
 	async verifyWorkspaceSettingsOpen(): Promise<void> {
 		await expectElementToBeVisible(
-			getLocatorByTestId("workspace-form-dialog").getByRole("heading", {
+			this.workspaceFormDialog().getByRole("heading", {
 				name: "Edit workspace",
 			}),
 			"The warning should open the workspace's settings",

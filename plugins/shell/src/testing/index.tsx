@@ -1,6 +1,7 @@
 // Test host for plugins that contribute to kilo.shell: boots the real shell
 // (main + renderer) with guest plugins and renders the window.
 import { cleanup, render } from "@testing-library/react";
+import { StrictMode } from "react";
 
 import type {
 	FlagValue,
@@ -70,6 +71,8 @@ export interface ShellHostOptions {
 	/** Where the host keeps the plugins the user turned off. */
 	readonly plugins?: MainKernelHost["plugins"];
 	readonly relaunch?: MainKernelHost["relaunch"];
+	/** Renders the window under React StrictMode, as the app does in development. */
+	readonly strictMode?: boolean;
 }
 
 export interface ShellHost {
@@ -171,11 +174,12 @@ export async function renderShell(
 	if (!options.onboarding)
 		await main.kernelSdk.domainObjects.get(Onboarding)?.methods.complete(undefined);
 	options.beforeRender?.(main);
-	render(
+	const root = (
 		<KernelProvider kernel={renderer}>
 			<KernelRoot />
-		</KernelProvider>,
+		</KernelProvider>
 	);
+	render(options.strictMode ? <StrictMode>{root}</StrictMode> : root);
 	const renderers = [renderer];
 	const openWindow = async (windowId: string, window?: Omit<RendererWindow, "id">) => {
 		const opened = await openKernelWindow(windowId, window);

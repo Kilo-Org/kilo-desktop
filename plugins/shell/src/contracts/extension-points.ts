@@ -206,6 +206,29 @@ export const Dialog = defineExtensionPoint({
 	implementation: implementation<ComponentType<DialogProps>>("renderer"),
 });
 
+export interface TakeoverProps {
+	/** Closes the take-over. */
+	readonly close: () => void;
+	/** What the opener passed (`openTakeover`'s `input`). */
+	readonly input: unknown;
+}
+
+/**
+ * A full-window take-over (a reading mode, a presentation): shown over the
+ * whole frame — sidebar, top bar, main area, right sidebar and status bar —
+ * which stays mounted underneath, inert. One at a time, mounted only while
+ * open: open it with `kilo.shell/navigation`'s
+ * `openTakeover({ takeover: "<plugin>/<id>" })`. Unlike a dialog it is not
+ * modal, so the window's shortcuts keep working; it handles its own Escape.
+ */
+export const Takeover = defineExtensionPoint({
+	id: "kilo.shell/takeover",
+	kind: "additive",
+	description: "A full-window take-over of the frame, opened by key.",
+	metadata: z.object({ title: z.string().min(1) }),
+	implementation: implementation<ComponentType<TakeoverProps>>("renderer"),
+});
+
 // --- Settings ---
 
 export interface SettingsSectionImplementation {
@@ -449,6 +472,7 @@ export const SHELL_EXTENSION_POINTS = [
 	TopBarAction,
 	RightSidebarPanel,
 	Dialog,
+	Takeover,
 	SettingsCategory,
 	SettingsSection,
 	AiProviderPanel,

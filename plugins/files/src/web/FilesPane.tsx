@@ -8,10 +8,13 @@ import { workSessionFolders, Workspaces } from "@kilo-desktop/plugin-work-sessio
 
 import { CloseGuardsContext, type CloseGuards } from "./close-guards.js";
 import { FilesView } from "./FilesView.js";
+import { FilesReadingProvider, type FilesReading } from "./reading/files-reading.js";
 
 export interface FilesRuntime {
 	readonly queries: QueryClient;
 	readonly guards: CloseGuards;
+	/** Focus over rendered Markdown, when kilo.shell offers take-overs. */
+	readonly reading?: FilesReading;
 }
 
 /**
@@ -19,6 +22,20 @@ export interface FilesRuntime {
  * The folders are the session's workspace's, its worktree standing in for
  * the primary; a session without a workspace has none.
  */
+export function createFilesPane(reading: FilesReading | undefined) {
+	return function ReadingFilesPane(props: PaneProps) {
+		return (
+			<FilesReadingProvider
+				reading={reading}
+				workSessionId={props.workSessionId}
+				paneId={props.pane.id}
+			>
+				<FilesPane {...props} />
+			</FilesReadingProvider>
+		);
+	};
+}
+
 export function FilesPane({ workSessionId, pane, workspaceId, directory }: PaneProps) {
 	const workspaceFolders = useDomainObjectState(
 		Workspaces,

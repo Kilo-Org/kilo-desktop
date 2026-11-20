@@ -1,0 +1,56 @@
+/* Reading surfaces: reply text, plan bodies and Markdown previews set at the
+   reading text size and line spacing. Sizes come from the surface root's
+   scoped variables (readingTypography().cssVars). */
+[data-reading-surface] .aui-md {
+	font-size: var(--app-ui-text-size);
+}
+
+[data-reading-surface] .aui-md :is(p, li, blockquote, td, th) {
+	line-height: var(--reading-line-height, 1.5);
+}
+
+/* The Focus column: body 16px on 28px lines, 18px semibold headings and a
+   16px gap between blocks, all following the reading text size. */
+.focus-reader-column .aui-md {
+	font-size: var(--focus-font-size);
+	line-height: var(--focus-line-height);
+}
+
+.focus-reader-column .aui-md > * {
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+.focus-reader-column .aui-md > * + * {
+	margin-top: var(--focus-block-gap);
+}
+
+.focus-reader-column .aui-md :is(p, li, blockquote) {
+	font-size: var(--focus-font-size);
+	line-height: var(--focus-line-height);
+}
+
+.focus-reader-column .aui-md :is(h1, h2, h3, h4, h5, h6) {
+	font-size: var(--focus-heading-size);
+	line-height: calc(var(--focus-font-size) * var(--focus-line-height));
+	font-weight: 600;
+}
+
+/* Dimmed blocks fade smoothly as focus moves. */
+.focus-reader-column .aui-md [data-focus-distance] {
+	transition: opacity 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.focus-reader-column .aui-md [data-focus-distance] {
+		transition: none;
+	}
+}
+
+/* Saved text: an inverted highlight that follows the theme in effect where
+   it is painted (the reading theme in Focus). Square corners: highlights
+   can't round them. */
+::highlight(kilo-saved) {
+	background-color: var(--foreground);
+	color: var(--background);
+}

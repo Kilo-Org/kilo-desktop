@@ -17,9 +17,10 @@ export interface NavigationOptions {
 /**
  * Navigation lives in main so any process can move any window: requests
  * resolve their target window (see `createWindowTarget`) and are announced as
- * `navigate-requested` / `dialog-requested`, which that window's frame
- * applies. The state is where each frame says it is (`reportLocation`, from
- * kilo.shell's own windows only); a window's entry goes when it closes.
+ * `navigate-requested` / `dialog-requested` / `takeover-requested`, which
+ * that window's frame applies. The state is where each frame says it is
+ * (`reportLocation`, from kilo.shell's own windows only); a window's entry
+ * goes when it closes.
  */
 export function provideNavigation(sdk: PluginSdk, options: NavigationOptions = {}): void {
 	const target = createWindowTarget(sdk, {
@@ -50,6 +51,16 @@ export function provideNavigation(sdk: PluginSdk, options: NavigationOptions = {
 						dialog,
 						...(input === undefined ? {} : { input }),
 					});
+				},
+				openTakeover: ({ takeover, input, windowId }, caller) => {
+					navigation.emit("takeover-requested", {
+						windowId: target(windowId, caller),
+						takeover,
+						...(input === undefined ? {} : { input }),
+					});
+				},
+				closeTakeover: ({ windowId }, caller) => {
+					navigation.emit("takeover-close-requested", { windowId: target(windowId, caller) });
 				},
 				reportLocation: (location, caller) => {
 					const windowId = reportingWindow(caller);

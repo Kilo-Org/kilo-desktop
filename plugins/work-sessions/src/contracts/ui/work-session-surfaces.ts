@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { defineExtensionPoint, implementation } from "@kilo-desktop/kernel";
 
+import type { SavedItem } from "../model/saved";
 import type { WorkSession } from "../model/work-sessions";
 
 /**
@@ -209,8 +210,51 @@ export const WorkSessionsView = defineExtensionPoint({
 	metadata: z.object({
 		title: z.string(),
 		detachable: z.boolean().default(false),
+		/**
+		 * What the view covers: the session list's focused workspace (its
+		 * header shows the workspace), or every workspace (the title alone).
+		 */
+		scope: z.enum(["focused-workspace", "all-workspaces"]).default("focused-workspace"),
 	}),
 	implementation: implementation<WorkSessionsViewImplementation>("renderer"),
+});
+
+// --- Saved ---
+
+/** How the Saved page shows a source's items. */
+export const SAVED_PRESENTATIONS = ["bookmark", "quote", "output"] as const;
+export type SavedPresentation = (typeof SAVED_PRESENTATIONS)[number];
+
+/** How precisely a source found a saved item again. */
+export type SavedRevealResult = "exact" | "message" | "unavailable";
+
+export interface SavedRevealContext {
+	/** The window opening it (where the source's pane should be revealed). */
+	readonly windowId: string;
+}
+
+export interface SavedSourceImplementation {
+	/** Opens what the item was saved from and scrolls to it. */
+	reveal(item: SavedItem, context: SavedRevealContext): Promise<SavedRevealResult>;
+}
+
+/**
+ * Where Saved items come from: a source saves items under its key
+ * (`SavedItems.add({ source })`) and, when a row on the Saved page is
+ * clicked, opens what it was saved from and scrolls to it. `presentation`
+ * picks the row's look (a bookmarked chat, a quote, terminal output) and
+ * `filter` the chip it counts under.
+ */
+export const SavedSource = defineExtensionPoint({
+	id: "kilo.work-sessions/saved-source",
+	kind: "additive",
+	description: "A kind of Saved item: what saves it and how to go back to it.",
+	metadata: z.object({
+		label: z.string().min(1),
+		presentation: z.enum(SAVED_PRESENTATIONS),
+		filter: z.enum(["chats", "text"]),
+	}),
+	implementation: implementation<SavedSourceImplementation>("renderer"),
 });
 
 // --- Header buttons ---

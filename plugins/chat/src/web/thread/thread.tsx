@@ -9,6 +9,7 @@ import { ArrowDownIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type FC, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
+import { useContextKey } from "@kilo-desktop/kernel/web";
 import { useFindScopeOpen } from "@kilo-desktop/ui/components/find-bar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -16,6 +17,18 @@ import { ComposerHeader } from "../checkpoints/composer-header";
 import { Composer } from "../composer/composer";
 import { ComposerFooter } from "../composer/composer-footer";
 import { OpenCodeComposerInteraction } from "../interactions/opencode-composer-interaction";
+import {
+	ReplyFocusPortal,
+	TranscriptFocusRail,
+	TranscriptReadingControl,
+	useTranscriptReading,
+} from "../reading/reply-focus";
+import { useChatReading } from "../reading/chat-reading";
+import { useOlderHistoryStatus } from "../runtime/use-optional-opencode-runtime-extras";
+import { useExcerptPasteTelemetry } from "../reading/excerpt-paste";
+import { useReadingThemeScope } from "../reading/reading-ui";
+import { SavedLayer } from "../saved/saved-layer";
+import { useRevealRequests } from "../saved/use-reveal-requests";
 import { ManualDisclosureMemoryProvider } from "../tools/activity-group";
 import { ConversationMapRail } from "./conversation-map-rail";
 import { WindowedMessages } from "./message-window";
@@ -70,6 +83,8 @@ function useThreadHeightVariable(ref: RefObject<HTMLDivElement | null>) {
 		return () => observer.disconnect();
 	}, [ref]);
 }
+
+const selectHasMessages = (s: AssistantState) => s.thread.messages.length > 0;
 
 const COMPOSER_INSET_VAR = "--composer-inset";
 
@@ -128,6 +143,25 @@ export const Thread: FC = () => {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const [dock, setDock] = useState<HTMLDivElement | null>(null);
 	useThreadHeightVariable(rootRef);
+	const [column, setColumn] = useState<HTMLDivElement | null>(null);
+	const reading = useTranscriptReading(column);
+	const chatReading = useChatReading();
+	const secondary = useContextKey("kernel/secondaryWindow");
+	const [toastSlot, setToastSlot] = useState<HTMLDivElement | null>(null);
+	const viewport = () => column?.closest('[data-slot="aui_thread-viewport"]') ?? null;
+	const hasMessages = useAuiState(selectHasMessages);
+	const historyLoading = useOlderHistoryStatus() === "loading";
+	useRevealRequests(
+		chatReading?.reading.saved?.reveals,
+		chatReading?.chatId ?? null,
+		viewport,
+		hasMessages && !historyLoading,
+	);
+	useAuiEvent("composer.send", () => {
+		if (chatReading) chatReading.reading.notePromptSent(chatReading.workSessionId);
+	});
+	useExcerptPasteTelemetry(rootRef, chatReading?.reading);
+	const { style: readingTheme, ...readingThemeAttributes } = useReadingThemeScope();
 	useComposerInsetVariable(rootRef, dock);
 	useScrollbarGutterVariable(rootRef, viewportRef);
 
@@ -142,7 +176,9 @@ export const Thread: FC = () => {
 				// the vibrant (transparent) macOS window behind it made the glass flicker.
 				"will-change-[filter]",
 			)}
+			{...readingThemeAttributes}
 			style={{
+				...readingTheme,
 				["--thread-max-width" as string]: "48rem",
 				["--composer-radius" as string]: "1rem",
 				["--composer-padding" as string]: "8px",
@@ -165,12 +201,25 @@ export const Thread: FC = () => {
 				/>
 				{isDraft ? null : <ConversationMapRail />}
 				<div
+					ref={setColumn}
 					data-slot="aui_thread-column"
-					className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4"
+					className="relative mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4"
 				>
-					<div data-slot="aui_message-group" className={cn("mb-16", MESSAGE_GROUP_CLASS)}>
-						<TranscriptMessages />
-					</div>
+					{reading.available ? <TranscriptFocusRail column={column} enter={reading.enter} /> : null}
+					<ReplyFocusPortal />
+					<SavedLayer
+						saved={chatReading?.reading.saved}
+						workSessionId={chatReading?.workSessionId ?? ""}
+						chatId={chatReading?.chatId ?? null}
+						root={column}
+						surface="chat"
+						toastSlot={toastSlot}
+						canView={!secondary}
+					>
+						<div data-slot="aui_message-group" className={cn("mb-16", MESSAGE_GROUP_CLASS)}>
+							<TranscriptMessages />
+						</div>
+					</SavedLayer>
 					<div aria-hidden className="h-(--composer-inset) shrink-0" />
 				</div>
 				{/* Not ThreadPrimitive.ViewportFooter: autoscroll counts the footer's height as
@@ -182,7 +231,20 @@ export const Thread: FC = () => {
 				{dock
 					? createPortal(
 							<div className="aui-thread-viewport-footer pointer-events-auto relative flex w-full max-w-(--thread-max-width) flex-col gap-4 px-1 pb-1.5">
-								<ThreadScrollToBottom />
+								{/* The Saved toast portals in here; the scroll button gives way to it. */}
+								<div
+									ref={setToastSlot}
+									className="peer pointer-events-none absolute inset-x-0 -top-13 z-20 flex justify-center empty:hidden"
+									data-qa-id="chat-toast-slot"
+								/>
+								<div className="contents peer-[:not(:empty)]:hidden">
+									<ThreadScrollToBottom />
+								</div>
+								{reading.available ? (
+									<div className="absolute -top-12 right-1 z-10">
+										<TranscriptReadingControl enter={reading.enter} />
+									</div>
+								) : null}
 								<div className="relative flex w-full flex-col">
 									<ComposerDockMask />
 									<ComposerHeader />

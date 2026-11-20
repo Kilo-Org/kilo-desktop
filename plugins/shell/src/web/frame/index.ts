@@ -7,7 +7,7 @@ import { connectWindowNavigation, routeDeepLinks, routerGo } from "./navigation"
 import { createShellRouter } from "./router";
 import { ShellRoot } from "./ShellRoot";
 import { startThemeRuntime } from "./theme-runtime";
-import { createShellUiState } from "./ui-state";
+import { createShellUiState, type ShellUiState } from "./ui-state";
 
 /**
  * The frame area. Every window gets the theme runtime (it provides
@@ -33,6 +33,7 @@ export function activateFrame(sdk: PluginSdk): void {
 	const go = routerGo(router);
 	connectWindowNavigation(sdk, router, ui);
 	routeDeepLinks(sdk, go);
+	publishTakeoverShown(sdk, ui);
 	sdk.extensions.implement(KernelRoot, "frame", function ShellFrame() {
 		return createElement(ShellRoot, { router, ui });
 	});
@@ -46,4 +47,16 @@ export function activateFrame(sdk: PluginSdk): void {
 	sdk.extensions.implement(KernelCommand, "show-shortcuts", () =>
 		ui.setShortcutsOpen(!ui.isShortcutsOpen()),
 	);
+}
+
+/** Keeps `kilo.shell/takeoverShown` true while a take-over covers this window. */
+function publishTakeoverShown(sdk: PluginSdk, ui: ShellUiState): void {
+	let shown = false;
+	const publish = () => {
+		const next = ui.takeover() !== null;
+		if (next === shown) return;
+		shown = next;
+		sdk.context.set("takeoverShown", next);
+	};
+	sdk.onDispose(ui.subscribe(publish));
 }

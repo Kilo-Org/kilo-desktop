@@ -39,12 +39,15 @@ async function boot() {
 	const navigation = host.main.kernelSdk.domainObjects.get(Navigation)!;
 	const navigated: unknown[] = [];
 	const dialogs: unknown[] = [];
+	const takeovers: unknown[] = [];
 	navigation.on("navigate-requested", (request) => navigated.push(request));
 	navigation.on("dialog-requested", (request) => dialogs.push(request));
+	navigation.on("takeover-requested", (request) => takeovers.push({ open: request }));
+	navigation.on("takeover-close-requested", (request) => takeovers.push({ close: request }));
 	const notifications = host.main.kernelSdk.domainObjects.get(Notifications)!;
 	const toasts: unknown[] = [];
 	notifications.on("toast", (toast) => toasts.push(toast));
-	return { host, navigation, navigated, dialogs, notifications, toasts };
+	return { host, navigation, navigated, dialogs, takeovers, notifications, toasts };
 }
 
 const report = (host: PluginHost, path: string, search: Record<string, string> = {}) =>
@@ -119,6 +122,30 @@ describe("navigation (main)", () => {
 			{ windowId: "main", path: "/", search: {} },
 		]);
 		expect(dialogs).toEqual([{ windowId: "w1", dialog: "acme.guest/pick", input: { n: 1 } }]);
+	});
+
+	it("asks a window to show and close a take-over", async () => {
+		const { host, takeovers } = await boot();
+
+		await host.invoke(
+			Navigation,
+			"openTakeover",
+			{ takeover: "acme.guest/reader", input: { at: 3 } },
+			{ as: "acme.guest" },
+		);
+		await host.invoke(Navigation, "closeTakeover", {}, { as: "acme.guest" });
+		await host.invoke(
+			Navigation,
+			"openTakeover",
+			{ takeover: "acme.guest/reader", windowId: "w2" },
+			{ as: "acme.guest" },
+		);
+
+		expect(takeovers).toEqual([
+			{ open: { windowId: "main", takeover: "acme.guest/reader", input: { at: 3 } } },
+			{ close: { windowId: "main" } },
+			{ open: { windowId: "w2", takeover: "acme.guest/reader" } },
+		]);
 	});
 
 	it("sends a secondary window's request to the main window", async () => {
@@ -229,7 +256,11 @@ describe("telemetry (main)", () => {
 			initialState: { choice: true, allowed: true, installationId: "i", environment: "preview" },
 			methods: { setChoice: () => {} },
 		});
-		const sent = () => envelopes.map(({ name, data }) => ({ name, data }));
+		// The daily reading-preferences snapshot has its own tests (reading.test.ts).
+		const sent = () =>
+			envelopes
+				.filter(({ name }) => name !== "Reading Preferences Snapshot")
+				.map(({ name, data }) => ({ name, data }));
 		return { host, sent };
 	}
 

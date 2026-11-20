@@ -59,6 +59,11 @@
 			"description": "An app-wide dialog opened by command."
 		},
 		{
+			"id": "takeover",
+			"kind": "additive",
+			"description": "A full-window take-over of the frame, opened by key."
+		},
+		{
 			"id": "settings-category",
 			"kind": "additive",
 			"description": "A heading in the Settings sidebar."
@@ -139,6 +144,28 @@
 			"id": "legal",
 			"home": "main",
 			"description": "The legal documents shipped with the app, shown in About → Legal."
+		},
+		{
+			"id": "reading",
+			"home": "main",
+			"description": "Reading preferences for long text: reading theme, text size, line spacing and Focus."
+		},
+		{
+			"id": "reading-presets",
+			"home": "main",
+			"description": "Saved reading presets, the one in use and the one applied when Kilo opens."
+		},
+		{
+			"id": "reading-usage",
+			"home": "main",
+			"description": "Local counts of Focus visits, for content-free telemetry only."
+		}
+	],
+	"contextKeys": [
+		{
+			"id": "takeoverShown",
+			"scope": "window",
+			"description": "True while a take-over (kilo.shell/takeover) covers this window."
 		}
 	],
 	"contributes": {
@@ -176,7 +203,7 @@
 						"default": "Ctrl+Shift+S"
 					},
 					"when": {
-						"none": ["kernel/secondaryWindow"]
+						"none": ["kernel/secondaryWindow", "kilo.shell/takeoverShown"]
 					}
 				},
 				{
@@ -250,6 +277,10 @@
 				{
 					"id": "work-style-selected",
 					"name": "Work Style Selected"
+				},
+				{
+					"id": "reading-preferences-snapshot",
+					"name": "Reading Preferences Snapshot"
 				}
 			],
 			"kilo.shell/settings-category": [

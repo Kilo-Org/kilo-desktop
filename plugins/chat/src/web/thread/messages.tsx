@@ -92,6 +92,8 @@ import {
 } from "./assistant-working-indicator-mode";
 import { UserMessageAttachments } from "./attachment";
 import { displayChatError, isKiloSignInError, messageErrorText } from "./chat-error";
+import { ReplyTextSurface } from "../reading/reading-ui";
+import { BookmarkButton } from "../saved/BookmarkButton";
 import { MarkdownText } from "./markdown-text";
 import { Reasoning } from "./reasoning";
 import { TooltipIconButton } from "./tooltip-icon-button";
@@ -490,7 +492,11 @@ const AssistantMessage: FC = () => {
 								case "group-activity":
 									return <ActivityGroup group={part}>{children}</ActivityGroup>;
 								case "text":
-									return <MarkdownText />;
+									return (
+										<ReplyTextSurface>
+											<MarkdownText />
+										</ReplyTextSurface>
+									);
 								case "reasoning":
 									return <Reasoning {...part} />;
 								case "tool-call":
@@ -568,6 +574,7 @@ const AssistantActionBar: FC<{ hidden: boolean }> = ({ hidden }) => (
 		)}
 	>
 		<MessageCopyButton />
+		<BookmarkButton />
 		<ActionBarMorePrimitive.Root>
 			<Tooltip disableHoverablePopup>
 				<TooltipTrigger

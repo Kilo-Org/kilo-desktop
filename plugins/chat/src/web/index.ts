@@ -8,6 +8,8 @@ import {
 	WorkSessionStarter,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
+import { Takeover } from "@kilo-desktop/plugin-shell/contracts";
+
 import { ComposerAction, paneChatId, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
 import { createCompactCommand } from "./compaction/compact-command";
@@ -18,6 +20,9 @@ import { handOverLegacyChoices } from "./legacy-hand-over";
 import { MediaIcon, MediaPane } from "./media/MediaPane";
 import { AgentsMenu } from "./panes/AgentsMenu";
 import { createPlanPane, PlanIcon } from "./plan/PlanPane";
+import { activateChatReading } from "./reading/chat-reading";
+import { activateChatSaved } from "./saved/chat-saved";
+import { createFocusTakeover } from "./reading/reading-ui";
 import { ChatServices } from "./runtime/chat-services";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
 import { createSubagentPane, SubagentIcon } from "./subagents/SubagentPane";
@@ -32,7 +37,8 @@ const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as 
  * window's composer domain object, its own composer actions and transcript
  * renderers, the composer's commands (`compact`, placed in the `/` menu by its
  * manifest), and which permission requests Auto approve answers
- * (`kilo.work-sessions/permission-auto-answer`). One `ChatServices` (the live
+ * (`kilo.work-sessions/permission-auto-answer`), and Reading Mode (Focus
+ * as a `kilo.shell/takeover`, the reading control). One `ChatServices` (the live
  * connection to the Kilo server and its event stream) and one query cache are
  * shared by every pane in the window.
  */
@@ -44,9 +50,12 @@ export const chatWebEntry = definePlugin({
 		sdk.onDispose(() => chat.dispose());
 		sdk.onDispose(() => queries.clear());
 		activateComposerFocus(sdk, focus);
+		const reading = activateChatReading(sdk);
+		reading.saved = activateChatSaved(sdk, reading);
+		sdk.extensions.implement(Takeover, "focus", createFocusTakeover(reading));
 
 		sdk.extensions.implement(PaneKind, "agent", {
-			component: createAgentPane({ chat, focus, queries }),
+			component: createAgentPane({ chat, focus, queries, reading }),
 			icon: AgentIcon,
 			// Loads the chat the pane would show, so opening the work session shows it at once.
 			prefetch: ({ workSession, pane }) => {
@@ -59,7 +68,7 @@ export const chatWebEntry = definePlugin({
 			},
 		});
 		sdk.extensions.implement(PaneKind, "plan", {
-			component: createPlanPane({ chat, queries }),
+			component: createPlanPane({ chat, queries, reading }),
 			icon: PlanIcon,
 		});
 		sdk.extensions.implement(PaneKind, "subagent", {

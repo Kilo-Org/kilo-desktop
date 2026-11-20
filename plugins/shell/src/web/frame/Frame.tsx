@@ -40,8 +40,9 @@ import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 import { NotificationToasts, SidebarNotices } from "./Notifications";
 import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
+import { TakeoverHost } from "./TakeoverHost";
 import { TopBar } from "./TopBar";
-import { useShellUi } from "./ui-state";
+import { useShellUi, useShownTakeover } from "./ui-state";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
@@ -83,8 +84,9 @@ function SettingsButton({ settings }: { readonly settings: boolean }) {
 /**
  * The window frame: the left sidebar (navigator or the settings rail, then
  * notices and the account entry), top bar, the main pane, the status bar
- * and the right sidebar, plus the window's dialogs, toasts and onboarding.
- * Everything inside comes from contributions to kilo.shell's points.
+ * and the right sidebar, plus the window's take-over, dialogs, toasts and
+ * onboarding. Everything inside comes from contributions to kilo.shell's
+ * points.
  */
 export function Frame({ children }: { readonly children: ReactNode }) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -97,6 +99,8 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 	const desktop = useContextKey("kernel/desktop");
 	const mac = useContextKey("kernel/mac");
 	const desktopMac = desktop && mac;
+	// Covered by a take-over: kept mounted (sessions keep running), out of reach.
+	const covered = useShownTakeover() !== null;
 
 	const atHome = pathname === "/";
 	const title = settings ? "Settings" : atHome ? home?.metadata.title : undefined;
@@ -125,6 +129,8 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 				collapsible="offcanvas"
 				className="group-data-[transient=true]:bg-sidebar! h-svh bg-transparent! group-data-[side=left]:border-r-0 group-data-[transient=true]:shadow-xl [&_[data-sidebar=sidebar]]:bg-transparent"
 				data-qa-id="app-sidebar"
+				inert={covered}
+				aria-hidden={covered || undefined}
 			>
 				{/* Titlebar plus the pane gutter, so sidebar content starts level with the main pane. */}
 				<SidebarHeader
@@ -174,7 +180,12 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 				</SidebarFooter>
 			</Sidebar>
 			{/* Keep overflow off the inset: Electron ignores drag regions inside overflow:hidden ancestors. */}
-			<SidebarInset className="h-svh min-h-0 min-w-0 bg-transparent">
+			<SidebarInset
+				className="h-svh min-h-0 min-w-0 bg-transparent"
+				inert={covered}
+				aria-hidden={covered || undefined}
+				data-covered={covered || undefined}
+			>
 				<TopBar
 					title={title}
 					titleContribution={titleContribution}
@@ -203,6 +214,7 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 			<KeyboardShortcutsDialog />
 			<Toaster theme={mode} position="bottom-right" offset={{ bottom: 88 }} closeButton />
 			<NotificationToasts />
+			<TakeoverHost />
 			<DialogsHost />
 			<OnboardingHost />
 		</SidebarProvider>

@@ -4,6 +4,7 @@ import { activateFileWatcher, type FileWatcherOptions } from "./file-watcher";
 import { activateKeybindings } from "./keybindings";
 import { activateLayoutPresets, type LayoutPresetsOptions } from "./layout-presets";
 import { activatePanes, type PanesOptions } from "./panes";
+import { activateSaved, type SavedOptions } from "./saved";
 import { activateStorage } from "./storage";
 import { activateWorkSessions, type WorkSessionsOptions } from "./work-sessions";
 import { activateWorkspaces, type WorkspacesOptions } from "./workspaces";
@@ -15,6 +16,7 @@ export interface WorkSessionsMainOptions {
 	readonly workSessions?: (sdk: PluginSdk) => WorkSessionsOptions;
 	readonly panes?: (sdk: PluginSdk) => PanesOptions;
 	readonly layoutPresets?: (sdk: PluginSdk) => LayoutPresetsOptions;
+	readonly saved?: (sdk: PluginSdk) => SavedOptions;
 }
 
 /**
@@ -22,7 +24,7 @@ export interface WorkSessionsMainOptions {
  * plugin's own domain objects. Order matters at activation: storage adopts
  * the predecessors' data before any area opens its kv; workspaces come
  * before what reads them (the watcher, work sessions); work sessions come
- * before panes, which drop a deleted work session's panes.
+ * before panes and Saved, which drop a deleted work session's panes and items.
  */
 export function createWorkSessionsMainEntry(options: WorkSessionsMainOptions): PluginEntry {
 	return definePlugin({
@@ -34,6 +36,7 @@ export function createWorkSessionsMainEntry(options: WorkSessionsMainOptions): P
 			await activateLayoutPresets(sdk, options.layoutPresets?.(sdk));
 			activateWorkSessions(sdk, options.workSessions?.(sdk));
 			activatePanes(sdk, options.panes?.(sdk));
+			activateSaved(sdk, options.saved?.(sdk));
 		},
 	});
 }

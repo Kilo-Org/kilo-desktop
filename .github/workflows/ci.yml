@@ -64,7 +64,7 @@ jobs:
           save-pnpm-store: "false"
           install: "true"
           # pnpm deploy copies packages from the store.
-          needs-store: "true"
+          cache-node-modules: "false"
       - run: pnpm check:plugin-isolation --build all
 
   typecheck:
@@ -261,7 +261,7 @@ jobs:
           save-pnpm-store: "false"
           install: "true"
           # pnpm deploy copies packages from the store.
-          needs-store: "true"
+          cache-node-modules: "false"
       - uses: ./.github/actions/run-e2e
         with:
           script: test:e2e
@@ -314,7 +314,7 @@ jobs:
           save-pnpm-store: "false"
           install: "true"
           # pnpm deploy copies packages from the store.
-          needs-store: "true"
+          cache-node-modules: "false"
       - uses: ./.github/actions/run-e2e
         with:
           shard: ${{ matrix.shard }}

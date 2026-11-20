@@ -84,6 +84,14 @@ describe("LiveParts", () => {
 		expect(await readPart(live, stored)).toEqual(stored);
 	});
 
+	it("forgets a part once a read shows it ended", async () => {
+		const live = streaming("Hello");
+		live.apply(event(STREAM_RECONNECTED_EVENT_TYPE, {}, undefined));
+		await readPart(live, textPart("Hello world", { time: { start: 1, end: 2 } }));
+
+		expect((await readPart(live, textPart(""))).text).toBe("");
+	});
+
 	it("leaves a stored text the live text doesn't extend", async () => {
 		const live = streaming("Hello");
 

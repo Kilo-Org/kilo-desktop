@@ -15,8 +15,9 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
  *   whole). An ending update keeps the ended part for `ENDED_PART_TTL_MS`: a
  *   read the server answered before the end but the thread reads after it
  *   would otherwise put the unfinished text back over the ended part.
- * - Dropped when the part or its message is removed, or when its chat goes
- *   idle (a part still streaming then was cut off).
+ * - Dropped when the part or its message is removed, when its chat goes idle
+ *   (a part still streaming then was cut off), or when a read shows it ended
+ *   (its ending update may have been lost to a reconnect).
  * - Kept across a reconnect, which makes every thread reload: what the stream
  *   gave before the drop is still the start of the text, and a reload whose
  *   part has ended carries the whole text, which wins.
@@ -133,9 +134,13 @@ export class LiveParts {
 		const id = record?.["id"];
 		if (!record || typeof id !== "string") return part;
 		const live = this.#parts.get(id);
-		if (!live || live.sessionId !== chatId || !isStreamedText(record) || hasEnded(record)) {
+		if (!live || live.sessionId !== chatId) return part;
+		if (hasEnded(record)) {
+			// The server's final word: its ending update may have been lost to a reconnect.
+			this.#parts.delete(id);
 			return part;
 		}
+		if (!isStreamedText(record)) return part;
 		const stored = textOf(record);
 		if (!live.text.startsWith(stored)) return part;
 		if (live.ended) return live.ended.part;

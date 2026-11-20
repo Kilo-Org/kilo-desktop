@@ -8,6 +8,7 @@
 	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		".": "./src/index.ts",
+		"./server-line": "./src/server-line.ts",
 		"./testing": "./src/testing.ts"
 	},
 	"scripts": {

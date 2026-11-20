@@ -5,6 +5,7 @@ import { defineConfig, loadEnv } from "vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { externalizeDeps } from "@kilo-desktop/vite-plugin-externalize-deps";
 import { NOTEBOOK_MAIN_EXTERNALS } from "@kilo-desktop/plugin-notebook/packaging";
+import { serverLineAliases, serverLineOf } from "@kilo-desktop/bundled-plugins/server-line";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -23,6 +24,7 @@ export default defineConfig(({ command }) => {
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
 	const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
+	const serverLine = serverLineOf(process.env);
 
 	return {
 		plugins: [
@@ -72,12 +74,14 @@ export default defineConfig(({ command }) => {
 		define: {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_TRACK: JSON.stringify(track),
+			KILO_SERVER_LINE: JSON.stringify(serverLine),
 			UPDATE_PUBLISH_URLS: JSON.stringify(getUpdatePublishUrls(process.env, track)),
 		},
 		resolve: {
-			alias: {
-				$config: path.resolve(root, "config"),
-			},
+			alias: [
+				{ find: "$config", replacement: path.resolve(root, "config") },
+				...serverLineAliases(serverLine),
+			],
 			// Electron main is Node. Vite's client environment otherwise prefers
 			// the `browser` export condition (e.g. `ws/browser.js`, which throws).
 			conditions: ["node"],

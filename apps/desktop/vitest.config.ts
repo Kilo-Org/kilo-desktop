@@ -7,9 +7,12 @@ import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const alias = { $config: path.resolve(root, "config") };
+// Build-time constants vite.main.config.ts defines; tests run the default v1 line.
+const define = { KILO_SERVER_LINE: JSON.stringify("v1") };
 
 export default defineConfig({
 	resolve: { alias },
+	define,
 	test: {
 		coverage: createCoverageConfig([
 			// Electron / Forge entrypoints — exercised by e2e, not unit coverage.
@@ -29,6 +32,7 @@ export default defineConfig({
 		projects: [
 			{
 				resolve: { alias },
+				define,
 				test: {
 					name: "unit",
 					include: ["config/**/*.test.ts", "src/**/*.test.ts"],
@@ -38,6 +42,7 @@ export default defineConfig({
 			},
 			{
 				resolve: { alias },
+				define,
 				test: {
 					name: "integration",
 					include: ["src/**/*.integration.test.ts"],

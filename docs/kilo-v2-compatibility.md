@@ -2,8 +2,8 @@
 
 What the Kilo Code v2 server (`kilo2`) and its client (`@kilocode/client`)
 offer against what Kilo Desktop uses from the Kilo v1 server today. Input to
-the v2 server plugin described in
-[ADR-003](./adr/003-kilo-server-plugins.md).
+the v2 plugin copies described in
+[ADR-003](./adr/003-kilo-server-line.md).
 
 - **Checked against:** `@kilocode/cli@0.0.0-v2-239` and
   `@kilocode/client@0.0.0-v2-239` (npm dist-tag `kilo-v2`, published
@@ -258,7 +258,7 @@ Missing in v2 whichever way desktop connects (raised as open questions):
    (`kilo.core/generation`), and per-prompt system text.
 10. Telemetry toggle.
 
-Changes desktop absorbs in `kilo.server-v2` (no decision needed):
+Changes desktop absorbs in the v2 plugin copies (no decision needed):
 
 - New message model and events: the v2 react-opencode copy is a new adapter
   over `session.*` events and the tagged message union.

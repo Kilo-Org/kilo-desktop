@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 import { BUNDLED_PLUGINS, webPluginIds, withEntries } from "@kilo-desktop/bundled-plugins";
+import { serverLinePackage } from "@kilo-desktop/bundled-plugins/server-line";
 import type { PluginEntry, PluginRegistration } from "@kilo-desktop/kernel";
 import anacondaManifest from "@kilo-desktop/plugin-anaconda/plugin.json";
 import { anacondaMainEntry } from "@kilo-desktop/plugin-anaconda/main";
@@ -72,8 +73,9 @@ export function bundledWebPluginIds(): string[] {
  * `prepare-assets` stages its resources).
  */
 export function bundledPluginRoot(pluginId: string): string | undefined {
-	const packageName = ASSET_PACKAGES[pluginId];
-	if (!packageName) return undefined;
+	const v1PackageName = ASSET_PACKAGES[pluginId];
+	if (!v1PackageName) return undefined;
+	const packageName = serverLinePackage(KILO_SERVER_LINE, v1PackageName);
 	const require = createRequire(import.meta.url);
 	return path.dirname(require.resolve(`${packageName}/plugin.json`));
 }

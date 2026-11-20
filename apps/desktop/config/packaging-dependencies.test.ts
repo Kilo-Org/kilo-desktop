@@ -495,7 +495,11 @@ describe("packaged production dependencies", () => {
 			forge.indexOf("const shippedBundleLicenseFiles"),
 		);
 
-		expect(extraResources).toContain('"plugins/core/resources/kilo"');
+		// kilo.core's package for the build's Kilo server line (server-line.ts).
+		expect(forge).toContain(
+			'serverLinePackage(serverLineOf(process.env), "@kilo-desktop/plugin-core")',
+		);
+		expect(extraResources).toContain('path.join(corePackageRoot, "resources/kilo")');
 	});
 
 	it("packs kilo.core's THIRD_PARTY_NOTICES.md (the Kilo CLI's licence) for the app notices", () => {

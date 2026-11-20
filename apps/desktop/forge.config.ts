@@ -1,4 +1,5 @@
 import { cp, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -36,6 +37,7 @@ import { listWorkspacePackageNames } from "./config/workspace-packages.js";
 import { getRpmVersion, LINUX_PACKAGE_FORMAT_FILE } from "./config/linux-package.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
+import { serverLineOf, serverLinePackage } from "@kilo-desktop/bundled-plugins/server-line";
 import {
 	ensureNodePtySpawnHelpersExecutable,
 	validateTerminalBundle,
@@ -43,6 +45,12 @@ import {
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
+// kilo.core's package for this build's Kilo server line (v1 or its v2 copy).
+const corePackageRoot = path.dirname(
+	createRequire(import.meta.url).resolve(
+		`${serverLinePackage(serverLineOf(process.env), "@kilo-desktop/plugin-core")}/plugin.json`,
+	),
+);
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
 const track = getReleaseTrack(process.env);
 const buildTime = getPreviewBuildTime(process.env);
@@ -125,7 +133,7 @@ const extraResources = [
 	...(process.platform === "win32" ? [path.join(packageRoot, "assets/icon.ico")] : []),
 	// kilo.core's Kilo CLI must stay outside ASAR so it can be executed; it
 	// resolves `resources/kilo` against the app's resources when packaged.
-	path.join(workspaceRoot, "plugins/core/resources/kilo"),
+	path.join(corePackageRoot, "resources/kilo"),
 	// kilo.terminal's frame, served on its embedded host from the app's resources.
 	path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
 	...notebookPackaging.extraResources,
@@ -472,6 +480,8 @@ const config: ForgeConfig = {
 			if (platform !== "win32") return;
 			const locateDll = createVisualStudioRedistLocator();
 			for (const outputPath of outputPaths) {
+				// One output at a time: each copy scans and writes a whole app folder.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await bundleVcRuntime(outputPath, locateDll);
 			}
 		},
@@ -480,6 +490,8 @@ const config: ForgeConfig = {
 			for (const result of makeResults) {
 				for (const artifact of result.artifacts) {
 					if (artifact.toLowerCase().endsWith(".exe")) {
+						// Sequential: the signing service signs one file per call.
+						// react-doctor-disable-next-line react-doctor/async-await-in-loop
 						await signWindowsFile(artifact);
 					}
 				}

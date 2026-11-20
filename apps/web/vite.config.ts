@@ -18,6 +18,7 @@ import {
 	themeBootstrapScript,
 } from "../../packages/ui/src/themes/theme-tokens";
 import desktopInfo from "../desktop/package.json";
+import { serverLineAliases, serverLineOf } from "@kilo-desktop/bundled-plugins/server-line";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
@@ -74,9 +75,7 @@ export default defineConfig({
 	],
 	assetsInclude: ["**/*.lottie"],
 	resolve: {
-		alias: {
-			"@": srcRoot,
-		},
+		alias: [{ find: "@", replacement: srcRoot }, ...serverLineAliases(serverLineOf(process.env))],
 		// Linked plugin sources import these packages from their own module graph.
 		// Keep provider and consumer imports on one React/context instance.
 		dedupe: ["react", "react-dom", "@kilo-desktop/kernel"],

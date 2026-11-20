@@ -9,6 +9,8 @@ lists the local file and the upstream file it derives from
 Ported or adapted from [Visual Studio Code](https://github.com/microsoft/vscode).
 
 - `src/main/file-watcher/watcher/path-normalization.ts` ← `src/vs/platform/files/node/watcher/parcel/parcelWatcher.ts`
+- `src/main/file-watcher/watcher/parcel-backend.ts` (the pinned backend per platform) ← `src/vs/platform/files/node/watcher/parcel/parcelWatcher.ts` (`PARCEL_WATCHER_BACKEND`)
+- `src/main/file-watcher/watcher/default-excludes.ts` (the default watch excludes) ← `src/vs/workbench/contrib/files/browser/files.contribution.ts` (`files.watcherExclude`)
 
 License: MIT. Copyright (c) 2015 - present Microsoft Corporation.
 

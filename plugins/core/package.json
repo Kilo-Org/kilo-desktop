@@ -32,11 +32,11 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@kilocode/cli-darwin-arm64": "7.8.27",
-		"@kilocode/cli-linux-arm64": "7.8.27",
-		"@kilocode/cli-linux-x64-baseline": "7.8.27",
-		"@kilocode/cli-windows-arm64": "7.8.27",
-		"@kilocode/cli-windows-x64-baseline": "7.8.27"
+		"@kilocode/cli-darwin-arm64": "7.8.31",
+		"@kilocode/cli-linux-arm64": "7.8.31",
+		"@kilocode/cli-linux-x64-baseline": "7.8.31",
+		"@kilocode/cli-windows-arm64": "7.8.31",
+		"@kilocode/cli-windows-x64-baseline": "7.8.31"
 	},
 	"devDependencies": {
 		"@modelcontextprotocol/client": "^2.0.0",

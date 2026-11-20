@@ -183,6 +183,11 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 					setActive: unused("setActive"),
 					authorize: () => ({ allowed: true }),
 					checkFolders: () => undefined,
+					newFolderLocation: () => ({ path: null }),
+					newFolderPath: () => {
+						throw new Error("newFolderPath is not faked here.");
+					},
+					rememberNewFolderLocation: () => undefined,
 				},
 			});
 			files = sdk.domainObjects.provide(FileWatcher, {

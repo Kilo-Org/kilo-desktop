@@ -486,6 +486,7 @@
 				"plugins/chat/src/web/selection/kilo-model-selector.tsx",
 				"plugins/environments/src/web/providers/conda/EnvironmentDetail.tsx",
 				"plugins/git/src/web/branches/BranchPickerPopover.tsx",
+				"plugins/git/src/web/clone/RepositoryList.tsx",
 				"plugins/work-sessions/src/web/list/SessionList.tsx"
 			],
 			"rules": {

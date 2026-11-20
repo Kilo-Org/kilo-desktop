@@ -244,6 +244,9 @@ export function fakeWorkSessions(options: FakeWorkSessionsOptions = {}) {
 					remove: unused,
 					setActive: unused,
 					checkFolders: unused,
+					newFolderLocation: unused,
+					newFolderPath: unused,
+					rememberNewFolderLocation: unused,
 					authorize: ({ path }) => options.authorize?.(path) ?? { allowed: true, path },
 				},
 			});

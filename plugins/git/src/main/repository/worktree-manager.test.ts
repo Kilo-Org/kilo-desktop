@@ -15,7 +15,7 @@ import {
 } from "@kilo-desktop/git-client";
 import type { IGitStringResult } from "@kilo-desktop/git-client";
 
-import type { GitClientSlice } from "./git-service";
+import type { GitClientSlice } from "../shared/git-client";
 import { createPathIdentity, hostPathIdentity } from "./path-identity";
 import { WorktreeManager, type WorktreeManagerOptions } from "./worktree-manager";
 

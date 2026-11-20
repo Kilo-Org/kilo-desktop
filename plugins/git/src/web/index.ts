@@ -5,6 +5,7 @@ import { Repository } from "../contracts";
 import { activateActions } from "./actions";
 import { activateBranches } from "./branches";
 import { activateChanges } from "./changes";
+import { activateClone } from "./clone";
 import { activatePullRequests } from "./pull-requests";
 import { refetchOnWindowFocus } from "./shared/focus-refetch";
 import type { GitWindow } from "./shared/git-window";
@@ -46,7 +47,8 @@ function keepRepositoryReadsCurrent(sdk: PluginSdk, { queries }: GitWindow): voi
  * the open work session's commit / push / pull request actions and their
  * commands (`actions`), and work sessions' pull requests — row badge, hover
  * details, the session list's filter facet — with the directories this window
- * shows reported to `kilo.git/pull-requests` (`pull-requests`).
+ * shows reported to `kilo.git/pull-requests` (`pull-requests`), and the
+ * GitHub repository and Git URL sources of the New workspace dialog (`clone`).
  */
 export const gitWebEntry = definePlugin({
 	activate(sdk) {
@@ -57,5 +59,6 @@ export const gitWebEntry = definePlugin({
 		activateBranches(sdk, window);
 		activateActions(sdk, window);
 		activatePullRequests(sdk, window);
+		activateClone(sdk, window);
 	},
 });

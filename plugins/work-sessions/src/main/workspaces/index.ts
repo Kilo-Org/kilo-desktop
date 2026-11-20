@@ -13,10 +13,16 @@ import {
 	type WorkspaceFolderInput,
 	type WorkspacesState,
 } from "../../contracts/model";
-import { workspacesStore, type PersistedWorkspaces } from "../storage/stores";
+import {
+	newFolderLocationStore,
+	workspacesStore,
+	type PersistedWorkspaces,
+} from "../storage/stores";
 import { track } from "../telemetry";
 import { authorizePath } from "./authorize";
 import { comparablePath, unavailableFolderIds, validateFolders } from "./folders";
+import { newFolderPath, withNewFolders } from "./new-folder";
+import { createNewFolderLocation, defaultLocations } from "./new-folder-location";
 import {
 	originImportMode,
 	recoverable,
@@ -34,6 +40,8 @@ export interface WorkspacesOptions {
 	readonly loadSqlite?: SqliteLoader;
 	/** How often folder availability is re-checked. */
 	readonly folderCheckIntervalMs?: number;
+	/** The default location for new folders before one has been used (instead of Documents, then home). */
+	readonly documentsDirectory?: () => string | null;
 }
 
 const HAS_WORKSPACES = "hasWorkspaces";
@@ -50,12 +58,20 @@ const byName = (left: Workspace, right: Workspace) =>
  * workspace and retries on the next launch if the old database couldn't be
  * read (see `originImportMode` for installs an earlier release wrongly
  * marked imported). Creating and removing a workspace is reported to telemetry with its
- * folder count only, never names or paths.
+ * folder count only, never names or paths. A workspace can start in new
+ * folders (`createFolders`), made empty just before it is saved and removed
+ * again if saving fails; the folder the last one went in is remembered in its
+ * own kv namespace as the default location for the next.
  */
 export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = {}): void {
 	const createId = options.createId ?? randomUUID;
 	const now = options.now ?? Date.now;
 	const store = workspacesStore(sdk);
+	const { documentsDirectory } = options;
+	const newFolderLocation = createNewFolderLocation({
+		store: newFolderLocationStore(sdk),
+		defaults: documentsDirectory ? () => [documentsDirectory()] : defaultLocations,
+	});
 	let unavailable: string[] = [];
 
 	const snapshot = (): WorkspacesState => {
@@ -83,6 +99,11 @@ export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = 
 				authorize: ({ path: target, rule }) =>
 					authorizePath(store.snapshot().workspaces, target, rule),
 				checkFolders: () => checkFolders(),
+				newFolderLocation: async () => ({ path: await newFolderLocation.get() }),
+				newFolderPath: ({ parentPath, name }) => ({ path: newFolderPath(parentPath, name) }),
+				rememberNewFolderLocation: ({ path: parentPath }) => {
+					newFolderLocation.remember(parentPath);
+				},
 			},
 		},
 	);
@@ -133,6 +154,28 @@ export function activateWorkspaces(sdk: PluginSdk, options: WorkspacesOptions = 
 	}
 
 	function create(input: {
+		name?: string | undefined;
+		color?: string | undefined;
+		folders: WorkspaceFolderInput[];
+		source?: string | undefined;
+		createFolders?: string[] | undefined;
+	}): Workspace {
+		const [firstNewFolder] = input.createFolders ?? [];
+		const workspace = withNewFolders(input.folders, input.createFolders ?? [], (folders) =>
+			insert({ ...input, folders }),
+		);
+		if (firstNewFolder) {
+			// The workspace is saved; failing to keep the next default must not undo that.
+			try {
+				newFolderLocation.remember(path.dirname(firstNewFolder));
+			} catch (reason) {
+				sdk.logger.warn("Couldn't remember the new folder location.", reason);
+			}
+		}
+		return workspace;
+	}
+
+	function insert(input: {
 		name?: string | undefined;
 		color?: string | undefined;
 		folders: WorkspaceFolderInput[];

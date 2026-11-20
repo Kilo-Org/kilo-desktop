@@ -153,6 +153,11 @@ function fakeWorkSessions(
 								folders.some((folder) => folder.path === candidate),
 						}),
 						checkFolders: unused,
+						newFolderLocation: () => ({ path: null }),
+						newFolderPath: () => {
+							throw new Error("newFolderPath is not faked here.");
+						},
+						rememberNewFolderLocation: () => undefined,
 					},
 				});
 			}

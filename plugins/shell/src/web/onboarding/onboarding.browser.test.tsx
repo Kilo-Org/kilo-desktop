@@ -13,13 +13,11 @@ import {
 } from "../../contracts";
 import { contributor, renderShell, type GuestPlugin } from "../../testing";
 import { activateFrame } from "../frame";
-import { activateOnboarding } from "./index";
 
-/** kilo.shell's window with only its own onboarding step, so the tests' steps are the tour. */
+/** kilo.shell's window with only its frame, so the tests' steps are the whole tour. */
 const onboardingOnly = definePlugin({
 	activate(sdk) {
 		activateFrame(sdk);
-		activateOnboarding(sdk);
 	},
 });
 
@@ -142,7 +140,7 @@ function connectStep(): GuestPlugin & { setConnected(value: boolean): void } {
 				{
 					id: "connect",
 					label: "Connect",
-					priority: 500,
+					priority: 600,
 					showWhen: { none: ["acme.connect/connected"] },
 				},
 			],
@@ -166,7 +164,7 @@ describe("onboarding", () => {
 		await page.getByRole("button", { name: "I agree" }).click();
 
 		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
-		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 3");
+		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 2");
 		await page.getByTestId("onboarding-continue").click();
 		await expect.element(page.getByRole("heading", { name: "Almost there" })).toBeVisible();
 		await page.getByTestId("onboarding-back").click();
@@ -177,15 +175,20 @@ describe("onboarding", () => {
 		await page.getByRole("checkbox", { name: "Ready" }).click();
 		await finish.click();
 
-		// The shell's own closing step comes last.
-		await expect.element(page.getByRole("heading", { name: "You're all set" })).toBeVisible();
-		await expect
-			.element(page.getByText("Use any model from any provider", { exact: true }))
-			.toBeVisible();
-		await page.getByTestId("onboarding-continue").click();
-
+		// The last step's action finishes onboarding.
 		await expect.element(overlay()).not.toBeInTheDocument();
 		await expect.poll(outcome).toBe("completed");
+	});
+
+	it("keeps one frame across steps, so a step leaves while the next comes in", async () => {
+		await renderOnboarding([tourSteps()]);
+		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
+		const progress = page.getByTestId("onboarding-progress-label").element();
+
+		await page.getByTestId("onboarding-continue").click();
+
+		await expect.element(page.getByRole("heading", { name: "Almost there" })).toBeVisible();
+		expect(page.getByTestId("onboarding-progress-label").element()).toBe(progress);
 	});
 
 	it("records leaving setup as skipped", async () => {
@@ -220,23 +223,23 @@ describe("onboarding", () => {
 
 	it("decides which conditional steps to offer when it opens, and keeps them", async () => {
 		const connect = connectStep();
-		await renderOnboarding([connect]);
+		await renderOnboarding([connect, tourSteps()]);
 		await expect.element(page.getByRole("heading", { name: "Connect something" })).toBeVisible();
 
 		// Connecting mid-flow doesn't pull the step out from under the person.
 		connect.setConnected(true);
 
 		await expect.element(page.getByRole("heading", { name: "Connect something" })).toBeVisible();
-		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 2");
+		expect(page.getByTestId("onboarding-progress-label").element().textContent).toBe("Step 1 of 3");
 	});
 
 	it("leaves out a conditional step that doesn't apply when it opens", async () => {
 		const connect = connectStep();
-		await renderOnboarding([connect], {
+		await renderOnboarding([connect, tourSteps()], {
 			beforeRender: () => connect.setConnected(true),
 		});
 
-		await expect.element(page.getByRole("heading", { name: "You're all set" })).toBeVisible();
+		await expect.element(page.getByRole("heading", { name: "Connect your account" })).toBeVisible();
 		await expect
 			.element(page.getByRole("heading", { name: "Connect something" }))
 			.not.toBeInTheDocument();

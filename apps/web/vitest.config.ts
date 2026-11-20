@@ -73,7 +73,9 @@ export default defineConfig({
 				assetsInclude: ["**/*.lottie"],
 				// kilo.shell's, kilo.work-sessions' and kilo.chat's renderer graphs are in every app test;
 				// pre-bundle their deps so Vite never re-optimizes mid-run ("Failed to fetch
-				// dynamically imported module").
+				// dynamically imported module"). Workspace packages stay out: Vite
+				// keys its pre-bundle on the lockfile and config only, so a cached
+				// bundle of workspace source (restored by CI) would serve stale exports.
 				optimizeDeps: {
 					include: [
 						"react",
@@ -133,7 +135,6 @@ export default defineConfig({
 						"pele",
 						"picomatch",
 						"zod",
-						"@kilo-desktop/pane-layout",
 					],
 				},
 				test: {

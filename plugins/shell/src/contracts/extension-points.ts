@@ -1,7 +1,12 @@
 import type { ComponentType, ReactNode } from "react";
 import { z } from "zod";
 
-import { defineExtensionPoint, implementation, whenSchema } from "@kilo-desktop/kernel";
+import {
+	defineExtensionPoint,
+	implementation,
+	whenSchema,
+	type KeyboardPlatform,
+} from "@kilo-desktop/kernel";
 
 /**
  * The frame's regions are named by where they are (`main`, `left-sidebar`,
@@ -281,6 +286,45 @@ export const AiProviderPanel = defineExtensionPoint({
 	implementation: implementation<ComponentType>("renderer"),
 });
 
+/** One row of the ⌘/ shortcuts list that a shortcuts panel draws for some of its commands. */
+export interface ShortcutsListRow {
+	readonly title: string;
+	/** Shortcut labels as shown, e.g. `["⇧⌘E"]`. */
+	readonly labels: readonly string[];
+	/** Command keys the row stands for; it takes the place of the first one. */
+	readonly commands: readonly string[];
+	/** Extra words the list's search matches, e.g. the titles of `commands`. */
+	readonly searchText?: string;
+}
+
+export interface ShortcutsPanelImplementation {
+	/** Drawn above the shortcut list in Settings → Shortcuts. */
+	readonly component: ComponentType;
+	/**
+	 * Rows for the ⌘/ list. A claimed command no row covers gets its own row,
+	 * so a panel can return nothing (or leave this out) for a state it can't
+	 * sum up.
+	 */
+	readonly listRows?: (input: {
+		readonly platform: KeyboardPlatform;
+		readonly overrides: Readonly<Record<string, string | null>>;
+	}) => readonly ShortcutsListRow[];
+}
+
+/**
+ * A panel in Settings → Shortcuts for shortcuts a plugin edits in its own
+ * way (several commands changed together), ordered by `priority`.
+ * Settings leaves the `commands` it claims (qualified command keys) out of
+ * its list; the ⌘/ list shows the panel's `listRows` for them.
+ */
+export const ShortcutsPanel = defineExtensionPoint({
+	id: "kilo.shell/shortcuts-panel",
+	kind: "additive",
+	description: "A panel of shortcuts in Settings → Shortcuts.",
+	metadata: z.object({ title: z.string(), commands: z.array(z.string()) }),
+	implementation: implementation<ShortcutsPanelImplementation>("renderer"),
+});
+
 /**
  * A panel in Settings → Account, one per account the app can sign in to
  * (Kilo, Anaconda), ordered by `priority`. A panel that renders nothing
@@ -432,6 +476,7 @@ export const SHELL_EXTENSION_POINTS = [
 	SettingsCategory,
 	SettingsSection,
 	AiProviderPanel,
+	ShortcutsPanel,
 	AccountPanel,
 	AboutSection,
 	SupportRow,

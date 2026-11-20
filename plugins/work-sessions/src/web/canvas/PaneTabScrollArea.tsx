@@ -61,6 +61,8 @@ export function PaneTabScrollArea({
 		// A tab change that removes the overflow leaves no scroll to keep.
 		if (strip.scrollWidth - strip.clientWidth <= 1) {
 			strip.scrollLeft = 0;
+			// Overflow comes from measuring the strip after the tabs commit; render cannot know it.
+			// react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
 			setOverflow({ left: false, right: false });
 		}
 	}, [scrollRef, tabIds]);

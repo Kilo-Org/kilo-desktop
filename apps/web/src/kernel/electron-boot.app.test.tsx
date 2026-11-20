@@ -14,7 +14,9 @@ import { bootKernel } from "./boot";
 
 const manifest = testManifest("acme.keys", {
 	contributes: {
-		extensions: { "kernel/command": [{ id: "go", title: "Go", keybinding: "Alt+G" }] },
+		extensions: {
+			"kernel/command": [{ id: "go", title: "Go", keybinding: "Alt+G", repeatable: true }],
+		},
 	},
 });
 
@@ -29,11 +31,8 @@ async function fakeDesktop() {
 	await main.start();
 	const renderer = transports.connectRenderer("main");
 	const shortcutListeners = new Set<(chord: string) => void>();
-	const synced: string[][] = [];
-	transports.main.on(
-		"kernel:keyboard-sync",
-		(payload) => void synced.push((payload as { chords: string[] }).chords),
-	);
+	const synced: unknown[] = [];
+	transports.main.on("kernel:keyboard-sync", (payload) => void synced.push(payload));
 	const bridge: KernelBridge = {
 		window: { id: "main", role: "main", params: {} },
 		platform: "mac",
@@ -93,7 +92,9 @@ describe("kernel boot (desktop)", () => {
 			},
 		});
 
-		await expect.poll(() => desktop.synced.at(-1)).toEqual(["Alt+KeyG"]);
+		await expect
+			.poll(() => desktop.synced.at(-1))
+			.toEqual({ bindings: [{ chord: "Alt+KeyG", repeatable: true }], recording: false });
 		desktop.press("Alt+KeyG");
 		await expect.poll(() => run).toHaveBeenCalledOnce();
 	});

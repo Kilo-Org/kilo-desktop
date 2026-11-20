@@ -4,7 +4,7 @@ import {
 	useAuiState,
 	type AssistantState,
 } from "@assistant-ui/react";
-import { useEffect, useRef, type FC, type ReactNode } from "react";
+import { useEffect, useRef, type FC } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -19,7 +19,12 @@ import {
 	revealReplyBlock,
 	type ChatFocusTarget,
 } from "./chat-focus";
-import { useChatReading, useFocusContainer, useFocusSession } from "./chat-reading";
+import {
+	useChatReading,
+	useFocusContainer,
+	useFocusSession,
+	useFocusToastSlot,
+} from "./chat-reading";
 import { PaneFocusRail, PaneReadingControl, replyTargetFromRail } from "./reading-ui";
 import { useFocusSource } from "./use-focus-source";
 
@@ -113,7 +118,7 @@ export const ReplyFocusPortal: FC = () => {
 	const session = useFocusSession(context?.reading);
 	const container = useFocusContainer(context?.reading);
 	const reading = context?.reading;
-	const showFocusToast = (node: ReactNode | null) => reading?.showFocusToast(node);
+	const toastSlot = useFocusToastSlot(reading);
 	const readingChat = session?.paneId === context?.paneId && session?.target.kind === "reply";
 	if (!context || !readingChat || !container) return null;
 	return createPortal(
@@ -123,7 +128,7 @@ export const ReplyFocusPortal: FC = () => {
 			chatId={context.chatId}
 			root={container}
 			surface="focus"
-			renderToast={showFocusToast}
+			toastSlot={toastSlot}
 			canView
 		>
 			<ThreadPrimitive.Messages>
@@ -149,14 +154,23 @@ const promptText = (state: AssistantState) =>
 		.join("\n\n")
 		.trim();
 
+/** A prompt's paragraphs, each keyed by where it starts in the prompt. */
+function promptParagraphs(prompt: string): { text: string; at: number }[] {
+	const paragraphs: { text: string; at: number }[] = [];
+	let at = 0;
+	for (const part of prompt.split(/(\n{2,})/u)) {
+		if (!/^\n{2,}$/u.test(part) && part.trim()) paragraphs.push({ text: part, at });
+		at += part.length;
+	}
+	return paragraphs;
+}
+
 /**
  * A prompt, as paragraphs Focus moves through like reply text: marked with
  * "You" and a rule, and not a reading surface, so it can't be saved.
  */
 const FocusPromptMessage: FC = () => {
-	const paragraphs = useAuiState(promptText)
-		.split(/\n{2,}/u)
-		.filter((paragraph) => paragraph.trim());
+	const paragraphs = promptParagraphs(useAuiState(promptText));
 	if (paragraphs.length === 0) return null;
 	return (
 		<MessagePrimitive.Root
@@ -168,8 +182,8 @@ const FocusPromptMessage: FC = () => {
 				You
 			</p>
 			<div className="aui-md whitespace-pre-wrap">
-				{paragraphs.map((paragraph, index) => (
-					<p key={index}>{paragraph}</p>
+				{paragraphs.map(({ text, at }) => (
+					<p key={at}>{text}</p>
 				))}
 			</div>
 		</MessagePrimitive.Root>

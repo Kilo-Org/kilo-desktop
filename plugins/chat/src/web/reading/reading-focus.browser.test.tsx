@@ -271,6 +271,6 @@ describe("Focus in the chat", () => {
 		await expect
 			.element(page.getByTestId("focus-reader").getByRole("status").getByText("Added to Saved"))
 			.toBeVisible();
-		expect(page.getByTestId("focus-hint").elements()).toHaveLength(0);
+		await expect.element(page.getByTestId("focus-hint")).not.toBeVisible();
 	});
 });

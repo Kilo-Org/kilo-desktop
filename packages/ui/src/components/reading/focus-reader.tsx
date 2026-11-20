@@ -69,8 +69,11 @@ export interface FocusReaderProps {
 	readonly onVisitEnd?: (summary: FocusVisitSummary) => void;
 	/** The Aa control, bottom right. */
 	readonly control?: ReactNode;
-	/** Replaces the hint at the bottom centre while shown (a toast). */
-	readonly toast?: ReactNode;
+	/**
+	 * Receives the bottom-centre slot a toast portals into; the hint hides
+	 * while the slot holds anything.
+	 */
+	readonly toastSlot?: (slot: HTMLElement | null) => void;
 	/** Extra layers over the content (a selection menu). */
 	readonly overlay?: ReactNode;
 	readonly children: ReactNode;
@@ -111,7 +114,7 @@ export function FocusReader({
 	onCopy,
 	onVisitEnd,
 	control,
-	toast,
+	toastSlot,
 	overlay,
 	children,
 	className,
@@ -404,11 +407,13 @@ export function FocusReader({
 					</kbd>
 				</button>
 				<div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center [&>*]:pointer-events-auto">
-					{toast ?? (
-						<p className="text-muted-foreground/80 text-xs" data-qa-id="focus-hint">
-							↑ ↓ to move between paragraphs
-						</p>
-					)}
+					<div ref={toastSlot} className="peer contents" data-qa-id="focus-toast-slot" />
+					<p
+						className="text-muted-foreground/80 text-xs peer-[:not(:empty)]:hidden"
+						data-qa-id="focus-hint"
+					>
+						↑ ↓ to move between paragraphs
+					</p>
 				</div>
 				{control ? <div className="absolute right-6 bottom-6 z-10">{control}</div> : null}
 			</div>

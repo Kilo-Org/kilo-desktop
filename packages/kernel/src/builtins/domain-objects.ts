@@ -257,6 +257,14 @@ export const KernelKeybindings = defineDomainObject({
 	methods: {
 		setOverride: method(z.object({ command: z.string(), chord: z.string().nullable() }), nothing),
 		reset: method(z.object({ command: z.string() }), nothing),
+		/** Several overrides set and reset as one change, so no half-applied state is ever seen. */
+		update: method(
+			z.object({
+				set: z.record(z.string(), z.string().nullable()),
+				reset: z.array(z.string()),
+			}),
+			nothing,
+		),
 		resetAll: method(nothing, nothing),
 	},
 });
@@ -494,6 +502,11 @@ export const updaterStateSchema = z.object({
 	status: z.enum(UPDATER_STATUSES),
 	/** The release track the app follows, e.g. `stable` or `preview`. */
 	track: z.string().min(1),
+	/**
+	 * The track the running build was published on. Differs from `track` after
+	 * a switch until an update from the new track is installed.
+	 */
+	installedTrack: z.string().min(1),
 	currentVersion: z.string(),
 	availableVersion: z.string().nullable(),
 	downloadedVersion: z.string().nullable(),

@@ -50,6 +50,8 @@ export function CopyButton({
 	useEffect(() => {
 		if (state.value === undefined) return;
 		if (state.error) {
+			// Reports a failure from the clipboard hook's async state; the parent only logs or toasts it.
+			// react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-prop-callback-in-effect
 			reportError(state.error);
 			return;
 		}

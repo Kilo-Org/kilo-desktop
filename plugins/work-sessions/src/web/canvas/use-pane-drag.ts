@@ -60,6 +60,8 @@ export function usePaneDrag({ onDrop, canDrop }: DropHandlers) {
 			suppressClickRef.current = { kind: drag.origin.kind, sourceId: drag.origin.sourceId };
 	};
 
+	// React Compiler keeps `cleanup` stable (it reads only refs), so the listeners bind once.
+	// react-doctor-disable-next-line react-doctor/advanced-event-handler-refs
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape" && dragRef.current) {

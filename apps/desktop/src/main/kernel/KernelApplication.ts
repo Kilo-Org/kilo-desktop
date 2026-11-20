@@ -437,6 +437,7 @@ export class KernelApplication {
 			platform: process.platform,
 			arch: process.arch,
 			track: this.preferences.getReleaseTrack(RELEASE_TRACK),
+			installedTrack: RELEASE_TRACK,
 			currentVersion: this.#app.metadata.appVersion,
 			publishUrls: UPDATE_PUBLISH_URLS,
 			fetch: this.#http.fetch,
@@ -534,13 +535,21 @@ export class KernelApplication {
 	): void {
 		if (from.process !== "renderer" || !from.windowId) return;
 		const contents = this.#transport.contentsOf(from.windowId);
-		const chords = (payload as { chords?: unknown } | null)?.chords;
-		if (!contents || !Array.isArray(chords)) return;
+		const { bindings, recording } = (payload ?? {}) as { bindings?: unknown; recording?: unknown };
+		if (!contents || !Array.isArray(bindings)) return;
 		this.#shortcuts.sync(
 			contents.id,
-			chords
-				.filter((chord): chord is string => typeof chord === "string")
-				.map((chord) => ({ chord, commandId: chord })),
+			bindings
+				.filter(
+					(binding): binding is { chord: string; repeatable?: unknown } =>
+						typeof (binding as { chord?: unknown } | null)?.chord === "string",
+				)
+				.map(({ chord, repeatable }) => ({
+					chord,
+					commandId: chord,
+					repeatable: repeatable === true,
+				})),
+			recording === true,
 		);
 	}
 

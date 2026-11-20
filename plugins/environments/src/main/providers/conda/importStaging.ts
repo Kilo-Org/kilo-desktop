@@ -140,13 +140,11 @@ export class ImportStagingRegistry {
 
 	async sweep(): Promise<void> {
 		const cutoff = this.#now() - this.#ttlMs;
-		for (const [handle, entry] of [...this.#entries]) {
-			if (this.#pinned.has(handle)) continue;
-			if (entry.createdAt <= cutoff) {
-				this.#entries.delete(handle);
-				await this.#removeDir(handle);
-			}
-		}
+		const expired = [...this.#entries]
+			.filter(([handle, entry]) => !this.#pinned.has(handle) && entry.createdAt <= cutoff)
+			.map(([handle]) => handle);
+		for (const handle of expired) this.#entries.delete(handle);
+		await Promise.all(expired.map((handle) => this.#removeDir(handle)));
 		await this.#sweepOrphans(cutoff);
 	}
 
@@ -159,12 +157,14 @@ export class ImportStagingRegistry {
 	async #evictOverflow(): Promise<void> {
 		if (this.#entries.size < this.#maxEntries) return;
 		// Insertion order: drop the oldest handles no in-flight import needs.
+		const evicted: string[] = [];
 		for (const handle of [...this.#entries.keys()]) {
-			if (this.#entries.size < this.#maxEntries) return;
+			if (this.#entries.size < this.#maxEntries) break;
 			if (this.#pinned.has(handle)) continue;
 			this.#entries.delete(handle);
-			await this.#removeDir(handle);
+			evicted.push(handle);
 		}
+		await Promise.all(evicted.map((handle) => this.#removeDir(handle)));
 	}
 
 	async #verify(entry: ImportStagingEntry): Promise<void> {
@@ -197,18 +197,21 @@ export class ImportStagingRegistry {
 		} catch {
 			return;
 		}
-		for (const name of names) {
-			if (this.#entries.has(name)) continue;
-			const dir = join(this.#stagingDir, name);
-			let info: Awaited<ReturnType<typeof stat>>;
-			try {
-				info = await stat(dir);
-			} catch {
-				continue;
-			}
-			if (info.mtimeMs <= cutoff) {
-				await rm(dir, { recursive: true, force: true }).catch(() => {});
-			}
+		const orphans = names.filter((name) => !this.#entries.has(name));
+		await Promise.all(
+			orphans.map((name) => this.#removeOrphanIfExpired(join(this.#stagingDir, name), cutoff)),
+		);
+	}
+
+	async #removeOrphanIfExpired(dir: string, cutoff: number): Promise<void> {
+		let info: Awaited<ReturnType<typeof stat>>;
+		try {
+			info = await stat(dir);
+		} catch {
+			return;
+		}
+		if (info.mtimeMs <= cutoff) {
+			await rm(dir, { recursive: true, force: true }).catch(() => {});
 		}
 	}
 }

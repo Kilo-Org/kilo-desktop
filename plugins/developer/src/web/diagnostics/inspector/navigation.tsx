@@ -87,6 +87,8 @@ export function useKernelChanges(): number {
 			onChange();
 		};
 		const unsubscribers = [
+			// useSyncExternalStore calls the returned teardown, which releases every subscription here.
+			// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 			kernel.extensions.subscribe(bump),
 			kernel.onPluginStateChange(bump),
 			kernel.domainObjects.onChange(bump),

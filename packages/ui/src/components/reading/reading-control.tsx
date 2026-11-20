@@ -317,7 +317,7 @@ function ReadingPanel({
 
 			{focusAvailable ? (
 				<>
-					<div className="bg-border -mx-[14px] h-px" role="separator" />
+					<hr className="bg-border -mx-[14px] h-px border-0" />
 					<label className="flex items-center gap-2">
 						<ScanLineIcon aria-hidden="true" className="text-muted-foreground size-4" />
 						<span className="text-foreground flex-1 font-medium">Focus</span>

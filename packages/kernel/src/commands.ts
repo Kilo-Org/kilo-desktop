@@ -267,26 +267,49 @@ export class KeyboardService {
 		});
 	}
 
-	/** Chords that are bound, for the host's key capture. */
-	chords(): string[] {
-		return Object.keys(this.resolution().bindings);
+	/**
+	 * Chords a command would run right now, for the host's key capture; any
+	 * other key reaches the page (a pop-out terminal keeps ⌘1, Home keeps ⌘W).
+	 */
+	bindings(): KeyBinding[] {
+		const active = this.#activeCommands();
+		return Object.entries(this.resolution().bindings).flatMap(([chord, keys]) => {
+			const command = target(keys, active);
+			return command ? [{ chord, repeatable: command.metadata.repeatable === true }] : [];
+		});
 	}
 
-	/**
-	 * Runs the command a chord means right now: a conditional command whose
-	 * `when` holds, otherwise the chord's owner. Among conditional commands the
-	 * last contributed wins (as later keybinding rules do in VS Code), so a
-	 * plugin can narrow a chord another plugin binds under a broader
-	 * condition. Resolves false when nothing runs.
-	 */
+	/** Runs the command a chord means right now; resolves false when nothing runs. */
 	async dispatch(chord: string): Promise<boolean> {
-		const keys = this.resolution().bindings[chord] ?? [];
-		const active = new Map(this.#options.commands.list().map((command) => [command.key, command]));
-		const key =
-			keys.findLast((candidate) => active.get(candidate as QualifiedId)?.when !== undefined) ??
-			keys.find((candidate) => active.has(candidate as QualifiedId));
-		if (!key) return false;
-		await this.#options.commands.execute(key);
+		const command = target(this.resolution().bindings[chord] ?? [], this.#activeCommands());
+		if (!command) return false;
+		await this.#options.commands.execute(command.key);
 		return true;
 	}
+
+	#activeCommands(): ReadonlyMap<string, CommandContribution> {
+		return new Map(this.#options.commands.list().map((command) => [command.key, command]));
+	}
+}
+
+/** A chord the host captures; held repeatable keys run their command again (next tab). */
+export interface KeyBinding {
+	readonly chord: string;
+	readonly repeatable: boolean;
+}
+
+/**
+ * The command a chord's keys mean: a conditional command whose `when` holds,
+ * otherwise the chord's owner. Among conditional commands the last
+ * contributed wins (as later keybinding rules do in VS Code), so a plugin can
+ * narrow a chord another plugin binds under a broader condition.
+ */
+function target(
+	keys: readonly string[],
+	active: ReadonlyMap<string, CommandContribution>,
+): CommandContribution | undefined {
+	const key =
+		keys.findLast((candidate) => active.get(candidate)?.when !== undefined) ??
+		keys.find((candidate) => active.has(candidate));
+	return key === undefined ? undefined : active.get(key);
 }

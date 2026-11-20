@@ -105,11 +105,6 @@ import {
 	useTurnStartedAt,
 } from "./working-indicator";
 
-// The current turn and its preceding response stay measurable so the intrinsic
-// size used for older messages cannot distort their visual grouping.
-const useVirtualizeMessage = () =>
-	useAuiState((s) => s.message.index < s.thread.messages.length - 3);
-
 export const ThreadMessage: FC = () => {
 	const role = useAuiState((s) => s.message.role);
 	return role === "user" ? <UserMessage /> : <AssistantMessage />;
@@ -419,7 +414,6 @@ const AssistantMessage: FC = () => {
 		const completed = custom?.opencode?.originalMessage?.time?.completed;
 		return typeof completed === "number" ? completed : undefined;
 	});
-	const virtualize = useVirtualizeMessage();
 	const threadOwnsRun = useAuiState(
 		(s) => s.thread.isRunning && s.message.index === s.thread.messages.length - 1,
 	);
@@ -457,7 +451,6 @@ const AssistantMessage: FC = () => {
 			data-role="assistant"
 			className={cn(
 				"fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 transition-opacity duration-150",
-				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
 				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
 		>
@@ -654,7 +647,6 @@ const UserActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
-	const virtualize = useVirtualizeMessage();
 	// Dim while a revert is in flight from a boundary before this message.
 	const dimmed = useIsAfterPendingBoundary(useRevertPending().pendingId);
 	return (
@@ -662,7 +654,6 @@ const UserMessage: FC = () => {
 			data-slot="aui_user-message-root"
 			className={cn(
 				"grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 transition-opacity [&:where(>*)]:col-start-2",
-				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
 				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
 			data-role="user"

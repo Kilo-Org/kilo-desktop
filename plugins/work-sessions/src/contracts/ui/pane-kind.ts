@@ -36,6 +36,12 @@ export interface PaneImplementation {
 	 * possibly repeated; the work session may never open.
 	 */
 	readonly prefetch?: (input: PanePrefetchInput) => void;
+	/**
+	 * The absolute path of the file one of its panes shows, if any: what the
+	 * tab menu's "Copy path" copies. Without it, a pane that opened a
+	 * `kilo.work-sessions/file` object uses that file's path.
+	 */
+	readonly path?: (pane: Pane) => string | undefined;
 }
 
 export interface PanePrefetchInput {

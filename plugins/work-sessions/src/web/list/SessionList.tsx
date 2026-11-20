@@ -1301,6 +1301,8 @@ function SessionListViewport({
 	readonly children: ReactNode;
 }) {
 	"use no memo"; // useVirtualizer returns a mutable instance the compiler cannot memoize around.
+	// TanStack Virtual in a component that opts out of React Compiler with "use no memo" above.
+	// react-doctor-disable-next-line react-hooks-js/incompatible-library
 	const virtualizer = useVirtualizer({
 		count: entries.length,
 		getScrollElement: () => listRef.current,
@@ -1320,6 +1322,8 @@ function SessionListViewport({
 	);
 
 	return (
+		// The scroll container delegates key and click events for the focusable rows inside it; it is not a control itself.
+		// react-doctor-disable-next-line react-doctor/no-static-element-interactions
 		<div
 			ref={listRef}
 			data-qa-id="session-list-inbox"

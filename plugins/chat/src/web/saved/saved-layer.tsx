@@ -1,4 +1,5 @@
 import { createContext, use, useEffect, useState, type FC, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import {
@@ -53,8 +54,8 @@ export function useSavedLayer(): SavedLayerValue | null {
  * chat's saved text where it is shown, offers Save (or Remove over saved
  * text) and Copy next to a selection in reply text, and confirms with a
  * toast offering View and Undo. `root` is the element holding the replies;
- * `toastSlot` renders the toast where it belongs (the pane's bottom centre,
- * or the Focus reader's).
+ * the toast portals into `toastSlot`, the host's (the pane's bottom centre,
+ * or the Focus reader's), which hides what it replaces while it is filled.
  */
 export const SavedLayer: FC<{
 	saved: ChatSaved | undefined;
@@ -62,11 +63,11 @@ export const SavedLayer: FC<{
 	chatId: string | null;
 	root: HTMLElement | null;
 	surface: SavedSurface;
-	/** Where the toast is shown; the pane's own slot when left out. */
-	renderToast?: (toast: ReactNode | null) => void;
+	/** Where the toast is shown; under the replies when left out. */
+	toastSlot?: HTMLElement | null;
 	canView: boolean;
 	children?: ReactNode;
-}> = ({ saved, workSessionId, chatId, root, surface, renderToast, canView, children }) => {
+}> = ({ saved, workSessionId, chatId, root, surface, toastSlot, canView, children }) => {
 	const kernel = useKernel();
 	const items = useChatSavedItems(chatId);
 	const [toast, setToast] = useState<ToastState | null>(null);
@@ -89,10 +90,6 @@ export const SavedLayer: FC<{
 			qaId="chat-saved-toast"
 		/>
 	) : null;
-	useEffect(() => {
-		renderToast?.(toastNode);
-	}, [renderToast, toastNode]);
-	useEffect(() => () => renderToast?.(null), [renderToast]);
 
 	const save = async () => {
 		if (!value || !selection || selection.mode !== "save") return;
@@ -172,11 +169,13 @@ export const SavedLayer: FC<{
 					qaId="chat-selection-menu"
 				/>
 			) : null}
-			{renderToast ? null : (
+			{toastSlot === undefined ? (
 				<div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
 					{toastNode}
 				</div>
-			)}
+			) : toastSlot && toastNode ? (
+				createPortal(toastNode, toastSlot)
+			) : null}
 		</SavedLayerContext>
 	);
 };

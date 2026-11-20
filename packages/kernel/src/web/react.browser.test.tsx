@@ -141,19 +141,19 @@ describe("useDomainObjectState with an equality check", () => {
 	const sameParity = (a: { even: boolean }, b: { even: boolean }) => a.even === b.even;
 
 	it("re-renders only when the selection changes by that check", async () => {
-		let renders = 0;
+		const renders: Array<{ even: boolean } | undefined> = [];
 		function Parity() {
 			const parity = useDomainObjectState(Counter, selectParity, sameParity);
-			renders += 1;
+			renders.push(parity);
 			return <span data-qa-id="parity">{parity?.even ? "even" : "odd"}</span>;
 		}
 		const { main, provider } = await bootProbe(<Parity />);
 		await expect.element(page.getByTestId("parity")).toHaveTextContent("odd");
-		const settled = renders;
+		const settled = renders.length;
 
 		provider().setState({ count: 3 });
 		await main.flush();
-		expect(renders).toBe(settled);
+		expect(renders).toHaveLength(settled);
 
 		provider().setState({ count: 4 });
 		await main.flush();

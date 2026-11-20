@@ -5,7 +5,12 @@ import {
 	KernelKeybindings,
 	KernelPlugins,
 } from "../builtins";
-import { CommandService, KeyboardService, type KeybindingResolution } from "../commands";
+import {
+	CommandService,
+	KeyboardService,
+	type KeyBinding,
+	type KeybindingResolution,
+} from "../commands";
 import { createKernel, type Kernel, type KernelOptions } from "../kernel";
 import type { KeyboardPlatform } from "../keybindings";
 import type { RendererWindow } from "../window";
@@ -27,8 +32,11 @@ export interface RendererKeyboard {
 	readonly platform: KeyboardPlatform;
 	/** Effective bindings and conflicts, ignoring the recording pause. */
 	resolution(): KeybindingResolution;
-	chords(): string[];
+	/** Chords to capture now; empty while recording. */
+	bindings(): KeyBinding[];
 	dispatch(chord: string): Promise<boolean>;
+	/** True while a new shortcut is being recorded (the host stops menu shortcuts too). */
+	isRecording(): boolean;
 	/** Notified whenever the effective chords may have changed. */
 	subscribe(listener: () => void): () => void;
 	/** Pauses every binding while a new shortcut is being recorded. */
@@ -86,7 +94,8 @@ export function createRendererKernel(options: RendererKernelOptions): RendererKe
 	const keyboard: RendererKeyboard = {
 		platform: options.platform,
 		resolution: () => service.resolution(),
-		chords: () => (recording ? [] : service.chords()),
+		bindings: () => (recording ? [] : service.bindings()),
+		isRecording: () => recording,
 		dispatch: async (chord) => (recording ? false : service.dispatch(chord)),
 		setRecording(next) {
 			if (recording === next) return;

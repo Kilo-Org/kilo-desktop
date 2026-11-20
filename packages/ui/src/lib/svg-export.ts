@@ -154,6 +154,8 @@ export function pngExportScale(size: Size, requested: number): number {
 /** Rasterizes standalone SVG markup (see `serializeSvgForExport`) to a PNG blob. */
 export async function svgToPngBlob(svg: string, size: Size, requestedScale = 2): Promise<Blob> {
 	const scale = pngExportScale(size, requestedScale);
+	// Revoked in the `finally` below once the image has been rasterized.
+	// react-doctor-disable-next-line react-doctor/no-create-object-url-without-revoke
 	const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
 	try {
 		const image = new Image();

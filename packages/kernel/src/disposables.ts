@@ -39,6 +39,8 @@ export class DisposableScope {
 		this.#disposed = true;
 		for (const disposer of this.#disposers.splice(0).reverse()) {
 			try {
+				// Disposal is sequential and in reverse registration order: later disposers may depend on earlier ones.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await disposer();
 			} catch (error) {
 				onError?.(error);

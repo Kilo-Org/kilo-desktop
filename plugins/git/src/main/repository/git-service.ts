@@ -868,6 +868,8 @@ export class GitService {
 		}
 		for (const group of pending.values()) {
 			for (let start = 0; start < group.length; start += BATCH_CHUNK_SIZE) {
+				// One `gh` GraphQL request at a time keeps within GitHub's rate limits.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await this.#answerBatch(group.slice(start, start + BATCH_CHUNK_SIZE), answers);
 			}
 		}
@@ -1369,6 +1371,9 @@ export class GitService {
 				.filter(Boolean)
 				.slice(0, UNTRACKED_STATS_MAX_FILES);
 			for (const relativePath of untrackedPaths) {
+				// Up to 500 files of up to 1 MiB each: one at a time bounds memory and
+				// open file handles.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				totals.additions += await countUntrackedLines(path.join(workingDirectory, relativePath));
 			}
 			return totals;
@@ -1632,9 +1637,11 @@ export class GitService {
 
 	/** Best-effort sweep of in-flight patch files (plugin teardown). */
 	async dispose(): Promise<void> {
-		for (const patchPath of [...this.#inFlightPatchPaths]) {
-			await this.releasePatch(patchPath).catch(() => undefined);
-		}
+		await Promise.all(
+			[...this.#inFlightPatchPaths].map((patchPath) =>
+				this.releasePatch(patchPath).catch(() => undefined),
+			),
+		);
 	}
 
 	async available(): Promise<boolean> {

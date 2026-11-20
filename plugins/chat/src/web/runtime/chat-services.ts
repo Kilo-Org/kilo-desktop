@@ -14,6 +14,7 @@ import { createDeferredKiloClient } from "./deferred-client";
 import { createEventBatcher } from "./event-batcher";
 import { HistoryPrefetch } from "./history-prefetch";
 import { KiloClients } from "./kilo-client";
+import { LiveParts } from "./live-parts";
 
 type ServerHandle = DomainObjectHandle<typeof KiloServer>;
 
@@ -115,6 +116,9 @@ export class ChatServices {
 	/** Chat histories loaded ahead of opening (see history-prefetch.ts). */
 	readonly history = new HistoryPrefetch();
 
+	/** The text of parts streaming now, for history read mid-stream (see live-parts.ts). */
+	readonly liveParts = new LiveParts();
+
 	/**
 	 * Loads `chatId`'s history ahead, so opening it shows the transcript
 	 * without a round trip. Best effort: a failure is the opening thread's to
@@ -137,6 +141,7 @@ export class ChatServices {
 
 	dispose(): void {
 		this.history.clear();
+		this.liveParts.clear();
 		this.#stopWatching?.();
 		this.#events?.dispose();
 		this.#events = undefined;
@@ -160,6 +165,9 @@ export class ChatServices {
 			else this.history.invalidate(event.sessionId);
 			batcher.push(event);
 		});
+		// Batched like the threads' events, so it never runs ahead of them.
+		const liveParts = this.liveParts;
+		batcher.subscribe((event) => liveParts.apply(event));
 		return source;
 	}
 

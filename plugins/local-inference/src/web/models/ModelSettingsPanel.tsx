@@ -296,7 +296,7 @@ export function ModelSettingsPanel({
 	// Commits can fire back-to-back within one render (slider commit + blur),
 	// so merges read the ref rather than possibly-stale state.
 	const latestSettings = useRef(settings);
-	const [extraArguments, setExtraArguments] = useState(
+	const [extraArguments, setExtraArguments] = useState(() =>
 		serializeLlamaFlags(model.settings?.llamaFlags ?? {}),
 	);
 	const [extraArgumentsError, setExtraArgumentsError] = useState<string>();

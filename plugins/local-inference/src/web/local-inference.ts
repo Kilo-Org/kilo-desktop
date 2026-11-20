@@ -146,7 +146,8 @@ export function useFollowLocalInference(): void {
 			if (previous.status !== state.status) {
 				queryClient.setQueryData(localInferenceQueryKey("status"), state.status);
 			}
-			const changed = state.downloads.filter((download) => !previous.downloads.includes(download));
+			const previousDownloads = new Set(previous.downloads);
+			const changed = state.downloads.filter((download) => !previousDownloads.has(download));
 			for (const download of changed) {
 				queryClient.setQueryData<ModelDownload[]>(
 					localInferenceQueryKey("listDownloads"),

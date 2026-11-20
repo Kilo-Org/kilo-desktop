@@ -339,8 +339,12 @@ export function resolvePaneDrop(
 		return { action: "clear", scroll };
 	}
 	const isTab = drop.targetKind === "tab";
+	const sourceWidth = () =>
+		// The source is a visible tab in the canvas, so capturePaneDragSource always collected it.
+		// react-doctor-disable-next-line react-doctor/no-non-null-assertion-on-maybe-undefined-result
+		drag.targets.find((target) => target.element === drag.source)!.rect.width;
 	const space = isTab
-		? Math.min(160, drag.targets.find((target) => target.element === drag.source)!.rect.width)
+		? Math.min(160, sourceWidth())
 		: neighbor
 			? rect.width / 3
 			: (position === "above" || position === "below" ? rect.height : rect.width) / 2;

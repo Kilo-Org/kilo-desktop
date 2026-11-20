@@ -181,19 +181,16 @@ export async function stageBridge(options: StageBridgeOptions): Promise<StageBri
 		);
 	}
 	if (platform !== "win32") {
-		const executables = [
+		const executables = new Set([
 			...(stagedManifest.launch[0] ? [stagedManifest.launch[0]] : []),
 			...nativeBinaries,
-		];
-		const seen = new Set<string>();
-		for (const relative of executables) {
-			if (seen.has(relative)) continue;
-			seen.add(relative);
-			const abs = path.join(options.resourceRoot, relative);
-			if (existsSync(abs)) {
-				await chmod(abs, 0o755);
-			}
-		}
+		]);
+		await Promise.all(
+			[...executables]
+				.map((relative) => path.join(options.resourceRoot, relative))
+				.filter((abs) => existsSync(abs))
+				.map((abs) => chmod(abs, 0o755)),
+		);
 	}
 
 	// Write state file for idempotency

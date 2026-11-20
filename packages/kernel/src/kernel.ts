@@ -442,6 +442,8 @@ export function createKernel(options: KernelOptions): Kernel {
 			}
 			for (const plugin of discovery.plugins) {
 				if (plugin.status !== "resolved" || states.get(plugin.manifest.id) !== "resolved") continue;
+				// Plugins activate one at a time in dependency order so each sees its dependencies active.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				if (plugin.manifest.when === undefined) await activatePlugin(plugin);
 				else if (whenHolds(plugin)) await startGated(plugin);
 				else setState(plugin.manifest.id, "inactive");
@@ -460,6 +462,8 @@ export function createKernel(options: KernelOptions): Kernel {
 			stopFollowing = undefined;
 			await reconciling;
 			for (const plugin of [...discovery.plugins].reverse()) {
+				// Deactivate in reverse dependency order so no plugin outlives a dependent.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await deactivatePlugin(plugin.manifest.id);
 			}
 		},

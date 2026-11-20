@@ -41,7 +41,6 @@ function Harness({
 }) {
 	const [settings, setSettings] = useState(initialSettings);
 	const [state, setState] = useState(initialPresets);
-	let nextId = state.presets.length;
 	const presets: ReadingPresetsControl = {
 		state,
 		unsaved: hasUnsavedReadingChanges(settings, state),
@@ -53,7 +52,7 @@ function Harness({
 		save: async (name, makeDefault) => {
 			if (saveError) throw new Error(saveError);
 			if (presetNameTaken(state.presets, name)) throw new Error("Name taken in main.");
-			const preset: ReadingPreset = { id: `p${++nextId}`, name, settings };
+			const preset: ReadingPreset = { id: `p${state.presets.length + 1}`, name, settings };
 			setState({
 				presets: [...state.presets, preset],
 				activeId: preset.id,

@@ -174,7 +174,6 @@ function ChatFocusTakeover({ close, reading }: TakeoverProps & { reading: ChatRe
 		}
 		return reading.focus.hold(sessionId);
 	}, [closeRef, reading, sessionId]);
-	const toast = useFocusToast(reading);
 	const { dimming, onDimmingInput } = useDimmingPreview(preferences.settings.focus.dimming);
 
 	if (!session) return null;
@@ -220,7 +219,7 @@ function ChatFocusTakeover({ close, reading }: TakeoverProps & { reading: ChatRe
 					{...(preferences.presets ? { presets: preferences.presets } : {})}
 				/>
 			}
-			toast={toast ?? undefined}
+			toastSlot={reading.setFocusToastSlot}
 		>
 			<div
 				ref={setContainer}
@@ -235,11 +234,4 @@ function ChatFocusTakeover({ close, reading }: TakeoverProps & { reading: ChatRe
 /** Where the reader starts: a reply's paragraph is found among the whole chat's blocks. */
 function startBlock(target: ChatFocusTarget): FocusReaderProps["initialBlock"] {
 	return target.kind === "reply" ? (blocks) => chatBlockIndex(blocks, target) : target.block;
-}
-
-/** A toast a pane shows in Focus while the take-over covers it (the Saved toast). */
-function useFocusToast(reading: ChatReading): ReactNode | null {
-	const [node, setNode] = useState<ReactNode | null>(null);
-	useEffect(() => reading.onFocusToast(setNode), [reading]);
-	return node;
 }

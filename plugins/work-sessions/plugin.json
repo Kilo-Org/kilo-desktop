@@ -16,15 +16,17 @@
 		"kilo.shell/dialog": "optional",
 		"kilo.shell/onboarding-step": "optional",
 		"kilo.shell/settings-section": "optional",
+		"kilo.shell/shortcuts-panel": "optional",
 		"kilo.shell/menu-item": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/notifications": "optional",
 		"kernel/windows": "optional",
+		"kernel/clipboard": "optional",
 		"kernel/notifications": "optional",
 		"kernel/keybindings": "optional"
 	},
 	"permissions": {
-		"host": ["dialogs", "windows", "notifications"]
+		"host": ["dialogs", "windows", "notifications", "clipboard"]
 	},
 	"contextKeys": [
 		{
@@ -258,6 +260,32 @@
 					"title": "Notifications",
 					"description": "A sound, plus a system notification while Kilo is in the background. “When I'm not looking” skips the session you have open.",
 					"priority": 72
+				}
+			],
+			"kilo.shell/shortcuts-panel": [
+				{
+					"id": "app-navigation",
+					"title": "App Navigation",
+					"commands": [
+						"kilo.work-sessions/pane-1",
+						"kilo.work-sessions/pane-2",
+						"kilo.work-sessions/pane-3",
+						"kilo.work-sessions/pane-4",
+						"kilo.work-sessions/pane-5",
+						"kilo.work-sessions/pane-6",
+						"kilo.work-sessions/pane-7",
+						"kilo.work-sessions/pane-8",
+						"kilo.work-sessions/pane-last",
+						"kilo.work-sessions/work-session-1",
+						"kilo.work-sessions/work-session-2",
+						"kilo.work-sessions/work-session-3",
+						"kilo.work-sessions/work-session-4",
+						"kilo.work-sessions/work-session-5",
+						"kilo.work-sessions/work-session-6",
+						"kilo.work-sessions/work-session-7",
+						"kilo.work-sessions/work-session-8",
+						"kilo.work-sessions/work-session-last"
+					]
 				}
 			],
 			"kilo.shell/menu-item": [
@@ -585,6 +613,106 @@
 						"mac": "Alt+Mod+\\",
 						"default": "Ctrl+Alt+Shift+\\"
 					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "close-other-panes",
+					"title": "Close other tabs",
+					"category": "Tabs",
+					"order": 50,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "close-panes-to-the-right",
+					"title": "Close tabs to the right",
+					"category": "Tabs",
+					"order": 51,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "close-all-panes",
+					"title": "Close all tabs in group",
+					"category": "Tabs",
+					"order": 52,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "copy-pane-path",
+					"title": "Copy tab path",
+					"category": "Tabs",
+					"order": 53,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "copy-pane-relative-path",
+					"title": "Copy tab relative path",
+					"category": "Tabs",
+					"order": 54,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "move-pane-up",
+					"title": "Move tab up",
+					"category": "Tabs",
+					"order": 55,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "move-pane-down",
+					"title": "Move tab down",
+					"category": "Tabs",
+					"order": 56,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "move-pane-left",
+					"title": "Move tab left",
+					"category": "Tabs",
+					"order": 57,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "move-pane-right",
+					"title": "Move tab right",
+					"category": "Tabs",
+					"order": 58,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "move-pane-to-new-window",
+					"title": "Move tab into new window",
+					"category": "Tabs",
+					"order": 59,
 					"when": {
 						"all": ["kilo.work-sessions/workSessionActive"],
 						"none": ["kernel/secondaryWindow"]

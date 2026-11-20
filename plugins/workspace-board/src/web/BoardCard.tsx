@@ -142,6 +142,8 @@ function CardRenameInput({
 	readonly onDone: () => void;
 }) {
 	const sessions = useDomainObject(WorkSessions);
+	// The edit draft is seeded from the title once, when renaming starts.
+	// react-doctor-disable-next-line react-doctor/no-derived-useState
 	const [value, setValue] = useState(session.title);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const settledRef = useRef(false);

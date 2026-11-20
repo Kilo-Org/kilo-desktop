@@ -47,6 +47,8 @@ export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: stri
 		<div className="my-2 flex flex-wrap gap-2" data-qa-id="chat-tool-images">
 			{attachments.map((attachment, index) => (
 				<ChatImage
+					// A tool result's images are fixed once returned and never reorder.
+					// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 					key={`${String(index)}-${attachment.url.slice(0, 64)}`}
 					source={{ url: attachment.url }}
 					filename={attachment.filename}
@@ -96,6 +98,8 @@ export function FoldHoistedParts({ parts }: { parts: readonly PartState[] }) {
 		if (part.type === "image") {
 			return (
 				<AssistantImagePart
+					// The index is the part's position in the append-only message stream, so it is stable.
+					// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 					key={`image-${String(index)}`}
 					image={part.image}
 					filename={part.filename}

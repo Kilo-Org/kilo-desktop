@@ -65,24 +65,26 @@ export class ChatReading {
 	#extras: VisitExtras = this.#newExtras();
 	#lastExit: { at: number; workSessionId: string; copied: boolean; prompts: number } | null = null;
 
-	#focusToast: ReactNode | null = null;
-	readonly #toastListeners = new Set<(node: ReactNode | null) => void>();
+	#focusToastSlot: HTMLElement | null = null;
+	readonly #toastListeners = new Set<() => void>();
 
 	constructor(readonly sdk: PluginSdk) {
 		this.track = readingTelemetry(sdk);
 	}
 
-	/** Shows a toast in the Focus reader (in place of its hint), or clears it. */
-	showFocusToast(node: ReactNode | null): void {
-		this.#focusToast = node;
-		for (const listener of [...this.#toastListeners]) listener(node);
-	}
+	/** The Focus reader's toast slot (in place of its hint), set while Focus is open. */
+	readonly setFocusToastSlot = (slot: HTMLElement | null): void => {
+		if (this.#focusToastSlot === slot) return;
+		this.#focusToastSlot = slot;
+		for (const listener of [...this.#toastListeners]) listener();
+	};
 
-	onFocusToast(listener: (node: ReactNode | null) => void): () => void {
+	focusToastSlot = (): HTMLElement | null => this.#focusToastSlot;
+
+	onFocusToastSlot = (listener: () => void): (() => void) => {
 		this.#toastListeners.add(listener);
-		listener(this.#focusToast);
 		return () => this.#toastListeners.delete(listener);
-	}
+	};
 
 	#newExtras(): VisitExtras {
 		return { settingsChanged: 0, savesCreated: 0, replyFinishedWhileReading: false, summary: null };
@@ -332,6 +334,14 @@ export function useFocusContainer(reading: ChatReading | undefined): HTMLElement
 	return useSyncExternalStore(
 		reading?.focus.subscribe ?? noSubscribe,
 		reading?.focus.container ?? noContainer,
+	);
+}
+
+/** The Focus reader's toast slot, while Focus is open. */
+export function useFocusToastSlot(reading: ChatReading | undefined): HTMLElement | null {
+	return useSyncExternalStore(
+		reading?.onFocusToastSlot ?? noSubscribe,
+		reading?.focusToastSlot ?? noContainer,
 	);
 }
 

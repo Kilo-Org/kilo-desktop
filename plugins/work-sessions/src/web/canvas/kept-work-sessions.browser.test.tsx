@@ -5,12 +5,10 @@ import { page } from "vitest/browser";
 import type { PaneProps } from "../../contracts";
 import { pane, paneKindPlugin, panesOf, renderWorkSessions, workSession } from "../../testing";
 
-let mounts = 0;
-
 /** A pane with state a remount would lose. */
 function CounterPane({ workSessionId }: PaneProps) {
 	const [count, setCount] = useState(0);
-	const [mounted] = useState(() => ++mounts);
+	const [mounted] = useState(() => crypto.randomUUID());
 	return (
 		<button
 			type="button"

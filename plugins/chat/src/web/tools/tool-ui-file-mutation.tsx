@@ -32,6 +32,8 @@ export const PierreDiffBody = ({
 			<div className="overflow-hidden rounded-md border">
 				{patchFileDiffs.map((patchFileDiff, index) => (
 					<FileDiff
+						// Files keep the patch's order, and one patch can name a file twice; the index disambiguates.
+						// react-doctor-disable-next-line react-doctor/no-array-index-as-key
 						key={`${patchFileDiff.name}-${index}`}
 						fileDiff={patchFileDiff}
 						options={options}

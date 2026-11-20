@@ -125,9 +125,11 @@ async function renderPanes(
 		windows?: MainKernelHost["windows"];
 		extraPlugins?: readonly GuestPlugin[];
 		beforeRender?: (main: MainKernel) => void;
+		clipboard?: boolean;
 	} = {},
 ) {
 	const rendered = await renderWorkSessions({
+		...(options.clipboard === false ? { clipboard: false } : {}),
 		workSessions: [SESSION],
 		workspaces: [APP],
 		activeWorkspaceId: APP.id,
@@ -694,6 +696,339 @@ describe("without pane kinds", () => {
 		});
 
 		await expect.element(page.getByTestId("pane-unavailable")).toBeVisible();
+	});
+});
+
+/** A column's group, or one group of a stacked column (`stack` names the column). */
+type GroupSpec = readonly string[] | { readonly tabs: readonly string[]; readonly stack: string };
+
+/** Terminal panes arranged in these groups, left to right (stacked groups top to bottom). */
+function arranged(
+	groups: readonly GroupSpec[],
+	activePaneId: string,
+	kinds: Readonly<Record<string, string>> = {},
+): Record<string, WorkSessionPanes> {
+	const specs = groups.map((spec) => ("tabs" in spec ? spec : { tabs: spec, stack: undefined }));
+	const layout = {
+		groups: specs.map(({ tabs, stack }, index) => ({
+			id: `g${index}`,
+			tabs: tabs.map((id) => ({ id, kind: "tool", title: id })),
+			activePaneId: tabs.includes(activePaneId) ? activePaneId : tabs[0],
+			preferredWidth: 360,
+			minWidth: 240,
+			pinned: false,
+			...(stack ? { stackId: stack } : {}),
+		})),
+		activePaneId,
+		sizes: {},
+	};
+	return {
+		[SESSION.id]: panesOf(
+			specs.flatMap(({ tabs }) => tabs.map((id) => pane(id, kinds[id]))),
+			{ activePaneId, layout: JSON.stringify(layout) },
+		),
+	};
+}
+
+/** The saved layout's tab ids per group. */
+const groupsOf = (state: WorkSessionPanes | undefined) =>
+	parseLayoutJson(state?.layout)?.groups.map((group) => group.tabs.map((tab) => tab.id));
+
+const openTabMenu = async (paneId: string) => {
+	await page.getByTestId(`chat-pane-tab-${paneId}`).click({ button: "right" });
+	await expect.element(page.getByTestId("pane-tab-menu-close")).toBeVisible();
+};
+
+describe("tab context menu", () => {
+	it("opens on a tab without showing it, and closes that tab", async () => {
+		const { state, calls } = await renderPanes({ panes: arranged([["a", "b"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await openTabMenu("b");
+		expect(state().activePaneId).toBe("a");
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await page.getByTestId("pane-tab-menu-close").click();
+		await vi.waitFor(() => expect(calls.closePane).toHaveBeenCalledWith("b"));
+		expect(state().panes.map((entry) => entry.id)).toEqual(["a"]);
+	});
+
+	it("closes the other tabs, the tabs to the right or every tab of the tab's group only", async () => {
+		const { run, state } = await renderPanes({
+			panes: arranged([["a", "b", "c", "d"], ["x"]], "a"),
+		});
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+		const open = () => state().panes.map((entry) => entry.id);
+
+		await run("close-panes-to-the-right", { paneId: "c" });
+		await vi.waitFor(() => expect(open()).toEqual(["a", "b", "c", "x"]));
+		await run("close-other-panes", { paneId: "b" });
+		await vi.waitFor(() => expect(open()).toEqual(["b", "x"]));
+		await run("close-all-panes", { paneId: "b" });
+		await vi.waitFor(() => expect(open()).toEqual(["x"]));
+	});
+
+	it("closes among the tabs the strip shows, which may not be saved yet", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b", "c", "d"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+		const open = () => state().panes.map((entry) => entry.id);
+
+		// The strip shows b's group as [b, c] (a move not saved yet).
+		await run("close-other-panes", { paneId: "b", groupPaneIds: ["b", "c"] });
+		await vi.waitFor(() => expect(open()).toEqual(["a", "b", "d"]));
+		// Ids no longer open are ignored.
+		await run("close-panes-to-the-right", { paneId: "b", groupPaneIds: ["b", "gone", "d"] });
+		await vi.waitFor(() => expect(open()).toEqual(["a", "b"]));
+	});
+
+	it("closes by the saved layout when the shown group doesn't hold the tab", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b", "c"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await run("close-other-panes", { paneId: "b", groupPaneIds: ["a", "c"] });
+
+		await vi.waitFor(() => expect(state().panes.map((entry) => entry.id)).toEqual(["b"]));
+	});
+
+	it("acts on the active tab when given none", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b", "c"]], "b") });
+		await expect.element(page.getByTestId("terminal-b")).toBeVisible();
+
+		await run("close-other-panes");
+
+		await vi.waitFor(() => expect(state().panes.map((entry) => entry.id)).toEqual(["b"]));
+	});
+
+	it("skips tabs whose kind keeps them open, closing the rest", async () => {
+		canClose.mockReset();
+		canClose.mockResolvedValue(false);
+		const { run, state } = await renderPanes({
+			panes: arranged([["a", "e", "b"]], "a", { e: "test.panes/guarded" }),
+		});
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await run("close-all-panes", { paneId: "a" });
+
+		await vi.waitFor(() => expect(state().panes.map((entry) => entry.id)).toEqual(["e"]));
+		expect(canClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps closing after one close fails, saying how many failed", async () => {
+		const { run, state, main } = await renderPanes({ panes: arranged([["a", "b", "c"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+		main.failNextWith("disk full");
+
+		await run("close-all-panes", { paneId: "b" });
+
+		await vi.waitFor(() => expect(state().panes.map((entry) => entry.id)).toEqual(["a"]));
+		await expect.element(page.getByText("Could not close 1 tab")).toBeVisible();
+	});
+
+	it("disables closing others in a lone tab's group and closing to the right on the last tab", async () => {
+		await renderPanes({ panes: arranged([["a", "b"], ["x"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await openTabMenu("a");
+		await expect.element(page.getByTestId("pane-tab-menu-close-others")).toBeEnabled();
+		await expect.element(page.getByTestId("pane-tab-menu-close-right")).toBeEnabled();
+		await userEvent.keyboard("{Escape}");
+
+		await openTabMenu("b");
+		await expect.element(page.getByTestId("pane-tab-menu-close-right")).toBeDisabled();
+		await userEvent.keyboard("{Escape}");
+
+		await openTabMenu("x");
+		await expect.element(page.getByTestId("pane-tab-menu-close-others")).toBeDisabled();
+		await expect.element(page.getByTestId("pane-tab-menu-close-all")).toBeEnabled();
+	});
+});
+
+describe("moving a tab", () => {
+	it("moves into the neighbouring group, or splits toward an edge with none", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b"], ["x"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+		const content = page.getByTestId("terminal-a").element();
+
+		await run("move-pane-right", { paneId: "a" });
+		await vi.waitFor(() => expect(groupsOf(state())).toEqual([["b"], ["x", "a"]]));
+		await run("move-pane-left", { paneId: "x" });
+		await vi.waitFor(() => expect(groupsOf(state())).toEqual([["b", "x"], ["a"]]));
+		await run("move-pane-up", { paneId: "b" });
+		await vi.waitFor(() => expect(groupsOf(state())).toEqual([["b"], ["x"], ["a"]]));
+		await run("move-pane-down", { paneId: "b" });
+		await vi.waitFor(() => expect(groupsOf(state())).toEqual([["x", "b"], ["a"]]));
+
+		// Moved, not remounted.
+		expect(page.getByTestId("terminal-a").element()).toBe(content);
+	});
+
+	it("moves the active tab when given none, splitting it off from the menu too", async () => {
+		const { run, state } = await renderPanes({ panes: arranged([["a", "b"]], "b") });
+		await expect.element(page.getByTestId("terminal-b")).toBeVisible();
+
+		await run("move-pane-left");
+		await vi.waitFor(() => expect(groupsOf(state())).toEqual([["b"], ["a"]]));
+
+		await openTabMenu("b");
+		await page.getByTestId("pane-tab-menu-move").click();
+		await page.getByTestId("pane-tab-menu-move-right").click();
+		await vi.waitFor(() => expect(groupsOf(state())).toEqual([["a", "b"]]));
+	});
+
+	it("does nothing when the move would change nothing", async () => {
+		const { run, calls } = await renderPanes({ panes: arranged([["a"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		for (const direction of ["up", "down", "left", "right"]) {
+			await run(`move-pane-${direction}`, { paneId: "a" });
+		}
+		await run("move-pane-left", { paneId: "gone" });
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(calls.setLayout).not.toHaveBeenCalled();
+	});
+});
+
+describe("moving a tab into a new window", () => {
+	const hostWindows = () => ({
+		open: vi.fn(async () => "w9"),
+		focus: vi.fn(),
+		close: vi.fn(),
+		setHidden: vi.fn(),
+		focusMain: vi.fn(),
+	});
+
+	it("pops the tab out from the menu, which offers it only where windows can open", async () => {
+		await renderPanes({ panes: arranged([["a", "b"]], "a") });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+		await openTabMenu("b");
+		await expect.element(page.getByTestId("pane-tab-menu-move-new-window")).not.toBeInTheDocument();
+		await userEvent.keyboard("{Escape}");
+
+		const windows = hostWindows();
+		await renderPanes({ panes: arranged([["a", "b"]], "a"), windows });
+		await openTabMenu("b");
+		await page.getByTestId("pane-tab-menu-move-new-window").click();
+
+		await vi.waitFor(() =>
+			expect(windows.open).toHaveBeenCalledWith(
+				expect.objectContaining({
+					view: "kilo.work-sessions/pane",
+					params: { workSessionId: SESSION.id, paneId: "b" },
+				}),
+			),
+		);
+	});
+
+	it("brings a popped-out tab's window forward, and leaves it where it is when moved", async () => {
+		const windows = hostWindows();
+		const { host, run, calls } = await renderPanes({
+			panes: arranged([["a", "b"], ["x"]], "a"),
+			windows,
+		});
+		await host.renderer.kernelSdk.domainObjects.get(KernelWindows)!.methods.open({
+			view: "kilo.work-sessions/pane",
+			key: `${SESSION.id}/b`,
+			params: { workSessionId: SESSION.id, paneId: "b" },
+		});
+		host.main.windowEvents.opened("w9", { role: "secondary", view: "kilo.work-sessions/pane" });
+		await expect
+			.element(page.getByTestId("chat-pane-tab-b"))
+			.toHaveAttribute("data-popped-out", "true");
+
+		await run("move-pane-to-new-window", { paneId: "b" });
+		await vi.waitFor(() => expect(windows.focus).toHaveBeenCalledWith("w9"));
+		expect(windows.open).toHaveBeenCalledTimes(1);
+
+		await run("move-pane-right", { paneId: "b" });
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(calls.setLayout).not.toHaveBeenCalled();
+	});
+});
+
+describe("copying a tab's path", () => {
+	/** A kind that names its panes' files from metadata, as Notebook does. */
+	const notesPlugin = paneKindPlugin("test.notes", [
+		{
+			id: "note",
+			metadata: { title: "Note" },
+			component: ({ pane }: PaneProps) => <div data-qa-id={`note-${pane.id}`}>{pane.id}</div>,
+			path: (pane) => pane.metadata["file"],
+		},
+	]);
+	const file = (id: string, path: string): Pane =>
+		paneRecord(id, "test.panes/terminal", {
+			title: id,
+			object: { type: "kilo.work-sessions/file", id: path },
+		});
+	const note = (id: string, path: string): Pane =>
+		paneRecord(id, "test.notes/note", { title: id, metadata: { file: path } });
+
+	it("copies the file's absolute path, or its path inside the session folder holding it", async () => {
+		const { run, copied } = await renderPanes({
+			panes: withPanes([file("a", "/projects/app/src/a.ts"), note("n", "/elsewhere/notes.md")]),
+			extraPlugins: [notesPlugin],
+		});
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await run("copy-pane-path", { paneId: "a" });
+		await run("copy-pane-relative-path", { paneId: "a" });
+		await run("copy-pane-relative-path", { paneId: "n" });
+
+		await vi.waitFor(() =>
+			expect(copied).toEqual(["/projects/app/src/a.ts", "src/a.ts", "/elsewhere/notes.md"]),
+		);
+	});
+
+	it("copies from the tab menu, which offers copying only for a tab showing a file", async () => {
+		const { copied } = await renderPanes({
+			panes: withPanes([file("a", "/projects/app/src/a.ts"), pane("t")]),
+		});
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await openTabMenu("t");
+		await expect.element(page.getByTestId("pane-tab-menu-copy-path")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("pane-tab-menu-copy-relative-path"))
+			.not.toBeInTheDocument();
+		await userEvent.keyboard("{Escape}");
+
+		await openTabMenu("a");
+		await page.getByTestId("pane-tab-menu-copy-relative-path").click();
+		await vi.waitFor(() => expect(copied).toEqual(["src/a.ts"]));
+	});
+
+	it("says so when no clipboard is available", async () => {
+		const original = Object.getOwnPropertyDescriptor(globalThis.navigator, "clipboard");
+		Object.defineProperty(globalThis.navigator, "clipboard", {
+			value: undefined,
+			configurable: true,
+		});
+		try {
+			const { run } = await renderPanes({
+				panes: withPanes([file("a", "/projects/app/src/a.ts")]),
+				clipboard: false,
+			});
+			await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+			await run("copy-pane-path", { paneId: "a" });
+
+			await expect.element(page.getByText("Could not copy the path")).toBeVisible();
+		} finally {
+			if (original) Object.defineProperty(globalThis.navigator, "clipboard", original);
+			else delete (globalThis.navigator as { clipboard?: unknown }).clipboard;
+		}
+	});
+
+	it("copies nothing for a tab without a file", async () => {
+		const { run, copied } = await renderPanes({ panes: withPanes([pane("t")]) });
+		await expect.element(page.getByTestId("terminal-t")).toBeVisible();
+
+		await run("copy-pane-path", { paneId: "t" });
+		await run("copy-pane-relative-path");
+
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(copied).toEqual([]);
 	});
 });
 

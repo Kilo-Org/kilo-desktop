@@ -5,6 +5,7 @@ import {
 	errorCardTitle,
 	friendlyEnvironmentsError,
 	isProviderNotReadyError,
+	keyedBlockedPackages,
 } from "./environments-error-message";
 
 describe("friendlyEnvironmentsError", () => {
@@ -268,5 +269,40 @@ describe("isProviderNotReadyError", () => {
 		expect(isProviderNotReadyError(new Error("boom"))).toBe(false);
 		expect(isProviderNotReadyError(undefined)).toBe(false);
 		expect(isProviderNotReadyError(null)).toBe(false);
+	});
+});
+
+describe("keyedBlockedPackages", () => {
+	const pillow = {
+		package: "pillow",
+		version: "8.4.0",
+		channel: "https://repo.anaconda.cloud/repo/acme/main",
+		org: "acme",
+		policy: "strict",
+		policyId: "p-1",
+		reason: "CVE score of 9.1",
+	};
+
+	it("keys each entry by its content, so the key survives reordering", () => {
+		const numpy = { ...pillow, package: "numpy", version: null };
+		const forward = keyedBlockedPackages([pillow, numpy]).map(({ key }) => key);
+		const backward = keyedBlockedPackages([numpy, pillow]).map(({ key }) => key);
+		expect(new Set(forward).size).toBe(2);
+		expect(backward).toEqual([forward[1], forward[0]]);
+	});
+
+	it("keeps entries that differ in any field apart", () => {
+		const keys = keyedBlockedPackages([
+			pillow,
+			{ ...pillow, channel: "https://repo.anaconda.cloud/repo/acme/extra" },
+			{ ...pillow, reason: "Not on the allow list" },
+		]).map(({ key }) => key);
+		expect(new Set(keys).size).toBe(3);
+	});
+
+	it("drops exact duplicates, which would only repeat a row", () => {
+		const entries = keyedBlockedPackages([pillow, { ...pillow }]);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.entry).toEqual(pillow);
 	});
 });

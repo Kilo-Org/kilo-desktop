@@ -17,6 +17,7 @@ import {
 	parseEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
 	type ParsedEnvironmentsError,
+	type PolicyBlockedPackage,
 	type PolicyNotice,
 } from "../../../contracts/common";
 
@@ -253,4 +254,33 @@ export function isProviderNotReadyError(reason: unknown): boolean {
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
 	if (!raw) return false;
 	return parseEnvironmentsErrorMessage(raw)?.code === "PROVIDER_NOT_READY";
+}
+
+export interface KeyedBlockedPackage {
+	/** Stable across reorders: built from the entry's content, not its position. */
+	readonly key: string;
+	readonly entry: PolicyBlockedPackage;
+}
+
+/**
+ * The blocked packages as list rows: each keyed by its content, with exact
+ * duplicates dropped, since they would only repeat a row.
+ */
+export function keyedBlockedPackages(
+	blocked: readonly PolicyBlockedPackage[],
+): KeyedBlockedPackage[] {
+	const rows = new Map<string, PolicyBlockedPackage>();
+	for (const entry of blocked) {
+		const key = JSON.stringify([
+			entry.package,
+			entry.version,
+			entry.channel,
+			entry.org,
+			entry.policy,
+			entry.policyId,
+			entry.reason,
+		]);
+		if (!rows.has(key)) rows.set(key, entry);
+	}
+	return [...rows].map(([key, entry]) => ({ key, entry }));
 }

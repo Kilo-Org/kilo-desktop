@@ -93,12 +93,43 @@ function useComposerInsetVariable(
 	}, [rootRef, dock]);
 }
 
+const SCROLLBAR_GUTTER_VAR = "--transcript-scrollbar-gutter";
+
+/**
+ * Publishes the width of each of the transcript's scrollbar gutters so the
+ * dock can stop short of them: it floats over the scroller, so at full pane
+ * width it covered the scrollbar's lower end, where the thumb sits while the
+ * reader is at the bottom.
+ */
+function useScrollbarGutterVariable(
+	rootRef: RefObject<HTMLDivElement | null>,
+	viewportRef: RefObject<HTMLDivElement | null>,
+) {
+	useLayoutEffect(() => {
+		const root = rootRef.current;
+		const viewport = viewportRef.current;
+		if (!root || !viewport) return;
+		const publish = () => {
+			// Both edges reserve a gutter (scrollbar-gutter: stable both-edges).
+			const gutter = (viewport.offsetWidth - viewport.clientWidth) / 2;
+			root.style.setProperty(SCROLLBAR_GUTTER_VAR, `${gutter}px`);
+		};
+		publish();
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(publish);
+		observer.observe(viewport);
+		return () => observer.disconnect();
+	}, [rootRef, viewportRef]);
+}
+
 export const Thread: FC = () => {
 	const isDraft = useAuiState(isDraftView);
 	const rootRef = useRef<HTMLDivElement>(null);
+	const viewportRef = useRef<HTMLDivElement>(null);
 	const [dock, setDock] = useState<HTMLDivElement | null>(null);
 	useThreadHeightVariable(rootRef);
 	useComposerInsetVariable(rootRef, dock);
+	useScrollbarGutterVariable(rootRef, viewportRef);
 
 	return (
 		<ThreadPrimitive.Root
@@ -120,6 +151,7 @@ export const Thread: FC = () => {
 			data-draft={isDraft || undefined}
 		>
 			<ThreadPrimitive.Viewport
+				ref={viewportRef}
 				turnAnchor="bottom"
 				autoScroll
 				scrollToBottomOnRunStart={false}
@@ -172,7 +204,8 @@ export const Thread: FC = () => {
 			</ThreadPrimitive.Viewport>
 			<div
 				ref={setDock}
-				className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex justify-center"
+				// Clear of the scrollbar gutters, and clipped across so the full-bleed pane fills stop there too.
+				className="pointer-events-none absolute inset-x-[var(--transcript-scrollbar-gutter,0px)] bottom-0 z-20 flex justify-center overflow-x-clip"
 			/>
 		</ThreadPrimitive.Root>
 	);

@@ -23,9 +23,16 @@ import * as path from "node:path";
 const INSTALL = ["pnpm", ["install", "--frozen-lockfile", "--prefer-offline"]];
 const FAILURE_TAIL_LINES = 30;
 
+// The background launcher resolves both paths and hands them down, so the detached
+// child runs nothing that can fail before its exit handler guarantees a final marker.
+const RESOLVED_PATHS = "KILO_WORKTREE_SETUP_PATHS";
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
-const worktree = git("rev-parse", "--show-toplevel");
-const mainCheckout = path.dirname(git("rev-parse", "--path-format=absolute", "--git-common-dir"));
+const [worktree, mainCheckout] = process.env[RESOLVED_PATHS]
+	? JSON.parse(process.env[RESOLVED_PATHS])
+	: [
+			git("rev-parse", "--show-toplevel"),
+			path.dirname(git("rev-parse", "--path-format=absolute", "--git-common-dir")),
+		];
 
 const markerDir = path.join(worktree, ".kilo", "worktree-setup");
 const marker = {
@@ -46,6 +53,7 @@ function launchInBackground() {
 	const log = fs.openSync(marker.log, "w");
 	const child = spawn(process.execPath, [import.meta.filename], {
 		cwd: worktree,
+		env: { ...process.env, [RESOLVED_PATHS]: JSON.stringify([worktree, mainCheckout]) },
 		detached: true,
 		stdio: ["ignore", log, log],
 		windowsHide: true,
@@ -126,13 +134,7 @@ async function install() {
 /** pnpm cannot hardlink or clone across filesystems, so a store on another device silently turns every install into a full copy. */
 function warnIfStoreOnAnotherFilesystem() {
 	const modules = path.join(worktree, "node_modules");
-	let storeDir;
-	try {
-		// Despite the extension, pnpm writes this file as JSON.
-		storeDir = JSON.parse(fs.readFileSync(path.join(modules, ".modules.yaml"), "utf8")).storeDir;
-	} catch {
-		return;
-	}
+	const storeDir = readStoreDir(path.join(modules, ".modules.yaml"));
 	if (typeof storeDir !== "string" || !fs.existsSync(storeDir)) return;
 	if (fs.statSync(storeDir).dev === fs.statSync(modules).dev) return;
 	console.warn(
@@ -147,6 +149,21 @@ function warnIfStoreOnAnotherFilesystem() {
 			"",
 		].join("\n"),
 	);
+}
+
+/** pnpm 10+ writes `.modules.yaml` as JSON; older versions wrote YAML, so read `storeDir` from either. */
+function readStoreDir(modulesYaml) {
+	let text;
+	try {
+		text = fs.readFileSync(modulesYaml, "utf8");
+	} catch {
+		return undefined;
+	}
+	try {
+		return JSON.parse(text).storeDir;
+	} catch {
+		return text.match(/^storeDir:\s*['"]?(.+?)['"]?\s*$/m)?.[1];
+	}
 }
 
 /**

@@ -126,10 +126,10 @@ index 6ccaa3d..deae5cc 100644
  //# sourceMappingURL=OpenCodeThreadController.d.ts.map
 \ No newline at end of file
 diff --git a/dist/OpenCodeThreadController.js b/dist/OpenCodeThreadController.js
-index 81f121b..507e589 100644
+index 81f121b..86cdff6 100644
 --- a/dist/OpenCodeThreadController.js
 +++ b/dist/OpenCodeThreadController.js
-@@ -103,13 +103,35 @@ const isSupportedDelta = (state, messageId, partId, field) => {
+@@ -103,13 +103,36 @@ const isSupportedDelta = (state, messageId, partId, field) => {
  	if (!part) return false;
  	return field === "text" && (part.type === "text" || part.type === "reasoning");
  };
@@ -158,6 +158,7 @@ index 81f121b..507e589 100644
  	unsubscribeFromEvents = null;
 +	stopStaleWatch = null;
 +	stale = false;
++	disposed = false;
  	loadPromise = null;
 +	historyEpoch = 0;
  	reconnectSyncToken = 0;
@@ -165,7 +166,7 @@ index 81f121b..507e589 100644
  	childControllersById = /* @__PURE__ */ new Map();
  	childSessionIdByPartId = /* @__PURE__ */ new Map();
  	ancestorSessionIds;
-@@ -158,9 +180,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -158,9 +181,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	}
  	discard() {
  		this.loadPromise = null;
@@ -178,7 +179,7 @@ index 81f121b..507e589 100644
  		for (const entry of this.childControllersById.values()) {
  			entry.unsubscribe?.();
  			entry.controller.discard();
-@@ -230,6 +255,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -230,6 +256,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	syncChildSessionIndex(event) {
  		switch (event.type) {
  			case "history.loaded":
@@ -186,7 +187,7 @@ index 81f121b..507e589 100644
  			case "message.removed":
  				this.rebuildChildSessionIndex();
  				break;
-@@ -242,8 +268,24 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -242,8 +269,24 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  			default: break;
  		}
  	}
@@ -211,7 +212,7 @@ index 81f121b..507e589 100644
  		this.unsubscribeFromEvents = this.getEventSource().subscribe((event) => {
  			if (event.type === "stream.reconnected") {
  				this.handleStreamReconnect();
-@@ -251,15 +293,15 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -251,15 +294,15 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  			}
  			if (event.sessionId !== this.sessionId) return;
  			this.handleServerEvent(event);
@@ -234,7 +235,7 @@ index 81f121b..507e589 100644
  			if (status) this.dispatch({
  				type: "session.status",
  				status
-@@ -269,6 +311,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -269,6 +312,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  				sessionId: this.sessionId
  			});
  		});
@@ -247,10 +248,11 @@ index 81f121b..507e589 100644
  		this.client.permission.list(void 0, OPEN_CODE_REQUEST_OPTIONS).catch(() => null).then((response) => {
  			if (!response || token !== this.reconnectSyncToken) return;
  			for (const item of response.data ?? []) {
-@@ -295,10 +343,24 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -295,38 +344,67 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		});
  	}
  	dispose() {
++		this.disposed = true;
 +		this.listeners.clear();
 +		this.stopWatchingForStaleness();
 +		if (isThreadRunning(this.state)) return;
@@ -269,11 +271,16 @@ index 81f121b..507e589 100644
 +		this.unsubscribeFromEvents?.();
 +		this.unsubscribeFromEvents = null;
 +		this.detachChildControllers();
-+		this.watchForStaleness(applied);
++		if (!this.disposed) this.watchForStaleness(applied);
  	}
  	getState = () => {
  		return this.state;
-@@ -310,23 +372,36 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	};
+ 	subscribe = (listener) => {
+ 		const wasDetached = this.listeners.size === 0;
++		this.disposed = false;
+ 		this.listeners.add(listener);
+ 		this.ensureEventSubscription();
  		if (wasDetached) for (const [sessionId, entry] of this.childControllersById) this.attachChildController(sessionId, entry);
  		return () => {
  			this.listeners.delete(listener);
@@ -318,7 +325,7 @@ index 81f121b..507e589 100644
  		}).catch((error) => {
  			if (this.loadPromise !== request) throw error;
  			this.dispatch({
-@@ -343,6 +418,32 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -343,6 +421,32 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	refresh() {
  		return this.load(true);
  	}
@@ -351,7 +358,7 @@ index 81f121b..507e589 100644
  	createPendingMessage(message) {
  		const parts = flattenMessageParts(message);
  		return {
-@@ -358,6 +459,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -358,6 +462,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		};
  	}
  	async promptMessage(message, pending, options) {
@@ -359,7 +366,7 @@ index 81f121b..507e589 100644
  		this.dispatch({ type: "run.started" });
  		try {
  			await this.client.session.promptAsync({
-@@ -424,10 +526,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -424,10 +529,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async revert(messageId) {
  		this.dispatch({ type: "run.reverting" });
  		try {
@@ -374,7 +381,7 @@ index 81f121b..507e589 100644
  		} catch (error) {
  			this.dispatch({
  				type: "run.failed",
-@@ -437,7 +542,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -437,7 +545,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		}
  	}
  	async unrevert() {
@@ -392,7 +399,7 @@ index 81f121b..507e589 100644
  	}
  	async fork(messageId) {
  		const response = await this.client.session.fork({
-@@ -450,7 +564,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -450,7 +567,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async replyToPermission(permissionId, response) {
  		await this.client.permission.reply({
  			requestID: permissionId,
@@ -402,7 +409,7 @@ index 81f121b..507e589 100644
  		}, OPEN_CODE_REQUEST_OPTIONS);
  		this.dispatch({
  			type: "permission.replied",
-@@ -621,6 +736,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -621,6 +739,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		});
  	}
  	dispatch(event) {
@@ -410,7 +417,7 @@ index 81f121b..507e589 100644
  		const nextState = reduceOpenCodeThreadState(this.state, event);
  		if (nextState === this.state) return;
  		this.state = nextState;
-@@ -629,6 +745,6 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -629,6 +748,6 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	}
  };
  //#endregion
@@ -2258,10 +2265,10 @@ index 4acaaa7..8576332 100644
          }
          if (abortController.signal.aborted || this.stopped) {
 diff --git a/src/OpenCodeThreadController.ts b/src/OpenCodeThreadController.ts
-index 5ebfe4f..287509b 100644
+index 5ebfe4f..54b7bd7 100644
 --- a/src/OpenCodeThreadController.ts
 +++ b/src/OpenCodeThreadController.ts
-@@ -216,13 +216,76 @@ const isSupportedDelta = (
+@@ -216,13 +216,79 @@ const isSupportedDelta = (
    );
  };
  
@@ -2315,6 +2322,9 @@ index 5ebfe4f..287509b 100644
 +   */
 +  private stopStaleWatch: (() => void) | null = null;
 +  private stale = false;
++  // Set by `dispose` until a listener returns: a disposed thread whose run
++  // ends lets go of the event source entirely, as no one can read `stale`.
++  private disposed = false;
 +  /*
 +   * A running thread keeps applying its session's events after its last
 +   * listener leaves (and after `dispose`), and only lets go once its run ends.
@@ -2338,7 +2348,7 @@ index 5ebfe4f..287509b 100644
    private readonly childControllersById = new Map<
      string,
      ChildControllerEntry
-@@ -304,9 +367,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -304,9 +370,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
  
    private discard() {
      this.loadPromise = null;
@@ -2351,7 +2361,7 @@ index 5ebfe4f..287509b 100644
      for (const entry of this.childControllersById.values()) {
        entry.unsubscribe?.();
        entry.controller.discard();
-@@ -403,6 +469,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -403,6 +472,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    private syncChildSessionIndex(event: OpenCodeStateEvent) {
      switch (event.type) {
        case "history.loaded":
@@ -2359,7 +2369,7 @@ index 5ebfe4f..287509b 100644
        case "message.removed":
          this.rebuildChildSessionIndex();
          break;
-@@ -417,8 +484,35 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -417,8 +487,35 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      }
    }
  
@@ -2395,7 +2405,7 @@ index 5ebfe4f..287509b 100644
  
      this.unsubscribeFromEvents = this.getEventSource().subscribe((event) => {
        if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
-@@ -427,27 +521,37 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -427,27 +524,37 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
        }
        if (event.sessionId !== this.sessionId) return;
        this.handleServerEvent(event);
@@ -2443,10 +2453,11 @@ index 5ebfe4f..287509b 100644
  
      void this.client.permission
        .list(undefined, OPEN_CODE_REQUEST_OPTIONS)
-@@ -481,10 +585,26 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -481,10 +588,27 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    public dispose() {
++    this.disposed = true;
 +    this.listeners.clear();
 +    this.stopWatchingForStaleness();
 +    if (isThreadRunning(this.state)) return;
@@ -2467,11 +2478,19 @@ index 5ebfe4f..287509b 100644
 +    this.unsubscribeFromEvents?.();
 +    this.unsubscribeFromEvents = null;
 +    this.detachChildControllers();
-+    this.watchForStaleness(applied);
++    if (!this.disposed) this.watchForStaleness(applied);
    }
  
    public getState = () => {
-@@ -503,11 +623,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -493,6 +617,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+ 
+   public subscribe = (listener: () => void) => {
+     const wasDetached = this.listeners.size === 0;
++    this.disposed = false;
+     this.listeners.add(listener);
+     this.ensureEventSubscription();
+     if (wasDetached) {
+@@ -503,11 +628,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
  
      return () => {
        this.listeners.delete(listener);
@@ -2484,7 +2503,7 @@ index 5ebfe4f..287509b 100644
      };
    };
  
-@@ -515,6 +631,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -515,6 +636,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      if (this.loadPromise && !force) return this.loadPromise;
  
      this.dispatch({ type: "history.loading" });
@@ -2492,7 +2511,7 @@ index 5ebfe4f..287509b 100644
  
      const request = Promise.all([
        this.client.session.get(
-@@ -522,19 +639,36 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -522,19 +644,36 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
          OPEN_CODE_REQUEST_OPTIONS,
        ),
        this.client.session.messages(
@@ -2535,7 +2554,7 @@ index 5ebfe4f..287509b 100644
        })
        .catch((error) => {
          if (this.loadPromise !== request) throw error;
-@@ -555,6 +689,33 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -555,6 +694,33 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      return this.load(true);
    }
  
@@ -2569,7 +2588,7 @@ index 5ebfe4f..287509b 100644
    private createPendingMessage(message: AppendMessage): PendingUserMessage {
      const parts = flattenMessageParts(
        message,
-@@ -578,6 +739,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -578,6 +744,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      pending: PendingUserMessage,
      options?: OpenCodeUserMessageOptions,
    ) {
@@ -2581,7 +2600,7 @@ index 5ebfe4f..287509b 100644
      this.dispatch({ type: "run.started" });
  
      try {
-@@ -675,13 +841,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -675,13 +846,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    public async revert(messageId: string) {
      this.dispatch({ type: "run.reverting" });
      try {
@@ -2606,7 +2625,7 @@ index 5ebfe4f..287509b 100644
      } catch (error) {
        this.dispatch({ type: "run.failed", error });
        throw error;
-@@ -689,12 +865,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -689,12 +870,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    public async unrevert() {
@@ -2636,7 +2655,7 @@ index 5ebfe4f..287509b 100644
    }
  
    public async fork(messageId: string) {
-@@ -719,6 +906,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -719,6 +911,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
        {
          requestID: permissionId,
          reply: response,
@@ -2650,7 +2669,7 @@ index 5ebfe4f..287509b 100644
        },
        OPEN_CODE_REQUEST_OPTIONS,
      );
-@@ -963,6 +1157,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -963,6 +1162,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    private dispatch(event: Parameters<typeof reduceOpenCodeThreadState>[1]) {

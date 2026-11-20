@@ -32,6 +32,13 @@ const ASKED_EVENTS: ReadonlyMap<string, PromptKind> = new Map([
 const SETTLING_EVENTS = new Set(["permission.replied", "question.replied", "question.rejected"]);
 
 /**
+ * The most prompts remembered for settling. Only a complete read forgets
+ * them, so a list that never reads would otherwise grow for the window's
+ * life; the oldest go first, and a forgotten one still clears from its card.
+ */
+const MAX_KNOWN_PROMPTS = 500;
+
+/**
  * The window's event stream, kept in step with the prompts the server is
  * actually waiting on.
  *
@@ -76,7 +83,26 @@ export function withPendingPrompts(
 	let lastReconnect: OpenCodeServerEvent | undefined;
 
 	const remember = (kind: PromptKind, id: string, sessionId: string) => {
-		if (!known.has(id)) known.set(id, { kind, sessionId, since: ++clock });
+		if (known.has(id)) return;
+		known.set(id, { kind, sessionId, since: ++clock });
+		if (known.size > MAX_KNOWN_PROMPTS) {
+			const oldest = known.keys().next().value;
+			if (oldest !== undefined) known.delete(oldest);
+		}
+	};
+
+	const deliver = (listener: Listener, event: OpenCodeServerEvent) => {
+		try {
+			listener(event);
+		} catch (error) {
+			console.error("[kilo.chat] A pending-prompt listener threw", error);
+		}
+	};
+
+	const settle = (id: string) => {
+		known.delete(id);
+		// A read still in flight may list it from before; it must not bring it back.
+		if (readsInFlight > 0) settledAt.set(id, ++clock);
 	};
 
 	const track = (event: OpenCodeServerEvent) => {
@@ -91,8 +117,7 @@ export function withPendingPrompts(
 		}
 		const requestId = event.properties["requestID"];
 		if (SETTLING_EVENTS.has(event.type) && typeof requestId === "string") {
-			known.delete(requestId);
-			if (readsInFlight > 0) settledAt.set(requestId, ++clock);
+			settle(requestId);
 		}
 	};
 
@@ -101,9 +126,9 @@ export function withPendingPrompts(
 		const pending = new Set(list.requests.map((request) => request.id));
 		for (const [id, prompt] of known) {
 			if (prompt.kind !== kind || prompt.since > startedAt || pending.has(id)) continue;
-			known.delete(id);
+			settle(id);
 			const event = settledPromptEvent(kind, id, prompt.sessionId);
-			for (const listener of listeners) listener(event);
+			for (const listener of listeners) deliver(listener, event);
 		}
 	};
 
@@ -116,11 +141,17 @@ export function withPendingPrompts(
 		for (const request of list.requests) {
 			if ((settledAt.get(request.id) ?? 0) > startedAt) continue;
 			remember(kind, request.id, request.sessionID);
-			if (listener && listeners.has(listener)) listener(askedEvent(kind, request));
+			if (listener && listeners.has(listener)) deliver(listener, askedEvent(kind, request));
 		}
 	};
 
-	const sync = async (replayTo?: Listener) => {
+	const sync = (replayTo?: Listener) => {
+		read(replayTo).catch((error: unknown) => {
+			console.error("[kilo.chat] Could not sync the pending prompts", error);
+		});
+	};
+
+	const read = async (replayTo: Listener | undefined) => {
 		const startedAt = ++clock;
 		readsInFlight += 1;
 		try {
@@ -150,10 +181,10 @@ export function withPendingPrompts(
 				// Every subscriber sees the same reconnect; one read serves them all.
 				if (event.type === STREAM_RECONNECTED_EVENT_TYPE && event !== lastReconnect) {
 					lastReconnect = event;
-					void sync();
+					sync();
 				}
 			});
-			void sync(own);
+			sync(own);
 			return () => {
 				listeners.delete(own);
 				unsubscribe();

@@ -127,6 +127,31 @@ describe("withPendingPrompts", () => {
 		]);
 	});
 
+	it("doesn't bring back a prompt another read settled while it was in flight", async () => {
+		const { source, emit } = liveSource();
+		const reads = [deferred<unknown>(), deferred<unknown>(), deferred<unknown>()];
+		let next = 0;
+		const client = {
+			permission: { list: () => reads[next++]!.promise },
+			question: { list: async () => ({ data: [] }) },
+		} as unknown as KiloClient;
+		const pending = withPendingPrompts(source, () => [client]);
+
+		pending.subscribe(() => undefined);
+		reads[0]!.resolve({ data: [] });
+		await settle();
+		emit("permission.asked", { id: "per_1", sessionID: "ses_1" });
+		pending.subscribe(() => undefined);
+		const events: OpenCodeServerEvent[] = [];
+		pending.subscribe((event) => events.push(event));
+		reads[1]!.resolve({ data: [] });
+		await settle();
+		reads[2]!.resolve({ data: [{ id: "per_1", sessionID: "ses_1" }] });
+		await settle();
+
+		expect(events.map((event) => event.type)).toEqual(["permission.replied"]);
+	});
+
 	it("settles nothing when a pending list can't be read", async () => {
 		const { source, emit } = liveSource();
 		const client = clientWith(Promise.reject(new Error("offline")), Promise.resolve({ data: [] }));

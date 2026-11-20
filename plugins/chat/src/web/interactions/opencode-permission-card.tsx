@@ -90,6 +90,8 @@ export const OpenCodePermissionCard = ({
 			if (settlePermission && !(await stillPending(chats, request))) {
 				// Answered or dropped while this window wasn't listening: the card is stale.
 				settlePermission(request.id, request.sessionId);
+				// Settling unmounts the card; if it somehow stays, it must stay answerable.
+				setSubmittingReply(null);
 				return;
 			}
 			setError(err instanceof Error ? err.message : "Could not submit the reply.");

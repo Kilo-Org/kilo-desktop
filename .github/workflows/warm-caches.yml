@@ -43,7 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
+        with:
+          install: "true"
       # The same caches run-e2e restores; they save when this job ends.
       - if: matrix.native
         uses: ./plugins/notebook/actions/setup-native
@@ -76,3 +77,22 @@ jobs:
       - name: Typecheck
         if: runner.os == 'Linux'
         run: pnpm exec turbo run check --concurrency=4
+
+  # node_modules for ci.yml's Windows and macOS `test` legs, which install only
+  # the platform-tested packages. Their store comes from the full store above.
+  warm-platform-node-modules:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [blacksmith-8vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          install: "true"
+          install-filters-file: .github/platform-test-packages.txt

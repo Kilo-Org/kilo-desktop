@@ -398,6 +398,46 @@ describe("the tool-renderer point", () => {
 		await expect.element(page.getByTestId("acme-ping")).toHaveTextContent("Pinged example.com");
 	});
 
+	it("keeps out of the fold only the calls a renderer picks to stand alone", async () => {
+		function Install({ toolCallId, isError }: ToolRendererProps) {
+			return (
+				<p data-qa-id={`acme-install-${toolCallId}`}>{isError ? "Install blocked" : "Installed"}</p>
+			);
+		}
+		const installs = contributor(
+			{ "kilo.chat/tool-renderer": [{ id: "install", tools: ["acme.tools/install"] }] },
+			{
+				web: {
+					activate(sdk) {
+						sdk.extensions.implement(ToolRenderer, "install", {
+							component: Install,
+							isStandalone: (call) => call.isError === true,
+						});
+					},
+				},
+			},
+		);
+		const install = toolWireName("acme.tools/install");
+
+		await showChat(
+			chatWith([
+				toolPart(install, { input: { name: "numpy" } }, "call_ok"),
+				toolPart(
+					install,
+					{ status: "error", input: { name: "pillow" }, error: "blocked" },
+					"call_blocked",
+				),
+				reply("Pillow is blocked."),
+			]),
+			{ plugins: [installs] },
+		);
+
+		await expect.element(page.getByTestId("acme-install-call_blocked")).toBeVisible();
+		await expect.element(page.getByTestId("acme-install-call_ok")).not.toBeInTheDocument();
+		await expandAll();
+		await expect.element(page.getByTestId("acme-install-call_ok")).toHaveTextContent("Installed");
+	});
+
 	it("hands an override kilo.chat's renderer to wrap", async () => {
 		await showChat(
 			chatWith([

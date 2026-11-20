@@ -13,6 +13,7 @@ import {
 } from "../../contracts";
 import { setHostableMcpApps, type HostableMcpApp } from "../mcp-apps/mcp-app-registry";
 import { toToolCallProps, type ToolCallProps } from "./tool-call";
+import { setStandaloneToolCalls, type StandaloneToolCall } from "./standalone-tool-calls";
 import { setContributedToolCategories } from "./tool-categories";
 import { ToolCallFallback } from "./tool-ui-inline";
 
@@ -61,6 +62,8 @@ function partRenderer(Chain: ComponentType<ToolCallProps>): ToolCallMessagePartC
 export interface ContributedTools {
 	readonly toolkit: Toolkit;
 	readonly categories: ReadonlyMap<string, ToolCategory>;
+	/** Which calls stand alone, by tool, as the tool's first renderer says (`isStandalone`). */
+	readonly standaloneCalls: ReadonlyMap<string, StandaloneToolCall>;
 }
 
 /** The transcript's render-only toolkit from `kilo.chat/tool-renderer` contributions. */
@@ -80,19 +83,23 @@ export function buildToolkit(contributions: readonly RendererContribution[]): Co
 	// Execution stays on the server: these are backend tools with renderers
 	// only (not `externalTool()`, which needs the "use generative" compiler).
 	const toolkit: Toolkit = {};
+	const standaloneCalls = new Map<string, StandaloneToolCall>();
 	for (const [tool, chain] of byTool) {
+		const first = chain[0]!;
 		toolkit[tool] = {
 			type: "backend",
 			render: partRenderer(rendererChain(chain)),
-			...(chain[0]!.metadata.standalone ? { display: "standalone" as const } : {}),
+			...(first.metadata.standalone ? { display: "standalone" as const } : {}),
 		};
+		const isStandalone = first.implementation?.isStandalone;
+		if (isStandalone) standaloneCalls.set(tool, isStandalone);
 	}
-	return { toolkit, categories };
+	return { toolkit, categories, standaloneCalls };
 }
 
 /**
  * The window's tool renderers as the thread's toolkit. Contributed
- * categories and MCP Apps are window-wide (pure grouping helpers and the
+ * categories, per-call standalone questions and MCP Apps are window-wide (pure grouping helpers and the
  * patched projection read them), so they are published here too.
  */
 export function useContributedToolkit(): Toolkit {
@@ -101,13 +108,14 @@ export function useContributedToolkit(): Toolkit {
 	return publishToolkit(renderers, apps);
 }
 
-/** The toolkit, publishing its categories and hostable MCP Apps window-wide on the way. */
+/** The toolkit, publishing its categories, standalone calls and hostable MCP Apps window-wide on the way. */
 function publishToolkit(
 	renderers: readonly RendererContribution[],
 	apps: readonly Contribution<typeof McpApp>[],
 ): Toolkit {
-	const { toolkit, categories } = buildToolkit(renderers);
+	const { toolkit, categories, standaloneCalls } = buildToolkit(renderers);
 	setContributedToolCategories(categories);
+	setStandaloneToolCalls(standaloneCalls);
 	setHostableMcpApps(hostableMcpApps(apps));
 	return toolkit;
 }

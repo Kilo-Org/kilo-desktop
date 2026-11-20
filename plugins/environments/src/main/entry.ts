@@ -79,7 +79,7 @@ import {
 	SharedCondaBridge,
 	type CondaBridge,
 } from "./providers/conda/SharedCondaBridge";
-import { condaTools } from "./tools";
+import { condaTools, POLICY_CARD_INSTRUCTION } from "./tools";
 
 export interface EnvironmentsMainOptions {
 	/** Finds the bundled bridge; defaults to the plugin's `resources/bridge` (or `BRIDGE_PAYLOAD`). */
@@ -280,6 +280,7 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 			sdk.extensions.implement(ChatConfigPoint, CONDA_CHAT_CONFIG, {
 				configure: () => ({
 					permissions: cliRules,
+					instructions: [POLICY_CARD_INSTRUCTION],
 					...(conda.state.status === "ready" ? {} : { disableTools: toolNames }),
 				}),
 			});

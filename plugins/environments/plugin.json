@@ -13,6 +13,7 @@
 		"kilo.anaconda/account": "optional",
 		"kilo.local-inference/llama-runtime": "optional",
 		"kilo.chat/permission-renderer": "optional",
+		"kilo.chat/tool-renderer": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/settings-section": "optional",
 		"kilo.shell/deep-link": "optional"
@@ -255,6 +256,19 @@
 				},
 				{
 					"id": "local-file-answers"
+				}
+			],
+			"kilo.chat/tool-renderer": [
+				{
+					"id": "conda-policy",
+					"tools": [
+						"kilo.environments/conda.envs.create",
+						"kilo.environments/conda.envs.clone",
+						"kilo.environments/conda.packages.install",
+						"kilo.environments/conda.packages.update",
+						"kilo.environments/conda.packages.remove",
+						"kilo.environments/conda.repodata.find"
+					]
 				}
 			],
 			"kernel/flag": [

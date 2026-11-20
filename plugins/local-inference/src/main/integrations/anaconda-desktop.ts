@@ -88,7 +88,7 @@ const findAnacondaDesktopModels = async (logger: Logger): Promise<AddLocalModelI
 			return [];
 		}
 
-		const result: AddLocalModelInput[] = [];
+		const candidates: AddLocalModelInput[] = [];
 		for (const rawEntry of models.data) {
 			const entry = entrySchema.safeParse(rawEntry);
 			if (!entry.success) continue;
@@ -97,25 +97,27 @@ const findAnacondaDesktopModels = async (logger: Logger): Promise<AddLocalModelI
 				const file = fileSchema.safeParse(rawFile);
 				if (!file.success) continue;
 
-				const location = join(config.data.downloadLocation, entry.data.id, file.data.name);
-				try {
-					await access(location, constants.F_OK);
-				} catch {
-					continue;
-				}
-				result.push({
+				candidates.push({
 					catalog: {
 						modelId: entry.data.id,
 						publisher: entry.data.publisher,
 						quantizationId: file.data.id,
 					},
 					name: `${entry.data.name} (${file.data.quantization})`,
-					path: location,
+					path: join(config.data.downloadLocation, entry.data.id, file.data.name),
 					sizeBytes: file.data.sizeBytes,
 				});
 			}
 		}
-		return result;
+		const present = await Promise.all(
+			candidates.map((candidate) =>
+				access(candidate.path, constants.F_OK).then(
+					() => true,
+					() => false,
+				),
+			),
+		);
+		return candidates.filter((_candidate, index) => present[index]);
 	} catch (error) {
 		logger.debug(`[anaconda-desktop] scanning for models failed: ${message(error)}`);
 		return [];
@@ -130,6 +132,9 @@ export const importAnacondaDesktopModels = async (
 	let succeeded = 0;
 	for (const model of models) {
 		try {
+			// Each add persists into the shared model registry; one at a time keeps
+			// those writes and the import order deterministic.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			await add(model);
 			++succeeded;
 		} catch (error) {

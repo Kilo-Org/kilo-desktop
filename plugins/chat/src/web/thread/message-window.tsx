@@ -2,8 +2,8 @@ import { ThreadPrimitive, useAuiState } from "@assistant-ui/react";
 import {
 	memo,
 	useLayoutEffect,
-	useMemo,
 	useRef,
+	useState,
 	useSyncExternalStore,
 	type ComponentType,
 	type FC,
@@ -226,18 +226,8 @@ function viewportOf(elements: ReadonlyMap<string, Element>): Element | null {
 
 /** The thread's message ids, keeping one array while the sequence is unchanged (a token changes none). */
 function useMessageIds(): readonly string[] {
-	const last = useRef<readonly string[]>([]);
-	return useAuiState((s) => {
-		const messages = s.thread.messages;
-		const previous = last.current;
-		if (
-			previous.length === messages.length &&
-			messages.every((message, index) => message.id === previous[index])
-		) {
-			return previous;
-		}
-		return (last.current = messages.map((message) => message.id));
-	});
+	const serialized = useAuiState((s) => s.thread.messages.map((message) => message.id).join("\n"));
+	return serialized === "" ? [] : serialized.split("\n");
 }
 
 const NEVER_SUBSCRIBED = () => () => undefined;
@@ -269,9 +259,11 @@ const WindowedMessage = memo(function WindowedMessage({
 	const mounted = !store || inTail || windowed;
 	// Decided once, on mount: a message restored from its placeholder, or one
 	// that replaced another in place, appears without the entrance animation.
-	const animatesEntrance = useRef(extendsTranscript);
-	if (!mounted) animatesEntrance.current = false;
+	const [animatesEntrance, setAnimatesEntrance] = useState(extendsTranscript);
+	if (!mounted && animatesEntrance) setAnimatesEntrance(false);
 
+	// `store.observe` returns its own unobserve, which this effect returns as its cleanup.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useLayoutEffect(() => {
 		const element = ref.current;
 		if (!store || !element) return;
@@ -282,7 +274,7 @@ const WindowedMessage = memo(function WindowedMessage({
 		<div
 			ref={ref}
 			data-slot="aui_message-window"
-			className={animatesEntrance.current ? "flex flex-col" : "flex flex-col [&>*]:animate-none"}
+			className={animatesEntrance ? "flex flex-col" : "flex flex-col [&>*]:animate-none"}
 		>
 			{mounted ? (
 				<ThreadPrimitive.Unstable_MessageById messageId={id} components={{ Message }} />
@@ -306,16 +298,18 @@ export const WindowedMessages: FC<{ Message: ComponentType; disabled?: boolean }
 	Message,
 	disabled = false,
 }) => {
-	const store = useMemo(createMessageWindowStore, []);
+	const [store] = useState(createMessageWindowStore);
 	const ids = useMessageIds();
-	const renderedLength = useRef(0);
-	const settledLength = Math.min(renderedLength.current, ids.length);
+	// A message past the length of the transcript as last rendered extends it.
+	const sequence = ids.join("\n");
+	const [transcript, setTranscript] = useState({ sequence, length: ids.length, settledLength: 0 });
+	if (transcript.sequence !== sequence) {
+		setTranscript({ sequence, length: ids.length, settledLength: transcript.length });
+	}
+	const settledLength = Math.min(transcript.settledLength, ids.length);
 	// After the messages' own effects have registered them: they say where the viewport is.
 	useLayoutEffect(() => store.connectToViewport());
 	useLayoutEffect(() => store.disconnect, [store]);
-	useLayoutEffect(() => {
-		renderedLength.current = ids.length;
-	}, [ids]);
 	const active = disabled ? null : store;
 	const tailStart = ids.length - ALWAYS_MOUNTED_TAIL;
 	return ids.map((id, index) => (

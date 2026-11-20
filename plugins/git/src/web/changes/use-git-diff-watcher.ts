@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import useDebounce from "react-use/esm/useDebounce.js";
 import useLatest from "react-use/esm/useLatest.js";
 
@@ -11,6 +11,7 @@ import {
 	FileWatcher,
 	toPosixPath,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { Repository } from "../../contracts";
 import { repositoryTypeQuery } from "../shared/repository-queries";
@@ -31,6 +32,9 @@ const GIT_DIR_NOISE_EXCLUDES = [
 
 const TRAILING_SLASHES = /\/+$/u;
 
+const sameContent = (previous: unknown, next: unknown): boolean =>
+	JSON.stringify(previous) === JSON.stringify(next);
+
 /**
  * Calls `onFileChange` for kilo.work-sessions' file changes matching the globs
  * (`dirs` are native directories, watched recursively) while `enabled`.
@@ -50,12 +54,14 @@ function useFileChanges(options: {
 			(dir) => `${escapeGlob(toPosixPath(dir).replace(TRAILING_SLASHES, ""))}/**`,
 		),
 	];
-	const filterKey = JSON.stringify([includes, options.excludes]);
-	const filter = useMemo(() => {
-		const [include, exclude] = JSON.parse(filterKey) as [string[], string[]];
-		return createWorkspaceChangeFilter({ includes: include, excludes: exclude });
-	}, [filterKey]);
+	const spec = useStableValue({ includes, excludes: options.excludes }, sameContent);
+	const filter = createWorkspaceChangeFilter({
+		includes: spec.includes,
+		excludes: [...spec.excludes],
+	});
 
+	// Domain-object `on()` returns its unsubscribe, which is the cleanup returned here.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useEffect(() => {
 		if (!files || !options.enabled) return;
 		return files.on("changed", (event) => {
@@ -163,8 +169,13 @@ export function useGitDiffWatcher({
 	const coveredChangeCountRef = useRef(0);
 	const queueAutoRefreshRef = useRef<(() => void) | undefined>(undefined);
 
+	// A folder's first load covers the changes seen before it was shown.
+	const coverChangesBefore = useEffectEvent((_folder: string) => {
+		coveredChangeCountRef.current = changeCount;
+	});
+
 	useEffect(() => {
-		coveredChangeCountRef.current = changeCountRef.current;
+		coverChangesBefore(directory);
 		const throttler = new Throttler();
 		const runAutoRefresh = async (signal: AbortSignal): Promise<void> => {
 			await visibility.whenVisible(signal);

@@ -15,10 +15,6 @@ export class DefaultsOnlyProvider
 		return "complete";
 	}
 
-	getFlag<T>(_key: string, defaultValue?: T): T {
-		return defaultValue as T;
-	}
-
 	getAllFlags(): Record<string, unknown> {
 		return {};
 	}

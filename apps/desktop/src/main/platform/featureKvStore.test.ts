@@ -36,11 +36,14 @@ describe("createFeatureKvStoreFactory", () => {
 		expect(JSON.parse(raw)).toEqual({ enabled: false });
 	});
 
-	it("defaults namespace to 'kv' when omitted", () => {
+	it("defaults namespace to 'kv' when omitted", async () => {
 		const factory = createFeatureKvStoreFactory(tempDir);
 		const kv = factory({ defaults: { count: 0 } });
 		kv.set({ count: 3 });
 		expect(kv.snapshot()).toEqual({ count: 3 });
+
+		const raw = await readFile(path.join(tempDir, "kv.json"), "utf-8");
+		expect(JSON.parse(raw)).toEqual({ count: 3 });
 	});
 
 	it("snapshot backfills defaults for missing persisted keys", async () => {

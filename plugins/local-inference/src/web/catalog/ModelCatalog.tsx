@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	BinaryIcon,
@@ -36,7 +36,11 @@ import type {
 	ModelCatalogEntry,
 } from "../../contracts/index";
 import { hasRecommendationQuantization } from "../../shared/catalog/model-compatibility";
-import { sortCatalogModels, type CatalogSort } from "../../shared/catalog/model-recommendations";
+import {
+	sortCatalogModels,
+	type CatalogModelEvaluation,
+	type CatalogSort,
+} from "../../shared/catalog/model-recommendations";
 import {
 	ModelCatalogEmpty,
 	ModelCatalogError,
@@ -110,10 +114,7 @@ export function LocalModelCatalog({
 		!catalog.isPending &&
 		!hardware.isPending &&
 		(needsCatalogSignIn || catalog.isError || catalog.data.models.length === 0);
-	const filteredModels = useMemo(
-		() => filterCatalogModels(catalog.data?.models ?? [], deferredSearch),
-		[catalog.data?.models, deferredSearch],
-	);
+	const filteredModels = filterCatalogModels(catalog.data?.models ?? [], deferredSearch);
 
 	return (
 		<div
@@ -220,7 +221,7 @@ function ModelCatalogTable({
 	selectedModelId?: string | undefined;
 }) {
 	const [sort, setSort] = useState<CatalogSort>(defaultCatalogSort);
-	const rows = useMemo(() => sortCatalogModels(models, hardware, sort), [hardware, models, sort]);
+	const rows = sortCatalogModels(models, hardware, sort);
 	const activeSortOption =
 		catalogSortOptions.find((option) => option.value === sort) ?? catalogSortOptions[0];
 
@@ -262,55 +263,81 @@ function ModelCatalogTable({
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</div>
-			{rows.length === 0 ? (
-				<ModelCatalogNoResults onClear={() => onSearchChange("")} />
-			) : (
-				<ModelCatalogTableFrame data-qa-id="model-catalog-table">
-					{rows.map(({ model, compatibility }) => {
-						return (
-							<TableRow
-								key={model.id}
-								className={cn(
-									"focus-visible:bg-muted cursor-pointer focus-visible:outline-none",
-									model.id === selectedModelId && "bg-muted",
-								)}
-								tabIndex={0}
-								aria-selected={model.id === selectedModelId}
-								aria-label={`View ${model.name} details`}
-								data-qa-id={`model-catalog-select-${model.id}`}
-								onClick={() => onSelectModel(model)}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" || event.key === " ") {
-										event.preventDefault();
-										onSelectModel(model);
-									}
-								}}
-							>
-								<TableCell className={catalogTableCellClassNames.model}>
-									<ModelIdentity model={model} />
-								</TableCell>
-								<TableCell className={catalogTableCellClassNames.capabilities}>
-									<ModelCapabilityIndicators
-										capabilities={model.capabilities}
-										modelId={model.id}
-										modelType={model.modelType}
-									/>
-								</TableCell>
-								<TableCell className={catalogTableCellClassNames.performance}>
-									<ModelPerformance
-										compatibility={compatibility}
-										hasHardware={Boolean(hardware)}
-										hasQuantizations={hasRecommendationQuantization(model)}
-										fixedFitWidth
-										wrap
-									/>
-								</TableCell>
-							</TableRow>
-						);
-					})}
-				</ModelCatalogTableFrame>
-			)}
+			<ModelCatalogResults
+				rows={rows}
+				hardware={hardware}
+				onClear={() => onSearchChange("")}
+				onSelectModel={onSelectModel}
+				selectedModelId={selectedModelId}
+			/>
 		</div>
+	);
+}
+
+/**
+ * The sorted result rows, split from the toolbar so `rows` reaches here as a
+ * frozen prop and stays cached on `models`/`hardware`/`sort`, not on `search`.
+ */
+function ModelCatalogResults({
+	rows,
+	hardware,
+	onClear,
+	onSelectModel,
+	selectedModelId,
+}: {
+	rows: readonly CatalogModelEvaluation[];
+	hardware: LocalInferenceHardwareProfile | undefined;
+	onClear: () => void;
+	onSelectModel: (model: ModelCatalogEntry) => void;
+	selectedModelId?: string | undefined;
+}) {
+	return rows.length === 0 ? (
+		<ModelCatalogNoResults onClear={onClear} />
+	) : (
+		<ModelCatalogTableFrame data-qa-id="model-catalog-table">
+			{rows.map(({ model, compatibility }) => {
+				return (
+					<TableRow
+						key={model.id}
+						className={cn(
+							"focus-visible:bg-muted cursor-pointer focus-visible:outline-none",
+							model.id === selectedModelId && "bg-muted",
+						)}
+						tabIndex={0}
+						aria-selected={model.id === selectedModelId}
+						aria-label={`View ${model.name} details`}
+						data-qa-id={`model-catalog-select-${model.id}`}
+						onClick={() => onSelectModel(model)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter" || event.key === " ") {
+								event.preventDefault();
+								onSelectModel(model);
+							}
+						}}
+					>
+						<TableCell className={catalogTableCellClassNames.model}>
+							<ModelIdentity model={model} />
+						</TableCell>
+						<TableCell className={catalogTableCellClassNames.capabilities}>
+							<ModelCapabilityIndicators
+								capabilities={model.capabilities}
+								modelId={model.id}
+								modelType={model.modelType}
+							/>
+						</TableCell>
+						<TableCell className={catalogTableCellClassNames.performance}>
+							<ModelPerformance
+								compatibility={compatibility}
+								hasHardware={Boolean(hardware)}
+								hasQuantizations={hasRecommendationQuantization(model)}
+								fixedFitWidth
+								wrap
+							/>
+						</TableCell>
+					</TableRow>
+				);
+			})}
+		</ModelCatalogTableFrame>
 	);
 }
 

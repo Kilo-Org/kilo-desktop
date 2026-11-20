@@ -391,11 +391,11 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(chooser.getByText("No channels configured.")).not.toBeInTheDocument();
 	});
 
-	it("shows validation error when name is empty and submit is clicked", async () => {
+	it("keeps Create disabled while the name is empty", async () => {
 		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
-		// Name is empty by default, button should be disabled
+		// Name is empty by default.
 		await expect.element(screen.getByTestId("environments-create-submit")).toBeDisabled();
 	});
 
@@ -546,7 +546,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/custom/myenv");
-		expect(payload.channels).toEqual(["conda-forge", "defaults"]);
+		expect(payload.channels).toEqual(["defaults", "conda-forge"]);
 	});
 
 	it("filters the Python version list via the picker search box", async () => {

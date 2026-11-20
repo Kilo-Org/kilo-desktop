@@ -4,7 +4,7 @@ import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { CircleAlertIcon, FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import {
 	useEffect,
-	useMemo,
+	useEffectEvent,
 	useRef,
 	useState,
 	type CSSProperties,
@@ -33,6 +33,7 @@ import {
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import type { FileGitStatusEntry } from "../../contracts/models.js";
 import { FILE_ICONS } from "../file-icons/file-icons.js";
@@ -75,9 +76,8 @@ export function FilesTree({
 	onSelectWorkspaceFolder,
 	onRefresh,
 }: FilesTreeProps) {
-	const openFileRef = useRef(onOpenFile);
+	const openFileRef = useLatestRef(onOpenFile);
 	const syncingSelectionRef = useRef(false);
-	openFileRef.current = onOpenFile;
 	const { model } = useFileTree({
 		paths: [],
 		density: "compact",
@@ -134,14 +134,10 @@ export function FilesTree({
 	const [treeStyles, setTreeStyles] = useState<CSSProperties>({});
 	useFileTreeWatcher(workspaceDirectory);
 	const { mode, shiki } = useFilesTheme();
-	const folderOptions = useMemo(
-		() =>
-			workspaceFolders.map(({ path }) => ({
-				value: path,
-				label: explorerRootTitle(path, workspaceFolders),
-			})),
-		[workspaceFolders],
-	);
+	const folderOptions = workspaceFolders.map(({ path }) => ({
+		value: path,
+		label: explorerRootTitle(path, workspaceFolders),
+	}));
 
 	useEffect(() => {
 		// resetPaths collapses to the baseline, so re-plant the expansion the
@@ -153,16 +149,22 @@ export function FilesTree({
 		model.setGitStatus(gitStatusEntries ?? undefined);
 	}, [model, gitStatusEntries]);
 
+	// Mirrors the active file into the tree's selection. Re-run when the paths
+	// reset (the item may only exist now) and when the host asks for a re-sync.
+	const selectActivePath = useEffectEvent(
+		(tree: typeof model, path: string, _paths: readonly string[], _syncVersion: number) => {
+			const item = tree.getItem(path);
+			if (!item) return;
+			syncingSelectionRef.current = true;
+			for (const selected of tree.getSelectedPaths()) tree.getItem(selected)?.deselect();
+			item.select();
+			queueMicrotask(() => {
+				syncingSelectionRef.current = false;
+			});
+		},
+	);
 	useEffect(() => {
-		if (!activePath) return;
-		const item = model.getItem(activePath);
-		if (!item) return;
-		syncingSelectionRef.current = true;
-		for (const selected of model.getSelectedPaths()) model.getItem(selected)?.deselect();
-		item.select();
-		queueMicrotask(() => {
-			syncingSelectionRef.current = false;
-		});
+		if (activePath) selectActivePath(model, activePath, paths, selectionSyncVersion);
 	}, [activePath, model, paths, selectionSyncVersion]);
 
 	useEffect(() => {
@@ -193,6 +195,9 @@ export function FilesTree({
 	};
 
 	return (
+		// The capture only re-opens an already-selected row on mouse click; the tree
+		// handles keyboard activation of its rows itself.
+		// react-doctor-disable-next-line react-doctor/click-events-have-key-events
 		<div
 			className="flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
 			data-qa-id="files-explorer"

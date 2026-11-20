@@ -3,12 +3,13 @@ import path from "node:path";
 import { MAX_PUBLISHED_RELEASE_NOTE_ITEMS } from "./release-notes.js";
 import { getAppIdentity } from "./app-identity.js";
 import { getReleasePrefix, type ReleaseTrack } from "./release.js";
+import type { TrackDownloadManifestEntry } from "./release-manifest.js";
 
 export interface ReleaseDownload {
 	readonly sourcePath: string;
-	readonly platform: "linux" | "macos" | "windows";
+	readonly platform: TrackDownloadManifestEntry["platform"];
 	readonly arch: string;
-	readonly type: "deb" | "dmg" | "setup" | "zip";
+	readonly type: TrackDownloadManifestEntry["type"];
 	readonly fileName: string;
 }
 
@@ -201,6 +202,7 @@ export function classifyReleaseDownload(filePath: string): ReleaseDownload | nul
 		".deb": { platform: "linux", type: "deb" },
 		".dmg": { platform: "macos", type: "dmg" },
 		".exe": { platform: "windows", type: "setup" },
+		".rpm": { platform: "linux", type: "rpm" },
 		".zip": { platform: "macos", type: "zip" },
 	} as const;
 	const result = classification[extension as keyof typeof classification];
@@ -220,7 +222,7 @@ export function getLatestAliasKey(track: ReleaseTrack, download: ReleaseDownload
 export function getLatestAliasFileName(track: ReleaseTrack, type: ReleaseDownload["type"]): string {
 	const identity = getAppIdentity(track);
 	if (type === "setup") return identity.setupExecutableName;
-	if (type === "deb") return `${identity.executableName}.deb`;
+	if (type === "deb" || type === "rpm") return `${identity.executableName}.${type}`;
 	return `${identity.productName}.${type}`;
 }
 

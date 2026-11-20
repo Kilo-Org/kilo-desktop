@@ -51,8 +51,9 @@ export interface LaunchedPane {
 }
 
 /**
- * Opens a pane of `kind` and places it; the layout is saved only when
- * placement moves it. Main reports the pane as opened.
+ * Opens a pane of `kind` and places it. Tabs (no placement, or `into` a
+ * group) are placed by main in the write that opens them; a new group beside
+ * the active one is moved there afterwards. Main reports the pane as opened.
  */
 export async function launchPane(
 	panes: PanesHandle,
@@ -65,16 +66,18 @@ export async function launchPane(
 	const anchor = sessionLayout(before, layoutKindOf);
 	const anchorGroup = anchor.activePaneId ? findPaneGroup(anchor, anchor.activePaneId) : undefined;
 	// No placement given (⌘T): a tab of the active group, as a person picking a pane expects.
+	const asTab = !placement || "into" in placement;
 	const pane = await panes.methods.open({
 		workSessionId,
 		kind,
-		...(placement ? {} : { placement: "tab" as const }),
+		...(asTab ? { placement: "tab" as const } : {}),
+		...(placement && "into" in placement ? { groupId: placement.into } : {}),
 	});
 	const opened = !before.panes.some((existing) => existing.id === pane.id);
-	if (!placement || !opened) return { pane, opened };
-	const target = "into" in placement ? placement.into : anchorGroup?.id;
+	if (asTab || !opened) return { pane, opened };
+	const target = anchorGroup?.id;
 	if (!target) return { pane, opened };
-	const position: DropPosition = "into" in placement ? "inside" : placement.beside;
+	const position: DropPosition = placement.beside;
 	const layout = sessionLayout(
 		{ ...before, panes: [...before.panes, pane], activePaneId: pane.id },
 		layoutKindOf,
@@ -107,6 +110,45 @@ export async function closePane(
 	if (canClose && !(await canClose({ workSessionId, pane }).catch(() => true))) return false;
 	const { closed } = await panes.methods.close({ workSessionId, paneId });
 	return closed;
+}
+
+/** Which of a pane's group's tabs a bulk close takes, as VS Code's tab menu does. */
+export type CloseScope = "others" | "right" | "all";
+
+/** The tabs of `paneId`'s group that `scope` closes, in tab order. */
+export function panesToClose(layout: PaneLayout, paneId: string, scope: CloseScope): string[] {
+	return tabsToClose(findPaneGroup(layout, paneId)?.tabs.map((tab) => tab.id) ?? [], paneId, scope);
+}
+
+/** Of a group's `tabs` (in order, holding `paneId`), the ones `scope` closes. */
+export function tabsToClose(tabs: readonly string[], paneId: string, scope: CloseScope): string[] {
+	if (scope === "all") return [...tabs];
+	if (scope === "others") return tabs.filter((id) => id !== paneId);
+	return tabs.slice(tabs.indexOf(paneId) + 1);
+}
+
+/**
+ * Closes panes one at a time, so kinds that ask first (unsaved changes) ask
+ * one after another. A pane kept open is skipped; a close that fails doesn't
+ * stop the rest. Resolves to how many failed.
+ */
+export async function closePanes(
+	panes: PanesHandle,
+	workSessionId: string,
+	paneIds: readonly string[],
+	implementationOf: (kind: string) => PaneImplementation | undefined,
+): Promise<number> {
+	let failed = 0;
+	for (const paneId of paneIds) {
+		try {
+			// In turn: a kind's close guard may ask the person, and concurrent closes would stack those prompts.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
+			await closePane(panes, workSessionId, paneId, implementationOf);
+		} catch {
+			failed += 1;
+		}
+	}
+	return failed;
 }
 
 /** Changes a work session's arrangement as a person asked, reporting it. */

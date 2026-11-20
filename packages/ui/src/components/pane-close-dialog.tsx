@@ -18,6 +18,17 @@ type PendingAction = "save" | "discard" | null;
 const messageOf = (error: unknown, fallback: string) =>
 	error instanceof Error ? error.message : fallback;
 
+async function saveFailure(
+	save: () => Promise<string | null>,
+	fallback: string,
+): Promise<string | null> {
+	try {
+		return await save();
+	} catch (error) {
+		return messageOf(error, fallback);
+	}
+}
+
 /**
  * Origin's close prompt for a pane with unsaved changes (Files, Notebook). `onSave` resolves
  * null once saved, or why it could not save.
@@ -40,14 +51,9 @@ export function PaneCloseDialog({
 		if (pending) return;
 		setPending("save");
 		setError(null);
-		try {
-			const failure = await onSave();
-			if (failure) setError(failure);
-		} catch (saveError) {
-			setError(messageOf(saveError, `Could not save ${title}.`));
-		} finally {
-			setPending(null);
-		}
+		const failure = await saveFailure(onSave, `Could not save ${title}.`);
+		if (failure) setError(failure);
+		setPending(null);
 	};
 
 	const discard = async () => {

@@ -76,8 +76,6 @@ export interface MainKernelOptions extends Omit<
 	"process" | "windowId" | "kernelDefinitions" | "kernelContextKeys" | "beforeDeactivate"
 > {
 	readonly host: MainKernelHost;
-	/** Upper bound for `stop()`, so quitting can never hang. */
-	readonly stopCapMs?: number;
 }
 
 interface SystemState {
@@ -220,7 +218,7 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 	let promptedToQuit = false;
 	/** Settles once the host's process environment is final (see `start`). */
 	let environmentReady: Promise<void> = Promise.resolve();
-	const stopCapMs = options.stopCapMs ?? DEFAULT_STOP_CAP_MS;
+	const stopCapMs = DEFAULT_STOP_CAP_MS;
 
 	return {
 		...core,
@@ -556,6 +554,11 @@ function provideKeybindings(core: Kernel, host: MainKernelHost): void {
 				reset: ({ command }) => {
 					const { [command]: _removed, ...rest } = provider.state.overrides;
 					save(rest);
+				},
+				update: ({ set, reset }) => {
+					const overrides = { ...provider.state.overrides, ...set };
+					for (const command of reset) delete overrides[command];
+					save(overrides);
 				},
 				resetAll: () => save({}),
 			},

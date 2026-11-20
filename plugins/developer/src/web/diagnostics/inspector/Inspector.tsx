@@ -58,11 +58,13 @@ export function Inspector({
 }) {
 	const { go } = useNavigation();
 	const current = trail.at(-1);
+	const currentKey = current ? `${current.kind}:${current.id}` : undefined;
 	const root = useRef<HTMLDivElement>(null);
 	// A link deep in a long page or detail opens the next one from its top.
 	useEffect(() => {
+		if (currentKey === undefined) return;
 		root.current?.scrollIntoView({ block: "nearest" });
-	}, [current?.kind, current?.id]);
+	}, [currentKey]);
 	if (!current) return null;
 	return (
 		<div ref={root} className="flex min-w-0 flex-col gap-4" data-qa-id="diagnostics-inspector">

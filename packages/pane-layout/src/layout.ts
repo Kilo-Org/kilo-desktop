@@ -413,26 +413,6 @@ export function addPane(
 	};
 }
 
-export function rewritePaneId(layout: PaneLayout, fromId: string, toId: string): PaneLayout {
-	if (fromId === toId) return layout;
-	if (!findPane(layout, fromId)) return layout;
-	if (findPane(layout, toId)) return removePane(layout, fromId);
-
-	const groups = layout.groups.map((group) => {
-		if (!group.tabs.some((pane) => pane.id === fromId)) return group;
-		return {
-			...group,
-			tabs: group.tabs.map((pane) => (pane.id === fromId ? { ...pane, id: toId } : pane)),
-			activePaneId: group.activePaneId === fromId ? toId : group.activePaneId,
-		};
-	});
-	return {
-		...layout,
-		groups,
-		activePaneId: layout.activePaneId === fromId ? toId : layout.activePaneId,
-	};
-}
-
 export function removePane(layout: PaneLayout, paneId: string): PaneLayout {
 	const groupIndex = layout.groups.findIndex((group) =>
 		group.tabs.some((pane) => pane.id === paneId),
@@ -657,6 +637,53 @@ export function movePane(
 	};
 }
 
+export type PaneDirection = "up" | "down" | "left" | "right";
+
+const SPLIT_POSITION: Record<PaneDirection, EdgeDropPosition> = {
+	up: "above",
+	down: "below",
+	left: "before",
+	right: "after",
+};
+
+/**
+ * Where moving a tab one step in `direction` takes it (`movePane`'s target),
+ * as VS Code's "Move Editor into Left/Right/Above/Below Group": into the
+ * neighbouring group that way — the next column, at the same height in its
+ * stack, or the next group in its own stack — else split into a new group at
+ * that edge. Null when the move would change nothing.
+ */
+export function paneDirectionTarget(
+	layout: PaneLayout,
+	paneId: string,
+	direction: PaneDirection,
+): { targetGroupId: string; position: DropPosition } | null {
+	const source = findPaneGroup(layout, paneId);
+	if (!source) return null;
+	const columns = getPaneColumns(layout.groups, layout.sizes);
+	const columnIndex = columns.findIndex((column) =>
+		column.groups.some((group) => group.id === source.id),
+	);
+	const column = columns[columnIndex]!;
+	const stackIndex = column.groups.findIndex((group) => group.id === source.id);
+	const horizontal = direction === "left" || direction === "right";
+	const step = direction === "left" || direction === "up" ? -1 : 1;
+
+	const neighbour = horizontal
+		? columns[columnIndex + step]?.groups.at(
+				Math.min(stackIndex, (columns[columnIndex + step]?.groups.length ?? 1) - 1),
+			)
+		: column.groups[stackIndex + step];
+	if (neighbour) return { targetGroupId: neighbour.id, position: "inside" };
+
+	const position = SPLIT_POSITION[direction];
+	if (source.tabs.length > 1) return { targetGroupId: source.id, position };
+	// A lone tab is its group: it can only leave its stack for a new column,
+	// placed beside the column (a group of it other than its own).
+	const sibling = horizontal ? column.groups.find((group) => group.id !== source.id) : undefined;
+	return sibling ? { targetGroupId: sibling.id, position } : null;
+}
+
 export function togglePin(layout: PaneLayout, id: string): PaneLayout {
 	const group = resolveGroup(layout, id);
 	if (!group) return layout;
@@ -726,24 +753,6 @@ function fittedWidths(
 		remainingWeight -= column.width;
 	}
 	return widths;
-}
-
-export function getFixedGroupLayout(
-	groups: readonly PaneGroup[],
-	availableWidth: number,
-	sizes: Readonly<Record<string, number>> = {},
-	gap = PANE_GAP,
-): { groups: PaneGroup[]; widths: Map<string, number> } {
-	const columns = getPaneColumns(groups, sizes);
-	const widths = fittedWidths(columns, Math.max(0, availableWidth), gap);
-	return {
-		groups: [...groups],
-		widths: new Map(
-			columns.flatMap((column) =>
-				column.groups.map((group) => [group.id, widths.get(column.id) ?? 0] as const),
-			),
-		),
-	};
 }
 
 function projectColumn(column: PaneColumn, width: number): ProjectedColumn {

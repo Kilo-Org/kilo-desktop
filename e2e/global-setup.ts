@@ -11,6 +11,7 @@ import { assertSharedHarnessDependencies } from "./utils/harness-dependencies.js
 import { prewarmKiloCli } from "./utils/kilo-cli-prewarm.js";
 import { startKiloGatewayStub } from "./utils/kilo-gateway-stub.js";
 import { chatAttachmentStubReplies } from "./testdata/chat/attachments.js";
+import { chatFileMentionStubReplies } from "./testdata/chat/file-mentions.js";
 import { chatSmokeStubReplies, chatSmokeStubTitles } from "./testdata/chat/smoke.js";
 
 /**
@@ -40,7 +41,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 	const gateway = await startKiloGatewayStub();
 	process.env[KILO_GATEWAY_STUB_URL_ENV] = gateway.url;
 	const chatCompletions = await startChatCompletionsStub(
-		{ ...chatAttachmentStubReplies, ...chatSmokeStubReplies },
+		{ ...chatAttachmentStubReplies, ...chatSmokeStubReplies, ...chatFileMentionStubReplies },
 		chatSmokeStubTitles,
 	);
 	process.env[CHAT_COMPLETIONS_STUB_URL_ENV] = chatCompletions.url;

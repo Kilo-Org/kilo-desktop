@@ -218,7 +218,7 @@ async function mouse(type: "mousePressed" | "mouseMoved" | "mouseReleased", x: n
 }
 
 describe("session layout performance", () => {
-	it("opens, switches, resizes and adds tabs over long chats", { timeout: 300_000 }, async () => {
+	it("opens, switches, resizes and adds tabs over long chats", async () => {
 		const { host, server } = await renderLayout();
 		const window = host.host.renderer.kernelSdk.domainObjects.get(WorkSessionsWindow)!;
 
@@ -268,8 +268,10 @@ describe("session layout performance", () => {
 					x: box.left + box.width / 2,
 					y: box.top + box.height / 2,
 				});
-				// The person reads the row a moment before clicking it.
-				await new Promise((resolve) => setTimeout(resolve, 400));
+				// The person reads the row until its chats have loaded, then clicks it.
+				await expect
+					.poll(() => chatIds(label).every((chatId) => server.messagePagesSent.includes(chatId)))
+					.toBe(true);
 			}
 			const stop = observeLongTasks();
 			const started = performance.now();

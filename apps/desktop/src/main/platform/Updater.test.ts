@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { LinuxPackageFormat } from "$config/linux-package.js";
 import type { ReleaseTrack } from "$config/release.js";
 import type { DesktopReleaseNotes } from "$config/release-notes.js";
 
@@ -37,8 +38,10 @@ function createService(
 		installWithShutdown?: (install: () => void) => void;
 		persistTrack?: (track: ReleaseTrack) => void;
 		track?: ReleaseTrack;
+		installedTrack?: ReleaseTrack;
 		currentVersion?: string;
 		windowsFeed?: FakeWindowsFeed;
+		linuxPackageFormat?: LinuxPackageFormat;
 	} = {},
 ) {
 	const updater = overrides.updater ?? new FakeNativeUpdater();
@@ -48,6 +51,7 @@ function createService(
 		platform: overrides.platform ?? "darwin",
 		arch: overrides.arch ?? "arm64",
 		track: overrides.track ?? "preview",
+		installedTrack: overrides.installedTrack ?? "preview",
 		currentVersion: overrides.currentVersion ?? "1.2.2",
 		publishUrls: overrides.publishUrls ?? {
 			preview: "https://updates.example.com",
@@ -62,6 +66,7 @@ function createService(
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		updater: updater as never,
 		...(overrides.windowsFeed && { windowsFeed: overrides.windowsFeed }),
+		...(overrides.linuxPackageFormat && { linuxPackageFormat: overrides.linuxPackageFormat }),
 	});
 	return { service, updater, states };
 }
@@ -283,6 +288,21 @@ describe("DesktopUpdaterService", () => {
 		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
 		expect(service.state).toMatchObject({ track: "stable", status: "checking" });
 		expect(states).toContainEqual(expect.objectContaining({ track: "stable", status: "idle" }));
+		service.dispose();
+	});
+
+	it("reports the track the installed build came from, which a track change leaves alone", async () => {
+		vi.useFakeTimers();
+		const switchedEarlier = createService({ track: "stable", installedTrack: "preview" }).service;
+		switchedEarlier.start();
+		expect(switchedEarlier.state).toMatchObject({ track: "stable", installedTrack: "preview" });
+		switchedEarlier.dispose();
+
+		const { service } = createService({ track: "preview", installedTrack: "preview" });
+		service.start();
+		await service.setTrack("stable");
+
+		expect(service.state).toMatchObject({ track: "stable", installedTrack: "preview" });
 		service.dispose();
 	});
 
@@ -529,6 +549,95 @@ describe("DesktopUpdaterService on Linux", () => {
 			availableVersion: null,
 			downloadUrl: null,
 			message: `Version ${notes.version} has no Linux package for arm64 yet. Try again later.`,
+		});
+		service.dispose();
+	});
+
+	describe("installed from an RPM", () => {
+		const rpmUrl = (arch: string) =>
+			`https://updates.example.com/kilo-desktop/preview/linux/${arch}/kilo-desktop-1.2.3-1.${arch}.rpm`;
+		const rpm = (arch: string) => ({
+			...download(arch, rpmUrl(arch)),
+			type: "rpm",
+			fileName: "kilo-desktop.rpm",
+		});
+
+		it("offers the RPM for this architecture instead of the DEB", async () => {
+			vi.useFakeTimers();
+			const { service } = createService({
+				platform: "linux",
+				arch: "x64",
+				linuxPackageFormat: "rpm",
+				fetch: serve({
+					manifest: { ...manifest, additionalDownloads: [rpm("arm64"), rpm("x64")] },
+				}) as typeof fetch,
+			});
+			service.start();
+
+			await service.check();
+
+			expect(service.state).toMatchObject({ status: "available", downloadUrl: rpmUrl("x64") });
+			service.dispose();
+		});
+
+		it("never offers a DEB when the release has no RPM", async () => {
+			vi.useFakeTimers();
+			const { service } = createService({
+				platform: "linux",
+				arch: "x64",
+				linuxPackageFormat: "rpm",
+				fetch: serve() as typeof fetch,
+			});
+			service.start();
+
+			await service.check();
+
+			expect(service.state).toMatchObject({
+				status: "error",
+				downloadUrl: null,
+				message: `Version ${notes.version} has no Linux package for x64 yet. Try again later.`,
+			});
+			service.dispose();
+		});
+
+		it("leaves DEB installs on the DEB when an RPM is also published", async () => {
+			vi.useFakeTimers();
+			const { service } = createService({
+				platform: "linux",
+				arch: "x64",
+				fetch: serve({
+					manifest: { ...manifest, additionalDownloads: [rpm("x64")] },
+				}) as typeof fetch,
+			});
+			service.start();
+
+			await service.check();
+
+			expect(service.state).toMatchObject({
+				status: "available",
+				downloadUrl: debUrl("https://updates.example.com", "preview", "x64"),
+			});
+			service.dispose();
+		});
+	});
+
+	it("still offers its package when the manifest lists formats it doesn't know", async () => {
+		vi.useFakeTimers();
+		const appImage = { ...download("x64"), type: "appimage", fileName: "Kilo.AppImage" };
+		const { service } = createService({
+			platform: "linux",
+			arch: "x64",
+			fetch: serve({
+				manifest: { ...manifest, downloads: [appImage, ...manifest.downloads] },
+			}) as typeof fetch,
+		});
+		service.start();
+
+		await service.check();
+
+		expect(service.state).toMatchObject({
+			status: "available",
+			downloadUrl: debUrl("https://updates.example.com", "preview", "x64"),
 		});
 		service.dispose();
 	});

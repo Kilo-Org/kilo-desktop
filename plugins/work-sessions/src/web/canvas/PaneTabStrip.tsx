@@ -1,3 +1,4 @@
+import { ContextMenu } from "@base-ui/react/context-menu";
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import {
 	ExternalLinkIcon,
@@ -11,6 +12,7 @@ import type { FC, ReactNode } from "react";
 
 import type { PaneDescriptor } from "@kilo-desktop/pane-layout";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { DropdownMenuContent } from "@kilo-desktop/ui/components/dropdown-menu";
 import {
 	PANE_TAB_STATUS_ICON_CLASS_NAME,
 	PANE_TAB_TONE_CLASS_NAME,
@@ -32,6 +34,13 @@ import "./pane-drag.css";
 
 function stopActionBubble(event: { stopPropagation: () => void }) {
 	event.stopPropagation();
+}
+
+/** The tab a right-click menu is for, with its group's tabs (for "close others" and "close to the right"). */
+export interface PaneTabMenuTarget {
+	readonly pane: PaneDescriptor;
+	readonly index: number;
+	readonly groupTabs: readonly PaneDescriptor[];
 }
 
 export const PaneTabStrip: FC<{
@@ -60,6 +69,11 @@ export const PaneTabStrip: FC<{
 	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
 	shortcutHints?: ReadonlyMap<string, string>;
 	statusForPane?: (paneId: string) => PaneStatus | undefined;
+	/**
+	 * A tab's right-click menu items. Called for every tab on every render, so
+	 * it should only build an element; the items mount while the menu is open.
+	 */
+	tabMenu?: (tab: PaneTabMenuTarget) => ReactNode;
 }> = ({
 	canDrop,
 	groupId,
@@ -85,6 +99,7 @@ export const PaneTabStrip: FC<{
 	iconForPane,
 	shortcutHints,
 	statusForPane,
+	tabMenu,
 }) => {
 	const { stripRef, suppressClickRef, startPointerDrag, onPointerDrag, finishPointerDrag } =
 		usePaneDrag({ onDrop, canDrop });
@@ -109,7 +124,7 @@ export const PaneTabStrip: FC<{
 				className="text-muted-foreground inline-flex h-7 w-fit shrink-0 items-stretch justify-center gap-1"
 				aria-label="Panes"
 			>
-				{panes.map((pane) => {
+				{panes.map((pane, index) => {
 					const active = pane.id === activePaneId;
 					// The tab its group shows: it alone offers expand and pop out, and keeps its buttons visible.
 					const shown = pane.id === selectedPaneId;
@@ -133,19 +148,19 @@ export const PaneTabStrip: FC<{
 						"flex shrink-0 items-center pr-0.5 invisible group-hover/pane-tab:visible group-focus-within/pane-tab:visible [&_button]:transition-none",
 						shown && "visible",
 					);
-					return (
-						<div
-							key={pane.id}
-							className={cn(
-								"group/pane-tab relative flex h-7 w-56 shrink-0 overflow-hidden rounded-md",
-								PANE_TAB_TONE_CLASS_NAME[tone],
-								poppedOut && "border border-dashed border-info/70",
-							)}
-							data-pane-kind={pane.kind}
-							data-pane-tab={pane.id}
-							data-active={active ? "true" : undefined}
-							data-popped-out={poppedOut ? "true" : undefined}
-						>
+					const tabProps = {
+						className: cn(
+							"group/pane-tab relative flex h-7 w-56 shrink-0 overflow-hidden rounded-md",
+							PANE_TAB_TONE_CLASS_NAME[tone],
+							poppedOut && "border border-dashed border-info/70",
+						),
+						"data-pane-kind": pane.kind,
+						"data-pane-tab": pane.id,
+						"data-active": active ? "true" : undefined,
+						"data-popped-out": poppedOut ? "true" : undefined,
+					};
+					const content = (
+						<>
 							<TabsPrimitive.Tab
 								data-slot="tabs-trigger"
 								aria-description={titleHint?.(pane.id)}
@@ -267,7 +282,23 @@ export const PaneTabStrip: FC<{
 									</Button>
 								) : null}
 							</div>
-						</div>
+						</>
+					);
+					if (!tabMenu) {
+						return (
+							<div key={pane.id} {...tabProps}>
+								{content}
+							</div>
+						);
+					}
+					return (
+						<ContextMenu.Root key={pane.id}>
+							<ContextMenu.Trigger {...tabProps}>{content}</ContextMenu.Trigger>
+							{/* Always mounted: unmounting it mid-close leaves Base UI's menu stuck open on remount. */}
+							<DropdownMenuContent side="bottom" align="start">
+								{tabMenu({ pane, index, groupTabs: panes })}
+							</DropdownMenuContent>
+						</ContextMenu.Root>
 					);
 				})}
 			</TabsPrimitive.List>

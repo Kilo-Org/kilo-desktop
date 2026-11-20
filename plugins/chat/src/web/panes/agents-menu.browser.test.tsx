@@ -13,8 +13,8 @@ import {
 
 import { AGENT_PANE_KIND, chatPaneObject, paneChatId } from "../../contracts";
 import { agentPane, chatSummary, renderAgentPane, workSession } from "../../test/chat-host";
+import { chatWebEntry } from "../index";
 import { workSessionChats } from "./AgentsMenu";
-import { agentPanesWeb } from "./test-agent-panes";
 
 const WORK_SESSION = workSession({ chatIds: ["ses_old", "ses_older", "ses_new", "ses_popped"] });
 const TITLES: Record<string, string> = {
@@ -41,7 +41,7 @@ async function renderButton(open: readonly string[] = ["ses_new", "ses_popped"])
 		agentPane({ id: `pane_${chatId}`, object: chatPaneObject(chatId) });
 	const [last, ...others] = [...open].reverse();
 	const host = await renderAgentPane({
-		chatWeb: agentPanesWeb,
+		chatWeb: chatWebEntry,
 		workSession: WORK_SESSION,
 		windows,
 		pane: paneOf(last!),
@@ -155,7 +155,7 @@ describe("the Agents button", () => {
 
 	it("offers New agent alone, with no separator, in a work session without chats", async () => {
 		const empty = workSession({ chatIds: [] });
-		const { renderer } = (await renderAgentPane({ chatWeb: agentPanesWeb, workSession: empty }))
+		const { renderer } = (await renderAgentPane({ chatWeb: chatWebEntry, workSession: empty }))
 			.host;
 		renderMenu(renderer, empty);
 

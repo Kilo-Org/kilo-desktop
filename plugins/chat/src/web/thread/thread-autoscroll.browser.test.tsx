@@ -100,6 +100,19 @@ describe("following a streamed reply", () => {
 		expect(distanceFromBottom()).toBeGreaterThanOrEqual(away);
 	});
 
+	it("keeps the last message clear of the docked composer", async () => {
+		const { stream } = await openStreamingChat();
+		await stream(40);
+		const composer = document.querySelector<HTMLElement>("[data-qa-id='kilo-composer-dock']")!;
+		const lastMessage = [...document.querySelectorAll<HTMLElement>("[data-message-id]")].at(-1)!;
+
+		await vi.waitFor(() =>
+			expect(lastMessage.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+				composer.getBoundingClientRect().top,
+			),
+		);
+	});
+
 	it("stops following after a scroll up shorter than the docked composer", async () => {
 		const { stream } = await openStreamingChat();
 		const footer = document.querySelector<HTMLElement>(".aui-thread-viewport-footer")!;

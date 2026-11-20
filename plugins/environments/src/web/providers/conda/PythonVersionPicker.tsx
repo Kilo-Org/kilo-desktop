@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Combobox,
@@ -33,7 +31,7 @@ function versionLabel(value: string): string {
  * popup rather than a plain select.
  */
 export function PythonVersionPicker({ value, versions, onChange }: PythonVersionPickerProps) {
-	const items = useMemo(() => [PYTHON_LATEST, ...versions], [versions]);
+	const items = [PYTHON_LATEST, ...versions];
 
 	return (
 		<Combobox

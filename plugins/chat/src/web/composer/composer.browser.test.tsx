@@ -1,4 +1,5 @@
 import { FileTextIcon, GitBranchIcon, SparklesIcon } from "lucide-react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -293,23 +294,6 @@ describe("client slash commands", () => {
 		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
 	});
 
-	it("hides a server command with a client command's name", async () => {
-		const server = new FakeKiloServer();
-		server.commands = [
-			...server.commands,
-			{ name: "compact", description: "The server's compact", template: "", hints: [] },
-		];
-		await renderChat({ server });
-		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
-
-		await input().click();
-		await userEvent.keyboard("/compact");
-		await expect
-			.element(page.getByText("Summarize the chat so far to free up context"))
-			.toBeVisible();
-		await expect.element(page.getByText("The server's compact")).not.toBeInTheDocument();
-	});
-
 	it("explains instead of compacting a chat that hasn't started", async () => {
 		const host = await renderChat();
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
@@ -515,27 +499,36 @@ describe("the composer-action point", () => {
 						activate(sdk) {
 							sdk.extensions.implement(ComposerAction, "sparkle", {
 								kind: "action",
-								useButton: (context) => {
+								Button: ({ context, children }) => {
+									const [clicks, setClicks] = useState(0);
 									seen.push(context);
-									return { icon: SparklesIcon, label: "Sparkle", run };
+									return children({
+										icon: SparklesIcon,
+										label: `Sparkle ${clicks}`,
+										run: () => {
+											setClicks((count) => count + 1);
+											run();
+										},
+									});
 								},
 							});
 							sdk.extensions.implement(ComposerAction, "branch", {
 								kind: "menu",
-								useMenu: () => ({
-									label: "main",
-									icon: GitBranchIcon,
-									value: "main",
-									items: [
-										{ id: "main", label: "main" },
-										{ id: "feature", label: "feature", description: "2 ahead" },
-									],
-									select,
-								}),
+								Menu: ({ children }) =>
+									children({
+										label: "main",
+										icon: GitBranchIcon,
+										value: "main",
+										items: [
+											{ id: "main", label: "main" },
+											{ id: "feature", label: "feature", description: "2 ahead" },
+										],
+										select,
+									}),
 							});
 							sdk.extensions.implement(ComposerAction, "hidden", {
 								kind: "action",
-								useButton: () => ({ hidden: true }),
+								Button: ({ children }) => children({ hidden: true }),
 							});
 							sdk.extensions.implement(ComposerAction, "where", {
 								kind: "view",
@@ -548,8 +541,11 @@ describe("the composer-action point", () => {
 			],
 		});
 
-		await page.getByTestId("kilo-composer-action-sparkle").click();
+		const sparkle = page.getByTestId("kilo-composer-action-sparkle");
+		await expect.element(sparkle).toHaveTextContent("Sparkle 0");
+		await sparkle.click();
 		expect(run).toHaveBeenCalledOnce();
+		await expect.element(sparkle).toHaveTextContent("Sparkle 1");
 		expect(seen.at(-1)).toMatchObject({
 			workSessionId: "wses_1",
 			chatId: "ses_a",
@@ -586,7 +582,7 @@ describe("the composer-action point", () => {
 						activate(sdk) {
 							sdk.extensions.implement(ComposerAction, "palette", {
 								kind: "popover",
-								useTrigger: () => ({ label: "Colours", color: "#8b5cf6" }),
+								Trigger: ({ children }) => children({ label: "Colours", color: "#8b5cf6" }),
 								Content: ({ open, close }) =>
 									open ? (
 										<div data-qa-id="palette-content">
@@ -633,7 +629,7 @@ describe("the composer-action point", () => {
 						activate(sdk) {
 							sdk.extensions.implement(ComposerAction, "worktree", {
 								kind: "action",
-								useButton: () => ({ label: "Local", run: () => undefined }),
+								Button: ({ children }) => children({ label: "Local", run: () => undefined }),
 							});
 						},
 					},

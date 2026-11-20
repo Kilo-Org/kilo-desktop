@@ -163,6 +163,7 @@ export function createSessionsHost(options: SessionsHostOptions = {}): SessionsH
 				methods: {
 					create: unused,
 					createChat: unused,
+					forkChat: unused,
 					rename: unused,
 					setPinned: unused,
 					setArchived: unused,

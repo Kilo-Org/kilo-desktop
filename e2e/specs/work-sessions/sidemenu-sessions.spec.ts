@@ -7,7 +7,7 @@ const SESSION = "New session";
  * The side menu's per-row surfaces once it holds a session: the row menu, the
  * Pinned shelf and the Archived shelf.
  *
- * session-list.spec.ts covers the lifecycle end to end (start, rename, pin,
+ * work-sessions.spec.ts covers the lifecycle end to end (start, rename,
  * archive, delete) in one pass; these assert the shelves and the row menu the
  * side menu grows around it, plus the Shift+Click pin shortcut that has no
  * other coverage.

@@ -48,11 +48,11 @@ sessions remain visible; newly created sessions write only `kilo-desktop` metada
 
 Forge uses only official makers:
 
-| Platform | Architectures | Maker output                                   | Update behavior                                                        |
-| -------- | ------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
-| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                        |
-| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                           |
-| Linux    | x64, arm64    | DEB                                            | The app checks `latest.json` and links the DEB; installation is manual |
+| Platform | Architectures | Maker output                                   | Update behavior                                                                                                |
+| -------- | ------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                                                                |
+| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                                                                   |
+| Linux    | x64, arm64    | DEB and RPM                                    | The app checks `latest.json` and links the package in the format it was installed from; installation is manual |
 
 Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
 Linux ARM64 on `blacksmith-4vcpu-ubuntu-2404-arm`, with the same plugins as their x64 counterparts. The pinned
@@ -62,22 +62,27 @@ as the wrapper. PR and nightly E2E remain on Windows x64.
 
 Automatic Electron updates run only in packaged Windows and macOS builds. Packaged Linux
 builds never touch Electron's updater and never install anything: they read the selected
-track's `latest.json` on the same schedule, and when it names a newer version with a DEB
-for the running architecture on that track's update host, About and the sidebar offer a
-**Download** link to it. A newer release without such a DEB is reported as a failed check
+track's `latest.json` on the same schedule, and when it names a newer version with a package
+in the installed format for the running architecture on that track's update host, About and
+the sidebar offer a **Download** link to it. The RPM writes a `resources/package-format`
+marker that tells the app it was installed from an RPM; without it the app offers the DEB.
+A newer release without such a package is reported as a failed check
 rather than "up to date", and never withdraws a download already on offer. Update checks on every platform are disabled when the selected
 track has no update host compiled in. Squirrel install, update, and uninstall launches are
 handled before normal application startup.
 
 Preview packaging stamps the desktop `package.json` version (then restores it) so every
-Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, and DEB — names
+Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, DEB, and RPM — names
 artifacts `{nextPatch}-preview-{YYMMDD}-{HHmmS}` from the committed desktop version and
 a UTC timestamp at ten-second resolution (shared via `PREVIEW_BUILD_TIME` in CI so all
 legs publish the same version). The packaged app `package.json` is stamped to the same value. The patch
 increment makes each Preview sort above the committed version, so already-installed
 `0.1.0` builds update. Electron packager native metadata (`FileVersion` /
 `ProductVersion` / `CFBundleShortVersionString`) uses only the `{nextPatch}` numeric
-prefix because Windows PE versions allow at most four integer components. Stable packaging uses
+prefix because Windows PE versions allow at most four integer components. RPM `Version`
+forbids `-`, so the RPM turns the prerelease into an RPM pre-release
+(`1.0.1-preview-261118-03065` becomes `1.0.1~preview.261118.03065`), which dnf sorts below
+the `1.0.1` Stable release, like semver does. Stable packaging uses
 the committed `apps/desktop/package.json` version, which is bumped on `main` through a normal
 pull request before release; the workflow never writes back to `main`.
 
@@ -160,11 +165,16 @@ kilo-desktop/<update-channel>/release-notes/latest.json
 
 `latest.json` contains the version, publication time, immutable release-note URL, and
 download records with platform, architecture, artifact type, size, SHA-256, and the
-immutable Forge artifact URL for that release. Stable installer aliases and moving JSON
+immutable Forge artifact URL for that release. RPMs are listed in `additionalDownloads`
+rather than `downloads`: clients released before RPM support reject the whole manifest when
+`downloads` has a type they don't know, but ignore keys they don't know. Current clients
+read both arrays and skip entries whose platform or type they don't know (entries they do
+know must still be complete), so once few installs predate RPM support, new formats and
+platforms can be published straight into `downloads`. Stable installer aliases and moving JSON
 pointers use short-lived cache headers; versioned artifacts and release notes are
 immutable. The workflow uploads aliases before `latest.json`, whose immutable download
 URLs make the manifest the final atomic publication pointer. Linux update checks read it
-and link its immutable DEB URL. Native auto-update feeds
+and link the immutable DEB or RPM URL. Native auto-update feeds
 remain at their existing `channel/platform/arch` paths.
 
 Each immutable release-note document includes the previous release version for its
@@ -271,8 +281,8 @@ publication. Stable workflows are serialized. The release uses only the default
 Signing secrets and update variables live on the GitHub Environments above. `Build`
 attaches the `preview` environment so the same codesign material is available for
 manual makes. Signed builds therefore run only from `main`, with the same reviewer approval
-as a Preview release; `Build` never assumes the AWS role or publishes to S3. Linux jobs install `fakeroot` for DEB packaging
-and the `pkg-config`/`libsecret` development packages required to rebuild keytar.
+as a Preview release; `Build` never assumes the AWS role or publishes to S3. Linux jobs install `fakeroot` for DEB packaging,
+`rpm` (for `rpmbuild`) for RPM packaging, and the `pkg-config`/`libsecret` development packages required to rebuild keytar.
 
 ## Signing credentials
 

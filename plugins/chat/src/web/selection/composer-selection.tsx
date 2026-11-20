@@ -1,5 +1,5 @@
 import { useAuiState } from "@assistant-ui/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import {
@@ -40,18 +40,10 @@ export interface PromptSelection {
 const NO_DETAILS: readonly GatewayModelDetails[] = [];
 const selectDetails = (state: ModelsState) => state.gatewayCatalog.details;
 const selectModels = (state: ModelsState) => state;
-const selectAccount = (state: AccountState) => state;
-
-/** What the gateway answers for, from kilo.core's account. */
-function catalogAccount(account: AccountState | undefined): CatalogAccount {
-	if (!account) return {};
-	return {
-		...(account.connection === "pending"
-			? {}
-			: { providerReady: account.connection === "connected" }),
-		organizationId: account.profile?.currentOrgId ?? null,
-	};
-}
+// What the gateway answers for, from kilo.core's account.
+const selectProviderReady = (account: AccountState): CatalogAccount["providerReady"] =>
+	account.connection === "pending" ? undefined : account.connection === "connected";
+const selectOrganizationId = (account: AccountState) => account.profile?.currentOrgId ?? null;
 
 /**
  * The picker's catalog from kilo.core's models, with the gateway's details
@@ -61,39 +53,36 @@ function catalogAccount(account: AccountState | undefined): CatalogAccount {
 function useModelCatalog() {
 	const handle = useDomainObject(Models);
 	const models = useDomainObjectState(Models, selectModels);
-	const account = useDomainObjectState(KiloAccount, selectAccount);
+	const providerReady = useDomainObjectState(KiloAccount, selectProviderReady);
+	const organizationId = useDomainObjectState(KiloAccount, selectOrganizationId) ?? null;
 	const details = useDomainObjectState(Models, selectDetails) ?? NO_DETAILS;
-	const { providerReady, organizationId = null } = catalogAccount(account);
 	const ready = models?.ready === true;
 	const aiProviders = models?.aiProviders;
 	const entries = models?.models;
 	const defaults = models?.defaults;
 	const configuredModel = models?.configuredModel;
-	const base = useMemo(
-		() =>
-			ready && aiProviders && entries
-				? buildCatalogFromModels(
-						{
-							aiProviders,
-							models: entries,
-							defaults: defaults ?? {},
-							...(configuredModel ? { configuredModel } : {}),
-						},
-						{
-							...(providerReady === undefined ? {} : { providerReady }),
-							organizationId,
-						},
-					)
-				: undefined,
-		[ready, aiProviders, entries, defaults, configuredModel, providerReady, organizationId],
-	);
+	const base =
+		ready && aiProviders && entries
+			? buildCatalogFromModels(
+					{
+						aiProviders,
+						models: entries,
+						defaults: defaults ?? {},
+						...(configuredModel ? { configuredModel } : {}),
+					},
+					{
+						...(providerReady === undefined ? {} : { providerReady }),
+						organizationId,
+					},
+				)
+			: undefined;
 	const hasKiloModels = base?.models.some((model) => model.providerID === KILO_PROVIDER_ID);
+	const catalog = attachGatewayModelDetails(base, [...details]);
 	useEffect(() => {
 		if (hasKiloModels) void handle?.methods.refreshGatewayCatalog(undefined).catch(() => undefined);
 	}, [handle, hasKiloModels]);
-	const catalog = useMemo(() => attachGatewayModelDetails(base, [...details]), [base, details]);
-	const refetch = useCallback(async () => handle?.methods.refresh(undefined), [handle]);
-	const refresh = useCallback(() => void refetch().catch(() => undefined), [refetch]);
+	const refetch = async () => handle?.methods.refresh(undefined);
+	const refresh = () => void refetch().catch(() => undefined);
 	return {
 		catalog,
 		isPending: !ready,
@@ -132,29 +121,24 @@ export function ComposerSelectionProvider({
 	const agentCatalog = useKiloAgentCatalog(connection);
 	const modelCatalog = useModelCatalog();
 	const { catalog, handle: modelsHandle } = modelCatalog;
-	const preferences = useMemo(
-		() => (modelCatalog.preferences ? persistedPreferences(modelCatalog.preferences) : undefined),
-		[modelCatalog.preferences],
-	);
-	const remember = useCallback(
-		(agent: string, model: KiloModelRef, effort: string | undefined) =>
-			void modelsHandle?.methods
-				.remember({
-					agent,
-					model: toModelRef(model),
-					...(effort === undefined ? {} : { variant: effort }),
-				})
-				.catch(() => undefined),
-		[modelsHandle],
-	);
-	const recordRecent = useCallback(
-		(model: KiloModelRef) =>
-			void modelsHandle?.methods.recordRecent(toModelRef(model)).catch(() => undefined),
-		[modelsHandle],
-	);
+	const preferences = modelCatalog.preferences
+		? persistedPreferences(modelCatalog.preferences)
+		: undefined;
+	const remember = (agent: string, model: KiloModelRef, effort: string | undefined) =>
+		void modelsHandle?.methods
+			.remember({
+				agent,
+				model: toModelRef(model),
+				...(effort === undefined ? {} : { variant: effort }),
+			})
+			.catch(() => undefined);
+	const recordRecent = (model: KiloModelRef) =>
+		void modelsHandle?.methods.recordRecent(toModelRef(model)).catch(() => undefined);
 
 	const chats = useChatSelections();
-	const startedAsDraft = useRef(draft).current;
+	// Captures whether the pane started as a draft, once: it must not follow `draft` later.
+	// react-doctor-disable-next-line react-doctor/no-derived-useState
+	const [startedAsDraft] = useState(draft);
 	const agentSelection = useAgentSelection(agentCatalog.data, chatId, chats);
 	const configuredAgent = findCatalogAgent(agentCatalog.data, agentSelection.agent);
 	// Until the agent catalog loads, the selected agent alone still finds the
@@ -194,51 +178,42 @@ export function ComposerSelectionProvider({
 		validatedModel ? modelRefToId(validatedModel) : undefined,
 		effort,
 	);
-	onSelection({
-		agent: agentSelection.getAgent(),
-		model: validatedModel,
-		variant: activeEffort,
-	});
+	const selectedAgent = agentSelection.agent;
+	// A layout effect so the selection lands before the parent's passive
+	// effects (the first-prompt handover) and any event can send with it.
+	// The parent stores the selection in a ref, so reporting it re-renders nothing.
+	useLayoutEffect(() => {
+		// react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+		onSelection({ agent: selectedAgent, model: validatedModel, variant: activeEffort });
+	}, [onSelection, selectedAgent, validatedModel, activeEffort]);
 
-	const agentValue = useMemo(
-		() => ({
-			agent: agentSelection.agent,
-			setAgent: agentSelection.setAgent,
-			catalog: agentCatalog.data as KiloAgentCatalog | undefined,
-			isCatalogPending: agentCatalog.isPending,
-			isCatalogError: agentCatalog.isError,
-		}),
-		[
-			agentSelection.agent,
-			agentSelection.setAgent,
-			agentCatalog.data,
-			agentCatalog.isPending,
-			agentCatalog.isError,
-		],
-	);
+	const agentValue = {
+		agent: agentSelection.agent,
+		setAgent: agentSelection.setAgent,
+		catalog: agentCatalog.data as KiloAgentCatalog | undefined,
+		isCatalogPending: agentCatalog.isPending,
+		isCatalogError: agentCatalog.isError,
+	};
 	const {
 		refresh: refreshCatalog,
 		refetch: refetchCatalog,
 		isPending: isCatalogPending,
 		isFollowingAccount,
 	} = modelCatalog;
-	const modelValue = useMemo(
-		() => ({
-			model: modelSelection.model,
-			setModel: modelSelection.setModel,
-			effort: modelSelection.effort,
-			setEffort: modelSelection.setEffort,
-			name: modelSelection.name,
-			efforts: modelSelection.efforts,
-			catalog,
-			isCatalogPending,
-			isSelectionPending: modelSelection.awaitingKilo,
-			isCatalogError: false,
-			isCatalogFetching: isFollowingAccount,
-			refreshCatalog,
-		}),
-		[catalog, isCatalogPending, isFollowingAccount, modelSelection, refreshCatalog],
-	);
+	const modelValue = {
+		model: modelSelection.model,
+		setModel: modelSelection.setModel,
+		effort: modelSelection.effort,
+		setEffort: modelSelection.setEffort,
+		name: modelSelection.name,
+		efforts: modelSelection.efforts,
+		catalog,
+		isCatalogPending,
+		isSelectionPending: modelSelection.awaitingKilo,
+		isCatalogError: false,
+		isCatalogFetching: isFollowingAccount,
+		refreshCatalog,
+	};
 
 	return (
 		<ChatAgentSelectionProvider value={agentValue}>
@@ -271,22 +246,15 @@ function ModelSelectionValue({
 	readonly children: ReactNode;
 }) {
 	const start = source?.start;
-	const modelSource = useMemo(
-		() =>
-			source && {
-				...source,
-				start:
-					start &&
-					(async () => {
-						await start();
-						await refreshCatalog();
-					}),
-			},
-		[source, start, refreshCatalog],
-	);
-	const withSource = useMemo(
-		() => (modelSource ? { ...value, modelSource } : value),
-		[modelSource, value],
-	);
+	const modelSource = source && {
+		...source,
+		start:
+			start &&
+			(async () => {
+				await start();
+				await refreshCatalog();
+			}),
+	};
+	const withSource = modelSource ? { ...value, modelSource } : value;
 	return <ChatModelSelectionProvider value={withSource}>{children}</ChatModelSelectionProvider>;
 }

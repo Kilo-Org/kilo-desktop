@@ -16,7 +16,6 @@ import {
 	pressPageKeyboard,
 } from "@anaconda/playwright-utils";
 
-import type { KeyboardShortcutsPage } from "../shell/keyboard-shortcuts-page.js";
 import { shellSidebarData } from "../../testdata/shell/sidebar.js";
 import { sessionListData } from "../../testdata/work-sessions/session-list.js";
 
@@ -44,10 +43,6 @@ export class SidemenuPage {
 	private readonly searchInput = () =>
 		getLocatorByRole("combobox", { name: "Search sessions and workspaces" });
 	private readonly searchScopeAll = () => getLocatorByTestId(SESSION_LIST.searchScopeAllTestId);
-	private readonly searchSessionResult = (title: string) =>
-		getLocatorByTestId(SESSION_LIST.searchSessionTestIdPattern).filter({ hasText: title });
-	private readonly searchWorkspaceResult = (name: string) =>
-		getLocatorByTestId(SESSION_LIST.searchWorkspaceTestIdPattern).filter({ hasText: name });
 	private readonly groupingHeader = () => getLocatorByTestId(SESSION_LIST.groupingHeaderTestId);
 	private readonly viewMenu = () => getLocatorByTestId(SESSION_LIST.viewMenuTestId);
 	private readonly viewMenuGrouping = () => getLocatorByRole("menuitem", { name: /^Grouping/ });
@@ -60,8 +55,6 @@ export class SidemenuPage {
 	private readonly activeRows = () => this.sessionList().getByTestId(SESSION_LIST.itemTestId);
 	private readonly searchScopeWorkspaces = () =>
 		getLocatorByTestId(SESSION_LIST.searchScopeWorkspacesTestId);
-	private readonly searchScopeSessions = () =>
-		getLocatorByTestId(SESSION_LIST.searchScopeSessionsTestId);
 	private readonly workspaceAllCommand = () =>
 		getLocatorByTestId(SESSION_LIST.workspaceAllCommandTestId);
 	private readonly workspaceUnscopedCommand = () =>

@@ -211,11 +211,6 @@ export interface WorkspaceAccess {
 export interface GitServiceOptions {
 	readonly logger: KernelLogger;
 	readonly workspaces: WorkspaceAccess;
-	/**
-	 * Base directory for generated patch files. Defaults to `os.tmpdir()`
-	 * inside git-client; the shell passes the Electron temp directory.
-	 */
-	readonly tempDir?: string;
 	/** Factory for the shared client. Overridable in tests. */
 	readonly createClient?: () => GitClientSlice;
 	/** How paths are compared; the host's by default. Overridable in tests. */
@@ -366,7 +361,7 @@ export function ghErrorToKernelError(error: unknown): KernelError {
 	return new KernelError("BUSINESS", detail || "GitHub CLI operation failed.");
 }
 
-export function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
+function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
 	const failure = error as Partial<ExecaError> & { code?: string; timedOut?: boolean };
 	const detail = typeof failure.stderr === "string" ? failure.stderr : "";
 	if (failure.code === "ENOENT") return "missing";
@@ -569,7 +564,6 @@ export class GitService {
 	readonly #environmentReady: () => Promise<void>;
 	readonly #workspaces: WorkspaceAccess;
 	readonly #paths: PathIdentity;
-	readonly #tempDir: string | undefined;
 	/**
 	 * Patch file paths handed to callers but not yet released. The protocol
 	 * handler owns a patch's lifetime (release on stream close/cancel);
@@ -595,7 +589,6 @@ export class GitService {
 			: client;
 		this.#workspaces = options.workspaces;
 		this.#paths = options.pathIdentity ?? hostPathIdentity;
-		this.#tempDir = options.tempDir;
 		this.#worktrees = new WorktreeManager({
 			client: this.#client,
 			logger: options.logger,
@@ -875,6 +868,8 @@ export class GitService {
 		}
 		for (const group of pending.values()) {
 			for (let start = 0; start < group.length; start += BATCH_CHUNK_SIZE) {
+				// One `gh` GraphQL request at a time keeps within GitHub's rate limits.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await this.#answerBatch(group.slice(start, start + BATCH_CHUNK_SIZE), answers);
 			}
 		}
@@ -1376,6 +1371,9 @@ export class GitService {
 				.filter(Boolean)
 				.slice(0, UNTRACKED_STATS_MAX_FILES);
 			for (const relativePath of untrackedPaths) {
+				// Up to 500 files of up to 1 MiB each: one at a time bounds memory and
+				// open file handles.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				totals.additions += await countUntrackedLines(path.join(workingDirectory, relativePath));
 			}
 			return totals;
@@ -1544,7 +1542,11 @@ export class GitService {
 		await this.#assertWithinWorkspaceFolders(workingDirectory);
 		try {
 			if (create) {
-				await this.#client.createBranch(branch, startPoint, { cwd: workingDirectory });
+				try {
+					await this.#client.createBranch(branch, startPoint, { cwd: workingDirectory });
+				} catch (error) {
+					throw gitActionErrorToKernelError(error);
+				}
 			}
 			await this.#client.checkoutBranch(branch, {
 				cwd: workingDirectory,
@@ -1588,7 +1590,6 @@ export class GitService {
 		try {
 			const patch = await this.#client.createWorkingDirectoryPatch({
 				cwd: options.cwd,
-				...(this.#tempDir ? { tempDir: this.#tempDir } : {}),
 				...(options.unlimited ? { maxBytes: Number.POSITIVE_INFINITY } : {}),
 			});
 			if (patch === null) return null;
@@ -1636,9 +1637,11 @@ export class GitService {
 
 	/** Best-effort sweep of in-flight patch files (plugin teardown). */
 	async dispose(): Promise<void> {
-		for (const patchPath of [...this.#inFlightPatchPaths]) {
-			await this.releasePatch(patchPath).catch(() => undefined);
-		}
+		await Promise.all(
+			[...this.#inFlightPatchPaths].map((patchPath) =>
+				this.releasePatch(patchPath).catch(() => undefined),
+			),
+		);
 	}
 
 	async available(): Promise<boolean> {

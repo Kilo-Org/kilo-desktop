@@ -11,3 +11,7 @@ runs:
       with:
         path: plugins/core/resources/kilo
         key: kilo-cli-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('plugins/core/package.json', 'pnpm-lock.yaml') }}
+        # The key changes with any lockfile change. An older CLI is safe to
+        # restore: fetch-cli compares staged.json and re-stages a mismatch.
+        restore-keys: |
+          kilo-cli-${{ runner.os }}-${{ runner.arch }}-

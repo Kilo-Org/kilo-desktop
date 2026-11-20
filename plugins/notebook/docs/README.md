@@ -5,10 +5,11 @@ Desktop packages a pinned daemon and warms it during app launch when the canonic
 is idle; an already-running compatible daemon always wins. Kilo reaches that daemon through a
 Desktop-managed plugin using `@runtimed/node` directly. Start with the integration brief.
 
-> The plugin is the kernel plugin `kilo.notebook`: notebooks are panes (`kilo.notebook/notebook`)
-> in a session's layout rather than tabs in Kilo's chat right panel, and mentions below of
-> `mainRegister`, feature-sdk capabilities or the `chat-right-panel-tab` zone describe the earlier
-> shape. See `kilo.notebook` in `docs/plugin-architecture.md`.
+> The plugin is the kernel plugin `kilo.notebook`: notebooks are panes (its `notebook`
+> contribution to `kilo.work-sessions/pane-kind`) in a work session's layout rather than tabs in
+> Kilo's chat right panel, and mentions below of `mainRegister`, feature-sdk capabilities or the
+> `chat-right-panel-tab` zone describe the earlier shape. What the plugin offers and uses today is
+> in [docs/plugins/schema.md](../../../docs/plugins/schema.md) and its `plugin.json`.
 
 | Doc                                                | What it is                                                                           |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------ |

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerates the data in docs/plugin-dependency-graph-3d.html from every
+// Regenerates the data in docs/plugins/dependency-graph.html from every
 // plugins/*/plugin.json: one link per (plugin, required plugin) pair, weighted
 // by how many of that plugin's domains / extension points it requires. All
 // kernel/* requires collapse into a single "kernel" node. Tiers and styling
@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const PAGE = path.join(root, "docs/plugin-dependency-graph-3d.html");
+const PAGE = path.join(root, "docs/plugins/dependency-graph.html");
 const START = "// links:start (pnpm docs:plugin-graph)";
 const END = "// links:end";
 

@@ -65,12 +65,9 @@ export const AssistantWorkingIndicator: FC<{ active: boolean; overlay: boolean }
 
 	// The delay only debounces inactive→active gaps; a label swap once shown
 	// changes the text in place.
+	if (!active && isRevealed) setIsRevealed(false);
 	useEffect(() => {
-		if (!active) {
-			setIsRevealed(false);
-			return;
-		}
-		if (isRevealed) return;
+		if (!active || isRevealed) return;
 		const delay =
 			label === CONSIDERING_NEXT_STEPS
 				? CONSIDERING_INDICATOR_DELAY_MS

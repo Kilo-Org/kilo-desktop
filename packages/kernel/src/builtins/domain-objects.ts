@@ -12,6 +12,7 @@ export type AppPhase = (typeof APP_PHASES)[number];
 export const KernelApp = defineDomainObject({
 	id: "kernel/app",
 	home: "main",
+	description: "The app's lifecycle phase and URLs opened in it.",
 	state: z.object({
 		phase: z.enum(APP_PHASES),
 		safeMode: z.boolean(),
@@ -60,6 +61,7 @@ const issueSchema = z.object({
 export const KernelPlugins = defineDomainObject({
 	id: "kernel/plugins",
 	home: "main",
+	description: "Every installed plugin, its state and whether it is enabled.",
 	permission: "plugins",
 	state: z.object({
 		plugins: z.record(
@@ -112,6 +114,7 @@ export type ServiceRecord = z.output<typeof serviceRecordSchema>;
 export const KernelServices = defineDomainObject({
 	id: "kernel/services",
 	home: "main",
+	description: "Supervised services: status, progress, start and restart.",
 	state: z.object({ services: z.record(z.string(), serviceRecordSchema) }),
 	methods: {
 		ensureStarted: method(z.object({ key: z.string() }), nothing),
@@ -137,6 +140,7 @@ const domainObjectRecord = z.object({
 export const KernelDomainObjects = defineDomainObject({
 	id: "kernel/domain-objects",
 	home: "main",
+	description: "Every defined domain object and whether it is provided.",
 	state: z.object({ domainObjects: z.record(z.string(), domainObjectRecord) }),
 	events: {
 		provided: z.object({ id: z.string() }),
@@ -155,6 +159,7 @@ const extensionPointRecord = z.object({
 export const KernelExtensions = defineDomainObject({
 	id: "kernel/extensions",
 	home: "main",
+	description: "Every extension point and changes to its contributions.",
 	state: z.object({ extensionPoints: z.record(z.string(), extensionPointRecord) }),
 	events: {
 		"contributions-changed": z.object({ extensionPointId: z.string() }),
@@ -187,6 +192,7 @@ export const KernelWindow = defineObjectType({
 export const KernelWindows = defineDomainObject({
 	id: "kernel/windows",
 	home: "main",
+	description: "The app's windows: open, focus, close and their events.",
 	permission: "windows",
 	state: z.object({ windows: z.record(z.string(), windowRecord) }),
 	methods: {
@@ -222,6 +228,7 @@ export const KernelWindows = defineDomainObject({
 export const KernelSystem = defineDomainObject({
 	id: "kernel/system",
 	home: "main",
+	description: "Operating-system state: sleep, network, appearance and app focus.",
 	state: z.object({
 		online: z.boolean(),
 		appearance: z.enum(["light", "dark"]),
@@ -243,12 +250,21 @@ export const KernelSystem = defineDomainObject({
 export const KernelKeybindings = defineDomainObject({
 	id: "kernel/keybindings",
 	home: "main",
+	description: "The user's keybinding overrides by command.",
 	state: z.object({ overrides: z.record(z.string(), z.string().nullable()) }),
 	/** The override for a command, `null` when unbound; `undefined` (absent) when not overridden. */
 	lookup: (state, command) => state.overrides[command],
 	methods: {
 		setOverride: method(z.object({ command: z.string(), chord: z.string().nullable() }), nothing),
 		reset: method(z.object({ command: z.string() }), nothing),
+		/** Several overrides set and reset as one change, so no half-applied state is ever seen. */
+		update: method(
+			z.object({
+				set: z.record(z.string(), z.string().nullable()),
+				reset: z.array(z.string()),
+			}),
+			nothing,
+		),
 		resetAll: method(nothing, nothing),
 	},
 });
@@ -261,6 +277,7 @@ const chromeColors = z.object({ background: z.string(), foreground: z.string() }
 export const KernelNativeTheme = defineDomainObject({
 	id: "kernel/native-theme",
 	home: "main",
+	description: "The OS colour scheme and native window chrome.",
 	permission: "appearance",
 	state: z.object({
 		source: z.enum(["system", "light", "dark"]),
@@ -276,6 +293,7 @@ export const KernelNativeTheme = defineDomainObject({
 export const KernelDialogs = defineDomainObject({
 	id: "kernel/dialogs",
 	home: "main",
+	description: "Native open, save and message dialogs.",
 	permission: "dialogs",
 	state: z.object({}),
 	methods: {
@@ -318,6 +336,7 @@ export const KernelDialogs = defineDomainObject({
 export const KernelClipboard = defineDomainObject({
 	id: "kernel/clipboard",
 	home: "main",
+	description: "The system clipboard.",
 	permission: "clipboard",
 	state: z.object({}),
 	methods: {
@@ -329,6 +348,7 @@ export const KernelClipboard = defineDomainObject({
 export const KernelOs = defineDomainObject({
 	id: "kernel/os",
 	home: "main",
+	description: "Hands URLs, files and logs to the OS.",
 	permission: "os",
 	state: z.object({}),
 	methods: {
@@ -343,6 +363,7 @@ export const KernelOs = defineDomainObject({
 export const KernelNotifications = defineDomainObject({
 	id: "kernel/notifications",
 	home: "main",
+	description: "OS notifications and the app badge.",
 	permission: "notifications",
 	state: z.object({}),
 	methods: {
@@ -424,6 +445,7 @@ const appMenuNode: z.ZodType<AppMenuNode> = z.lazy(() =>
 export const KernelAppMenu = defineDomainObject({
 	id: "kernel/app-menu",
 	home: "main",
+	description: "The native app menu of the calling window.",
 	permission: "app-menu",
 	state: z.object({}),
 	methods: {
@@ -438,6 +460,7 @@ export const KernelAppMenu = defineDomainObject({
 export const KernelKeychain = defineDomainObject({
 	id: "kernel/keychain",
 	home: "main",
+	description: "Secrets in the OS keychain.",
 	permission: "keychain",
 	homeCallersOnly: true,
 	state: z.object({}),
@@ -479,6 +502,11 @@ export const updaterStateSchema = z.object({
 	status: z.enum(UPDATER_STATUSES),
 	/** The release track the app follows, e.g. `stable` or `preview`. */
 	track: z.string().min(1),
+	/**
+	 * The track the running build was published on. Differs from `track` after
+	 * a switch until an update from the new track is installed.
+	 */
+	installedTrack: z.string().min(1),
 	currentVersion: z.string(),
 	availableVersion: z.string().nullable(),
 	downloadedVersion: z.string().nullable(),
@@ -499,6 +527,7 @@ const updaterActionResult = z.object({ accepted: z.boolean(), state: updaterStat
 export const KernelUpdater = defineDomainObject({
 	id: "kernel/updater",
 	home: "main",
+	description: "App updates: check, download and install.",
 	permission: "updater",
 	state: updaterStateSchema,
 	methods: {
@@ -517,6 +546,7 @@ export const KernelUpdater = defineDomainObject({
 export const KernelDataCollection = defineDomainObject({
 	id: "kernel/data-collection",
 	home: "main",
+	description: "The user's consent to collect data.",
 	permission: "data-collection",
 	state: z.object({
 		choice: z.boolean(),

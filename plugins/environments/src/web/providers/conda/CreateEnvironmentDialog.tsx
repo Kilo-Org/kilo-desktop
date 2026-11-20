@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -29,7 +29,7 @@ import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
 import { ENVIRONMENTS_TELEMETRY_EVENTS } from "../../../contracts/index";
 import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda";
 import { useTrack } from "../../app";
-import type { CondaRepodataFindResult } from "../../../contracts/providers/conda";
+import type { CondaEnv, CondaRepodataFindResult } from "../../../contracts/providers/conda";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
 import { useChannelSelection } from "./use-channel-selection";
 import { validateEnvironmentName } from "./environment-display";
@@ -45,6 +45,7 @@ import {
 	SelectedPackagesPane,
 	selectedPackageToSpec,
 	usePackageSelection,
+	type PackageInstallPreset,
 } from "./PackageSearch";
 import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker";
 import { useCreatePrefixCheck, type CreatePrefixCheckState } from "./use-create-prefix-check";
@@ -53,6 +54,12 @@ import { usePackageSearch } from "./use-package-search";
 interface CreateEnvironmentDialogProps {
 	open: boolean;
 	onClose: () => void;
+	/** Opens with these packages selected and channels added; read on mount. */
+	preset?: PackageInstallPreset;
+	/** The name the form opens with; read on mount. */
+	initialName?: string;
+	/** Called when an environment is created while the dialog is open. */
+	onCreated?: (environment: CondaEnv) => void;
 }
 
 /**
@@ -98,18 +105,24 @@ function prefixCheckError(
 	}
 }
 
-export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDialogProps) {
+export function CreateEnvironmentDialog({
+	open,
+	onClose,
+	preset,
+	initialName,
+	onCreated,
+}: CreateEnvironmentDialogProps) {
 	const conda = useConda();
 	const track = useTrack();
-	const [name, setName] = useState("");
+	const [name, setName] = useState(initialName ?? "");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
 	const [pythonVersions, setPythonVersions] = useState<string[]>(PYTHON_VERSIONS_FALLBACK);
-	const [query, setQuery] = useState("");
+	const [query, setQuery] = useState(() => preset?.packages[0]?.name ?? "");
 	// The last environment created from this dialog. Its confirmation shows
 	// only while the form still targets the same prefix.
 	const [created, setCreated] = useState<{ prefix: string; envName: string } | null>(null);
-	const selection = usePackageSelection();
+	const selection = usePackageSelection(preset?.packages);
 	const queryClient = useQueryClient();
 	// The in-flight create job, so "Run in background" can adopt it instead
 	// of enqueueing a duplicate. `backgrounded` mutes the foreground handlers.
@@ -124,7 +137,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		invalidates: ["listEnvironments", "checkPrefix"],
 	});
 
-	const envsDirs = useMemo(() => prefixQuery.data?.envsDirs ?? [], [prefixQuery.data?.envsDirs]);
+	const envsDirs = prefixQuery.data?.envsDirs ?? [];
 	const defaultDir = envsDirs[0] ?? "";
 
 	const trimmedName = name.trim();
@@ -146,7 +159,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 				})
 			: null;
 	const canCreate = prefixCheck.status === "available" && !mutation.isPending;
-	const channels = useChannelSelection(prefixQuery.data?.channels);
+	const channels = useChannelSelection(prefixQuery.data?.channels, preset?.channels);
 	const search = usePackageSearch({
 		conda,
 		open,
@@ -156,9 +169,11 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	});
 
 	// Pre-fill the default directory once the query resolves.
-	useEffect(() => {
+	const [prefilledDir, setPrefilledDir] = useState("");
+	if (prefilledDir !== defaultDir) {
+		setPrefilledDir(defaultDir);
 		if (defaultDir && !location) setLocation(defaultDir);
-	}, [defaultDir]); // eslint-disable-line react-hooks/exhaustive-deps
+	}
 
 	// Derive the Python version options from live repodata instead of a
 	// hardcoded list: look up the `python` package by exact name and show its
@@ -197,11 +212,10 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		setCreated(null);
 	}
 
-	const packageSpecs = useMemo(() => {
-		const specs = selection.selected.map(selectedPackageToSpec);
-		if (pythonVersion !== PYTHON_LATEST) specs.push(`python=${pythonVersion}`);
-		return specs;
-	}, [selection.selected, pythonVersion]);
+	const packageSpecs = [
+		...selection.selected.map(selectedPackageToSpec),
+		...(pythonVersion === PYTHON_LATEST ? [] : [`python=${pythonVersion}`]),
+	];
 
 	function buildPayload(prefix: string) {
 		return {
@@ -239,12 +253,13 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		const pending = { promise, envName, backgrounded: false };
 		pendingCreateRef.current = pending;
 		promise.then(
-			() => {
+			({ environment }) => {
 				// Tracked before the backgrounded check so jobs moved to a toast still count.
 				track(ENVIRONMENTS_TELEMETRY_EVENTS.environmentCreated, telemetryData);
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
 				setCreated({ prefix: payload.prefix, envName });
+				onCreated?.(environment);
 			},
 			(reason) => {
 				refreshAfterPrefixConflict(reason);
@@ -376,6 +391,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 									customized={channels.customized}
 									qaId="environments-create-channels-button"
 									availableChannels={channels.available}
+									linkChannels={channels.linkChannels}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
 								/>

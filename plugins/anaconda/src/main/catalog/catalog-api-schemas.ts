@@ -33,7 +33,7 @@ export const modelCatalogApiResponseSchema = z.object({
 				first_published: z.string().nullable().optional(),
 				modality: z.string().nullable().optional(),
 				supports_tool_calling: z.boolean().default(false),
-				vision_metadata: z.object({}).passthrough().nullable().optional(),
+				vision_metadata: z.looseObject({}).nullable().optional(),
 				source: z.object({ name: z.string() }),
 				tags: z.array(z.object({ name: z.string().min(1) })).default([]),
 				quantized_files: z.array(modelQuantizedFileSchema).default([]),

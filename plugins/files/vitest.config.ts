@@ -40,7 +40,10 @@ export default defineConfig({
 				},
 			},
 			{
-				plugins: [react(), tailwindcss()],
+				plugins: [
+					react({ compiler: true, exclude: [/\/node_modules\//, /\/\.vitest\//] }),
+					tailwindcss(),
+				],
 				resolve: { dedupe: ["react", "react-dom"] },
 				// Pre-bundle deps that Vite otherwise discovers mid-run. A re-optimize
 				// reloads the tester iframe and the orchestrator times out waiting for ready.

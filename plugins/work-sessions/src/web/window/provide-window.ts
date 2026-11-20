@@ -26,7 +26,11 @@ export interface WindowControls {
 
 export interface WindowOptions {
 	/** Shows or opens a pane of the kind in the open work session (see `WorkSessionsWindow.openPane`). */
-	readonly openPane: (workSessionId: string, kind: string) => Promise<void>;
+	readonly openPane: (
+		workSessionId: string,
+		kind: string,
+		placement: "tab" | "group" | undefined,
+	) => Promise<void>;
 	/** With no work session open: starts one from the New Session page with a pane of the kind. */
 	readonly startWithPane: (kind: string) => void;
 }
@@ -81,9 +85,9 @@ export function provideWorkSessionsWindow(sdk: PluginSdk, options: WindowOptions
 					update({ view });
 					goHome();
 				},
-				openPane: async ({ kind }) => {
+				openPane: async ({ kind, placement }) => {
 					const workSessionId = provider.state.activeWorkSessionId;
-					if (workSessionId) await options.openPane(workSessionId, kind);
+					if (workSessionId) await options.openPane(workSessionId, kind, placement);
 					else options.startWithPane(kind);
 				},
 			},

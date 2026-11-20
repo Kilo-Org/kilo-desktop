@@ -22,6 +22,8 @@ interface ChannelChooserPopoverProps {
 	customized: boolean;
 	qaId?: string;
 	availableChannels: string[];
+	/** Channels an install link asked for, shown as given. */
+	linkChannels?: readonly string[];
 	selectedChannels: string[];
 	onToggle: (channel: string) => void;
 }
@@ -39,9 +41,12 @@ export function ChannelChooserPopover({
 	customized,
 	qaId,
 	availableChannels,
+	linkChannels,
 	selectedChannels,
 	onToggle,
 }: ChannelChooserPopoverProps) {
+	const linkChannelSet = new Set(linkChannels);
+	const selectedChannelSet = new Set(selectedChannels);
 	return (
 		<DropdownMenu open={open} onOpenChange={onOpenChange}>
 			<DropdownMenuTrigger
@@ -63,8 +68,10 @@ export function ChannelChooserPopover({
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>Channels</DropdownMenuLabel>
 					{availableChannels.map((channel) => {
-						const presentation = getChannelPresentation(channel);
-						const selected = selectedChannels.includes(channel);
+						const presentation = getChannelPresentation(channel, {
+							fromLink: linkChannelSet.has(channel),
+						});
+						const selected = selectedChannelSet.has(channel);
 						return (
 							<DropdownMenuCheckboxItem
 								key={channel}

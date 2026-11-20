@@ -1,6 +1,5 @@
 import { useAuiState } from "@assistant-ui/react";
 import type { OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
-import { useMemo } from "react";
 
 /**
  * Duck-type OpenCode extras without using `useOpenCodeRuntimeExtras()`, which
@@ -54,7 +53,7 @@ type PendingQuestion = OpenCodeRuntimeExtras["questions"][string];
  */
 export function usePendingQuestions(): readonly PendingQuestion[] {
 	const questions = useOpenCodeExtrasSlice(selectQuestions);
-	return useMemo(() => (questions ? Object.values(questions) : NO_QUESTIONS), [questions]);
+	return questions ? Object.values(questions) : NO_QUESTIONS;
 }
 
 const selectOlderHistory = (extras: OpenCodeRuntimeExtras) =>

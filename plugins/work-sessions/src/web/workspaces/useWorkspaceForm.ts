@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent } from "react";
+import { useState, type DragEvent } from "react";
 
 import {
 	DEFAULT_WORKSPACE_IDENTITY_COLOR,
@@ -41,19 +41,21 @@ export function useWorkspaceForm(options: {
 	const [name, setName] = useState(workspace?.name ?? "");
 	const [color, setColor] = useState(workspace?.color ?? DEFAULT_WORKSPACE_IDENTITY_COLOR);
 	const [folders, setFolders] = useState<WorkspaceFolderInput[]>(
-		workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? [],
+		() => workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? [],
 	);
 	const [error, setError] = useState<string | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
 	const canPickDirectories = options.shell.canPickDirectories;
 
-	useEffect(() => {
+	const [formWorkspace, setFormWorkspace] = useState(workspace);
+	if (formWorkspace !== workspace) {
+		setFormWorkspace(workspace);
 		setName(workspace?.name ?? "");
 		setColor(workspace?.color ?? DEFAULT_WORKSPACE_IDENTITY_COLOR);
 		setFolders(workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? []);
 		setError(null);
 		setIsDragging(false);
-	}, [workspace]);
+	}
 
 	const addPaths = (paths: string[]) => {
 		setFolders((current) => {

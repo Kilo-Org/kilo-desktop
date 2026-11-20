@@ -11,12 +11,7 @@ import {
 	type WorkSessionDecorationProps,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import {
-	CHANGES_PANE_KIND,
-	type GitStatus,
-	type PullRequest,
-	type PullRequestsState,
-} from "../../contracts";
+import { CHANGES_PANE_KIND, type GitStatus, type PullRequest } from "../../contracts";
 import { actionCollaborators, PREFERRED_MODEL } from "../../test/actions-host";
 import {
 	bootGitHost,
@@ -24,6 +19,7 @@ import {
 	ROOT,
 	workSession,
 	type GitHost,
+	type GitHostOptions,
 	type RepositoryFake,
 } from "../../test/git-host";
 
@@ -102,7 +98,7 @@ function Header({ host, shown = SESSION }: { host: GitHost; shown?: WorkSession 
 
 async function renderActions(
 	repositoryFake: RepositoryFake,
-	options: { pullRequests?: Partial<PullRequestsState>; activeWorkSessionId?: string | null } = {},
+	options: Pick<GitHostOptions, "pullRequests" | "activeWorkSessionId" | "openPane"> = {},
 ) {
 	const peers = actionCollaborators();
 	const host = await bootGitHost({
@@ -149,8 +145,9 @@ describe("the open work session's repository actions", () => {
 		);
 	});
 
-	it("show the changed files, explain them on hover and open the Changes pane", async () => {
-		const { host } = await renderActions(repository());
+	it("show the changed files, explain them on hover and open the Changes pane in its own tab group", async () => {
+		const openPane = vi.fn();
+		await renderActions(repository(), { openPane });
 
 		const summary = page.getByTestId("git-open-changes-summary");
 		await expect.element(summary.getByText("+3")).toBeVisible();
@@ -161,7 +158,7 @@ describe("the open work session's repository actions", () => {
 		await summary.click();
 
 		await vi.waitFor(
-			() => expect(host.opened).toEqual([{ workSessionId: "wses_1", kind: CHANGES_PANE_KIND }]),
+			() => expect(openPane).toHaveBeenCalledWith({ kind: CHANGES_PANE_KIND, placement: "group" }),
 			WAIT,
 		);
 	});

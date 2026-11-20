@@ -4,8 +4,6 @@ import {
 	fromKiloProviderEntry,
 	isCustomProviderPackage,
 	MASKED_API_KEY,
-	resolveApiKeyChange,
-	resolveModalities,
 	sanitizeKiloProviderEntry,
 	toKiloProviderEntry,
 	withCustomProviderDeletions,
@@ -17,43 +15,6 @@ describe("isCustomProviderPackage", () => {
 		expect(isCustomProviderPackage("@ai-sdk/openai")).toBe(true);
 		expect(isCustomProviderPackage("@ai-sdk/anthropic")).toBe(true);
 		expect(isCustomProviderPackage("malicious-package")).toBe(false);
-	});
-});
-
-describe("resolveApiKeyChange", () => {
-	it("preserves the stored key when the key is omitted or still masked", () => {
-		expect(resolveApiKeyChange(undefined)).toEqual({ mode: "preserve" });
-		expect(resolveApiKeyChange(MASKED_API_KEY)).toEqual({ mode: "preserve" });
-	});
-
-	it("stores a changed key, trimmed", () => {
-		expect(resolveApiKeyChange(" sk-test ")).toEqual({ mode: "set", key: "sk-test" });
-	});
-
-	it("clears the stored key when it was emptied", () => {
-		expect(resolveApiKeyChange("  ")).toEqual({ mode: "clear" });
-	});
-});
-
-describe("resolveModalities", () => {
-	it("adds image input when attachments are enabled", () => {
-		expect(resolveModalities(undefined, true)).toEqual({
-			input: ["text", "image"],
-			output: ["text"],
-		});
-	});
-
-	it("preserves non-image modalities when attachments stay disabled", () => {
-		expect(
-			resolveModalities({ input: ["text", "audio", "pdf"], output: ["text", "audio"] }, false),
-		).toEqual({ input: ["text", "audio", "pdf"], output: ["text", "audio"] });
-	});
-
-	it("removes only image input when attachments are disabled", () => {
-		expect(resolveModalities({ input: ["text", "image", "pdf"], output: ["text"] }, false)).toEqual(
-			{ input: ["text", "pdf"], output: ["text"] },
-		);
-		expect(resolveModalities(undefined, false)).toBeUndefined();
 	});
 });
 

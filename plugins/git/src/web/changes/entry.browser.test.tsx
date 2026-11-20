@@ -94,14 +94,14 @@ describe("Open Changes", () => {
 		);
 	});
 
-	it("shows or opens it through the work sessions window (pop-outs, telemetry)", async () => {
+	it("shows or opens it in its own tab group through the work sessions window (pop-outs, telemetry)", async () => {
 		const openPane = vi.fn();
 		const host = await bootGitHost({ activeWorkSessionId: WORK_SESSION_ID, openPane });
 
 		await host.renderer.commands.execute(GIT_COMMANDS.openChanges);
 
 		await vi.waitFor(
-			() => expect(openPane).toHaveBeenCalledWith({ kind: CHANGES_PANE_KIND }),
+			() => expect(openPane).toHaveBeenCalledWith({ kind: CHANGES_PANE_KIND, placement: "group" }),
 			WAIT,
 		);
 		expect(host.opened).toEqual([]);

@@ -1,4 +1,4 @@
-import { createContext, type FC, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, type FC, useContext, useState, type ReactNode } from "react";
 
 import { useRevertBoundaryId } from "./checkpoint-revert";
 
@@ -49,7 +49,7 @@ export const RevertPendingProvider: FC<{ children: ReactNode }> = ({ children })
 		// becomes null, so this cannot loop.
 		setPendingId(null);
 	}
-	const value = useMemo(() => ({ pendingId, setPendingId }), [pendingId]);
+	const value = { pendingId, setPendingId };
 	return <RevertPendingContext.Provider value={value}>{children}</RevertPendingContext.Provider>;
 };
 

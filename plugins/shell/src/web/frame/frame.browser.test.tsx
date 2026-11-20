@@ -113,6 +113,17 @@ describe("shell frame", () => {
 		await expect
 			.element(page.getByTestId("sidebar-nav-toggle"))
 			.toHaveAttribute("aria-pressed", "false");
+		await expect
+			.element(
+				page.getByText("Session list").element().closest<HTMLElement>("[data-slot='sidebar']"),
+			)
+			.toHaveAttribute("data-state", "collapsed");
+
+		await renderer.commands.execute("kilo.shell/toggle-sidebar");
+
+		await expect
+			.element(page.getByTestId("sidebar-nav-toggle"))
+			.toHaveAttribute("aria-pressed", "true");
 	});
 });
 
@@ -428,6 +439,7 @@ describe("right sidebar", () => {
 	});
 
 	it("sits a canvas's padding from its islands, with the splitter centred between them", async () => {
+		await page.viewport(1400, 900);
 		await renderShell([canvasProduct(), panels(1)]);
 		await openPanel("acme.panels/outline");
 		const island = page.getByTestId("island").element().getBoundingClientRect();

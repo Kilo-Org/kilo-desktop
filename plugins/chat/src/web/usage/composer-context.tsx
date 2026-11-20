@@ -97,6 +97,14 @@ export function ComposerContext({
 						strokeDashoffset={circumference * (1 - clamp(fraction, 0, 1))}
 					/>
 				</svg>
+				{rail && usage.total > 0 ? (
+					<span
+						data-qa-id="kilo-composer-context-percent"
+						className={cn("-ml-1.5 tracking-tight tabular-nums", !warn && "text-foreground/70")}
+					>
+						{Math.round(fill)}%
+					</span>
+				) : null}
 			</PopoverTrigger>
 			<PopoverContent
 				data-qa-id="kilo-composer-context-popover"

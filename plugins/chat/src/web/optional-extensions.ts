@@ -1,4 +1,4 @@
-import { useCallback, useRef, useSyncExternalStore } from "react";
+import { useRef, useSyncExternalStore } from "react";
 
 import type { AnyExtensionPoint, Contribution } from "@kilo-desktop/kernel";
 import { useKernel } from "@kilo-desktop/kernel/web";
@@ -26,18 +26,15 @@ export function useOptionalExtensions<TPoint extends AnyExtensionPoint>(
 ): readonly Contribution<TPoint>[] {
 	const kernel = useKernel();
 	const cache = useRef<readonly Contribution<TPoint>[]>(NONE);
-	const subscribe = useCallback(
-		(onChange: () => void) =>
-			kernel.extensions.subscribe((pointId) => {
-				if (pointId === point.id) onChange();
-			}),
-		[kernel, point.id],
-	);
-	const read = useCallback(() => {
+	const subscribe = (onChange: () => void) =>
+		kernel.extensions.subscribe((pointId) => {
+			if (pointId === point.id) onChange();
+		});
+	const read = () => {
 		if (!kernel.extensions.hasPoint(point.id)) return NONE;
 		const next = kernel.extensions.list(point);
 		if (!same(cache.current, next)) cache.current = next;
 		return cache.current;
-	}, [kernel, point]);
+	};
 	return useSyncExternalStore(subscribe, read);
 }

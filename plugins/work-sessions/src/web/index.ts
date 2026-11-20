@@ -1,5 +1,6 @@
 import { definePlugin } from "@kilo-desktop/kernel";
 
+import { activateAppNavigation } from "./app-navigation";
 import { activateAttention } from "./attention";
 import { activateCanvas } from "./canvas";
 import { activateHome } from "./home";
@@ -27,6 +28,7 @@ export const workSessionsWebEntry = definePlugin({
 		activateList(sdk);
 		activateHome(sdk);
 		activateNotifications(sdk);
+		activateAppNavigation(sdk);
 		activateWorkspaces(sdk);
 	},
 });

@@ -1,6 +1,6 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { useCallback, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
@@ -67,25 +67,19 @@ function MirrorRuntime({
 	children: ReactNode;
 }) {
 	const chats = useDomainObject(Chats);
-	const directoryOf = useCallback(
-		(id: string) => chats?.getState().chats[id]?.directory ?? null,
-		[chats],
-	);
-	const getSystem = useCallback(
-		async (id: string) => {
-			const chat = chats?.getState().chats[id];
-			const config = await chats?.methods
-				.chatConfig({
-					chatId: id,
-					workSessionId,
-					workspaceId: chat?.workspaceId ?? null,
-					directory: chat?.directory ?? null,
-				})
-				.catch(() => undefined);
-			return chatSystemPrompt(chat?.workspaceFolders ?? [], config?.instructions ?? []);
-		},
-		[chats, workSessionId],
-	);
+	const directoryOf = (id: string) => chats?.getState().chats[id]?.directory ?? null;
+	const getSystem = async (id: string) => {
+		const chat = chats?.getState().chats[id];
+		const config = await chats?.methods
+			.chatConfig({
+				chatId: id,
+				workSessionId,
+				workspaceId: chat?.workspaceId ?? null,
+				directory: chat?.directory ?? null,
+			})
+			.catch(() => undefined);
+		return chatSystemPrompt(chat?.workspaceFolders ?? [], config?.instructions ?? []);
+	};
 	const runtime = useChatRuntime({
 		services,
 		chatId,

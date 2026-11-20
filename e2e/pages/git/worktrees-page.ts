@@ -67,8 +67,6 @@ export class WorktreesPage {
 		getLocatorByTestId(SESSION_LIST.deleteWorktreeDialogTestId);
 	private readonly deleteWorktreeConfirm = () =>
 		getLocatorByTestId(SESSION_LIST.deleteWorktreeConfirmTestId);
-	private readonly deleteWorktreeCancel = () =>
-		getLocatorByTestId(SESSION_LIST.deleteWorktreeCancelTestId);
 
 	// --- Steps and assertions ---
 

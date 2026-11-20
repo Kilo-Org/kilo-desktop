@@ -44,6 +44,8 @@
  * - listChannels()      → conda_tools.list_channels
  * - addChannel()        → conda_tools.add_channel
  * - removeChannel()     → conda_tools.remove_channel
+ * - resolveChannel()    → conda_tools.resolve_channel (older bridges: an exact
+ *                         name match against conda_tools.list_channels)
  * - findRepodata()      → repodata.find
  *
  * Bridge method names are NOT derivable from the conda CLI verb or from a
@@ -78,6 +80,7 @@ import type {
 	Channel,
 	CondaChannelsAddInput,
 	CondaChannelsListResult,
+	CondaChannelsResolveResult,
 	CondaDistribution,
 	CondaEnv,
 	CondaEnvsCloneInput,
@@ -151,6 +154,22 @@ const DOMAIN_CODE_MAP: Record<string, EnvironmentsErrorCode> = {
 	"conda:validation": "INVALID_MATCHSPEC",
 	"conda:environment:failed-to-clone": "SOLVE_FAILED",
 	"conda:environment-file:invalid": "INVALID_MATCHSPEC",
+};
+
+/** Per-call changes to how a bridge failure is reported; every other call uses the defaults. */
+interface CallOptions {
+	/** Throw {@link BridgeMethodMissing} for MethodNotFound, so the caller can fall back. */
+	readonly allowMissingMethod?: boolean;
+	/** Domain codes this method maps differently, ahead of {@link DOMAIN_CODE_MAP}. */
+	readonly domainCodes?: Readonly<Record<string, EnvironmentsErrorCode>>;
+}
+
+/** An older bridge without the called method; thrown only for {@link CallOptions.allowMissingMethod}. */
+class BridgeMethodMissing extends Error {}
+
+const RESOLVE_CHANNEL_CALL: CallOptions = {
+	allowMissingMethod: true,
+	domainCodes: { "conda:validation": "INVALID_CHANNEL" },
 };
 
 /**
@@ -618,6 +637,60 @@ export class SidecarCondaBackend implements CondaBackend {
 		return this.listChannels(ctx);
 	}
 
+	/**
+	 * The bridge resolves the channel with conda's own channel model and
+	 * compares base URLs, so `channel_alias`, `custom_channels` and
+	 * multichannels are never re-implemented here. Its `conda:validation` is
+	 * a bad channel, not a bad MatchSpec.
+	 */
+	async resolveChannel(
+		channel: Channel,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelsResolveResult> {
+		let resolved: BridgeResolvedChannel;
+		try {
+			resolved = await this.#call<BridgeResolvedChannel>(
+				"conda_tools.resolve_channel",
+				{ channel },
+				ctx,
+				RESOLVE_CHANNEL_CALL,
+			);
+		} catch (error) {
+			if (!(error instanceof BridgeMethodMissing)) throw error;
+			this.#logger.info(
+				"[anaconda-bridge-sidecar] conda_tools.resolve_channel is unavailable; matching configured channel names.",
+			);
+			return this.#resolveChannelByName(channel, ctx);
+		}
+		return {
+			channel: resolved.channel,
+			name: resolved.name,
+			isMultichannel: resolved.is_multichannel ?? false,
+			baseUrls: resolved.base_urls ?? [],
+			configured: resolved.configured ?? false,
+			configuredBy: resolved.configured_by ?? [],
+			exact: true,
+		};
+	}
+
+	/** Older bridges: only an exact match on a configured channel's canonical name counts. */
+	async #resolveChannelByName(
+		channel: Channel,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelsResolveResult> {
+		const configured = (await this.listChannels(ctx)).includes(channel);
+		const echoed = maskChannelCredentials(channel);
+		return {
+			channel: echoed,
+			name: echoed,
+			isMultichannel: false,
+			baseUrls: [],
+			configured,
+			configuredBy: configured ? [echoed] : [],
+			exact: false,
+		};
+	}
+
 	// ─── Lifecycle ────────────────────────────────────────────────────────
 
 	/**
@@ -652,14 +725,17 @@ export class SidecarCondaBackend implements CondaBackend {
 
 	// ─── Private ──────────────────────────────────────────────────────────
 
-	#classifyRpcError(error: unknown): KernelError {
+	#classifyRpcError(
+		error: unknown,
+		domainCodes?: Readonly<Record<string, EnvironmentsErrorCode>>,
+	): KernelError {
 		if (error instanceof ResponseError) {
 			const data = error.data as BridgeErrorData | undefined;
 			const domainCode = data?.code;
 			const detail = data?.message ?? error.message;
 
 			if (domainCode) {
-				const mapped = DOMAIN_CODE_MAP[domainCode];
+				const mapped = domainCodes?.[domainCode] ?? DOMAIN_CODE_MAP[domainCode];
 				if (mapped) {
 					return featureError(mapped, detail);
 				}
@@ -696,19 +772,29 @@ export class SidecarCondaBackend implements CondaBackend {
 		}
 	}
 
-	async #call<T>(method: string, params: unknown, ctx?: CondaCallContext): Promise<T> {
+	async #call<T>(
+		method: string,
+		params: unknown,
+		ctx?: CondaCallContext,
+		options?: CallOptions,
+	): Promise<T> {
 		// Counted before awaiting the connection, so a consent restart can never
 		// tear down a connection a call has already been handed.
 		this.#activeCalls++;
 		try {
-			return await this.#send<T>(method, params, ctx);
+			return await this.#send<T>(method, params, ctx, options);
 		} finally {
 			this.#activeCalls--;
 			this.#restartIfConsentChanged();
 		}
 	}
 
-	async #send<T>(method: string, params: unknown, ctx?: CondaCallContext): Promise<T> {
+	async #send<T>(
+		method: string,
+		params: unknown,
+		ctx?: CondaCallContext,
+		options?: CallOptions,
+	): Promise<T> {
 		const connection = await this.#ensureConnection();
 
 		if (ctx?.signal?.aborted) {
@@ -738,7 +824,10 @@ export class SidecarCondaBackend implements CondaBackend {
 			if (ctx?.signal?.aborted) {
 				throw featureError("JOB_CANCELLED", "Operation was cancelled.");
 			}
-			throw this.#classifyRpcError(error);
+			if (options?.allowMissingMethod && isMethodNotFound(error)) {
+				throw new BridgeMethodMissing(method);
+			}
+			throw this.#classifyRpcError(error, options?.domainCodes);
 		} finally {
 			if (abortHandler && ctx?.signal) {
 				ctx.signal.removeEventListener("abort", abortHandler);
@@ -987,9 +1076,21 @@ async function probeLiveness(connection: MessageConnection): Promise<void> {
 	try {
 		await connection.sendRequest("bridge.ping", {});
 	} catch (error) {
-		if (!(error instanceof ResponseError) || error.code !== JSONRPC_METHOD_NOT_FOUND) throw error;
+		if (!isMethodNotFound(error)) throw error;
 		await connection.sendRequest("conda.info", {});
 	}
+}
+
+function isMethodNotFound(error: unknown): boolean {
+	return error instanceof ResponseError && error.code === JSONRPC_METHOD_NOT_FOUND;
+}
+
+/**
+ * Masks what the bridge would: `/t/<token>` segments (anaconda.org tokens) and
+ * a URL's `user:password@`.
+ */
+function maskChannelCredentials(channel: string): string {
+	return channel.replace(/\/t\/[^/]+/g, "/t/<TOKEN>").replace(/:\/\/[^/@]*@/, "://");
 }
 
 /** `ChildProcess.killed` only means a signal was sent, not that the child exited. */
@@ -1160,6 +1261,17 @@ interface BridgeChannel {
 
 interface ListChannelsResult {
 	channels: BridgeChannel[];
+}
+
+/** `ResolvedChannel` from `conda_tools.resolve_channel`; defaulted fields may be absent. */
+interface BridgeResolvedChannel {
+	channel: string;
+	name: string;
+	is_multichannel?: boolean;
+	base_urls?: string[];
+	urls?: string[];
+	configured?: boolean;
+	configured_by?: string[];
 }
 
 /**

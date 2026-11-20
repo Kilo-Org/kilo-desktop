@@ -41,6 +41,7 @@ export type IdentityState = z.output<typeof identityStateSchema>;
 export const KernelIdentity = defineDomainObject({
 	id: "kernel/identity",
 	home: "main",
+	description: "Who the user is: the primary account and linked accounts.",
 	state: identityStateSchema,
 	events: {
 		changed: z.object({}),

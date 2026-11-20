@@ -7,6 +7,7 @@ export const chatSendKeysData = {
 	newlineSecondLine: "second line",
 	newlineReply: "Both lines arrived in order.",
 	blankDraft: "   ",
+	blankDraftFollowUp: "still-here",
 } as const;
 
 export const chatSendKeysStubReplies: Record<string, string> = {

@@ -56,7 +56,9 @@ test.describe("Chat welcome send keys", () => {
 		await chatComposerPage.typeMessage(chatSendKeysData.blankDraft);
 		await chatComposerPage.verifySendDisabled();
 		await chatComposerPage.pressKey("Enter");
+		await chatComposerPage.appendMessageSequentially(chatSendKeysData.blankDraftFollowUp);
 
+		await chatComposerPage.verifyComposerHoldsText(chatSendKeysData.blankDraftFollowUp);
 		await chatComposerPage.verifyStillOnDraft();
 	});
 });

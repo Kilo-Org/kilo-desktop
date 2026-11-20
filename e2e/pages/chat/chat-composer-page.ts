@@ -6,6 +6,7 @@ import {
 	expectElementToBeHidden,
 	expectElementToBeVisible,
 	expectElementToContainText,
+	expectElementToHaveAttribute,
 	expectElementToHaveCount,
 	fill,
 	getLocator,
@@ -147,10 +148,18 @@ export class ChatComposerPage {
 		});
 	}
 
-	/** The welcome composer is still the draft: no session has started. */
+	/**
+	 * The welcome composer is still the draft and the launcher idle. A send
+	 * marks the launcher busy (inert, aria-busy) as soon as it begins, so call
+	 * this only after a later keystroke has landed in the composer: keys are
+	 * processed in order, so a send that Enter started can't be read as idle.
+	 */
 	async verifyStillOnDraft(): Promise<void> {
 		await expectElementToBeVisible(getLocatorByTestId("kilo-session-starter"), {
 			message: "The New Session page's starter should still be showing",
+		});
+		await expectElementToHaveAttribute(getLocatorByTestId("launcher-body"), "aria-busy", "false", {
+			message: "The launcher should be idle, not starting a session",
 		});
 		await expectElementToBeHidden(getLocatorByTestId("kilo-agent-pane"), {
 			message: "No session should have started",

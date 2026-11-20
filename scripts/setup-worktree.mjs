@@ -50,6 +50,14 @@ function launchInBackground() {
 		stdio: ["ignore", log, log],
 		windowsHide: true,
 	});
+	if (child.pid === undefined) {
+		// spawn reports the cause through "error"; record it so no agent waits on an unknown PID.
+		child.on("error", (error) =>
+			fs.writeFileSync(marker.failed, `Could not start setup: ${error.message}\n`),
+		);
+		process.exitCode = 1;
+		return;
+	}
 	// Written before returning so an agent that starts right after `git worktree add` sees it.
 	fs.writeFileSync(marker.running, `${child.pid}\n`);
 	child.unref();
@@ -120,6 +128,7 @@ function warnIfStoreOnAnotherFilesystem() {
 	const modules = path.join(worktree, "node_modules");
 	let storeDir;
 	try {
+		// Despite the extension, pnpm writes this file as JSON.
 		storeDir = JSON.parse(fs.readFileSync(path.join(modules, ".modules.yaml"), "utf8")).storeDir;
 	} catch {
 		return;
@@ -140,7 +149,10 @@ function warnIfStoreOnAnotherFilesystem() {
 	);
 }
 
-/** Links every gitignored `.env*` file of the main checkout, nested ones included; only symlinks are replaced so real files survive. */
+/**
+ * Links every gitignored `.env*` file of the main checkout, nested ones included; only symlinks are replaced so real files survive.
+ * Where symlinks are not permitted (Windows without Developer Mode) the file is copied instead.
+ */
 function linkEnvFiles() {
 	const ignored = execFileSync(
 		"git",
@@ -151,14 +163,21 @@ function linkEnvFiles() {
 		.filter((entry) => entry && !entry.endsWith("/") && path.basename(entry).startsWith(".env"));
 	for (const file of ignored) {
 		const source = path.join(mainCheckout, file);
-		if (!fs.lstatSync(source, { throwIfNoEntry: false })?.isFile()) continue;
+		// statSync follows links, so an env file that points at a shared secrets file is included.
+		if (!fs.statSync(source, { throwIfNoEntry: false })?.isFile()) continue;
 		const target = path.join(worktree, file);
 		const existing = fs.lstatSync(target, { throwIfNoEntry: false });
 		if (existing && !existing.isSymbolicLink()) continue;
 		if (existing) fs.rmSync(target);
 		fs.mkdirSync(path.dirname(target), { recursive: true });
-		fs.symlinkSync(source, target);
-		console.log(`setup-worktree: linked ${file}`);
+		try {
+			fs.symlinkSync(source, target);
+			console.log(`setup-worktree: linked ${file}`);
+		} catch (error) {
+			if (error.code !== "EPERM") throw error;
+			fs.copyFileSync(source, target);
+			console.log(`setup-worktree: copied ${file} (symlinks not permitted)`);
+		}
 	}
 }
 

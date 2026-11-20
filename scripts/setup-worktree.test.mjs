@@ -54,19 +54,18 @@ function runSetup(fixture, { args = [], mode = "ok", extraEnv = {} } = {}) {
 	});
 }
 
-function waitForFile(dir, name) {
-	const target = path.join(dir, name);
+/** Resolves with whichever final marker (`done` or `failed`) setup writes, so a failed run fails the test instead of hanging it. */
+function waitForFinalMarker(dir) {
+	const final = () => ["done", "failed"].find((name) => fs.existsSync(path.join(dir, name)));
 	return new Promise((resolve) => {
-		const watcher = fs.watch(dir, () => {
-			if (fs.existsSync(target)) {
-				watcher.close();
-				resolve(target);
-			}
-		});
-		if (fs.existsSync(target)) {
+		const check = () => {
+			const name = final();
+			if (!name) return;
 			watcher.close();
-			resolve(target);
-		}
+			resolve(name);
+		};
+		const watcher = fs.watch(dir, check);
+		check();
 	});
 }
 
@@ -83,6 +82,11 @@ describe("setup-worktree", () => {
 		fs.mkdirSync(path.join(fixture.main, "apps", "web"), { recursive: true });
 		fs.writeFileSync(path.join(fixture.main, ".env"), "ROOT=1\n");
 		fs.writeFileSync(path.join(fixture.main, "apps", "web", ".env.local"), "NESTED=1\n");
+		fs.writeFileSync(path.join(fixture.root, "shared-secrets"), "SHARED=1\n");
+		fs.symlinkSync(
+			path.join(fixture.root, "shared-secrets"),
+			path.join(fixture.main, ".env.shared"),
+		);
 
 		const result = runSetup(fixture);
 
@@ -97,6 +101,7 @@ describe("setup-worktree", () => {
 			fs.readFileSync(path.join(fixture.worktree, "apps", "web", ".env.local"), "utf8"),
 			"NESTED=1\n",
 		);
+		assert.equal(fs.readFileSync(path.join(fixture.worktree, ".env.shared"), "utf8"), "SHARED=1\n");
 	});
 
 	it("never replaces a real env file the worktree already has", () => {
@@ -130,19 +135,23 @@ describe("setup-worktree", () => {
 			extraEnv: { STUB_RELEASE: release },
 		});
 
-		assert.equal(result.status, 0, result.stderr);
-		assert.ok(
-			!fs.existsSync(path.join(fixture.markers, "failed")),
-			"a new run clears the old failure",
-		);
-		const pid = Number(fs.readFileSync(path.join(fixture.markers, "running"), "utf8"));
-		assert.doesNotThrow(
-			() => process.kill(pid, 0),
-			"the running marker names a live setup process",
-		);
+		try {
+			assert.equal(result.status, 0, result.stderr);
+			assert.ok(
+				!fs.existsSync(path.join(fixture.markers, "failed")),
+				"a new run clears the old failure",
+			);
+			const pid = Number(fs.readFileSync(path.join(fixture.markers, "running"), "utf8"));
+			assert.doesNotThrow(
+				() => process.kill(pid, 0),
+				"the running marker names a live setup process",
+			);
+		} finally {
+			// Always let the stub install finish so the detached setup exits.
+			fs.writeFileSync(release, "");
+		}
 
-		fs.writeFileSync(release, "");
-		await waitForFile(fixture.markers, "done");
+		assert.equal(await waitForFinalMarker(fixture.markers), "done");
 		assert.match(fs.readFileSync(path.join(fixture.markers, "log"), "utf8"), /pnpm install/);
 	});
 });

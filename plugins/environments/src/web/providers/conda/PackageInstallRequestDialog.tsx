@@ -29,6 +29,7 @@ import { AddPackageDialog } from "./AddPackageDialog";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog";
 import { environmentDisplayName, suggestEnvironmentName } from "./environment-display";
 import { friendlyEnvironmentsError } from "./environments-error-message";
+import { InlineFailure } from "./EnvironmentsFailure";
 import type { PackageInstallLink } from "./package-install-link";
 import type { PackageInstallPreset } from "./PackageSearch";
 
@@ -266,9 +267,12 @@ function CheckFailedStep({
 					From <Spec>{request.channel}</Spec>.
 				</DialogDescription>
 			</DialogHeader>
-			<FieldError data-qa-id="environments-install-link-error">
-				{friendlyEnvironmentsError(error, "Could not check your conda channels.").message}
-			</FieldError>
+			<InlineFailure
+				reason={error}
+				error={friendlyEnvironmentsError(error, "Could not check your conda channels.")}
+				onSignedIn={onRetry}
+				qaId="environments-install-link-error"
+			/>
 			<DialogFooter>
 				<CancelButton onClick={onCancel} />
 				<Button type="button" onClick={onRetry} data-qa-id="environments-install-link-retry">

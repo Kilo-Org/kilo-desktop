@@ -1,7 +1,20 @@
+import { useState } from "react";
+
+import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@kilo-desktop/ui/components/dialog";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
+	errorCardTitle,
 	friendlyEnvironmentsError,
+	needsAnacondaSignIn,
+	type EnvironmentsOperation,
 	type FriendlyEnvironmentsError,
 } from "./environments-error-message";
 import { PolicyErrorDetails } from "./PolicyErrorDetails";
@@ -28,6 +41,8 @@ export interface JobToastCopy {
 	errorTitle: string;
 	/** Used when the failure carries no recognisable environments error code. */
 	errorFallback: string;
+	/** What the job does, where a code's usual copy would mislead (see `friendlyEnvironmentsError`). */
+	operation?: EnvironmentsOperation;
 }
 
 /** Reports a job's failure as telemetry (see `useTrackPolicyFailure`). */
@@ -53,11 +68,13 @@ export function jobToastOptions(
 
 function jobErrorToast(copy: JobToastCopy, reason: unknown, reportFailure: ReportJobFailure) {
 	reportFailure(reason);
-	const error = friendlyEnvironmentsError(reason, copy.errorFallback);
+	const error = copy.operation
+		? friendlyEnvironmentsError(reason, copy.errorFallback, { operation: copy.operation })
+		: friendlyEnvironmentsError(reason, copy.errorFallback);
 	return {
 		message: copy.errorTitle,
 		description: hasPolicyDetails(error) ? (
-			<PolicyFailureDescription error={error} />
+			<PolicyFailureSummary title={copy.errorTitle} error={error} />
 		) : (
 			error.message
 		),
@@ -67,19 +84,62 @@ function jobErrorToast(copy: JobToastCopy, reason: unknown, reportFailure: Repor
 
 function hasPolicyDetails({ code, policy }: FriendlyEnvironmentsError): boolean {
 	return (
-		code === "NOT_SIGNED_IN" ||
-		code === "CHANNEL_ACCESS_DENIED" ||
-		(policy?.blocked?.length ?? 0) > 0 ||
-		policy?.policyNote === true
+		needsAnacondaSignIn(code) || (policy?.blocked?.length ?? 0) > 0 || policy?.policyNote === true
 	);
 }
 
-/** A job's policy or Anaconda sign-in failure: the summary, then {@link PolicyErrorDetails}. */
-function PolicyFailureDescription({ error }: { error: FriendlyEnvironmentsError }) {
+/** The first line of a message, counting the lines left out (a policy block lists one per package). */
+function oneLine(message: string): string {
+	const [first = "", ...rest] = message
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+	return rest.length > 0 ? `${first} (+${rest.length} more)` : first;
+}
+
+/**
+ * A job's policy or Anaconda sign-in failure in its toast: a one-line
+ * summary and "Details", which opens the whole message with
+ * {@link PolicyErrorDetails} (blocked packages, policy note, sign-in).
+ * Reported by `jobErrorToast`, not here (see {@link JobToastCopy}).
+ */
+function PolicyFailureSummary({
+	title,
+	error,
+}: {
+	title: string;
+	error: FriendlyEnvironmentsError;
+}) {
+	const [open, setOpen] = useState(false);
 	return (
-		<div className="flex flex-col gap-2" data-qa-id="environments-job-error-policy">
-			<span className="whitespace-pre-line">{error.message}</span>
-			<PolicyErrorDetails code={error.code} policy={error.policy} />
+		<div className="flex flex-col items-start gap-1.5" data-qa-id="environments-job-error-policy">
+			<span>{oneLine(error.message)}</span>
+			<Button
+				type="button"
+				variant="outline"
+				size="xs"
+				onClick={() => setOpen(true)}
+				data-qa-id="environments-job-error-details"
+			>
+				Details
+			</Button>
+			<Dialog open={open} onOpenChange={setOpen}>
+				<DialogContent className="sm:max-w-lg" data-qa-id="environments-job-error-dialog">
+					<DialogHeader>
+						<DialogTitle>{title}</DialogTitle>
+						<DialogDescription>{errorCardTitle(error)}</DialogDescription>
+					</DialogHeader>
+					<div className="text-muted-foreground flex min-h-0 flex-col gap-3 overflow-y-auto text-sm">
+						<p className="text-foreground whitespace-pre-line">{error.message}</p>
+						<PolicyErrorDetails code={error.code} policy={error.policy} />
+						{error.detail ? (
+							<pre className="bg-muted/50 text-foreground/90 max-h-48 overflow-auto rounded-md border p-2.5 font-mono text-xs break-all whitespace-pre-wrap">
+								{error.detail}
+							</pre>
+						) : null}
+					</div>
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
@@ -178,5 +238,6 @@ export function backupEnvironmentJob(envName: string, cloneName: string): JobToa
 		successDescription: `Saved as ${cloneName}.`,
 		errorTitle: `Could not back up ${envName}`,
 		errorFallback: "Could not back up the environment.",
+		operation: "clone",
 	};
 }

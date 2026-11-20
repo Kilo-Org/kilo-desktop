@@ -399,6 +399,16 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 							</div>
 						)}
 
+						{filePath && fileContent ? (
+							<p
+								className="text-muted-foreground text-xs"
+								data-qa-id="environments-import-policy-note"
+							>
+								The file's own channels and its <code className="font-mono">pip:</code> section are
+								not covered by your organization's package policy.
+							</p>
+						) : null}
+
 						{validationError ? <FieldError>{validationError}</FieldError> : null}
 					</div>
 

@@ -30,7 +30,7 @@
  * Mapping from CondaBackend methods to bridge JSON-RPC methods:
  * - list()              → conda_tools.describe_environments
  * - findDistributions() → conda_tools.find_distributions
- * - prefixOptions()     → conda.info (envs_dirs + channels)
+ * - prefixOptions()     → conda.info (envs_dirs) + conda_tools.list_channels
  * - create()            → conda.create (skip_preview=true)
  * - clone()             → conda.clone (destinationName=<target>)
  * - createFromFile()    → conda.create_from_file (file=<path>)
@@ -47,6 +47,7 @@
  * - resolveChannel()    → conda_tools.resolve_channel (older bridges: an exact
  *                         name match against conda_tools.list_channels)
  * - findRepodata()      → repodata.find
+ * - channelPolicies()   → auth.channel_policies (older bridges: no channels)
  *
  * Failed transactions (`success: false`) are classified by the bridge's
  * `reason`: `blocked_by_policy` → POLICY_BLOCKED, `not_signed_in` →
@@ -93,6 +94,7 @@ import {
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda";
 import type {
 	Channel,
+	CondaChannelPoliciesResult,
 	CondaChannelsAddInput,
 	CondaChannelsListResult,
 	CondaChannelsResolveResult,
@@ -203,6 +205,9 @@ interface CallOptions {
 
 /** An older bridge without the called method; thrown only for {@link CallOptions.allowMissingMethod}. */
 class BridgeMethodMissing extends Error {}
+
+/** Older bridges have no `auth.channel_policies`; they report no policies. */
+const CHANNEL_POLICIES_CALL: CallOptions = { allowMissingMethod: true };
 
 const RESOLVE_CHANNEL_CALL: CallOptions = {
 	allowMissingMethod: true,
@@ -365,15 +370,20 @@ export class SidecarCondaBackend implements CondaBackend {
 		);
 	}
 
+	/**
+	 * `channels` are the configured channels' canonical names
+	 * (`conda_tools.list_channels`), not `conda.info`'s `channels`, which
+	 * expands each one into per-subdir URLs.
+	 */
 	async prefixOptions(ctx?: CondaCallContext): Promise<{ envsDirs: string[]; channels: string[] }> {
-		const info = await this.#call<CondaInfoResult>("conda.info", {}, ctx);
+		const [info, configured] = await Promise.all([
+			this.#call<CondaInfoResult>("conda.info", {}, ctx),
+			this.listChannels(ctx),
+		]);
 		const envsDirs = Array.isArray(info.envs_dirs)
 			? info.envs_dirs.filter((d): d is string => typeof d === "string" && d.length > 0)
 			: [];
-		const channels = Array.isArray(info.channels)
-			? info.channels.filter((c): c is string => typeof c === "string" && c.length > 0)
-			: [];
-		return { envsDirs, channels };
+		return { envsDirs, channels: configured.filter((channel) => channel.length > 0) };
 	}
 
 	async create(
@@ -703,6 +713,43 @@ export class SidecarCondaBackend implements CondaBackend {
 			configured: resolved.configured ?? false,
 			configuredBy: resolved.configured_by ?? [],
 			exact: true,
+		};
+	}
+
+	/**
+	 * Which organization package policy each channel gets on
+	 * repo.anaconda.cloud. The bridge looks policies up on the platform with
+	 * the user's API key, within its own 20 s budget, and never fails for a
+	 * lookup it could not make (`lookup_failed`). The credential it would send
+	 * is left out: nothing here needs it.
+	 */
+	async channelPolicies(
+		channels: readonly Channel[] | undefined,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelPoliciesResult> {
+		let result: BridgeChannelPoliciesResult;
+		try {
+			result = await this.#call<BridgeChannelPoliciesResult>(
+				"auth.channel_policies",
+				channels ? { channels } : {},
+				ctx,
+				CHANNEL_POLICIES_CALL,
+			);
+		} catch (error) {
+			if (!(error instanceof BridgeMethodMissing)) throw error;
+			return { channels: [] };
+		}
+		return {
+			channels: (result?.channels ?? []).map(({ channel, entries }) => ({
+				channel,
+				entries: (entries ?? []).map((entry) => ({
+					baseUrl: entry.base_url,
+					org: entry.org ?? null,
+					policyId: entry.policy_id ?? null,
+					policyName: entry.policy_name ?? null,
+					lookupFailed: entry.lookup_failed ?? false,
+				})),
+			})),
 		};
 	}
 
@@ -1356,6 +1403,20 @@ interface ListChannelsResult {
 }
 
 /** `ResolvedChannel` from `conda_tools.resolve_channel`; defaulted fields may be absent. */
+/** Result of `auth.channel_policies` (bridge `ChannelPoliciesResult`). */
+interface BridgeChannelPoliciesResult {
+	channels?: {
+		channel: string;
+		entries?: {
+			base_url: string;
+			org?: string | null;
+			policy_id?: string | null;
+			policy_name?: string | null;
+			lookup_failed?: boolean;
+		}[];
+	}[];
+}
+
 interface BridgeResolvedChannel {
 	channel: string;
 	name: string;

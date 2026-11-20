@@ -1,5 +1,5 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -27,14 +27,24 @@ import { CheckIcon, FolderIcon } from "lucide-react";
 
 import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
 import { ENVIRONMENTS_TELEMETRY_EVENTS } from "../../../contracts/index";
-import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda";
+import {
+	condaQueryKey,
+	condaQueryOptions,
+	useConda,
+	useCondaMutation,
+	useCondaQuery,
+} from "../../conda";
 import { useTrack } from "../../app";
 import type { CondaEnv, CondaRepodataFindResult } from "../../../contracts/providers/conda";
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
-import { useChannelSelection } from "./use-channel-selection";
+import { ChannelPolicyHint } from "./ChannelPolicyHint";
+import { configuredChannelsOf, useChannelSelection } from "./use-channel-selection";
 import { validateEnvironmentName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
+import { InlineFailure } from "./EnvironmentsFailure";
 import { createEnvironmentJob, showJobSuccess, useJobToasts } from "./environments-toasts";
 import {
+	ChannelListFailure,
 	PackageResultsTable,
 	PackageSearchInput,
 	SelectedPackagesPane,
@@ -56,13 +66,6 @@ interface CreateEnvironmentDialogProps {
 	/** Called when an environment is created while the dialog is open. */
 	onCreated?: (environment: CondaEnv) => void;
 }
-
-/**
- * Fallback Python versions shown only when the live repodata lookup for the
- * `python` package returns nothing (e.g. offline or provider not ready). The
- * real list is derived from repodata — see `pythonVersions`.
- */
-const PYTHON_VERSIONS_FALLBACK = ["3.13.0", "3.12.0", "3.11.0", "3.10.0", "3.9.0"];
 
 /**
  * Join a base directory and an environment name using the directory's own
@@ -113,7 +116,6 @@ export function CreateEnvironmentDialog({
 	const [name, setName] = useState(initialName ?? "");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
-	const [pythonVersions, setPythonVersions] = useState<string[]>(PYTHON_VERSIONS_FALLBACK);
 	const [query, setQuery] = useState(() => preset?.packages[0]?.name ?? "");
 	// The last environment created from this dialog. Its confirmation shows
 	// only while the form still targets the same prefix.
@@ -155,11 +157,11 @@ export function CreateEnvironmentDialog({
 				})
 			: null;
 	const canCreate = prefixCheck.status === "available" && !mutation.isPending;
-	const channels = useChannelSelection(prefixQuery.data?.channels, preset?.channels);
+	const channels = useChannelSelection(configuredChannelsOf(prefixQuery), preset?.channels);
 	const search = usePackageSearch({
 		conda,
 		open,
-		ready: !prefixQuery.isPending,
+		ready: channels.ready,
 		query,
 		channels: channels.channelsArg,
 	});
@@ -171,32 +173,32 @@ export function CreateEnvironmentDialog({
 		if (defaultDir && !location) setLocation(defaultDir);
 	}
 
-	// Derive the Python version options from live repodata instead of a
-	// hardcoded list: look up the `python` package by exact name and show its
-	// full version list (newest first, patch-level included). Falls back to a
-	// static list only when the lookup returns nothing (offline / provider
-	// not ready).
-	useEffect(() => {
-		if (!open) return;
-		let cancelled = false;
-		const args = channels.channelsArg
-			? { names: ["python"], limit: 1, channels: channels.channelsArg }
-			: { names: ["python"], limit: 1 };
-		conda
-			.findRepodata(args)
-			.then((result) => {
-				if (cancelled) return;
-				const { packages } = result as CondaRepodataFindResult;
-				const python = packages.find((p) => p.name === "python");
-				if (python && python.versions.length > 0) {
-					setPythonVersions(python.versions.map((v) => v.version));
-				}
-			})
-			.catch(() => {});
-		return () => {
-			cancelled = true;
-		};
-	}, [open, channels.channelsArg, conda]);
+	// The Python versions the selected channels offer: the `python` package's
+	// full version list (newest first, patch-level included). No version is
+	// ever made up: when the lookup fails (e.g. an Anaconda sign-in), only
+	// "Latest" is offered and the failure is shown under the picker.
+	const pythonLookup = useQuery({
+		...condaQueryOptions(conda, "findRepodata", {
+			names: ["python"],
+			limit: 1,
+			...(channels.channelsArg ? { channels: channels.channelsArg } : {}),
+		}),
+		enabled: open && channels.ready,
+		// Shown as it is: a sign-in or a backend failure won't pass on a retry.
+		retry: false,
+	});
+	const pythonLookupError = pythonLookup.isError ? pythonLookup.error : null;
+	const pythonVersions = pythonLookupError
+		? []
+		: ((pythonLookup.data as CondaRepodataFindResult | undefined)?.packages
+				.find((p) => p.name === "python")
+				?.versions.map((v) => v.version) ?? []);
+
+	// A version picked before the lookup failed is no longer offered.
+	const offeredPythonVersion =
+		pythonVersion === PYTHON_LATEST || pythonVersions.includes(pythonVersion)
+			? pythonVersion
+			: PYTHON_LATEST;
 
 	function resetForm() {
 		setName("");
@@ -210,7 +212,7 @@ export function CreateEnvironmentDialog({
 
 	const packageSpecs = [
 		...selection.selected.map(selectedPackageToSpec),
-		...(pythonVersion === PYTHON_LATEST ? [] : [`python=${pythonVersion}`]),
+		...(offeredPythonVersion === PYTHON_LATEST ? [] : [`python=${offeredPythonVersion}`]),
 	];
 
 	function buildPayload(prefix: string) {
@@ -242,7 +244,7 @@ export function CreateEnvironmentDialog({
 		const payload = buildPayload(targetPrefix);
 		const telemetryData = {
 			packageCount: selection.selected.length,
-			pythonPinned: pythonVersion !== PYTHON_LATEST,
+			pythonPinned: offeredPythonVersion !== PYTHON_LATEST,
 			customLocation: trimmedLocation !== defaultDir,
 		};
 		const promise = mutation.mutateAsync(payload);
@@ -352,12 +354,25 @@ export function CreateEnvironmentDialog({
 								<Field className="md:flex-1">
 									<FieldLabel>Python version</FieldLabel>
 									<PythonVersionPicker
-										value={pythonVersion}
+										value={offeredPythonVersion}
 										versions={pythonVersions}
 										onChange={setPythonVersion}
 									/>
 								</Field>
 							</FieldGroup>
+
+							{pythonLookupError ? (
+								<InlineFailure
+									reason={pythonLookupError}
+									error={friendlyEnvironmentsError(
+										pythonLookupError,
+										"Could not look up the Python versions.",
+									)}
+									title="Couldn't load Python versions, so only Latest is offered."
+									onSignedIn={() => void pythonLookup.refetch()}
+									qaId="environments-create-python-error"
+								/>
+							) : null}
 
 							{nameError ? (
 								<FieldError data-qa-id="environments-create-name-error">{nameError}</FieldError>
@@ -392,13 +407,25 @@ export function CreateEnvironmentDialog({
 									onToggle={channels.toggle}
 								/>
 							</div>
-
-							<PackageResultsTable
-								search={search}
-								query={query}
-								selection={selection}
-								qaPrefix="environments-create-package"
+							<ChannelPolicyHint
+								channels={channels.channelsArg}
+								qaId="environments-create-policy-hint"
 							/>
+
+							{channels.status === "failed" ? (
+								<ChannelListFailure
+									reason={channels.error}
+									onRetry={() => void prefixQuery.refetch()}
+									qaPrefix="environments-create-package"
+								/>
+							) : (
+								<PackageResultsTable
+									search={search}
+									query={query}
+									selection={selection}
+									qaPrefix="environments-create-package"
+								/>
+							)}
 						</div>
 
 						{selection.selected.length > 0 ? (

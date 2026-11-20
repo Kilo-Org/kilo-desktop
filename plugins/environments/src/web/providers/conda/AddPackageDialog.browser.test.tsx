@@ -4,6 +4,8 @@ import { page, userEvent } from "vitest/browser";
 
 import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
+	type CondaChannelPoliciesInput,
+	type CondaChannelPoliciesResult,
 	type CondaEnv,
 	type CondaPackage,
 	type CondaPackagesInstallInput,
@@ -63,6 +65,7 @@ async function renderDialog(
 		onClose?: () => void;
 		anaconda?: EnvironmentsHostOptions["anaconda"];
 		toaster?: boolean;
+		channelPolicies?: (input: CondaChannelPoliciesInput) => Promise<CondaChannelPoliciesResult>;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["2.1.0", "2.0.0"]), pkg("pandas")]);
@@ -86,6 +89,7 @@ async function renderDialog(
 			}),
 			"conda.packages.install": install,
 			"conda.packages.previewInstall": previewInstall,
+			...(options.channelPolicies ? { "conda.channels.policies": options.channelPolicies } : {}),
 		},
 		...(options.anaconda ? { anaconda: options.anaconda } : {}),
 	};
@@ -127,15 +131,15 @@ async function waitForInstallEnabled(baseElement: HTMLElement) {
 afterEach(cleanup);
 
 describe("AddPackageDialog", () => {
-	it("searches repodata with the query and selected channels after the debounce", async () => {
+	it("searches only the configured channels with the query after the debounce", async () => {
 		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
-		const { baseElement } = await renderDialog({ find, channels: ["conda-forge"] });
+		const { baseElement } = await renderDialog({ find, channels: ["conda-forge", "bioconda"] });
 		const screen = page.elementLocator(baseElement);
 
 		await waitForRows(baseElement, 1);
 		// Initial search waits for prefixOptions so the channel filter is present.
 		expect(find.mock.calls[0]![0]).toMatchObject({
-			channels: ["defaults", "conda-forge"],
+			channels: ["conda-forge", "bioconda"],
 			limit: 50,
 		});
 		expect(find.mock.calls[0]![0].query).toBeUndefined();
@@ -145,9 +149,50 @@ describe("AddPackageDialog", () => {
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0]).toMatchObject({
 				query: "num",
-				channels: ["defaults", "conda-forge"],
+				channels: ["conda-forge", "bioconda"],
 			});
 		});
+	});
+
+	it("searches defaults and conda-forge when no channel is configured", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		const { baseElement } = await renderDialog({ find, channels: [] });
+
+		await waitForRows(baseElement, 1);
+		expect(find.mock.calls[0]![0].channels).toEqual(["defaults", "conda-forge"]);
+	});
+
+	it("holds the search when the channel list fails, and searches once it loads", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		let fail = true;
+		const { baseElement } = await renderWithConda(
+			<AddPackageDialog env={ENV} open onClose={() => {}} />,
+			{
+				handlers: {
+					"conda.envs.prefixOptions": async () => {
+						if (fail) throw new Error("PROVIDER_NOT_READY: anaconda-bridge-sidecar error: exited");
+						return { envsDirs: [], channels: ["acme/main"] };
+					},
+					"conda.packages.list": async () => ({ envName: "dev", packages: [] }),
+					"conda.repodata.find": async (input: CondaRepodataFindInput) => ({
+						packages: find(input),
+						truncated: false,
+					}),
+				},
+			},
+		);
+		const screen = page.elementLocator(baseElement);
+
+		const failure = screen.getByTestId("environments-conda-add-pkg-channels-error");
+		await expect.element(failure).toBeVisible();
+		await expect.element(failure.getByText("Couldn't load your conda channels")).toBeVisible();
+		expect(find).not.toHaveBeenCalled();
+
+		fail = false;
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-error-retry"));
+
+		await waitForRows(baseElement, 1);
+		expect(find.mock.calls[0]![0].channels).toEqual(["acme/main"]);
 	});
 
 	it("shows an empty-state message when the search has no results", async () => {
@@ -156,6 +201,8 @@ describe("AddPackageDialog", () => {
 
 		await userEvent.fill(screen.getByTestId("environments-conda-add-pkg-search"), "nothing");
 		await expect.element(screen.getByText("No results for “nothing”")).toBeVisible();
+		// Never a hint to try other channels: a policy may be why it is missing.
+		await expect.element(screen.getByText("Check the spelling.", { exact: true })).toBeVisible();
 	});
 
 	it("dedupes repodata rows by name", async () => {
@@ -267,7 +314,7 @@ describe("AddPackageDialog", () => {
 	it("installs pinned specs for the chosen versions and closes on success", async () => {
 		const install = vi.fn(async (_input: CondaPackagesInstallInput) => installResult());
 		const onClose = vi.fn();
-		const { baseElement } = await renderDialog({ install, onClose, channels: ["conda-forge"] });
+		const { baseElement } = await renderDialog({ install, onClose, channels: ["acme/main"] });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -291,7 +338,7 @@ describe("AddPackageDialog", () => {
 			name: "dev",
 			prefix: "/opt/anaconda3/envs/dev",
 			packages: ["numpy=2.0.0", "pandas"],
-			channels: ["defaults", "conda-forge"],
+			channels: ["acme/main"],
 		});
 		await vi.waitFor(() => {
 			expect(onClose).toHaveBeenCalledOnce();
@@ -664,6 +711,91 @@ describe("AddPackageDialog", () => {
 		expect(install).not.toHaveBeenCalled();
 	});
 
+	it("searches again when the Anaconda account changes", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		const { baseElement, host } = await renderDialog({
+			find,
+			anaconda: { signIn: async () => ({ ok: true as const }) },
+		});
+		await waitForRows(baseElement, 1);
+		const searches = find.mock.calls.length;
+
+		await host.setAnacondaSession({ status: "authenticated", user: { userId: "user-2" } });
+
+		await vi.waitFor(() => expect(find.mock.calls.length).toBeGreaterThan(searches));
+	});
+
+	describe("the organization package policy hint", () => {
+		const withPolicy = (channel: string) => ({
+			channel,
+			entries: [
+				{
+					baseUrl: "https://repo.anaconda.cloud/repo/main",
+					org: "acme",
+					policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+					policyName: "No critical CVEs",
+					lookupFailed: false,
+				},
+			],
+		});
+
+		it("says a policy may hide packages on the selected channels that have one", async () => {
+			const channelPolicies = vi.fn(async (_input: CondaChannelPoliciesInput) => ({
+				channels: [withPolicy("defaults"), { channel: "conda-forge", entries: [] }],
+			}));
+			const { baseElement } = await renderDialog({ channelPolicies });
+			const screen = page.elementLocator(baseElement);
+
+			await expect
+				.element(screen.getByTestId("environments-conda-add-pkg-policy-hint"))
+				.toHaveTextContent(
+					"Your organization's package policy may hide some packages on Anaconda Main.",
+				);
+			expect(channelPolicies).toHaveBeenCalledWith({ channels: ["defaults", "conda-forge"] });
+			expect(page.getByTestId("environments-channel-chooser").query()).toBeNull();
+		});
+
+		it("never holds the results, and says nothing when no policy could be read", async () => {
+			const pending: ((result: CondaChannelPoliciesResult) => void)[] = [];
+			const channelPolicies = vi.fn(
+				() =>
+					new Promise<CondaChannelPoliciesResult>((resolve) => {
+						pending.push(resolve);
+					}),
+			);
+			const { baseElement, host } = await renderDialog({ channelPolicies });
+			const screen = page.elementLocator(baseElement);
+			const policyLookups = () =>
+				host.queryClient.getQueryCache().findAll({ queryKey: ["environments", "channelPolicies"] });
+
+			await waitForRows(baseElement, 2);
+			await vi.waitFor(() => expect(channelPolicies).toHaveBeenCalled());
+			const unread = {
+				channels: [
+					{
+						channel: "defaults",
+						entries: [
+							{
+								baseUrl: "https://repo.anaconda.cloud/repo/main",
+								org: null,
+								policyId: null,
+								policyName: null,
+								lookupFailed: true,
+							},
+						],
+					},
+				],
+			};
+			for (const resolve of pending) resolve(unread);
+
+			await vi.waitFor(() =>
+				expect(policyLookups().some((query) => query.state.status === "success")).toBe(true),
+			);
+			await waitForRows(baseElement, 2);
+			expect(screen.getByTestId("environments-conda-add-pkg-policy-hint").query()).toBeNull();
+		});
+	});
+
 	describe("package policy and Anaconda sign-in failures", () => {
 		const notSignedIn = () =>
 			new Error(
@@ -671,6 +803,68 @@ describe("AddPackageDialog", () => {
 					refused: { org: "acme", channel: "acme/main" },
 				}),
 			);
+
+		it("asks to sign in to Anaconda when a channel refuses the search, then searches again", async () => {
+			let signedIn = false;
+			const find = vi.fn((_input: CondaRepodataFindInput) => {
+				if (!signedIn) throw notSignedIn();
+				return [pkg("numpy")];
+			});
+			const signIn = vi.fn(async () => {
+				signedIn = true;
+				return { ok: true as const };
+			});
+			const { baseElement, host } = await renderDialog({ find, anaconda: { signIn } });
+			const screen = page.elementLocator(baseElement);
+
+			const failure = screen.getByTestId("environments-conda-add-pkg-search-error");
+			await expect.element(failure).toBeVisible();
+			await expect
+				.element(failure.getByText("Sign in to Anaconda", { exact: true }).first())
+				.toBeVisible();
+			await expect
+				.element(
+					failure.getByText(
+						"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+					),
+				)
+				.toBeVisible();
+			expect(screen.getByText(/No results/).query()).toBeNull();
+			await vi.waitFor(() =>
+				expect(host.tracked).toContainEqual(
+					expect.objectContaining({
+						event: "Environment Policy Blocked",
+						data: expect.objectContaining({ surface: "ui", errorCode: "NOT_SIGNED_IN" }),
+					}),
+				),
+			);
+
+			await userEvent.click(failure.getByTestId("environments-anaconda-sign-in"));
+
+			await waitForRows(baseElement, 1);
+			expect(signIn).toHaveBeenCalledOnce();
+		});
+
+		it("explains any other failed search with Try again, never as no results", async () => {
+			let attempt = 0;
+			const find = vi.fn((_input: CondaRepodataFindInput) => {
+				attempt += 1;
+				if (attempt === 1) {
+					throw new Error("PROVIDER_NOT_READY: anaconda-bridge-sidecar error: repodata timed out");
+				}
+				return [pkg("numpy")];
+			});
+			const { baseElement } = await renderDialog({ find });
+			const screen = page.elementLocator(baseElement);
+
+			const failure = screen.getByTestId("environments-conda-add-pkg-search-error");
+			await expect.element(failure.getByText("Couldn't search packages")).toBeVisible();
+			await expect.element(failure.getByText(/repodata timed out/)).toBeVisible();
+
+			await userEvent.click(failure.getByTestId("environments-conda-add-pkg-search-error-retry"));
+
+			await waitForRows(baseElement, 1);
+		});
 
 		it("asks to sign in to Anaconda, and re-runs the preview once signed in", async () => {
 			let signedIn = false;
@@ -757,7 +951,7 @@ describe("AddPackageDialog", () => {
 			expect(card.getByTestId("environments-anaconda-sign-in").query()).toBeNull();
 		});
 
-		it("explains an install the policy blocks in its failure toast", async () => {
+		it("summarises an install the policy blocks in its failure toast, with the details a click away", async () => {
 			const install = vi.fn(async (): Promise<CondaPackagesInstallResult> => {
 				throw new Error(
 					formatEnvironmentsErrorMessage("POLICY_BLOCKED", "pandas 1.0.0 is blocked", {
@@ -786,10 +980,21 @@ describe("AddPackageDialog", () => {
 			const toast = screen.getByTestId("environments-job-error-policy");
 			await expect.element(toast).toBeVisible();
 			await expect.element(toast.getByText("pandas 1.0.0 is blocked")).toBeVisible();
+			// One line in the toast; the blocked list opens from Details.
+			expect(
+				toast.getByText("Blocked by the policy “No critical CVEs” in acme").query(),
+			).toBeNull();
+			await userEvent.click(toast.getByTestId("environments-job-error-details"));
+
+			const details = page.getByTestId("environments-job-error-dialog");
+			await expect.element(details).toBeVisible();
 			await expect
-				.element(toast.getByText("Blocked by the policy “No critical CVEs” in acme"))
+				.element(details.getByText("Blocked by your organization's policy"))
 				.toBeVisible();
-			await expect.element(toast.getByText("Reason: CVE-2099-0001 (critical)")).toBeVisible();
+			await expect
+				.element(details.getByText("Blocked by the policy “No critical CVEs” in acme"))
+				.toBeVisible();
+			await expect.element(details.getByText("Reason: CVE-2099-0001 (critical)")).toBeVisible();
 			await vi.waitFor(() =>
 				expect(host.tracked).toContainEqual({
 					event: "Environment Policy Blocked",

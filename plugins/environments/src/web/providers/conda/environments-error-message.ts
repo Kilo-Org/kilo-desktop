@@ -114,11 +114,22 @@ export interface FriendlyEnvironmentsError {
 export function friendlyEnvironmentsError(
 	reason: unknown,
 	fallback: string,
+	options: FriendlyErrorOptions = {},
 ): FriendlyEnvironmentsError {
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
 	const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
 	if (!parsed) return { code: null, message: fallback };
 	const policy = parsed.policy ? { policy: parsed.policy } : {};
+
+	const forOperation = operationMessage(options.operation, parsed.code, fallback);
+	if (forOperation) {
+		return {
+			code: parsed.code,
+			message: forOperation,
+			...(parsed.detail ? { detail: parsed.detail } : {}),
+			...policy,
+		};
+	}
 
 	if (parsed.code === "POLICY_BLOCKED") {
 		const { summary, rest } = splitPolicyBlockedDetail(parsed.detail);
@@ -135,6 +146,33 @@ export function friendlyEnvironmentsError(
 		...(parsed.detail ? { detail: parsed.detail } : {}),
 		...policy,
 	};
+}
+
+/**
+ * What failed, where a code's usual copy would mislead:
+ * - `remove`: removing packages re-solves the environment against its
+ *   channels, so a policy channel refuses it while signed out of Anaconda;
+ * - `clone`: the bridge never says why a clone failed (policy and sign-in
+ *   failures included arrive as a generic `failed-to-clone`), so it is not
+ *   called a dependency conflict.
+ */
+export type EnvironmentsOperation = "remove" | "clone";
+
+export interface FriendlyErrorOptions {
+	readonly operation?: EnvironmentsOperation | undefined;
+}
+
+const SIGN_IN_TO_CHANGE_MESSAGE =
+	"Sign in to Anaconda to change this environment: removing packages re-solves it against its channels.";
+
+function operationMessage(
+	operation: EnvironmentsOperation | undefined,
+	code: EnvironmentsErrorCode,
+	fallback: string,
+): string | undefined {
+	if (operation === "remove" && code === "NOT_SIGNED_IN") return SIGN_IN_TO_CHANGE_MESSAGE;
+	if (operation === "clone" && code === "SOLVE_FAILED") return fallback;
+	return undefined;
 }
 
 function friendlyMessage({ code, detail, policy }: ParsedEnvironmentsError): string {
@@ -170,6 +208,11 @@ function splitPolicyBlockedDetail(detail: string | undefined): { summary?: strin
 		...(summary.trim() ? { summary: summary.trim() } : {}),
 		...(solverText ? { rest: solverText } : {}),
 	};
+}
+
+/** repo.anaconda.cloud refused the request: the Anaconda (not Kilo) account is missing or refused. */
+export function needsAnacondaSignIn(code: EnvironmentsErrorCode | null): boolean {
+	return code === "NOT_SIGNED_IN" || code === "CHANNEL_ACCESS_DENIED";
 }
 
 /**

@@ -1,5 +1,6 @@
 import type {
 	Channel,
+	CondaChannelPoliciesResult,
 	CondaChannelsAddInput,
 	CondaChannelsListResult,
 	CondaChannelsResolveResult,
@@ -98,6 +99,7 @@ export interface CondaCreateFromFileRequest {
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 	findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]>;
+	/** Where environments can go, and the configured channels by canonical name. */
 	prefixOptions(ctx?: CondaCallContext): Promise<{ envsDirs: string[]; channels: string[] }>;
 
 	create(
@@ -139,6 +141,15 @@ export interface CondaBackend {
 	removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 	/** Resolves a channel with conda's channel model and whether configured channels provide it. */
 	resolveChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsResolveResult>;
+	/**
+	 * The organization package policy each channel (default: the configured
+	 * ones) gets on repo.anaconda.cloud. Bridges without the method report no
+	 * channels.
+	 */
+	channelPolicies(
+		channels: readonly Channel[] | undefined,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelPoliciesResult>;
 
 	/**
 	 * Aggregate available packages from the channel repodata index.

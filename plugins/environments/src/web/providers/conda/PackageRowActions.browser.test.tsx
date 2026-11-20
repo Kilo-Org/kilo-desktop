@@ -2,6 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { formatEnvironmentsErrorMessage } from "../../../contracts/common";
 import {
 	type CondaEnv,
 	type CondaPackage,
@@ -29,8 +30,13 @@ const PANDAS: CondaPackage = {
 
 type RemoveHandler = (input: CondaPackagesRemoveInput) => Promise<CondaPackagesRemoveResult>;
 
-async function renderWithSdk(ui: React.ReactElement, remove?: RemoveHandler) {
+async function renderWithSdk(
+	ui: React.ReactElement,
+	remove?: RemoveHandler,
+	anaconda?: EnvironmentsHostOptions["anaconda"],
+) {
 	const hostOptions: EnvironmentsHostOptions = {
+		...(anaconda ? { anaconda } : {}),
 		handlers: {
 			"conda.packages.remove":
 				remove ??
@@ -129,6 +135,46 @@ describe("RemovePackageConfirmation", () => {
 
 		await expect.element(screen.getByTestId("environments-conda-remove-pkg-error")).toBeVisible();
 		expect(onOpenChange).not.toHaveBeenCalled();
+	});
+
+	it("asks to sign in to Anaconda when a policy channel refuses the removal, then removes", async () => {
+		let signedIn = false;
+		const remove = vi.fn(async (input: CondaPackagesRemoveInput) => {
+			if (!signedIn) {
+				throw new Error(
+					formatEnvironmentsErrorMessage("NOT_SIGNED_IN", "Sign in to use acme/main", {
+						refused: { org: "acme", channel: "acme/main" },
+					}),
+				);
+			}
+			return { jobId: "job-1", envName: "dev", removed: input.packages };
+		});
+		const signIn = vi.fn(async () => {
+			signedIn = true;
+			return { ok: true as const };
+		});
+		const onOpenChange = vi.fn();
+		const { baseElement } = await renderWithSdk(
+			<RemovePackageConfirmation env={ENV} pkg={NUMPY} open onOpenChange={onOpenChange} />,
+			remove,
+			{ signIn },
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-conda-remove-pkg-confirm-btn"));
+
+		const failure = screen.getByTestId("environments-conda-remove-pkg-error");
+		await expect
+			.element(
+				failure.getByText(
+					"Sign in to Anaconda to change this environment: removing packages re-solves it against its channels.",
+				),
+			)
+			.toBeVisible();
+		await userEvent.click(failure.getByTestId("environments-anaconda-sign-in"));
+
+		await vi.waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+		expect(remove).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not close while the removal is in flight", async () => {

@@ -13,6 +13,7 @@ import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda"
 import { useConda, useCondaMutation } from "../../conda";
 import { environmentDisplayName } from "./environment-display";
 import { friendlyEnvironmentsError } from "./environments-error-message";
+import { InlineFailure } from "./EnvironmentsFailure";
 
 interface RemovePackageConfirmationProps {
 	env: CondaEnv;
@@ -66,13 +67,14 @@ export function RemovePackageConfirmation({
 						<strong>{displayName}</strong> environment. Dependent packages may also be removed.
 					</AlertDialogDescription>
 					{remove.isError && (
-						<p
-							className="text-destructive text-sm"
-							role="alert"
-							data-qa-id="environments-conda-remove-pkg-error"
-						>
-							{friendlyEnvironmentsError(remove.error, "Could not remove the package.").message}
-						</p>
+						<InlineFailure
+							reason={remove.error}
+							error={friendlyEnvironmentsError(remove.error, "Could not remove the package.", {
+								operation: "remove",
+							})}
+							onSignedIn={handleConfirm}
+							qaId="environments-conda-remove-pkg-error"
+						/>
 					)}
 				</AlertDialogHeader>
 				<AlertDialogFooter>

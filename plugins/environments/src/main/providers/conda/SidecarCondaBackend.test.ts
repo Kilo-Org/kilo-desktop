@@ -869,6 +869,53 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("prefixOptions()", () => {
+		it("offers the configured channels by name, not conda.info's per-subdir URLs", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "bridge.ping") return Promise.resolve({});
+				if (method === "conda.info") {
+					return Promise.resolve({
+						envs_dirs: ["/opt/conda/envs", "", "/home/user/.conda/envs"],
+						channels: [
+							"https://repo.anaconda.cloud/repo/main/osx-arm64",
+							"https://repo.anaconda.cloud/repo/main/noarch",
+						],
+					});
+				}
+				if (method === "conda_tools.list_channels") {
+					return Promise.resolve([
+						{ name: "defaults", urls: ["https://repo.anaconda.cloud/repo/main/osx-arm64"] },
+						{ name: "acme/modelcatalog--main", urls: [] },
+					]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+
+			expect(await backend.prefixOptions()).toEqual({
+				envsDirs: ["/opt/conda/envs", "/home/user/.conda/envs"],
+				channels: ["defaults", "acme/modelcatalog--main"],
+			});
+		});
+
+		it("has no channels when none are configured", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "bridge.ping") return Promise.resolve({});
+				if (method === "conda.info") return Promise.resolve({ envs_dirs: ["/opt/conda/envs"] });
+				if (method === "conda_tools.list_channels") return Promise.resolve([]);
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+
+			expect(await backend.prefixOptions()).toEqual({
+				envsDirs: ["/opt/conda/envs"],
+				channels: [],
+			});
+		});
+	});
+
 	describe("addChannel()", () => {
 		it("sends conda_tools.add_channel then returns updated channels", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
@@ -1244,6 +1291,97 @@ describe("SidecarCondaBackend", () => {
 			const [pkg] = await backend.findRepodata({ names: ["mixed"] });
 
 			expect(pkg?.versions.map((v) => v.version)).toEqual(["10", "2", "1.5"]);
+		});
+	});
+
+	describe("channelPolicies()", () => {
+		it("asks auth.channel_policies for the channels and maps each policy entry", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "auth.channel_policies") {
+					return Promise.resolve({
+						channels: [
+							{
+								channel: "defaults",
+								entries: [
+									{
+										base_url: "https://repo.anaconda.cloud/repo/main",
+										channel: "main",
+										org: "acme",
+										credential: "api_key",
+										policy_id: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+										policy_name: "No critical CVEs",
+										lookup_failed: false,
+									},
+									{
+										base_url: "https://repo.anaconda.cloud/repo/r",
+										channel: "r",
+										org: null,
+										credential: null,
+										policy_id: null,
+										policy_name: null,
+										lookup_failed: true,
+									},
+								],
+							},
+							{ channel: "conda-forge", entries: [] },
+						],
+					});
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.channelPolicies(["defaults", "conda-forge"]);
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"auth.channel_policies",
+				{ channels: ["defaults", "conda-forge"] },
+				expect.anything(),
+			);
+			expect(result).toEqual({
+				channels: [
+					{
+						channel: "defaults",
+						entries: [
+							{
+								baseUrl: "https://repo.anaconda.cloud/repo/main",
+								org: "acme",
+								policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+								policyName: "No critical CVEs",
+								lookupFailed: false,
+							},
+							{
+								baseUrl: "https://repo.anaconda.cloud/repo/r",
+								org: null,
+								policyId: null,
+								policyName: null,
+								lookupFailed: true,
+							},
+						],
+					},
+					{ channel: "conda-forge", entries: [] },
+				],
+			});
+		});
+
+		it("reports no channels from a bridge without auth.channel_policies", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "auth.channel_policies") {
+					return Promise.reject(new ResponseError(-32601, "Method Not Found"));
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+
+			await expect(backend.channelPolicies(undefined)).resolves.toEqual({ channels: [] });
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"auth.channel_policies",
+				{},
+				expect.anything(),
+			);
 		});
 	});
 

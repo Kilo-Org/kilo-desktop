@@ -7,11 +7,26 @@ describe("selectableChannels", () => {
 		expect(selectableChannels([])).toEqual(["defaults", "conda-forge"]);
 	});
 
-	it("keeps custom channels without duplicating Anaconda aliases", () => {
-		expect(selectableChannels(["main", "conda-forge", "bioconda"])).toEqual([
-			"defaults",
+	it("offers only defaults when only defaults is configured", () => {
+		expect(selectableChannels(["defaults"])).toEqual(["defaults"]);
+	});
+
+	it("offers exactly the configured channels, in configured order", () => {
+		expect(selectableChannels(["conda-forge", "bioconda"])).toEqual(["conda-forge", "bioconda"]);
+	});
+
+	it("adds no product channel when only organization channels are configured", () => {
+		expect(selectableChannels(["acme/modelcatalog--main", "acme/main"])).toEqual([
+			"acme/modelcatalog--main",
+			"acme/main",
+		]);
+	});
+
+	it("keeps Anaconda aliases as configured, dropping only repeats", () => {
+		expect(selectableChannels(["main", "conda-forge", "main", "defaults"])).toEqual([
+			"main",
 			"conda-forge",
-			"bioconda",
+			"defaults",
 		]);
 	});
 });

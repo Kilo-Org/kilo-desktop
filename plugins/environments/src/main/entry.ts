@@ -21,7 +21,9 @@
  *   refuse unless `ready`. The agent sees no conda tools while it is not
  *   (the `kilo.core/chat-config` contribution's `disableTools`).
  * - Writes are serialised and reads cached by one `JobQueue`, whose progress
- *   events are `conda`'s `job-progress`.
+ *   events are `conda`'s `job-progress`. The cache is also cleared whenever
+ *   kilo.anaconda's account `changed` (sign-in, sign-out, a rotated key):
+ *   repo.anaconda.cloud filters repodata for the key the bridge sends.
  * - Every chat is created with origin's ask rules for mutating conda-family
  *   commands run through `bash` (`chat-config` permissions); the mutating
  *   conda tools ask through their own `approval`.
@@ -33,7 +35,7 @@
  * - The `kilo.local-inference/llama-runtime` contribution `conda` installs
  *   llama.cpp into the `local-inference-llama` runtime environment, whatever
  *   the flag says.
- * - kilo.core, kilo.shell, kilo.chat and kilo.local-inference are optional:
+ * - kilo.core, kilo.shell, kilo.chat, kilo.local-inference and kilo.anaconda are optional:
  *   their domain objects are looked up per call, and contributions to their
  *   points simply go unused without them.
  */
@@ -49,6 +51,7 @@ import {
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
+import { AnacondaAccount } from "@kilo-desktop/plugin-anaconda/contracts";
 import { ChatConfigPoint, Tool } from "@kilo-desktop/plugin-core/contracts";
 import { LlamaRuntime } from "@kilo-desktop/plugin-local-inference/contracts";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
@@ -192,6 +195,19 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 				logger: sdk.logger,
 			});
 			sdk.onDispose(() => queue.dispose());
+			// repo.anaconda.cloud filters repodata for the Anaconda account whose
+			// key the bridge sends, so cached lookups may be the previous account's.
+			let stopFollowingAccount = () => {};
+			sdk.domainObjects.track(AnacondaAccount, {
+				added(account) {
+					stopFollowingAccount = account.on("changed", () => queue.clearReadCache("conda"));
+				},
+				removed() {
+					stopFollowingAccount();
+					stopFollowingAccount = () => {};
+				},
+			});
+			sdk.onDispose(() => stopFollowingAccount());
 			const service = createCondaService({
 				backend: bridgeBackend(bridge),
 				queue,

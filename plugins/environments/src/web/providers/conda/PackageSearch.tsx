@@ -36,6 +36,8 @@ import {
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { CondaRepodataPackage } from "../../../contracts/providers/conda";
+import { friendlyEnvironmentsError } from "./environments-error-message";
+import { FailureEmptyState } from "./EnvironmentsFailure";
 import type { PackageSearch } from "./use-package-search";
 
 /** Sentinel Select value for the "latest" (unpinned) package version. */
@@ -165,6 +167,30 @@ export function PackageSearchInput({
 	);
 }
 
+/**
+ * The configured channels could not be read, so there is nothing to search:
+ * says why, with "Try again". Never falls back to fixed channels.
+ */
+export function ChannelListFailure({
+	reason,
+	onRetry,
+	qaPrefix,
+}: {
+	reason: unknown;
+	onRetry: () => void;
+	qaPrefix: string;
+}) {
+	return (
+		<FailureEmptyState
+			reason={reason}
+			error={friendlyEnvironmentsError(reason, "Could not read your conda channels.")}
+			title="Couldn't load your conda channels"
+			onRetry={onRetry}
+			qaId={`${qaPrefix}-channels-error`}
+		/>
+	);
+}
+
 const SKELETON_ROWS = ["first", "second", "third", "fourth", "fifth", "sixth"];
 const MORE_SKELETON_ROWS = ["first", "second", "third"];
 
@@ -215,6 +241,18 @@ export function PackageResultsTable({
 		return () => observer.disconnect();
 	}, [hasMore, loadingMore, loadMore, rowCount]);
 
+	if (search.error) {
+		return (
+			<FailureEmptyState
+				reason={search.error}
+				error={friendlyEnvironmentsError(search.error, "Could not search the selected channels.")}
+				title="Couldn't search packages"
+				onRetry={search.retry}
+				qaId={`${qaPrefix}-search-error`}
+			/>
+		);
+	}
+
 	if (!loading && packages.length === 0) {
 		return (
 			<Empty className="border" data-qa-id={`${qaPrefix}-empty`}>
@@ -227,7 +265,7 @@ export function PackageResultsTable({
 					</EmptyTitle>
 					<EmptyDescription>
 						{query.trim()
-							? "Check the spelling or choose other channels."
+							? "Check the spelling."
 							: "The selected channels do not provide any packages."}
 					</EmptyDescription>
 				</EmptyHeader>

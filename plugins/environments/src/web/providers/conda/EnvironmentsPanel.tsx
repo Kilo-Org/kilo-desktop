@@ -53,6 +53,7 @@ import { isProviderNotReadyError } from "./environments-error-message";
 import { ListViewMenu, type SortDirection } from "./ListViewMenu";
 import { PackageInstallRequestDialog } from "./PackageInstallRequestDialog";
 import { usePackageInstallLink } from "./use-package-install-link";
+import { useRefreshOnAnacondaAccountChange } from "./use-anaconda-account-key";
 import { useProviderNotReadySince } from "./useProviderNotReadySince";
 
 /**
@@ -112,8 +113,10 @@ type DialogState =
  * the list skeleton.
  *
  * An anaconda.org install link opens its flow on top of whichever view shows.
+ * Package lookups refresh when the Anaconda account changes.
  */
 export function EnvironmentsPanel() {
+	useRefreshOnAnacondaAccountChange();
 	const [installRequest, dismissInstallRequest] = usePackageInstallLink();
 	const [, setSelectedPrefix] = useSelectedEnvironment();
 	return (

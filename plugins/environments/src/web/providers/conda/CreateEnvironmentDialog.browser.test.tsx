@@ -437,6 +437,19 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(chooser.getByRole("menuitemcheckbox", { name: /Anaconda/ })).toBeVisible();
 	});
 
+	it("offers exactly the configured channels, adding no product channel", async () => {
+		const { baseElement } = await renderDialog({ channels: ["acme/main", "bioconda"] });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
+		const chooser = page.getByTestId("environments-channel-chooser");
+		await expect
+			.element(chooser.getByRole("menuitemcheckbox", { name: /acme\/main/ }))
+			.toBeChecked();
+		await expect.element(chooser.getByRole("menuitemcheckbox", { name: /bioconda/ })).toBeChecked();
+		expect(await chooser.getByRole("menuitemcheckbox").all()).toHaveLength(2);
+	});
+
 	it("offers the product channel selector when conda reports no configured channels", async () => {
 		const { baseElement } = await renderDialog({ channels: [] });
 		const screen = page.elementLocator(baseElement);
@@ -591,8 +604,11 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "env", prefix: "/custom/myenv" },
 		}));
-		const { baseElement } = await renderDialog({ create });
+		const { baseElement } = await renderDialog({ create, channels: ["conda-forge", "bioconda"] });
 		const screen = page.elementLocator(baseElement);
+		await expect
+			.element(screen.getByTestId("environments-create-package-row").first())
+			.toBeVisible();
 
 		// Change location to a custom path
 		await userEvent.clear(screen.getByTestId("environments-create-location"));
@@ -605,7 +621,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/custom/myenv");
-		expect(payload.channels).toEqual(["defaults", "conda-forge"]);
+		expect(payload.channels).toEqual(["conda-forge", "bioconda"]);
 	});
 
 	it("filters the Python version list via the picker search box", async () => {
@@ -623,6 +639,39 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await vi.waitFor(async () => {
 			expect(await screen.getByRole("option", { name: "3.11.9" }).all()).toHaveLength(0);
 		});
+	});
+
+	it("offers only Latest, and says why, when the Python versions can't be looked up", async () => {
+		const { baseElement } = await renderDialog({
+			search: (input) => {
+				if (input.names?.includes("python")) {
+					throw new Error(
+						formatEnvironmentsErrorMessage("NOT_SIGNED_IN", "Sign in to use acme/main", {
+							refused: { org: "acme", channel: "acme/main" },
+						}),
+					);
+				}
+				return { packages: [pkg("numpy")], truncated: false };
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		const failure = screen.getByTestId("environments-create-python-error");
+		await expect.element(failure).toBeVisible();
+		await expect
+			.element(failure.getByText("Couldn't load Python versions, so only Latest is offered."))
+			.toBeVisible();
+		await expect
+			.element(
+				failure.getByText(
+					"acme/main needs an Anaconda account. Sign in to Anaconda, then try again.",
+				),
+			)
+			.toBeVisible();
+
+		await userEvent.click(screen.getByTestId("environments-create-python"));
+		await expect.element(screen.getByRole("option", { name: "Latest" })).toBeVisible();
+		expect(await screen.getByRole("option").all()).toHaveLength(1);
 	});
 
 	it("shows the package size column for the latest version by default", async () => {

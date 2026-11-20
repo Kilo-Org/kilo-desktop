@@ -31,7 +31,7 @@
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
-		"@kilocode/sdk": "7.8.27",
+		"@kilocode/sdk": "7.8.31",
 		"@lexical/history": "^0.53.0",
 		"@lexical/plain-text": "^0.53.0",
 		"@lexical/react": "^0.53.0",

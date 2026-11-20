@@ -22,7 +22,7 @@ describe("app identity", () => {
 	});
 
 	it.each([
-		["preview", "Kilo Preview", "Kilo-Preview-Setup.exe", "Kilo Desktop Preview"],
+		["preview", "Kilo Preview", "Kilo-Preview-Setup.exe", "Kilo Desktop"],
 		["stable", "Kilo", "Kilo-Setup.exe", "Kilo Desktop"],
 	] as const)(
 		"uses the %s product identity",

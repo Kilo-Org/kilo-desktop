@@ -12,6 +12,7 @@ import {
 
 export interface HostServiceDeps {
 	readonly storageDir: (pluginId: string) => string;
+	readonly formerStorageDirs?: (pluginId: string) => readonly string[];
 	readonly kv: (storageDir: string) => MainHostServices["storage"]["kv"];
 	readonly fs: {
 		readFile(pluginId: string, path: string): Promise<string>;
@@ -60,6 +61,7 @@ export function createHostServices(
 	const services: MainHostServices = {
 		storage: {
 			dir,
+			formerDirs: deps.formerStorageDirs?.(pluginId) ?? [],
 			kv: <T extends Record<string, unknown>>(options: KvStoreOptions<T>) => {
 				kvFactory ??= deps.kv(dir);
 				return kvFactory(options);

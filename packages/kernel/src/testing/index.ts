@@ -89,12 +89,16 @@ function webPluginIds(registrations: readonly PluginRegistration[]): string[] {
 }
 
 /** In-memory plugin storage: `kv` namespaces survive across kernels that share it. */
-export function createMemoryStorage(dir = "/memory"): PluginStorage & {
+export function createMemoryStorage(
+	dir = "/memory",
+	formerDirs: readonly string[] = [],
+): PluginStorage & {
 	readonly saved: Map<string, Record<string, unknown>>;
 } {
 	const saved = new Map<string, Record<string, unknown>>();
 	return {
 		dir,
+		formerDirs,
 		saved,
 		kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T> {
 			const key = options.namespace ?? "default";

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { mainHost, type KvStore, type PluginSdk } from "@kilo-desktop/kernel";
 
+import { mergeProfiles, readFormerProfile, type ProfileData } from "./former-profile";
 import {
 	readLegacyLayoutPresets,
 	readLegacyPanes,
@@ -84,6 +85,53 @@ export async function activateStorage(sdk: PluginSdk): Promise<void> {
 			);
 		}
 	}
+	await importFormerProfiles(sdk, adoption);
+}
+
+/**
+ * What this plugin saved in profiles merged into this one, once each, after
+ * the predecessors (so it lands beneath their data too) and before any area
+ * opens its namespace. A failed read is retried next launch.
+ */
+async function importFormerProfiles(
+	sdk: PluginSdk,
+	adoption: KvStore<{ adopted: string[] }>,
+): Promise<void> {
+	for (const dir of mainHost(sdk).storage.formerDirs ?? []) {
+		const source = `profile:${dir}`;
+		if (adoption.snapshot().adopted.includes(source)) continue;
+		try {
+			writeProfile(sdk, mergeProfiles(readProfile(sdk), await readFormerProfile(dir)));
+			markAdopted(adoption, source);
+		} catch (error) {
+			sdk.logger.warn(
+				`Could not import work sessions from ${dir}; will try again next launch: ${errorText(error)}`,
+			);
+		}
+	}
+}
+
+function readProfile(sdk: PluginSdk): ProfileData {
+	const workspaces = workspacesStore(sdk).snapshot();
+	const presets = layoutPresetsStore(sdk).snapshot();
+	return {
+		workspaces: workspaces.workspaces,
+		activeWorkspaceId: workspaces.activeId,
+		workSessions: workSessionsStore(sdk).snapshot().workSessions,
+		panes: panesStore(sdk).snapshot().byWorkSession,
+		presets: presets.presets,
+		defaultPresetId: presets.defaultPresetId,
+	};
+}
+
+function writeProfile(sdk: PluginSdk, data: ProfileData): void {
+	workspacesStore(sdk).set({ workspaces: [...data.workspaces], activeId: data.activeWorkspaceId });
+	workSessionsStore(sdk).set({ workSessions: [...data.workSessions] });
+	panesStore(sdk).set({ byWorkSession: { ...data.panes } });
+	layoutPresetsStore(sdk).set({
+		presets: [...data.presets],
+		defaultPresetId: data.defaultPresetId,
+	});
 }
 
 function markAdopted(adoption: KvStore<{ adopted: string[] }>, source: string): void {

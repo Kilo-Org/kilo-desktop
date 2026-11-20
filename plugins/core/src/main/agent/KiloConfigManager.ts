@@ -111,9 +111,15 @@ function parseSidecar(
 		const keysValue = parsedRecord.ownedEntryKeys;
 		if (Array.isArray(keysValue)) {
 			const keys = keysValue.filter((entry): entry is string => typeof entry === "string");
+			const version = typeof parsedRecord.version === "number" ? parsedRecord.version : 0;
+			// A newer build shares this profile: keep its version rather than
+			// rewriting the file as this build's on every read.
 			return {
-				sidecar: sidecarFromKeys(keys, parsedRecord.owners, (key) => key),
-				requiresMigration: parsedRecord.version !== SIDECAR_SCHEMA_VERSION,
+				sidecar: {
+					...sidecarFromKeys(keys, parsedRecord.owners, (key) => key),
+					version: Math.max(version, SIDECAR_SCHEMA_VERSION),
+				},
+				requiresMigration: version < SIDECAR_SCHEMA_VERSION,
 			};
 		}
 		const entryIdsValue = parsedRecord[flatKey];
@@ -624,7 +630,7 @@ export class KiloConfigManager {
 
 function assignOwnership(sidecar: Sidecar, key: string, sourceId: string): Sidecar {
 	return {
-		version: SIDECAR_SCHEMA_VERSION,
+		version: sidecar.version,
 		ownedEntryKeys: Array.from(new Set([...sidecar.ownedEntryKeys, key])),
 		owners: { ...sidecar.owners, [key]: sourceId },
 	};
@@ -634,7 +640,7 @@ function removeOwnership(sidecar: Sidecar, key: string): Sidecar {
 	const owners = { ...sidecar.owners };
 	delete owners[key];
 	return {
-		version: SIDECAR_SCHEMA_VERSION,
+		version: sidecar.version,
 		ownedEntryKeys: sidecar.ownedEntryKeys.filter((entry) => entry !== key),
 		owners,
 	};

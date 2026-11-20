@@ -56,7 +56,17 @@ describe("createHostServices", () => {
 		await services.fs.readFile("notes/a.txt");
 
 		expect(services.storage.dir).toBe("/data/plugins/acme.plugin");
+		expect(services.storage.formerDirs).toEqual([]);
 		expect(hostDeps.fs.readFile).toHaveBeenCalledWith("acme.plugin", "notes/a.txt");
+	});
+
+	it("gives a plugin its own folders in merged profiles", () => {
+		const services = servicesFor({
+			...deps(),
+			formerStorageDirs: (pluginId) => [`/old/plugins/${pluginId}`],
+		});
+
+		expect(services.storage.formerDirs).toEqual(["/old/plugins/acme.plugin"]);
 	});
 
 	it("tells plugins when the login environment is ready, even if reading it failed", async () => {

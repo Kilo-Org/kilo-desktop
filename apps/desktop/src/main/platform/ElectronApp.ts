@@ -5,6 +5,8 @@ import { app, type App, type RelaunchOptions } from "electron";
 
 import { getAppIdentity, type AppEnvironment, type AppIdentity } from "$config/app-identity.js";
 
+import { resolveSharedProfile, type SharedProfile } from "./sharedProfile.js";
+
 export interface ElectronAppMetadata {
 	readonly appPath: string;
 	readonly appVersion: string;
@@ -50,7 +52,8 @@ export function configureAppProfile(
 	},
 	environment: AppEnvironment = electronApp.isPackaged ? RELEASE_TRACK : "development",
 	argv: readonly string[] = process.argv,
-): void {
+	resolveProfile: typeof resolveSharedProfile = resolveSharedProfile,
+): Pick<SharedProfile, "formerRoots"> {
 	const identity = getAppIdentity(environment);
 	electronApp.setName(identity.productName);
 	if (
@@ -58,14 +61,15 @@ export function configureAppProfile(
 			(argument) => argument === "--user-data-dir" || argument.startsWith("--user-data-dir="),
 		)
 	) {
-		return;
+		return { formerRoots: [] };
 	}
 
 	const appData = electronApp.getPath("appData");
-	migrateAppProfile(appData, environment, identity.userDataName);
-	const userData = path.join(appData, identity.userDataName);
+	const { userData, formerRoots } = resolveProfile(appData, environment, identity.userDataName);
+	migrateAppProfile(appData, environment, path.basename(userData));
 	makeDirectory(userData);
 	electronApp.setPath("userData", userData);
+	return { formerRoots };
 }
 
 export class ElectronApp {

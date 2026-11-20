@@ -37,9 +37,11 @@ const PRODUCT_NAMES = {
 	stable: "Kilo",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 
+// Preview and Stable share a profile so workspaces and preferences follow a
+// track switch (see sharedProfile.ts for folding in the old Preview profile).
 const USER_DATA_NAMES = {
 	development: "Kilo Desktop Dev",
-	preview: "Kilo Desktop Preview",
+	preview: "Kilo Desktop",
 	stable: "Kilo Desktop",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 

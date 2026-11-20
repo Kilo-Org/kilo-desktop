@@ -525,4 +525,29 @@ describe("KiloConfigManager", () => {
 			},
 		});
 	});
+
+	it("keeps a sidecar a newer build wrote at its version", async () => {
+		await writeFile(
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			`${JSON.stringify({ mcp: { shared: { type: "remote", url: "https://one.test/mcp" } } })}\n`,
+		);
+		const newer = `${JSON.stringify({
+			version: 5,
+			ownedEntryKeys: ["mcp:shared"],
+			owners: { "mcp:shared": SOURCE_ONE },
+		})}\n`;
+		await writeFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), newer);
+		const config = new KiloConfigManager(configDirectory);
+
+		await config.listOwnedEntryIds("mcp", SOURCE_ONE);
+		expect(await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8")).toBe(
+			newer,
+		);
+
+		await config.setProviderEntry(SOURCE_TWO, "shared", { name: "Shared provider" });
+		const sidecar = JSON.parse(
+			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		) as { version: number };
+		expect(sidecar.version).toBe(5);
+	});
 });

@@ -2,12 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 
 import type { LayoutTemplate } from "../../contracts";
-import { bootWorkSessions, type MemoryStorage } from "../test-boot";
+import { bootWorkSessions, chat, FakeCore, type MemoryStorage } from "../test-boot";
 
 let root: string;
 beforeEach(async () => {
@@ -266,5 +266,157 @@ describe("adopting the predecessors' storage", () => {
 			[mine.id, "Mine"],
 			["wses_old", "Session wses_old"],
 		]);
+	});
+});
+
+describe("importing a former profile (Preview's, before Preview and Stable shared one)", () => {
+	const formerDir = () => path.join(root, "Kilo Desktop Preview", "kilo.work-sessions");
+
+	async function former(namespace: string, value: unknown): Promise<void> {
+		await mkdir(formerDir(), { recursive: true });
+		await writeFile(path.join(formerDir(), `${namespace}.json`), JSON.stringify(value));
+	}
+
+	const withFormer = () =>
+		createMemoryStorage(path.join(root, "kilo.work-sessions"), [formerDir()]);
+
+	const workspace = (id: string, folderPath: string, name = id) => ({
+		...WORKSPACE,
+		id,
+		name,
+		folders: [{ id: `f_${id}`, path: folderPath, isPrimary: true, position: 0 }],
+	});
+
+	const session = (id: string, fields: Record<string, unknown> = {}) => ({
+		id,
+		title: `Session ${id}`,
+		titleSource: "chat",
+		pinned: false,
+		archived: false,
+		archiveChangedAt: 5,
+		workspaceId: null,
+		branch: null,
+		directory: "/projects/app",
+		chatIds: [],
+		createdAt: 5,
+		updatedAt: 6,
+		...fields,
+	});
+
+	const panesFor = (title: string) => ({
+		panes: [{ id: "p1", kind: "kilo.terminal/terminal", title, metadata: {}, ordinal: 1 }],
+		activePaneId: "p1",
+		layout: null,
+		arrangement: "tiles",
+	});
+
+	it("merges its workspaces, work sessions, panes and layout presets beneath this profile's", async () => {
+		const storage = withFormer();
+		storage.saved.set("workspaces", {
+			workspaces: [workspace("w_own", "/own")],
+			activeId: "w_own",
+		});
+		storage.saved.set("work-sessions", {
+			workSessions: [session("wses_own", { chatIds: ["ses_own"] })],
+		});
+		storage.saved.set("panes", { byWorkSession: { wses_own: panesFor("Own terminal") } });
+		storage.saved.set("layout-presets", {
+			presets: [{ id: "lp_own", name: "Own", template: TEMPLATE }],
+			defaultPresetId: null,
+		});
+		await former("workspaces", {
+			workspaces: [workspace("w_prev", "/prev"), { id: "broken" }],
+			activeId: "w_prev",
+		});
+		await former("work-sessions", {
+			workSessions: [
+				session("wses_prev", { workspaceId: "w_prev", chatIds: ["ses_prev"], pinned: true }),
+			],
+		});
+		await former("panes", { byWorkSession: { wses_prev: panesFor("Preview terminal") } });
+		await former("layout-presets", {
+			presets: [{ id: "lp_prev", name: "Preview", template: TEMPLATE }],
+			defaultPresetId: "lp_prev",
+		});
+
+		const { workspaces, list, panesOf, layoutPresets } = await boot(storage);
+
+		expect(workspaces.getState()).toMatchObject({
+			workspaces: [{ id: "w_own" }, { id: "w_prev" }],
+			activeId: "w_own",
+		});
+		expect(list().map(({ id, workspaceId, pinned }) => [id, workspaceId, pinned])).toEqual([
+			["wses_own", null, false],
+			["wses_prev", "w_prev", true],
+		]);
+		expect(panesOf("wses_prev")?.panes[0]?.title).toBe("Preview terminal");
+		expect(layoutPresets().getState()).toMatchObject({
+			presets: [{ id: "lp_own" }, { id: "lp_prev" }],
+			defaultPresetId: "lp_prev",
+		});
+	});
+
+	it("folds a workspace with the same folders into this profile's, moving its work sessions there", async () => {
+		const storage = withFormer();
+		storage.saved.set("workspaces", { workspaces: [workspace("w_own", "/projects/app", "App")] });
+		await former("workspaces", { workspaces: [workspace("w_prev", "/projects/app", "App")] });
+		await former("work-sessions", {
+			workSessions: [session("wses_prev", { workspaceId: "w_prev" })],
+		});
+
+		const { workspaces, byId } = await boot(storage);
+
+		expect(workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w_own"]);
+		expect(byId("wses_prev")?.workspaceId).toBe("w_own");
+	});
+
+	it("keeps one work session per chat: the newer copy of the same session, and drops a duplicate", async () => {
+		const storage = withFormer();
+		storage.saved.set("work-sessions", {
+			workSessions: [
+				session("wses_same", { title: "Adopted from chat", chatIds: ["ses_a"], updatedAt: 10 }),
+				session("wses_own", { chatIds: ["ses_b"] }),
+			],
+		});
+		await former("work-sessions", {
+			workSessions: [
+				session("wses_same", {
+					title: "Renamed",
+					titleSource: "user",
+					chatIds: ["ses_a"],
+					updatedAt: 20,
+				}),
+				session("wses_dup", { chatIds: ["ses_b"] }),
+			],
+		});
+
+		const { list } = await boot(storage);
+
+		expect(list().map(({ id, title }) => [id, title])).toEqual([
+			["wses_same", "Renamed"],
+			["wses_own", "Session wses_own"],
+		]);
+	});
+
+	it("imports once, and keeps chats in the work sessions and workspaces they had", async () => {
+		const storage = withFormer();
+		await former("workspaces", { workspaces: [workspace("w_prev", "/prev")] });
+		await former("work-sessions", {
+			workSessions: [session("wses_prev", { workspaceId: "w_prev", chatIds: ["ses_prev"] })],
+		});
+		const core = new FakeCore();
+		core.chats = [chat("ses_prev", { workSessionId: "wses_prev", workspaceId: "w_prev" })];
+
+		const first = await bootWorkSessions({ storage, core });
+		await vi.waitFor(() =>
+			expect(first.list()).toEqual([
+				expect.objectContaining({ id: "wses_prev", workspaceId: "w_prev", chatIds: ["ses_prev"] }),
+			]),
+		);
+		await former("workspaces", { workspaces: [workspace("w_late", "/late")] });
+
+		const { workspaces } = await boot(storage);
+
+		expect(workspaces.getState().workspaces.map(({ id }) => id)).toEqual(["w_prev"]);
 	});
 });

@@ -22,6 +22,11 @@ export interface KvStoreOptions<T extends Record<string, unknown>> {
 export interface PluginStorage {
 	/** This plugin's private storage directory. */
 	readonly dir: string;
+	/**
+	 * This plugin's storage directories in app profiles that were merged into
+	 * this one, for a one-time import of what it saved there.
+	 */
+	readonly formerDirs?: readonly string[];
 	kv<T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T>;
 }
 

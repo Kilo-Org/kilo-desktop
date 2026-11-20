@@ -180,7 +180,7 @@ describe("ElectronApp", () => {
 	});
 
 	it.each([
-		["preview", "Kilo Preview", "Kilo Desktop Preview"],
+		["preview", "Kilo Preview", "Kilo Desktop"],
 		["stable", "Kilo", "Kilo Desktop"],
 	] as const)("configures the %s packaged data path", (environment, productName, userDataName) => {
 		const makeDirectory = vi.fn();
@@ -197,6 +197,25 @@ describe("ElectronApp", () => {
 		expect(electronApp.setName).toHaveBeenCalledWith(productName);
 		expect(makeDirectory).toHaveBeenCalledWith(userData);
 		expect(electronApp.setPath).toHaveBeenCalledWith("userData", userData);
+	});
+
+	it("uses the profile the shared-profile step picks and reports the former ones", () => {
+		const makeDirectory = vi.fn();
+		const electronApp = {
+			isPackaged: true,
+			getPath: vi.fn(() => "/profiles"),
+			setName: vi.fn(),
+			setPath: vi.fn(),
+		};
+		const fallback = path.join("/profiles", "Kilo Desktop Preview");
+
+		const profile = configureAppProfile(electronApp as never, makeDirectory, "preview", [], () => ({
+			userData: fallback,
+			formerRoots: ["/profiles/older"],
+		}));
+
+		expect(profile).toEqual({ formerRoots: ["/profiles/older"] });
+		expect(electronApp.setPath).toHaveBeenCalledWith("userData", fallback);
 	});
 
 	it("preserves an explicit user-data directory", () => {

@@ -25,12 +25,12 @@ import type {
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 
-const isRecord = (value: unknown): value is UnknownRecord =>
+export const isRecord = (value: unknown): value is UnknownRecord =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-const listOf = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
+export const listOf = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
 
-function parsed<T>(
+export function parsed<T>(
 	values: readonly unknown[],
 	schema: { safeParse(value: unknown): { success: true; data: T } | { success: false } },
 ): T[] {

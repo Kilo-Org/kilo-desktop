@@ -32,7 +32,7 @@ if (electronSquirrelStartup) {
 	);
 	app.exit(1);
 } else {
-	configureAppProfile();
+	const { formerRoots } = configureAppProfile();
 
 	// E2E runs must never reach PostHog, Sentry, or subprocess telemetry.
 	const preferences = new PreferencesStore(undefined, { forceDataCollectionOff: isE2eBuild() });
@@ -45,7 +45,7 @@ if (electronSquirrelStartup) {
 	initSentry(preferences);
 	registerDesktopSchemes(protocolSchemes(BUNDLED_PLUGINS));
 
-	void new KernelApplication(preferences).start().catch((error: unknown) => {
+	void new KernelApplication(preferences, formerRoots).start().catch((error: unknown) => {
 		createLogger("startup").error("Kilo Desktop failed to start.", error);
 		process.exitCode = 1;
 	});

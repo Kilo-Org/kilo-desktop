@@ -144,7 +144,10 @@ export class KernelApplication {
 	#loginEnvironment: Promise<void> = Promise.resolve();
 	#windowSequence = 0;
 
-	constructor(private readonly preferences: PreferencesStore) {}
+	constructor(
+		private readonly preferences: PreferencesStore,
+		private readonly formerProfileRoots: readonly string[] = [],
+	) {}
 
 	/** Logs a startup milestone with the time since the process started. */
 	#mark(milestone: string): void {
@@ -329,6 +332,8 @@ export class KernelApplication {
 				createHostServices(
 					{
 						storageDir: (id) => featureStorageDir(this.#storageRoot, id),
+						formerStorageDirs: (id) =>
+							this.formerProfileRoots.map((root) => featureStorageDir(root, id)),
 						kv: (dir) => createFeatureKvStoreFactory(dir),
 						fs,
 						fetch: this.#http.fetch,

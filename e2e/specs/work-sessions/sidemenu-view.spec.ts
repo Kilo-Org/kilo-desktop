@@ -15,11 +15,21 @@ const NEWER = "Zulu ordering case";
  * reload has to happen inside the test that chose the ordering.
  */
 test.describe("Side menu view options @packaged", () => {
+	/** Ids of what the test seeded, so teardown needs no rows on screen. */
+	let seeded: string[] = [];
+
+	// The app is worker-scoped and only the renderer's localStorage resets
+	// between tests, so anything left in main's store would be there for a
+	// retry — and `verifyRowOrder` pins the count, so it would fail on it.
+	test.afterEach(async ({ sessionListPage }) => {
+		await sessionListPage.removeSessions(seeded.splice(0));
+	});
+
 	test("keeps the list ordered by title across a window reload", async ({
 		sidemenuPage,
 		sessionListPage,
 	}) => {
-		await sessionListPage.seedSessions([OLDER, NEWER]);
+		seeded = await sessionListPage.seedSessions([OLDER, NEWER]);
 		await sessionListPage.reloadWindow();
 		// The list opens on recency, so the session seeded last is on top.
 		await sessionListPage.verifyRowOrder([NEWER, OLDER]);

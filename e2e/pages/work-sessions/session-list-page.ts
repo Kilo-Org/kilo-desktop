@@ -83,20 +83,61 @@ export class SessionListPage {
 	 * New Session page costs a second each, which a virtualized list needs far
 	 * too many of to be worth doing through the UI.
 	 */
-	async seedSessions(titles: readonly string[]): Promise<void> {
+	async seedSessions(titles: readonly string[]): Promise<string[]> {
+		const ids: string[] = [];
 		for (const title of titles) {
-			await callDomainObject({
+			const created = (await callDomainObject({
 				domainId: "kilo.work-sessions/work-sessions",
 				method: "create",
 				input: { title },
 				caller: WORK_SESSIONS_CALLER,
-			});
+			})) as { id: string };
+			ids.push(created.id);
 		}
+		return ids;
 	}
 
 	/** Registers a workspace and makes it the active one (test setup). */
 	async createWorkspaceAt(folderPath: string, name: string): Promise<string> {
 		return createAndActivateWorkspace(folderPath, name);
+	}
+
+	/**
+	 * Deletes seeded sessions straight through the domain object (test
+	 * teardown). The app is worker-scoped, so what a test seeds is still there
+	 * for the next one. By id rather than by row: it costs one call instead of
+	 * a row menu and a confirmation each, and it works for a session a failed
+	 * test never got on screen.
+	 */
+	async removeSessions(ids: readonly string[]): Promise<void> {
+		for (const id of ids) {
+			await callDomainObject({
+				domainId: "kilo.work-sessions/work-sessions",
+				method: "remove",
+				input: { id },
+				caller: WORK_SESSIONS_CALLER,
+			});
+		}
+	}
+
+	/**
+	 * Unregisters a workspace (test teardown). The app is worker-scoped, so a
+	 * workspace a test leaves behind is still there for the next one — and a
+	 * second one of the same name makes a result locator ambiguous.
+	 */
+	async removeWorkspace(workspaceId: string): Promise<void> {
+		await callDomainObject({
+			domainId: "kilo.work-sessions/workspaces",
+			method: "setActive",
+			input: { id: null },
+			caller: WORK_SESSIONS_CALLER,
+		});
+		await callDomainObject({
+			domainId: "kilo.work-sessions/workspaces",
+			method: "remove",
+			input: { id: workspaceId },
+			caller: WORK_SESSIONS_CALLER,
+		});
 	}
 
 	/** Asks main to re-check which workspace folders it can still reach. */
@@ -109,13 +150,14 @@ export class SessionListPage {
 	}
 
 	/** Seeds one session inside a workspace, so the filter has both kinds to sort. */
-	async seedSessionInWorkspace(title: string, workspaceId: string): Promise<void> {
-		await callDomainObject({
+	async seedSessionInWorkspace(title: string, workspaceId: string): Promise<string> {
+		const created = (await callDomainObject({
 			domainId: "kilo.work-sessions/work-sessions",
 			method: "create",
 			input: { title, workspaceId },
 			caller: WORK_SESSIONS_CALLER,
-		});
+		})) as { id: string };
+		return created.id;
 	}
 
 	/** Starts an inline rename from the row menu, leaving the field open. */

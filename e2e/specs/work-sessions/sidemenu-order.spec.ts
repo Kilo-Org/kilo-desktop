@@ -21,15 +21,14 @@ test.describe("Side menu session order @packaged", () => {
 	const seeded: string[] = [];
 
 	async function seed(sessionListPage: SessionListPage, titles: readonly string[]): Promise<void> {
-		seeded.push(...titles);
-		await sessionListPage.seedSessions(titles);
+		seeded.push(...(await sessionListPage.seedSessions(titles)));
 		await sessionListPage.reloadWindow();
 	}
 
+	// By id through the domain object: a test that failed early leaves rows
+	// that are archived, pinned or never rendered, and none of that matters.
 	test.afterEach(async ({ sessionListPage }) => {
-		for (const title of seeded.splice(0)) {
-			await sessionListPage.deleteAnywhere(title);
-		}
+		await sessionListPage.removeSessions(seeded.splice(0));
 	});
 
 	test("walks the list's own order, so a reorder changes where Next goes @smoke", async ({

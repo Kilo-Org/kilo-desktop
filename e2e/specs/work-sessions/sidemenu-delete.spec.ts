@@ -9,10 +9,19 @@ test.describe("Side menu delete confirmation @packaged", () => {
 	const KEPT = "Session to keep";
 	const DOOMED = "Session to delete";
 
+	let seeded: string[] = [];
+
+	// The delete inside the test only runs when the test gets that far, so
+	// cleanup cannot live there: a failure above it would leave both rows for
+	// the retry. Deleting by id covers whatever is left, deleted or not.
+	test.afterEach(async ({ sessionListPage }) => {
+		await sessionListPage.removeSessions(seeded.splice(0));
+	});
+
 	test("names the session it would delete, and Cancel keeps it @smoke", async ({
 		sessionListPage,
 	}) => {
-		await sessionListPage.seedSessions([KEPT, DOOMED]);
+		seeded = await sessionListPage.seedSessions([KEPT, DOOMED]);
 		await sessionListPage.reloadWindow();
 		// Opened from the list, so the dialog has an open session to confuse
 		// with the row it was asked about.
@@ -28,6 +37,5 @@ test.describe("Side menu delete confirmation @packaged", () => {
 		// Deleting for real leaves only the other one.
 		await sessionListPage.deleteAnywhere(DOOMED);
 		await sessionListPage.verifyListed(KEPT);
-		await sessionListPage.deleteAnywhere(KEPT);
 	});
 });

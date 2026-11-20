@@ -16,6 +16,12 @@ import type { SessionListPage } from "../../pages/work-sessions/session-list-pag
  * in no title, so a session matching it can only have matched on its
  * workspace.
  */
+/** What the running test seeded, for the teardown below. */
+const seeded: { sessionIds: string[]; workspaceIds: string[] } = {
+	sessionIds: [],
+	workspaceIds: [],
+};
+
 async function seedFor(sessionListPage: SessionListPage, prefix: string) {
 	const workspace = `${prefix}space`;
 	const rawPath = await mkdtemp(path.join(os.tmpdir(), "kilo-search-"));
@@ -25,8 +31,9 @@ async function seedFor(sessionListPage: SessionListPage, prefix: string) {
 	const workspaceId = await sessionListPage.createWorkspaceAt(folder, workspace);
 	const inside = `${prefix} held session`;
 	const outside = `${prefix} loose session`;
-	await sessionListPage.seedSessionInWorkspace(inside, workspaceId);
-	await sessionListPage.seedSessions([outside]);
+	seeded.sessionIds.push(await sessionListPage.seedSessionInWorkspace(inside, workspaceId));
+	seeded.sessionIds.push(...(await sessionListPage.seedSessions([outside])));
+	seeded.workspaceIds.push(workspaceId);
 	await sessionListPage.reloadWindow();
 	return { workspace, inside, outside };
 }
@@ -38,6 +45,19 @@ async function seedFor(sessionListPage: SessionListPage, prefix: string) {
  * than its title, the Sessions scope, and the query the dialog forgets.
  */
 test.describe("Side menu session search @packaged", () => {
+	/**
+	 * The app is worker-scoped, so a workspace or session left behind is still
+	 * there for the next run: a second "Alfaspace" makes a result locator match
+	 * two elements and fail on strict mode. Sessions go first — the workspace
+	 * cannot be unregistered from under them.
+	 */
+	test.afterEach(async ({ sessionListPage }) => {
+		await sessionListPage.removeSessions(seeded.sessionIds.splice(0));
+		for (const workspaceId of seeded.workspaceIds.splice(0)) {
+			await sessionListPage.removeWorkspace(workspaceId);
+		}
+	});
+
 	test("finds a session by its workspace, not only by its title @smoke", async ({
 		sidemenuPage,
 		sessionListPage,

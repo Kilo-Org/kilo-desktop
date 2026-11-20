@@ -17,7 +17,7 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
  *   would otherwise put the unfinished text back over the ended part.
  * - Dropped when the part or its message is removed, when its chat goes idle
  *   (a part still streaming then was cut off), or when a read shows it ended
- *   (its ending update may have been lost to a reconnect).
+ *   before its ending update arrived (lost to a reconnect).
  * - Kept across a reconnect, which makes every thread reload: what the stream
  *   gave before the drop is still the start of the text, and a reload whose
  *   part has ended carries the whole text, which wins.
@@ -136,8 +136,9 @@ export class LiveParts {
 		const live = this.#parts.get(id);
 		if (!live || live.sessionId !== chatId) return part;
 		if (hasEnded(record)) {
-			// The server's final word: its ending update may have been lost to a reconnect.
-			this.#parts.delete(id);
+			// Its ending update was lost to a reconnect. A buffered one is kept for
+			// other reads (another pane's, a prefetch) answered before the end.
+			if (!live.ended) this.#parts.delete(id);
 			return part;
 		}
 		if (!isStreamedText(record)) return part;

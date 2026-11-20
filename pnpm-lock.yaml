@@ -354,6 +354,9 @@ importers:
       '@kilo-desktop/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/core
+      '@kilo-desktop/plugin-core-v2':
+        specifier: workspace:*
+        version: link:../../plugins/core-v2
       '@kilo-desktop/plugin-environments':
         specifier: workspace:*
         version: link:../../plugins/environments
@@ -554,6 +557,9 @@ importers:
       '@kilo-desktop/plugin-chat':
         specifier: workspace:*
         version: link:../../plugins/chat
+      '@kilo-desktop/plugin-core-v2':
+        specifier: workspace:*
+        version: link:../../plugins/core-v2
       '@kilo-desktop/plugin-developer':
         specifier: workspace:*
         version: link:../../plugins/developer
@@ -1519,6 +1525,83 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.1)(@vitest/coverage-v8@5.1.1)(@vitest/ui@5.1.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.0))
+    optionalDependencies:
+      '@kilocode/cli-darwin-arm64':
+        specifier: 7.8.27
+        version: 7.8.27
+      '@kilocode/cli-linux-arm64':
+        specifier: 7.8.27
+        version: 7.8.27
+      '@kilocode/cli-linux-x64-baseline':
+        specifier: 7.8.27
+        version: 7.8.27
+      '@kilocode/cli-windows-arm64':
+        specifier: 7.8.27
+        version: 7.8.27
+      '@kilocode/cli-windows-x64-baseline':
+        specifier: 7.8.27
+        version: 7.8.27
+
+  plugins/core-v2:
+    dependencies:
+      '@kilo-desktop/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
+      '@kilo-desktop/plugin-core':
+        specifier: workspace:*
+        version: link:../core
+      '@kilocode/sdk':
+        specifier: 7.8.27
+        version: 7.8.27
+      '@launchdarkly/node-client-sdk':
+        specifier: ^4.4.4
+        version: 4.4.4
+      '@modelcontextprotocol/server':
+        specifier: 2.4.0
+        version: 2.4.0
+      atomically:
+        specifier: 'catalog:'
+        version: 2.1.1
+      execa:
+        specifier: 'catalog:'
+        version: 10.2.1
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
+      lodash:
+        specifier: 'catalog:'
+        version: 4.18.1
+      zod:
+        specifier: ^4.6.6
+        version: 4.6.7
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: ^2.0.0
+        version: 2.4.0
+      '@types/lodash':
+        specifier: ^4.17.20
+        version: 4.17.24
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.6.6
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.1.1(@vitest/browser@5.1.1)(vitest@5.1.1)
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.3.8(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.1(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.1)(@vitest/coverage-v8@5.1.1)(@vitest/ui@5.1.1)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
       '@kilocode/cli-darwin-arm64':
         specifier: 7.8.27

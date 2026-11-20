@@ -23,6 +23,7 @@
 		"@kilo-desktop/plugin-anaconda": "workspace:*",
 		"@kilo-desktop/plugin-browser": "workspace:*",
 		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-core-v2": "workspace:*",
 		"@kilo-desktop/plugin-developer": "workspace:*",
 		"@kilo-desktop/plugin-environments": "workspace:*",
 		"@kilo-desktop/plugin-files": "workspace:*",

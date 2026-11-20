@@ -68,6 +68,26 @@ jobs:
           cache-node-modules: "false"
       - run: pnpm check:plugin-isolation --build all
 
+  # The Kilo Code v2 server line (docs/adr/003-kilo-server-line.md): build the
+  # main and renderer bundles with KILO_SERVER_LINE=v2 so the v2 plugin copies
+  # and their entry aliases stay buildable. The v2 packages' own typecheck and
+  # tests run in the typecheck and test jobs like any workspace package.
+  server-line-v2:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      KILO_SERVER_LINE: v2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
+          install: "true"
+      - run: pnpm --filter @kilo-desktop/web build
+      - run: pnpm --filter @kilo-desktop/desktop exec vite build -c vite.main.config.ts --mode development
+
   typecheck:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
@@ -383,7 +403,18 @@ jobs:
   check:
     name: Check
     if: always()
-    needs: [lint-format, plugin-isolation, typecheck, test-linux, test, e2e-plan, e2e-pr, e2e-merge]
+    needs:
+      [
+        lint-format,
+        plugin-isolation,
+        server-line-v2,
+        typecheck,
+        test-linux,
+        test,
+        e2e-plan,
+        e2e-pr,
+        e2e-merge,
+      ]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     steps:

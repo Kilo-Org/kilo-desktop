@@ -29,7 +29,10 @@ export type ServerLinePackages = Readonly<Record<string, Readonly<Record<ServerL
  * A v2 entry names the v1 package until that plugin's v2 copy exists.
  */
 export const SERVER_LINE_PACKAGES: ServerLinePackages = {
-	"@kilo-desktop/plugin-core": { v1: "@kilo-desktop/plugin-core", v2: "@kilo-desktop/plugin-core" },
+	"@kilo-desktop/plugin-core": {
+		v1: "@kilo-desktop/plugin-core",
+		v2: "@kilo-desktop/plugin-core-v2",
+	},
 	"@kilo-desktop/plugin-chat": { v1: "@kilo-desktop/plugin-chat", v2: "@kilo-desktop/plugin-chat" },
 	"@kilo-desktop/plugin-marketplace": {
 		v1: "@kilo-desktop/plugin-marketplace",

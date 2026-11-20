@@ -222,7 +222,7 @@ export class WorktreesPage {
 	async cancelDeletingSessionAndWorktree(title: string): Promise<void> {
 		const row = sessionListRow(title);
 		await row.hover();
-		await click(this.rowMore(row));
+		await click(this.rowMore(row), { force: true });
 		await click(this.menuDelete());
 		await expectElementToBeVisible(
 			this.deleteWorktreeDialog(),

@@ -20,7 +20,7 @@
 		"prepare:plugins": "pnpm --filter \"@kilo-desktop/plugin-*\" -r --if-present run prepare-assets",
 		"make": "tsx config/run-packaging.ts make",
 		"package": "tsx config/run-packaging.ts package",
-		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true ELECTRON_SKIP_NATIVE_REBUILD=true VITE_FEATURE_FLAG_OVERRIDES=chat-layouts,update-track-switcher,external-api-apps-settings,workspace-board,local-model-catalog,developer VITE_KILO_E2E_AUTH=1 pnpm run package",
+		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true ELECTRON_SKIP_NATIVE_REBUILD=true VITE_FEATURE_FLAG_OVERRIDES=chat-layouts,update-track-switcher,external-api-apps-settings,workspace-board,local-model-catalog,developer,environments-feature VITE_KILO_E2E_AUTH=1 pnpm run package",
 		"publish": "tsx config/run-packaging.ts publish",
 		"release:smoke": "tsx config/smoke-release-artifact.ts",
 		"release:notes": "tsx config/preview-release-notes.ts",

@@ -68,10 +68,15 @@ export class SettingsPage {
 
 	async verifySectionEntries(): Promise<void> {
 		for (const section of SETTINGS_SECTIONS) {
-			await expectElementToHaveText(this.sectionEntry(section.id), section.title, {
-				message: `Sidebar should list the "${section.title}" section`,
-			});
+			await this.verifySectionListed(section);
 		}
+	}
+
+	async verifySectionListed(
+		section: SettingsSection,
+		message = `Sidebar should list the "${section.title}" section`,
+	): Promise<void> {
+		await expectElementToHaveText(this.sectionEntry(section.id), section.title, { message });
 	}
 
 	async verifySectionOpened(section: SettingsSection): Promise<void> {

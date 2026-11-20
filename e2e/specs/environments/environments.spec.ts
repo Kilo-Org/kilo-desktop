@@ -1,9 +1,7 @@
 import { test } from "../../fixtures/developer.js";
 
-// The Conda Environments settings page is behind the LaunchDarkly
-// `environments-feature` flag, which package:e2e does not force on, so this
-// smoke proves what does not depend on it: the plugin activates and registers
-// its conda bridge (started on first use).
+// The plugin activates and registers its conda bridge (started on first use);
+// the settings page itself is covered by environments-settings.spec.ts.
 test.describe("Conda environments @smoke", () => {
 	test("activates and registers the conda bridge service", async ({
 		appShellPage,

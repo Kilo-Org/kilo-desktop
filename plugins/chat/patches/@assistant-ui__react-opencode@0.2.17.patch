@@ -96,7 +96,7 @@ index 9f1e69a..7d8d2c6 100644
 +{"version":3,"file":"OpenCodeEventSource.js","names":[],"sources":["../src/OpenCodeEventSource.ts"],"sourcesContent":["import type { OpencodeClient } from \"@opencode-ai/sdk/v2/client\";\nimport type { OpenCodeServerEvent } from \"./types\";\n\ntype Listener = (event: OpenCodeServerEvent) => void;\n\nexport type OpenCodeEventSubscriber = (options: {\n  signal: AbortSignal;\n  sseMaxRetryAttempts: number;\n}) => Promise<{ stream: AsyncIterable<unknown> }>;\n\nconst asRecord = (value: unknown): Record<string, unknown> | null => {\n  return typeof value === \"object\" && value !== null\n    ? (value as Record<string, unknown>)\n    : null;\n};\n\nconst extractSessionId = (\n  type: string,\n  properties: Record<string, unknown>,\n): string | undefined => {\n  if (typeof properties.sessionID === \"string\") {\n    return properties.sessionID;\n  }\n\n  const info = asRecord(properties.info);\n  if (info) {\n    if (typeof info.sessionID === \"string\") {\n      return info.sessionID;\n    }\n\n    if (\n      (type === \"session.created\" ||\n        type === \"session.updated\" ||\n        type === \"session.deleted\") &&\n      typeof info.id === \"string\"\n    ) {\n      return info.id;\n    }\n  }\n\n  const part = asRecord(properties.part);\n  if (part && typeof part.sessionID === \"string\") {\n    return part.sessionID;\n  }\n\n  return undefined;\n};\n\nconst normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {\n  const outer = asRecord(event);\n  if (!outer) return null;\n\n  const payload = asRecord(outer.payload);\n  const candidate = payload ?? outer;\n\n  if (\n    typeof candidate.type !== \"string\" ||\n    !(\"properties\" in candidate) ||\n    !asRecord(candidate.properties)\n  ) {\n    return null;\n  }\n\n  const normalized = {\n    type: candidate.type,\n    properties: candidate.properties as Record<string, unknown>,\n    directory: typeof outer.directory === \"string\" ? outer.directory : undefined,\n    sessionId: extractSessionId(\n      candidate.type,\n      candidate.properties as Record<string, unknown>,\n    ),\n    raw: event,\n  } satisfies OpenCodeServerEvent;\n\n  return normalized;\n};\n\nexport const STREAM_RECONNECTED_EVENT_TYPE = \"stream.reconnected\";\n\nexport class OpenCodeEventSource {\n  private readonly listeners = new Set<Listener>();\n  private readonly reconnectDelayMs = 1_000;\n  private readonly maxReconnectDelayMs = 30_000;\n  private abortController: AbortController | null = null;\n  private connectionPromise: Promise<void> | null = null;\n  private stopped = false;\n  private nextReconnectDelayMs = this.reconnectDelayMs;\n  private hadConnection = false;\n\n  private readonly client: OpencodeClient;\n  private readonly subscribeToEvents: OpenCodeEventSubscriber;\n  private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;\n\n  constructor(\n    client: OpencodeClient,\n    subscribeToEvents?: OpenCodeEventSubscriber,\n    onEvent?: (event: OpenCodeServerEvent) => void,\n  ) {\n    this.client = client;\n    this.subscribeToEvents =\n      subscribeToEvents ??\n      ((options) => this.client.event.subscribe(undefined, options));\n    this.onEvent = onEvent;\n  }\n\n  public subscribe(listener: Listener) {\n    this.listeners.add(listener);\n    this.connect();\n\n    return () => {\n      this.listeners.delete(listener);\n      if (this.listeners.size === 0) {\n        this.disconnect();\n      }\n    };\n  }\n\n  public dispose() {\n    this.stopped = true;\n    this.disconnect();\n  }\n\n  private emit(event: OpenCodeServerEvent) {\n    for (const listener of this.listeners) {\n      try {\n        listener(event);\n      } catch (error) {\n        console.error(\"[react-opencode] Listener threw an error\", error);\n      }\n    }\n  }\n\n  private connect() {\n    if (this.connectionPromise || this.stopped) return;\n    const connection = this.run().finally(() => {\n      if (this.connectionPromise === connection) {\n        this.connectionPromise = null;\n        if (!this.stopped && this.listeners.size > 0) {\n          this.connect();\n        }\n      }\n    });\n    this.connectionPromise = connection;\n  }\n\n  private disconnect() {\n    this.abortController?.abort();\n    this.abortController = null;\n  }\n\n  private async run() {\n    while (!this.stopped) {\n      if (this.listeners.size === 0) return;\n\n      const abortController = new AbortController();\n      this.abortController = abortController;\n      let failedToConnect = true;\n      let reconnectDelayMs = this.reconnectDelayMs;\n\n      try {\n        const subscription = await this.subscribeToEvents({\n          signal: abortController.signal,\n          sseMaxRetryAttempts: 1,\n        });\n        failedToConnect = false;\n        this.nextReconnectDelayMs = this.reconnectDelayMs;\n\n        if (this.hadConnection) {\n          this.emit({\n            type: STREAM_RECONNECTED_EVENT_TYPE,\n            sessionId: undefined,\n            raw: undefined,\n            properties: {},\n          });\n        }\n        this.hadConnection = true;\n\n        for await (const event of subscription.stream) {\n          if (abortController.signal.aborted || this.stopped) {\n            return;\n          }\n\n          const normalized = normalizeEventPayload(event);\n          if (!normalized) continue;\n          this.onEvent?.(normalized);\n          this.emit(normalized);\n        }\n        if (abortController.signal.aborted || this.stopped) {\n          return;\n        }\n      } catch (error) {\n        if (abortController.signal.aborted || this.stopped) return;\n        console.warn(\n          \"[react-opencode] OpenCode event stream disconnected\",\n          error,\n        );\n        if (failedToConnect) {\n          reconnectDelayMs = this.nextReconnectDelayMs;\n          this.nextReconnectDelayMs = Math.min(\n            this.nextReconnectDelayMs * 2,\n            this.maxReconnectDelayMs,\n          );\n        }\n      } finally {\n        if (this.abortController === abortController) {\n          this.abortController = null;\n        }\n      }\n\n      if (this.listeners.size === 0) return;\n\n      await new Promise((resolve) => setTimeout(resolve, reconnectDelayMs));\n    }\n  }\n}\n"],"mappings":"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"}
 \ No newline at end of file
 diff --git a/dist/OpenCodeThreadController.d.ts b/dist/OpenCodeThreadController.d.ts
-index 6ccaa3d..a240225 100644
+index 6ccaa3d..deae5cc 100644
 --- a/dist/OpenCodeThreadController.d.ts
 +++ b/dist/OpenCodeThreadController.d.ts
 @@ -3,6 +3,8 @@ import { OpenCodeEventSource } from "./OpenCodeEventSource.js";
@@ -108,7 +108,16 @@ index 6ccaa3d..a240225 100644
  type OpenCodeEventSourceProvider = () => Pick<OpenCodeEventSource, "subscribe">;
  declare class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    private state;
-@@ -53,5 +55,5 @@ declare class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -32,6 +34,8 @@ declare class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   private ensureEventSubscription;
+   private handleStreamReconnect;
+   dispose(): void;
++  /** Still applying its session's events: listened to, or running without listeners. */
++  isAttachedToEvents(): boolean;
+   getState: () => OpenCodeThreadState;
+   subscribe: (listener: () => void) => () => void;
+   load(force?: boolean): Promise<void>;
+@@ -53,5 +57,5 @@ declare class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    private dispatch;
  }
  //#endregion
@@ -117,10 +126,10 @@ index 6ccaa3d..a240225 100644
  //# sourceMappingURL=OpenCodeThreadController.d.ts.map
 \ No newline at end of file
 diff --git a/dist/OpenCodeThreadController.js b/dist/OpenCodeThreadController.js
-index 81f121b..100b8e4 100644
+index 81f121b..507e589 100644
 --- a/dist/OpenCodeThreadController.js
 +++ b/dist/OpenCodeThreadController.js
-@@ -103,13 +103,34 @@ const isSupportedDelta = (state, messageId, partId, field) => {
+@@ -103,13 +103,35 @@ const isSupportedDelta = (state, messageId, partId, field) => {
  	if (!part) return false;
  	return field === "text" && (part.type === "text" || part.type === "reasoning");
  };
@@ -141,6 +150,7 @@ index 81f121b..100b8e4 100644
 +	"run.cancelling",
 +	"run.reverting"
 +]);
++const isThreadRunning = (state) => state.runState.type === "streaming" || state.runState.type === "cancelling" || state.runState.type === "reverting" || state.sessionStatus?.type === "busy" || state.sessionStatus?.type === "retry";
  var OpenCodeThreadController = class OpenCodeThreadController {
  	state;
  	listeners = /* @__PURE__ */ new Set();
@@ -155,7 +165,7 @@ index 81f121b..100b8e4 100644
  	childControllersById = /* @__PURE__ */ new Map();
  	childSessionIdByPartId = /* @__PURE__ */ new Map();
  	ancestorSessionIds;
-@@ -158,9 +179,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -158,9 +180,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	}
  	discard() {
  		this.loadPromise = null;
@@ -168,7 +178,7 @@ index 81f121b..100b8e4 100644
  		for (const entry of this.childControllersById.values()) {
  			entry.unsubscribe?.();
  			entry.controller.discard();
-@@ -230,6 +254,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -230,6 +255,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	syncChildSessionIndex(event) {
  		switch (event.type) {
  			case "history.loaded":
@@ -176,13 +186,14 @@ index 81f121b..100b8e4 100644
  			case "message.removed":
  				this.rebuildChildSessionIndex();
  				break;
-@@ -242,8 +267,23 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -242,8 +268,24 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  			default: break;
  		}
  	}
-+	watchForStaleness() {
++	watchForStaleness(applied) {
 +		if (this.stopStaleWatch) return;
 +		this.stopStaleWatch = this.getEventSource().subscribe((event) => {
++			if (event === applied) return;
 +			if (event.type !== "stream.reconnected" && event.sessionId !== this.sessionId) return;
 +			this.stale = true;
 +			this.stopWatchingForStaleness();
@@ -200,9 +211,11 @@ index 81f121b..100b8e4 100644
  		this.unsubscribeFromEvents = this.getEventSource().subscribe((event) => {
  			if (event.type === "stream.reconnected") {
  				this.handleStreamReconnect();
-@@ -252,14 +292,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -251,15 +293,15 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 			}
  			if (event.sessionId !== this.sessionId) return;
  			this.handleServerEvent(event);
++			this.detachFromEventsIfUnobserved(event);
  		});
 +		this.syncSessionStatus();
  	}
@@ -221,7 +234,7 @@ index 81f121b..100b8e4 100644
  			if (status) this.dispatch({
  				type: "session.status",
  				status
-@@ -269,6 +308,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -269,6 +311,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  				sessionId: this.sessionId
  			});
  		});
@@ -234,20 +247,42 @@ index 81f121b..100b8e4 100644
  		this.client.permission.list(void 0, OPEN_CODE_REQUEST_OPTIONS).catch(() => null).then((response) => {
  			if (!response || token !== this.reconnectSyncToken) return;
  			for (const item of response.data ?? []) {
-@@ -297,6 +342,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -295,10 +343,24 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 		});
+ 	}
  	dispose() {
++		this.listeners.clear();
++		this.stopWatchingForStaleness();
++		if (isThreadRunning(this.state)) return;
  		this.unsubscribeFromEvents?.();
  		this.unsubscribeFromEvents = null;
-+		this.stopWatchingForStaleness();
  		this.detachChildControllers();
- 		this.listeners.clear();
+-		this.listeners.clear();
++	}
++	/** Still applying its session's events: listened to, or running without listeners. */
++	isAttachedToEvents() {
++		return this.unsubscribeFromEvents !== null;
++	}
++	detachFromEventsIfUnobserved(applied) {
++		if (this.listeners.size > 0) return;
++		if (this.unsubscribeFromEvents && isThreadRunning(this.state)) return;
++		this.unsubscribeFromEvents?.();
++		this.unsubscribeFromEvents = null;
++		this.detachChildControllers();
++		this.watchForStaleness(applied);
  	}
-@@ -314,19 +360,37 @@ var OpenCodeThreadController = class OpenCodeThreadController {
- 				this.unsubscribeFromEvents?.();
- 				this.unsubscribeFromEvents = null;
- 				this.detachChildControllers();
-+				this.watchForStaleness();
- 			}
+ 	getState = () => {
+ 		return this.state;
+@@ -310,23 +372,36 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 		if (wasDetached) for (const [sessionId, entry] of this.childControllersById) this.attachChildController(sessionId, entry);
+ 		return () => {
+ 			this.listeners.delete(listener);
+-			if (this.listeners.size === 0) {
+-				this.unsubscribeFromEvents?.();
+-				this.unsubscribeFromEvents = null;
+-				this.detachChildControllers();
+-			}
++			this.detachFromEventsIfUnobserved();
  		};
  	};
  	async load(force = false) {
@@ -283,7 +318,7 @@ index 81f121b..100b8e4 100644
  		}).catch((error) => {
  			if (this.loadPromise !== request) throw error;
  			this.dispatch({
-@@ -343,6 +407,32 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -343,6 +418,32 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	refresh() {
  		return this.load(true);
  	}
@@ -316,7 +351,7 @@ index 81f121b..100b8e4 100644
  	createPendingMessage(message) {
  		const parts = flattenMessageParts(message);
  		return {
-@@ -358,6 +448,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -358,6 +459,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		};
  	}
  	async promptMessage(message, pending, options) {
@@ -324,7 +359,7 @@ index 81f121b..100b8e4 100644
  		this.dispatch({ type: "run.started" });
  		try {
  			await this.client.session.promptAsync({
-@@ -424,10 +515,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -424,10 +526,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async revert(messageId) {
  		this.dispatch({ type: "run.reverting" });
  		try {
@@ -339,7 +374,7 @@ index 81f121b..100b8e4 100644
  		} catch (error) {
  			this.dispatch({
  				type: "run.failed",
-@@ -437,7 +531,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -437,7 +542,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		}
  	}
  	async unrevert() {
@@ -357,7 +392,7 @@ index 81f121b..100b8e4 100644
  	}
  	async fork(messageId) {
  		const response = await this.client.session.fork({
-@@ -450,7 +553,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -450,7 +564,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async replyToPermission(permissionId, response) {
  		await this.client.permission.reply({
  			requestID: permissionId,
@@ -367,7 +402,7 @@ index 81f121b..100b8e4 100644
  		}, OPEN_CODE_REQUEST_OPTIONS);
  		this.dispatch({
  			type: "permission.replied",
-@@ -621,6 +725,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -621,6 +736,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		});
  	}
  	dispatch(event) {
@@ -375,7 +410,7 @@ index 81f121b..100b8e4 100644
  		const nextState = reduceOpenCodeThreadState(this.state, event);
  		if (nextState === this.state) return;
  		this.state = nextState;
-@@ -629,6 +734,6 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -629,6 +745,6 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	}
  };
  //#endregion
@@ -1746,10 +1781,10 @@ index 48cc456..651f9e8 100644
 +{"version":3,"file":"useOpenCodeRuntime.d.ts","names":[],"sources":["../src/useOpenCodeRuntime.ts"],"mappings":";;;cAsea,qBACX,UAAS,2BACR"}
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d57..fb9f644 100644
+index d795d57..77df16d 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
-@@ -1,27 +1,31 @@
+@@ -1,38 +1,73 @@
  "use client";
  import { OpenCodeEventSource } from "./OpenCodeEventSource.js";
  import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState.js";
@@ -1784,9 +1819,11 @@ index d795d57..fb9f644 100644
  		controllers,
 +		queues,
  		dispose() {
++			for (const controller of controllers.values()) controller.dispose();
++			if ([...controllers.values()].some((controller) => controller.isAttachedToEvents())) return;
  			eventSource?.dispose();
  			eventSource = null;
-@@ -29,10 +33,40 @@ const createRegistry = (client) => {
+-			for (const controller of controllers.values()) controller.dispose();
  		}
  	};
  };
@@ -1829,7 +1866,7 @@ index d795d57..fb9f644 100644
  	registry.controllers.set(sessionId, controller);
  	return controller;
  };
-@@ -52,19 +86,69 @@ const NOOP_CONTROLLER = {
+@@ -52,19 +87,69 @@ const NOOP_CONTROLLER = {
  	replyToQuestion: async () => {},
  	rejectQuestion: async () => {}
  };
@@ -1903,7 +1940,7 @@ index d795d57..fb9f644 100644
  	const extras = useMemo(() => openCodeExtras.provide({
  		session: state.session,
  		state,
-@@ -79,24 +163,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -79,24 +164,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		replyToQuestion: (questionId, answers) => controller.replyToQuestion(questionId, answers),
  		rejectQuestion: (questionId) => controller.rejectQuestion(questionId)
  	}), [controller, state]);
@@ -1931,7 +1968,7 @@ index d795d57..fb9f644 100644
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -131,36 +207,179 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -131,36 +208,179 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  				throw error;
  			}
  		}
@@ -2221,10 +2258,10 @@ index 4acaaa7..8576332 100644
          }
          if (abortController.signal.aborted || this.stopped) {
 diff --git a/src/OpenCodeThreadController.ts b/src/OpenCodeThreadController.ts
-index 5ebfe4f..29ef78c 100644
+index 5ebfe4f..287509b 100644
 --- a/src/OpenCodeThreadController.ts
 +++ b/src/OpenCodeThreadController.ts
-@@ -216,13 +216,62 @@ const isSupportedDelta = (
+@@ -216,13 +216,76 @@ const isSupportedDelta = (
    );
  };
  
@@ -2257,6 +2294,13 @@ index 5ebfe4f..29ef78c 100644
 +  "run.reverting",
 +]);
 +
++const isThreadRunning = (state: OpenCodeThreadState): boolean =>
++  state.runState.type === "streaming" ||
++  state.runState.type === "cancelling" ||
++  state.runState.type === "reverting" ||
++  state.sessionStatus?.type === "busy" ||
++  state.sessionStatus?.type === "retry";
++
  export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    private state: OpenCodeThreadState;
    private readonly listeners = new Set<() => void>();
@@ -2271,6 +2315,13 @@ index 5ebfe4f..29ef78c 100644
 +   */
 +  private stopStaleWatch: (() => void) | null = null;
 +  private stale = false;
++  /*
++   * A running thread keeps applying its session's events after its last
++   * listener leaves (and after `dispose`), and only lets go once its run ends.
++   * A streamed part's text exists only as deltas until the part ends, so a
++   * thread that dropped them could not get them back from a history refresh;
++   * one shown again mid-run instead shows exactly what was streamed.
++   */
    private loadPromise: Promise<void> | null = null;
 +  /*
 +   * A history loads its newest page, shows it, then fetches everything older
@@ -2287,7 +2338,7 @@ index 5ebfe4f..29ef78c 100644
    private readonly childControllersById = new Map<
      string,
      ChildControllerEntry
-@@ -304,9 +353,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -304,9 +367,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
  
    private discard() {
      this.loadPromise = null;
@@ -2300,7 +2351,7 @@ index 5ebfe4f..29ef78c 100644
      for (const entry of this.childControllersById.values()) {
        entry.unsubscribe?.();
        entry.controller.discard();
-@@ -403,6 +455,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -403,6 +469,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    private syncChildSessionIndex(event: OpenCodeStateEvent) {
      switch (event.type) {
        case "history.loaded":
@@ -2308,13 +2359,16 @@ index 5ebfe4f..29ef78c 100644
        case "message.removed":
          this.rebuildChildSessionIndex();
          break;
-@@ -417,8 +470,32 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -417,8 +484,35 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      }
    }
  
-+  private watchForStaleness() {
++  // `applied` is the event being handled when the watch starts: a source may
++  // deliver it to a listener added during its delivery.
++  private watchForStaleness(applied?: OpenCodeServerEvent) {
 +    if (this.stopStaleWatch) return;
 +    this.stopStaleWatch = this.getEventSource().subscribe((event) => {
++      if (event === applied) return;
 +      if (
 +        event.type !== STREAM_RECONNECTED_EVENT_TYPE &&
 +        event.sessionId !== this.sessionId
@@ -2341,9 +2395,11 @@ index 5ebfe4f..29ef78c 100644
  
      this.unsubscribeFromEvents = this.getEventSource().subscribe((event) => {
        if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
-@@ -428,26 +505,35 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -427,27 +521,37 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+       }
        if (event.sessionId !== this.sessionId) return;
        this.handleServerEvent(event);
++      this.detachFromEventsIfUnobserved(event);
      });
 +    // Status only arrives as live events; any missed while unsubscribed (never
 +    // opened, thread switched away, reload mid-run) must be fetched.
@@ -2387,23 +2443,48 @@ index 5ebfe4f..29ef78c 100644
  
      void this.client.permission
        .list(undefined, OPEN_CODE_REQUEST_OPTIONS)
-@@ -483,6 +569,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -481,10 +585,26 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   }
+ 
    public dispose() {
++    this.listeners.clear();
++    this.stopWatchingForStaleness();
++    if (isThreadRunning(this.state)) return;
      this.unsubscribeFromEvents?.();
      this.unsubscribeFromEvents = null;
-+    this.stopWatchingForStaleness();
      this.detachChildControllers();
-     this.listeners.clear();
+-    this.listeners.clear();
++  }
++
++  /** Still applying its session's events: listened to, or running without listeners. */
++  public isAttachedToEvents() {
++    return this.unsubscribeFromEvents !== null;
++  }
++
++  private detachFromEventsIfUnobserved(applied?: OpenCodeServerEvent) {
++    if (this.listeners.size > 0) return;
++    if (this.unsubscribeFromEvents && isThreadRunning(this.state)) return;
++    this.unsubscribeFromEvents?.();
++    this.unsubscribeFromEvents = null;
++    this.detachChildControllers();
++    this.watchForStaleness(applied);
    }
-@@ -507,6 +594,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
-         this.unsubscribeFromEvents?.();
-         this.unsubscribeFromEvents = null;
-         this.detachChildControllers();
-+        this.watchForStaleness();
-       }
+ 
+   public getState = () => {
+@@ -503,11 +623,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+ 
+     return () => {
+       this.listeners.delete(listener);
+-      if (this.listeners.size === 0) {
+-        this.unsubscribeFromEvents?.();
+-        this.unsubscribeFromEvents = null;
+-        this.detachChildControllers();
+-      }
++      this.detachFromEventsIfUnobserved();
      };
    };
-@@ -515,6 +603,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+ 
+@@ -515,6 +631,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      if (this.loadPromise && !force) return this.loadPromise;
  
      this.dispatch({ type: "history.loading" });
@@ -2411,7 +2492,7 @@ index 5ebfe4f..29ef78c 100644
  
      const request = Promise.all([
        this.client.session.get(
-@@ -522,19 +611,36 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -522,19 +639,36 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
          OPEN_CODE_REQUEST_OPTIONS,
        ),
        this.client.session.messages(
@@ -2454,7 +2535,7 @@ index 5ebfe4f..29ef78c 100644
        })
        .catch((error) => {
          if (this.loadPromise !== request) throw error;
-@@ -555,6 +661,33 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -555,6 +689,33 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      return this.load(true);
    }
  
@@ -2488,7 +2569,7 @@ index 5ebfe4f..29ef78c 100644
    private createPendingMessage(message: AppendMessage): PendingUserMessage {
      const parts = flattenMessageParts(
        message,
-@@ -578,6 +711,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -578,6 +739,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      pending: PendingUserMessage,
      options?: OpenCodeUserMessageOptions,
    ) {
@@ -2500,7 +2581,7 @@ index 5ebfe4f..29ef78c 100644
      this.dispatch({ type: "run.started" });
  
      try {
-@@ -675,13 +813,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -675,13 +841,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    public async revert(messageId: string) {
      this.dispatch({ type: "run.reverting" });
      try {
@@ -2525,7 +2606,7 @@ index 5ebfe4f..29ef78c 100644
      } catch (error) {
        this.dispatch({ type: "run.failed", error });
        throw error;
-@@ -689,12 +837,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -689,12 +865,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    public async unrevert() {
@@ -2555,7 +2636,7 @@ index 5ebfe4f..29ef78c 100644
    }
  
    public async fork(messageId: string) {
-@@ -719,6 +878,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -719,6 +906,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
        {
          requestID: permissionId,
          reply: response,
@@ -2569,7 +2650,7 @@ index 5ebfe4f..29ef78c 100644
        },
        OPEN_CODE_REQUEST_OPTIONS,
      );
-@@ -963,6 +1129,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -963,6 +1157,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    private dispatch(event: Parameters<typeof reduceOpenCodeThreadState>[1]) {
@@ -4171,7 +4252,7 @@ index a87d890..83109cc 100644
    | { type: "session.updated"; session: Session }
    | { type: "session.status"; status: SessionStatus }
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b..6aa4c3b 100644
+index 66a324b..4580a43 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -4205,7 +4286,7 @@ index 66a324b..6aa4c3b 100644
    OpenCodeRuntimeOptions,
    OpenCodeThreadControllerLike,
    OpenCodeThreadState,
-@@ -22,33 +33,47 @@ import type {
+@@ -22,55 +33,123 @@ import type {
  import { OpenCodeEventSource } from "./OpenCodeEventSource";
  import { toOpenCodePermissionResponse } from "./openCodePermissionApproval";
  import { OpenCodeThreadController } from "./OpenCodeThreadController";
@@ -4256,9 +4337,22 @@ index 66a324b..6aa4c3b 100644
      controllers,
 +    queues,
      dispose() {
-       eventSource?.dispose();
-       eventSource = null;
-@@ -61,16 +86,64 @@ const createRegistry = (
+-      eventSource?.dispose();
+-      eventSource = null;
+       for (const controller of controllers.values()) {
+         controller.dispose();
+       }
+       // Keep controllers cached across React StrictMode cleanup/remount.
+       // Cleanup only detaches subscriptions; a real unmount drops this registry.
++      // A running controller keeps applying its events until its run ends, so
++      // the source it listens to stays open meanwhile.
++      const inUse = [...controllers.values()].some((controller) =>
++        controller.isAttachedToEvents(),
++      );
++      if (inUse) return;
++      eventSource?.dispose();
++      eventSource = null;
+     },
    };
  };
  
@@ -4325,7 +4419,7 @@ index 66a324b..6aa4c3b 100644
      registry.getEventSource,
      sessionId,
    );
-@@ -95,9 +168,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
+@@ -95,9 +174,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
    rejectQuestion: async () => {},
  };
  
@@ -4335,7 +4429,7 @@ index 66a324b..6aa4c3b 100644
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,27 +175,104 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,27 +181,104 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
@@ -4444,7 +4538,7 @@ index 66a324b..6aa4c3b 100644
    );
  
    const extras = useMemo(
-@@ -154,90 +301,257 @@ const useOpenCodeThreadRuntime = (
+@@ -154,90 +307,257 @@ const useOpenCodeThreadRuntime = (
      [controller, state],
    );
  
@@ -4647,7 +4741,12 @@ index 66a324b..6aa4c3b 100644
 +  const liveState = useOpenCodeControllerState(controller);
 +  const liveHasUserMessage = liveThreadHasUserMessage(liveState);
 +  const threadStore = useOpenCodeThreadStore(controller, options);
-+
+ 
+-  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
+-    isDisabled: true,
+-    isLoading: true,
+-    messageRepository: ExportedMessageRepository.fromArray([]),
+-    onNew: NOOP_ON_NEW,
 +  const optimisticRepository = useMemo(
 +    () => ExportedMessageRepository.fromArray(optimisticMessages),
 +    [optimisticMessages],
@@ -4657,12 +4756,7 @@ index 66a324b..6aa4c3b 100644
 +    if (!liveHasUserMessage || optimisticMessages.length === 0) return;
 +    setOptimisticMessages([]);
 +  }, [liveHasUserMessage, optimisticMessages.length]);
- 
--  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
--    isDisabled: true,
--    isLoading: true,
--    messageRepository: ExportedMessageRepository.fromArray([]),
--    onNew: NOOP_ON_NEW,
++
 +  const newThreadStore = useMemo<ExternalStoreAdapter<ThreadMessage>>(
 +    () => ({
 +      ...pickExternalStoreSharedOptions(options),
@@ -4768,7 +4862,7 @@ index 66a324b..6aa4c3b 100644
  };
  
  export const useOpenCodeRuntime = (
-@@ -245,10 +559,35 @@ export const useOpenCodeRuntime = (
+@@ -245,10 +565,35 @@ export const useOpenCodeRuntime = (
  ): AssistantRuntime => {
    const baseUrl = options.baseUrl ?? "http://localhost:4096";
    const client = useMemo(
@@ -4807,7 +4901,7 @@ index 66a324b..6aa4c3b 100644
  
    useEffect(() => {
      return () => {
-@@ -257,8 +596,11 @@ export const useOpenCodeRuntime = (
+@@ -257,8 +602,11 @@ export const useOpenCodeRuntime = (
    }, [registry]);
  
    const adapter = useMemo(
@@ -4821,7 +4915,7 @@ index 66a324b..6aa4c3b 100644
    );
  
    return useRemoteThreadListRuntime({
-@@ -267,6 +609,6 @@ export const useOpenCodeRuntime = (
+@@ -267,6 +615,6 @@ export const useOpenCodeRuntime = (
      initialThreadId: options.initialSessionId,
      onThreadIdChange: options.onThreadIdChange,
      // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position

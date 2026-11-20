@@ -1562,6 +1562,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.4.0
         version: 2.4.0
+      '@opencode/schema':
+        specifier: npm:@kilocode/schema@0.0.0-v2-239
+        version: '@kilocode/schema@0.0.0-v2-239'
       atomically:
         specifier: 'catalog:'
         version: 2.1.1

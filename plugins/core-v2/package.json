@@ -24,6 +24,7 @@
 		"@kilo-desktop/kernel": "workspace:*",
 		"@kilo-desktop/plugin-core": "workspace:*",
 		"@kilocode/client": "0.0.0-v2-239",
+		"@opencode/schema": "npm:@kilocode/schema@0.0.0-v2-239",
 		"@kilocode/sdk": "7.8.27",
 		"@launchdarkly/node-client-sdk": "^4.4.4",
 		"@modelcontextprotocol/server": "2.4.0",

@@ -1,4 +1,4 @@
-import { realpath, stat } from "node:fs/promises";
+import { readlink, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -89,14 +89,24 @@ function isInside(root: string, target: string): boolean {
 	);
 }
 
-/** Follows symlinks in the longest existing part of `target`, which need not exist yet. */
-async function canonicalPath(target: string): Promise<string> {
+const MAX_SYMLINK_HOPS = 40;
+
+/**
+ * Follows symlinks in `target`, which need not exist yet: a missing part is
+ * kept as written, and a symlink whose target is missing is followed to it.
+ */
+async function canonicalPath(target: string, hops = 0): Promise<string> {
 	const missing: string[] = [];
 	let existing = target;
 	for (;;) {
 		try {
 			return path.join(await realpath(existing), ...missing);
 		} catch {
+			const link = await readlink(existing).catch(() => null);
+			if (link !== null && hops < MAX_SYMLINK_HOPS) {
+				const linked = path.resolve(path.dirname(existing), link);
+				return canonicalPath(path.join(linked, ...missing), hops + 1);
+			}
 			const parent = path.dirname(existing);
 			if (parent === existing) return target;
 			missing.unshift(path.basename(existing));
@@ -255,7 +265,7 @@ class NotebookSessionRegistry {
 		const filepath = await canonicalPath(notebookPath);
 		if (await isInsideWorkspace(filepath, context)) return;
 
-		if (this.#allowedLocationsByKiloSession.get(context.sessionID)?.has(filepath)) return;
+		if (this.isLocationAllowed(context.sessionID, filepath)) return;
 		const parentDir = path.dirname(filepath);
 		const pattern = path.join(parentDir, "*");
 		await context.ask({
@@ -272,6 +282,10 @@ class NotebookSessionRegistry {
 			},
 		});
 		this.allowLocation(context.sessionID, filepath);
+	}
+
+	isLocationAllowed(kiloSessionId: string, filepath: string): boolean {
+		return this.#allowedLocationsByKiloSession.get(kiloSessionId)?.has(filepath) ?? false;
 	}
 
 	allowLocation(kiloSessionId: string, filepath: string): void {
@@ -1047,7 +1061,10 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					throw new Error("Notebook save paths must end in .ipynb.");
 				}
 				const canonicalTarget = await canonicalPath(targetPath);
-				if (!(await isInsideWorkspace(canonicalTarget, context))) {
+				if (
+					!(await isInsideWorkspace(canonicalTarget, context)) &&
+					!sessions.isLocationAllowed(context.sessionID, canonicalTarget)
+				) {
 					await context.ask({
 						permission: "external_directory",
 						patterns: [canonicalTarget],

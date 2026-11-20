@@ -1654,6 +1654,7 @@ describe("nteract Kilo plugin", () => {
 			await writeFile(path.join(outside, "notes.ipynb"), "{}");
 			await symlink(path.join(outside, "notes.ipynb"), path.join(workspace, "linked.ipynb"));
 			await symlink(outside, path.join(workspace, "exports"));
+			await symlink(path.join(outside, "missing.ipynb"), path.join(workspace, "dangling.ipynb"));
 			return { workspace, outside };
 		}
 
@@ -1721,23 +1722,32 @@ describe("nteract Kilo plugin", () => {
 			expect(session.listCells).toHaveBeenCalledTimes(2);
 		});
 
-		it("asks before saving into a new folder under a workspace symlink to an outside folder", async () => {
+		it.each([
+			[
+				"a new folder under a workspace symlink to an outside folder",
+				"exports/new/copy.ipynb",
+				["new", "copy.ipynb"],
+			],
+			["a workspace symlink to a missing outside file", "dangling.ipynb", ["missing.ipynb"]],
+		])("asks once per session before saving to %s", async (_, savePath, outsideParts) => {
 			const { workspace, outside } = await workspaceWithOutsideNotebook();
 			const { hooks, session } = await pluginWithNotebookAt(path.join(workspace, "inside.ipynb"));
 			const ask = vi.fn(async () => undefined);
+			const context = contextIn(workspace, ask);
+			const save = () =>
+				hooks.tool.notebooks_save.execute({ notebook_id: NOTEBOOK_ID, path: savePath }, context);
 
-			await hooks.tool.notebooks_save.execute(
-				{ notebook_id: NOTEBOOK_ID, path: "exports/new/copy.ipynb" },
-				contextIn(workspace, ask),
-			);
+			await save();
+			await save();
 
+			expect(ask).toHaveBeenCalledOnce();
 			expect(ask).toHaveBeenCalledWith(
 				expect.objectContaining({
 					permission: "external_directory",
-					patterns: [path.join(outside, "new", "copy.ipynb")],
+					patterns: [path.join(outside, ...outsideParts)],
 				}),
 			);
-			expect(session.saveNotebook).toHaveBeenCalled();
+			expect(session.saveNotebook).toHaveBeenCalledTimes(2);
 		});
 	});
 

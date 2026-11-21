@@ -62,7 +62,7 @@ async function showDiagrams() {
 	});
 	// Pele loads lazily, so the first diagrams can take a while on a cold runner.
 	await expect
-		.poll(() => document.querySelectorAll('[data-qa-id="chat-mermaid-expand"]').length, {
+		.poll(() => document.querySelectorAll('[data-qa-id="markdown-mermaid-expand"]').length, {
 			timeout: 15_000,
 		})
 		.toBe(2);
@@ -73,7 +73,7 @@ describe("the media viewer pane", () => {
 	it("records the item shown as the person moves between them", async () => {
 		const host = await showDiagrams();
 
-		document.querySelectorAll<HTMLElement>('[data-qa-id="chat-mermaid-expand"]')[1]?.click();
+		document.querySelectorAll<HTMLElement>('[data-qa-id="markdown-mermaid-expand"]')[1]?.click();
 		const viewer = page.getByTestId("chat-media-pane");
 		await expect.element(viewer.getByRole("heading", { name: "Sequence diagram" })).toBeVisible();
 
@@ -117,7 +117,7 @@ describe("the media viewer pane", () => {
 			throw new Error("No room for another pane.");
 		});
 
-		document.querySelector<HTMLElement>('[data-qa-id="chat-mermaid-expand"]')?.click();
+		document.querySelector<HTMLElement>('[data-qa-id="markdown-mermaid-expand"]')?.click();
 
 		await expect.element(page.getByRole("dialog", { name: "Flowchart" })).toBeVisible();
 		expect(document.querySelector('[data-qa-id="chat-media-pane"]')).toBeNull();
@@ -125,7 +125,7 @@ describe("the media viewer pane", () => {
 
 	it("shows the items in a popped-out window, as main keeps them", async () => {
 		const host = await showDiagrams();
-		document.querySelector<HTMLElement>('[data-qa-id="chat-mermaid-expand"]')?.click();
+		document.querySelector<HTMLElement>('[data-qa-id="markdown-mermaid-expand"]')?.click();
 		await expect
 			.element(page.getByTestId("chat-media-pane").getByRole("heading", { name: "Flowchart" }))
 			.toBeVisible();

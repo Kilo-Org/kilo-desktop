@@ -23,7 +23,6 @@
 		"@assistant-ui/core": "^0.3.35",
 		"@assistant-ui/react": "0.15.35",
 		"@assistant-ui/react-lexical": "0.2.21",
-		"@assistant-ui/react-markdown": "^0.14.25",
 		"@assistant-ui/react-opencode": "0.2.17",
 		"@assistant-ui/tap": "0.9.25",
 		"@kilo-desktop/kernel": "workspace:*",
@@ -46,8 +45,6 @@
 		"motion": "^14.14.0",
 		"react": "^19.3.1",
 		"react-dom": "^19.3.1",
-		"react-markdown": "^10.1.0",
-		"remark-gfm": "^4.0.1",
 		"zod": "catalog:",
 		"zustand": "^5.1.0"
 	},

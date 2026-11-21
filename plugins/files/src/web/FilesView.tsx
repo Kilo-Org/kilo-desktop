@@ -922,6 +922,7 @@ function FilesViewContent({
 											</div>
 										) : (
 											<MarkdownPreview
+												codeTheme={appearance.shiki}
 												contents={draft}
 												onOpenFile={openFileFromTree}
 												read={readForMarkdown}

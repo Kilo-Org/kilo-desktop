@@ -58,12 +58,12 @@ describe("the transcript", () => {
 		]);
 
 		await expect.element(page.getByText("sh", { exact: true })).toBeVisible();
-		await page.getByTestId("chat-code-copy").click();
+		await page.getByRole("button", { name: "Copy code" }).click();
 
 		await vi.waitFor(() => expect(host.copied).toContain("pnpm test\n"));
 	});
 
-	it("renders a Mermaid fence as a diagram card with its source", async () => {
+	it("renders a Mermaid fence as a diagram and copies its source", async () => {
 		const host = await showChat([
 			userMessage("ses_a", "msg_1", "Draw it"),
 			assistantMessage("ses_a", "msg_2", "msg_1", [
@@ -75,14 +75,9 @@ describe("the transcript", () => {
 			]),
 		]);
 
-		await expect
-			.element(page.getByTestId("chat-mermaid-card").getByText("Flowchart"))
-			.toBeVisible();
-		await page.getByTestId("chat-mermaid-source-toggle").click();
-		await expect
-			.element(page.getByTestId("chat-mermaid-source").getByText("A --> B", { exact: false }))
-			.toBeVisible();
-		await page.getByTestId("chat-mermaid-copy").click();
+		await expect.element(page.getByTestId("markdown-mermaid-expand")).toBeVisible();
+		expect(document.querySelector('[data-markdown="mermaid"] svg')).not.toBeNull();
+		await page.getByRole("button", { name: "Copy code" }).click();
 		await vi.waitFor(() => expect(host.copied.at(-1)).toContain("flowchart TD"));
 	});
 
@@ -280,7 +275,7 @@ describe("the transcript", () => {
 				},
 			]),
 		]);
-		await expect.element(page.getByTestId("chat-mermaid-expand")).toBeVisible();
+		await expect.element(page.getByTestId("markdown-mermaid-expand")).toBeVisible();
 
 		await page.getByRole("button", { name: "Image attachment" }).click();
 
@@ -304,7 +299,7 @@ describe("the transcript", () => {
 		await vi.waitFor(() => expect(host.copied.at(-1)).toContain("flowchart TD"));
 
 		// Opening another item from the chat reuses its viewer pane.
-		await page.getByTestId("chat-mermaid-expand").click();
+		await page.getByTestId("markdown-mermaid-expand").click();
 		await expect.element(viewer.getByRole("heading", { name: "Flowchart" })).toBeVisible();
 		expect(host.panes().panes.filter((pane) => pane.kind === MEDIA_PANE_KIND)).toHaveLength(1);
 	});

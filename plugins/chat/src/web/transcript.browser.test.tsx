@@ -76,14 +76,15 @@ const promptsTo = (server: FakeKiloServer) =>
 describe("the markdown-extension point", () => {
 	it("decorates the transcript's markdown, knowing where it is", async () => {
 		const shout: MarkdownExtensionImplementation = (context) => ({
-			decorateComponents: (next) => ({
-				...next,
-				strong: ({ children }) => (
-					<strong data-qa-id="acme-shout" data-session={context.workSessionId}>
-						{children}!
-					</strong>
-				),
-			}),
+			components: {
+				strong: (html) =>
+					html
+						.replace(
+							"<strong ",
+							`<strong data-qa-id="acme-shout" data-session="${context.workSessionId}" `,
+						)
+						.replace("</strong>", "!</strong>"),
+			},
 		});
 		await showChat(chatWith([reply("It posts **credentials**.")]), {
 			plugins: [

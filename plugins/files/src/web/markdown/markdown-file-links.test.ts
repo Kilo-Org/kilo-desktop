@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveInlineCodeFileLink, resolveMarkdownFileLink } from "./markdown-file-links.js";
-import { remarkWorkspaceFileLinks, type MarkdownAstNode } from "./remark-workspace-file-links.js";
 
 describe("resolveMarkdownFileLink", () => {
 	it("resolves a workspace-relative Markdown link with a source position", () => {
@@ -143,70 +142,5 @@ describe("resolveInlineCodeFileLink", () => {
 			relativePath: "script.pl",
 			line: 10,
 		});
-	});
-});
-
-describe("remarkWorkspaceFileLinks", () => {
-	it("leaves plain text unchanged unless candidate verification is available", () => {
-		const text: MarkdownAstNode = { type: "text", value: "Open docs/TESTING.md." };
-		const tree: MarkdownAstNode = { type: "root", children: [text] };
-
-		remarkWorkspaceFileLinks({
-			workspaceFolders: [{ path: "/workspace/project", isPrimary: true }],
-		})(tree);
-
-		expect(tree.children).toEqual([text]);
-	});
-
-	it("marks plain path candidates for workspace existence checks", () => {
-		const tree: MarkdownAstNode = {
-			type: "root",
-			children: [
-				{
-					type: "paragraph",
-					children: [
-						{
-							type: "text",
-							value: "Open apps/desktop/README.md.",
-						},
-					],
-				},
-			],
-		};
-
-		remarkWorkspaceFileLinks({
-			workspaceFolders: [{ path: "/workspace/project", isPrimary: true }],
-			linkifyPlainText: true,
-		})(tree);
-
-		expect(tree.children?.[0]?.children).toEqual([
-			{ type: "text", value: "Open " },
-			{
-				type: "link",
-				url: "apps/desktop/README.md",
-				data: { hProperties: { "data-workspace-file-candidate": "" } },
-				children: [{ type: "text", value: "apps/desktop/README.md" }],
-			},
-			{ type: "text", value: "." },
-		]);
-	});
-
-	it("rewrites file URLs before React Markdown sanitizes them", () => {
-		const tree: MarkdownAstNode = {
-			type: "root",
-			children: [
-				{
-					type: "link",
-					url: "file:///workspace/project/src/My%20App.tsx#L8",
-					children: [{ type: "text", value: "My App" }],
-				},
-			],
-		};
-
-		remarkWorkspaceFileLinks({
-			workspaceFolders: [{ path: "/workspace/project", isPrimary: true }],
-		})(tree);
-
-		expect(tree.children?.[0]?.url).toBe("/workspace/project/src/My%20App.tsx#L8");
 	});
 });

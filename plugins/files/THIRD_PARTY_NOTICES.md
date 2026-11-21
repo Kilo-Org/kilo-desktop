@@ -6,7 +6,6 @@ Ported or adapted from [t3code](https://github.com/pingdotgg/t3code).
 
 - `src/web/external-editors/ExternalEditorIcons.tsx` (the editor icon components) ← `apps/web/src/components/Icons.tsx` and `JetBrainsIcons.tsx`
 - `src/web/markdown/markdown-file-links.ts` and the test cases in `markdown-file-links.test.ts` ← `packages/shared/src/markdownLinks.ts` and `apps/web/src/markdown-links.test.ts`
-- The inline-code tagging in `src/web/markdown/remark-workspace-file-links.ts` ← `apps/web/src/components/ChatMarkdown.tsx` (`remarkTagInlineCode`)
 - `ensurePierreIconSprite` in `src/web/file-icons/PierreFileIcon.tsx` ← `apps/web/src/pierre-icons.ts`
 
 License: MIT. Copyright (c) 2026 T3 Tools Inc.

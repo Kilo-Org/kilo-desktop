@@ -17,7 +17,6 @@
 		"kilo.work-sessions/pane-kind": "optional",
 		"kilo.work-sessions/opener": "optional",
 		"kilo.chat/composer-mention": "optional",
-		"kilo.chat/markdown-extension": "optional",
 		"kilo.shell/theme": "optional"
 	},
 	"domainObjects": [
@@ -70,11 +69,6 @@
 					"id": "files",
 					"trigger": "@",
 					"title": "Files"
-				}
-			],
-			"kilo.chat/markdown-extension": [
-				{
-					"id": "file-links"
 				}
 			],
 			"kilo.core/tool": [

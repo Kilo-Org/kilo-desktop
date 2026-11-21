@@ -124,22 +124,27 @@ export interface ChatMarkdownContext {
 	readonly workspaceFolders: readonly ComposerFolder[];
 }
 
-/** Remark plugins and decorators over the rendered components (`@kilo-desktop/ui`'s shape). */
+/**
+ * Hooks over the generated HTML, code-block renderers, React islands, a URL
+ * transform and delegated clicks (`@kilo-desktop/ui`'s `MarkdownRendererExtension`).
+ */
 export type ChatMarkdownExtension = MarkdownRendererExtension;
 
-/** Made once per transcript: remark plugins and component decorators for its markdown. */
+/** Made once per transcript: how its `@pierre/words` markdown is extended. */
 export type MarkdownExtensionImplementation = (
 	context: ChatMarkdownContext,
 ) => ChatMarkdownExtension;
 
 /**
- * Extends how the agent's replies render as markdown: remark plugins and
- * decorators over the rendered components (file paths as links, URLs opened
- * in a pane).
+ * Extends how the agent's replies render as markdown (`@pierre/words`):
+ * element hooks rewrite the generated HTML, code renderers and islands mount
+ * custom blocks, and click handlers act on the rendered links (URLs opened in
+ * a pane).
  */
 export const MarkdownExtension = defineExtensionPoint({
 	id: "kilo.chat/markdown-extension",
 	kind: "additive",
-	description: "Remark plugins and component decorators for the transcript's markdown.",
+	description:
+		"Element hooks, code renderers, islands and click handlers for the transcript's markdown.",
 	implementation: implementation<MarkdownExtensionImplementation>("renderer"),
 });

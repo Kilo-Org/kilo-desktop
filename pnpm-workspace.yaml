@@ -10,6 +10,9 @@ packages:
 catalog:
   "@pierre/diffs": 1.6.4
   "@pierre/trees": 1.0.0
+  "@pierre/words": 0.3.0
+  # @pierre/words needs >=0.5.1; @pierre/diffs 1.6.4 still pins 0.4.0 for itself.
+  "@pierre/highlights": 0.5.2
   "@playwright/test": 1.65.1
   # Every Sentry package must resolve to the exact @sentry/core pinned by
   # @sentry/electron, so the repo carries a single core.

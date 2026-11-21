@@ -87,6 +87,7 @@ const chatWeb = (startNewChat: NonNullable<MarketplaceHostOptions["startNewChat"
 						await startNewChat({ text: input.text });
 						return { workSessionId: "wses_1" };
 					},
+					prefillNewSession: unused,
 				},
 			});
 		},

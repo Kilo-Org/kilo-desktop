@@ -66,6 +66,7 @@ export function actionCollaborators() {
 					focus: unused,
 					insert: (input) => void inserted.push(input),
 					startChat: unused,
+					prefillNewSession: unused,
 				},
 			});
 		},

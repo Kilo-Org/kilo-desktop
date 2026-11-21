@@ -187,9 +187,7 @@ describe("the Workbook setting on the New Session page", () => {
 		await userEvent.click(page.getByTestId(`workbooks-continue-${existing.id}`));
 		await expect
 			.poll(() => draft.text)
-			.toBe(
-				`Let's carry on with the workbook "Existing": say where we left off and what's next, then continue.`,
-			);
+			.toBe(`Let's carry on with the workbook "Existing": say where we left off and what's next.`);
 
 		await newWorkbook();
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Clock");

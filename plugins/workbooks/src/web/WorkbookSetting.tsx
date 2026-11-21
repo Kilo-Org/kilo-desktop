@@ -112,7 +112,7 @@ export function suggestedFirstMessage(
 		const firstMove = (template?.firstMove as string | undefined)?.trim() || DEFAULT_FIRST_MOVE;
 		return `Let's start the workbook "${workbook.name}". ${firstMove}`;
 	}
-	return `Let's carry on with the workbook "${workbook.name}": say where we left off and what's next, then continue.`;
+	return `Let's carry on with the workbook "${workbook.name}": say where we left off and what's next.`;
 }
 
 function WorkbookSetting({

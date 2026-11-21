@@ -228,6 +228,9 @@ describe("the New Session page with a session starter", () => {
 		expect(follows(page.getByTestId("launcher-headline").element(), location.element())).toBe(true);
 		expect(follows(location.element(), starter.element())).toBe(true);
 		expect(lastProps()).toMatchObject({ workspaceId: "w-app", directory: "/projects/app" });
+		// Without a setting contributed (kilo.workbooks off), the row is the capsule alone.
+		expect(location.element().children).toHaveLength(1);
+		await expect.element(page.getByTestId("launcher-settings-capsule")).not.toBeInTheDocument();
 	});
 
 	it("joins workspace, isolation and branch in one capsule, each label drawn in its picker", async () => {

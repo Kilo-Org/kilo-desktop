@@ -28,16 +28,57 @@ describe("MarkdownPreview", () => {
 			/>
 		);
 		const { rerender } = render(preview());
-		await expect.element(page.getByRole("img", { name: "Mermaid diagram" })).toBeVisible();
-		const svg = document.querySelector('[data-qa-id="mermaid-diagram"] svg');
-		expect(svg).not.toBeNull();
+		await expect
+			.poll(() => document.querySelector('[data-markdown="mermaid"] svg'), { timeout: 10_000 })
+			.not.toBeNull();
+		const svg = document.querySelector('[data-markdown="mermaid"] svg');
 
 		rerender(preview());
 		rerender(preview());
 
-		expect(document.querySelector('[data-qa-id="mermaid-diagram"] svg')).toBe(svg);
-		expect(document.querySelector('[data-qa-id="mermaid-diagram"]')?.textContent).not.toContain(
-			"Rendering diagram",
+		expect(document.querySelector('[data-markdown="mermaid"] svg')).toBe(svg);
+	});
+
+	it("opens a relative link as a workspace file", async () => {
+		const onOpenFile = vi.fn();
+		render(
+			<MarkdownPreview
+				contents={"See [the guide](../guide/setup.md#install) or [the site](https://example.com)."}
+				onOpenFile={onOpenFile}
+				read={read}
+				relativePath="docs/readme.md"
+				workspaceDirectory="/workspace/project"
+			/>,
 		);
+
+		await page.getByRole("link", { name: "the guide" }).click();
+
+		expect(onOpenFile).toHaveBeenCalledWith("guide/setup.md");
+	});
+
+	it("loads a relative image from the workspace", async () => {
+		const readImage = vi.fn<ReadFile>(async () => ({
+			kind: "image",
+			mimeType: "image/gif",
+			base64: "R0lGODlhAQABAAAAACw=",
+			byteLength: 14,
+		}));
+		render(
+			<MarkdownPreview
+				contents={"![Logo](./assets/logo.gif)"}
+				onOpenFile={vi.fn()}
+				read={readImage}
+				relativePath="docs/readme.md"
+				workspaceDirectory="/workspace/project"
+			/>,
+		);
+
+		await expect
+			.element(page.getByRole("img", { name: "Logo" }))
+			.toHaveAttribute("src", expect.stringMatching(/^data:image\/gif;base64,/u));
+		expect(readImage).toHaveBeenCalledWith({
+			workspaceDirectory: "/workspace/project",
+			relativePath: "docs/assets/logo.gif",
+		});
 	});
 });

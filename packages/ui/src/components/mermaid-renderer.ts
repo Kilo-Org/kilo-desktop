@@ -1,5 +1,7 @@
+import { createMermaidPlugin } from "@pierre/words/mermaid";
+import type { MermaidPlugin } from "@pierre/words/react";
 import createDOMPurify from "dompurify";
-import { mount, type MountOptions } from "pele";
+import { mount, render, type MountOptions, type RenderOptions } from "pele";
 
 const purifier = createDOMPurify(window);
 const styleProperties = new Set([
@@ -91,6 +93,60 @@ export function sanitizeMermaidSvg(svg: string): DocumentFragment {
 	});
 }
 
+const RENDER_LIMITS = {
+	autoDirection: false,
+	links: false,
+	images: false,
+	limit: 50_000,
+	maxEdges: 500,
+	outputLimit: 1_000_000,
+} satisfies RenderOptions;
+
+let diagramCount = 0;
+
+/** Pele's `render`, with our limits, a unique id prefix and the SVG sanitized as for `mount`. */
+const sanitizedPele = {
+	render(source: string, options?: RenderOptions) {
+		diagramCount += 1;
+		const { svg } = render(source, {
+			...options,
+			idPrefix: `kilo-mermaid-words-${String(diagramCount)}`,
+		});
+		const container = document.createElement("div");
+		container.append(sanitizeMermaidSvg(svg));
+		return { svg: container.innerHTML };
+	},
+};
+
+/** Inlined Lucide `maximize-2`, since the button is HTML that Words inserts. */
+const EXPAND_ICON =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/></svg>';
+const EXPAND_BUTTON = `<button type="button" data-mermaid-action="expand" data-qa-id="markdown-mermaid-expand" aria-label="Open diagram in viewer" title="Open in viewer">${EXPAND_ICON}</button>`;
+const DIAGRAM_OPEN = '<div data-markdown="mermaid">';
+
+/**
+ * `@pierre/words`' Mermaid plugin over Pele with the limits and SVG
+ * sanitizing `mountMermaid` uses. An open fence draws its complete lines;
+ * a closed one that does not parse shows as code. With `expandable`, a drawn,
+ * closed diagram carries an Expand button for `MarkdownContent`'s
+ * `onExpandMermaid`.
+ */
+export function createMermaidMarkdownPlugin({
+	expandable,
+}: {
+	readonly expandable: boolean;
+}): MermaidPlugin {
+	const plugin = createMermaidPlugin(sanitizedPele, RENDER_LIMITS);
+	if (!expandable) return plugin;
+	return {
+		render(options) {
+			const html = plugin.render(options);
+			if (options.isIncomplete || !html?.startsWith(DIAGRAM_OPEN)) return html;
+			return DIAGRAM_OPEN + EXPAND_BUTTON + html.slice(DIAGRAM_OPEN.length);
+		},
+	};
+}
+
 export function mountMermaid(
 	element: HTMLElement,
 	source: string,
@@ -100,13 +156,8 @@ export function mountMermaid(
 ) {
 	return mount(element, source, {
 		...callbacks,
+		...RENDER_LIMITS,
 		idPrefix: `kilo-mermaid-${id.replace(/[^a-zA-Z0-9_-]/g, "")}`,
-		autoDirection: false,
-		links: false,
-		images: false,
-		limit: 50_000,
-		maxEdges: 500,
-		outputLimit: 1_000_000,
 		sanitize: sanitizeMermaidSvg,
 		// Pele's built-in panel floats over the drawing and isn't design-system
 		// UI; a shrunk diagram stays zoomable by ⌘/Ctrl+wheel, pinch,

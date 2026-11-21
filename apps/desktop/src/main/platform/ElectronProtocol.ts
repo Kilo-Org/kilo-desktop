@@ -114,9 +114,10 @@ export function createContentSecurityPolicy(
 		: inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
 	return [
 		"default-src 'self'",
-		// `'wasm-unsafe-eval'` instantiates the bundled DotLottie WASM player
-		// (welcome logo). It is not `'unsafe-eval'` and does not allow remote
-		// script; the .wasm file is shipped with `@lottiefiles/dotlottie-web`.
+		// `'wasm-unsafe-eval'` instantiates bundled WASM: the DotLottie player
+		// (welcome logo) and `@pierre/words` / `@pierre/highlights` (markdown
+		// and code highlighting, compiled from bytes inlined in their modules).
+		// It is not `'unsafe-eval'` and does not allow remote script.
 		`script-src 'self'${inlineScriptSources} 'wasm-unsafe-eval'${developmentSources}`,
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: blob:",

@@ -98,7 +98,7 @@
 		{
 			"id": "markdown-extension",
 			"kind": "additive",
-			"description": "Remark plugins and component decorators for the transcript's markdown."
+			"description": "Element hooks, code renderers, islands and click handlers for the transcript's markdown."
 		},
 		{
 			"id": "permission-renderer",

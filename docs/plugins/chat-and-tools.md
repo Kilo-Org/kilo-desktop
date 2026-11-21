@@ -111,11 +111,11 @@ function GreetCard(props: ToolRendererProps) {
 
 ### Other transcript points
 
-| Extension point                 | Use it to                                                                                                                                                                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kilo.chat/mcp-app`             | Show an interactive MCP App widget (`resourceUri: "ui://…"`) for a tool's calls, matched like `tool-renderer`; `loadHtml` serves it from your plugin, else it is read from the tool's MCP server (`serverId`)             |
-| `kilo.chat/markdown-extension`  | Add remark plugins and component decorators to the agent's replies (file paths as links); made once per transcript from `{ workSessionId, workspaceFolders }`                                                             |
-| `kilo.chat/permission-renderer` | Add details and policies to permission and question cards: `permissionTitle`, a `PermissionDetail` view, `allowAlways` / `showPatterns` (return false to hide "Always allow" or the patterns), a question `optionWarning` |
+| Extension point                 | Use it to                                                                                                                                                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kilo.chat/mcp-app`             | Show an interactive MCP App widget (`resourceUri: "ui://…"`) for a tool's calls, matched like `tool-renderer`; `loadHtml` serves it from your plugin, else it is read from the tool's MCP server (`serverId`)                                             |
+| `kilo.chat/markdown-extension`  | Extend the agent's `@pierre/words` markdown: element hooks over the generated HTML, code renderers, React islands, a URL transform and delegated clicks (web links opened in a pane); made once per transcript from `{ workSessionId, workspaceFolders }` |
+| `kilo.chat/permission-renderer` | Add details and policies to permission and question cards: `permissionTitle`, a `PermissionDetail` view, `allowAlways` / `showPatterns` (return false to hide "Always allow" or the patterns), a question `optionWarning`                                 |
 
 A `permission-renderer` with `tools` (contribution keys) applies its
 permission parts only to requests from those desktop tools — matched on

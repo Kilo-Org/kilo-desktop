@@ -347,7 +347,7 @@ describe("the New Session page with a session starter", () => {
 		expect(started).toEqual([]);
 	});
 
-	it("ends the location row with settings, applied to a session started from a tool", async () => {
+	it("shows settings in a row under the location row, applied to a session started from a tool", async () => {
 		applied = [];
 		const { workSessions } = await renderWorkSessions({
 			workspaces: [workspace("w-app", "App")],
@@ -356,7 +356,7 @@ describe("the New Session page with a session starter", () => {
 			isolation: REPOSITORY,
 		});
 		await expect
-			.element(page.getByTestId("launcher-location-capsule").getByTestId("test-setting"))
+			.element(page.getByTestId("launcher-settings-capsule").getByTestId("test-setting"))
 			.toHaveTextContent("Setting for w-app");
 
 		await page.getByTestId("launcher-pane-test.kinds/terminal").click();

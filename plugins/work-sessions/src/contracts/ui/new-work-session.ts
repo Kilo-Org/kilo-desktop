@@ -114,7 +114,7 @@ export interface NewWorkSession {
 }
 
 export interface NewWorkSessionSetting {
-	/** Its segment of the page's location row: a `LocationField` (label and picker). */
+	/** Its segment of the page's settings row: a `LocationField` (label and picker). */
 	readonly component: ComponentType<NewWorkSessionSettingProps>;
 	/**
 	 * Applies the person's choice to a work session the page just created,
@@ -127,13 +127,14 @@ export interface NewWorkSessionSetting {
 
 /**
  * A setting of the work sessions the New Session page starts, shown as a
- * segment at the end of its location row (after Workspace, Use and Branch)
+ * segment of a centred row under its location row (Workspace, Use, Branch)
  * with or without a workspace, e.g. the workbook a session works in.
  * Settings show in priority order.
  */
 export const NewWorkSessionSettingPoint = defineExtensionPoint({
 	id: "kilo.work-sessions/new-work-session-setting",
 	kind: "additive",
-	description: "A setting of the sessions the New Session page starts, in its location row.",
+	description:
+		"A setting of the sessions the New Session page starts, in a row under its location row.",
 	implementation: implementation<NewWorkSessionSetting>("renderer"),
 });

@@ -283,7 +283,9 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 				<div role="group" aria-label="Start" className="flex items-center">
 					<Button
 						type="button"
+						variant="ghost"
 						size="sm"
+						aria-label="Start session"
 						disabled={!selected || disabled || running}
 						title={
 							selected
@@ -291,10 +293,10 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 								: "Choose a workbook first."
 						}
 						data-qa-id="workbooks-start"
-						className="h-7.5 rounded-[8px]"
+						className="hover:bg-foreground/7! h-7.5 gap-1.5 rounded-[8px] px-2.5! font-normal disabled:opacity-40"
 						onClick={() => selected && void startExisting(selected)}
 					>
-						Start session
+						Start
 						{running && !creating ? (
 							<Spinner aria-hidden data-icon="inline-end" />
 						) : (

@@ -223,18 +223,43 @@ export class WorkbookWriter {
 				await this.#appendBlock(section, markdown);
 				return markdown;
 			}
+			case "log-entry":
+				throw new KernelError("VALIDATION", "Use set_where_i_left_off for change log entries.");
 		}
 	}
 
-	/** Replaces the Brief's "Where I left off" with a dated line. */
+	/**
+	 * Replaces the Brief's "Where I left off" with a dated line, and adds the
+	 * same line at the top of the change log when the workbook has one.
+	 */
 	async setWhereILeftOff(text: string): Promise<string> {
 		const entry = `- ${this.today()}: ${oneLine(text)}`;
+		const log = this.workbook.sections.find((section) => section.itemType === "log-entry");
+		if (log) await this.#prependListItem(log, entry);
 		await this.#withRetry(async () => {
 			const page = await this.#read({});
 			const operations = whereILeftOffEdits(page.blocks, entry);
 			await this.#edit({}, page.revision, operations);
 		});
 		return entry;
+	}
+
+	/** Puts a list item before the section's first one, so the list reads newest first. */
+	async #prependListItem(target: Target, item: string): Promise<void> {
+		const placed = await this.#withRetry(async () => {
+			const page = await this.#read(target);
+			const first = sectionScope(page.blocks, target.heading).lines.find((line) =>
+				LIST_LINE.test(line.text),
+			);
+			if (!first) return false;
+			const lines = (first.block.markdown ?? "").split("\n");
+			lines.splice(first.index, 0, item);
+			await this.#edit(target, page.revision, [
+				{ op: "replace_block_markdown", node_id: first.block.node_id, markdown: lines.join("\n") },
+			]);
+			return true;
+		});
+		if (!placed) await this.#appendListItem(target, () => item);
 	}
 
 	/**
@@ -388,11 +413,17 @@ export function withStatus(line: string, status: StepStatus, note?: string): str
 	}
 }
 
+/** An italic line (`_…_` or `*…*`, not bold): the section's standing note, kept across updates. */
+const NOTE_LINE = /^(_|\*(?!\*))\S/;
+
+const isNoteBlock = (block: Block) =>
+	(block.markdown ?? "").split("\n").every((line) => !line.trim() || NOTE_LINE.test(line.trim()));
+
 /**
  * The edits that replace what follows the Brief's "Where I left off" heading
- * (up to the next heading) with `entry`, whether Pages keeps the heading in
- * its own block or in one block with the content; adds the section at the end
- * when the Brief has none.
+ * (up to the next heading) with `entry`, keeping the italic note that leads
+ * the section, whether Pages keeps the heading in its own block or in one
+ * block with the content; adds the section at the end when the Brief has none.
  */
 export function whereILeftOffEdits(blocks: readonly Block[], entry: string): unknown[] {
 	const heading = /^## Where I left off\s*$/m;
@@ -405,29 +436,44 @@ export function whereILeftOffEdits(blocks: readonly Block[], entry: string): unk
 	const start = markdown.search(heading);
 	const afterHeading = markdown.indexOf("\n", start);
 	const inBlock = afterHeading === -1 ? "" : markdown.slice(afterHeading);
+	const rest: Block[] = [];
+	for (const candidate of blocks.slice(at + 1)) {
+		if (/^#{1,6} /.test(candidate.markdown ?? "")) break;
+		rest.push(candidate);
+	}
 	if (inBlock.trim()) {
 		const next = inBlock.search(/\n#{1,6} /);
+		// The section runs on into later blocks only when this one has no heading after it.
+		const stale = next === -1 ? rest : [];
 		const tail = next === -1 ? "" : inBlock.slice(next);
+		const body = (next === -1 ? inBlock : inBlock.slice(0, next)).split("\n");
+		const noteEnd = body.findIndex((line) => line.trim() && !NOTE_LINE.test(line.trim()));
+		const note = (noteEnd === -1 ? body : body.slice(0, noteEnd)).join("\n").trim();
 		const head = markdown.slice(0, afterHeading === -1 ? markdown.length : afterHeading);
 		return [
 			{
 				op: "replace_block_markdown",
 				node_id: block.node_id,
-				markdown: `${head}\n\n${entry}${tail ? `\n${tail}` : ""}`,
+				markdown: `${head}\n\n${note ? `${note}\n\n` : ""}${entry}${tail ? `\n${tail}` : ""}`,
 			},
+			...stale.map((candidate) => ({ op: "delete_block", node_id: candidate.node_id })),
 		];
 	}
 	const following: Block[] = [];
-	for (const candidate of blocks.slice(at + 1)) {
-		if (/^#{1,6} /.test(candidate.markdown ?? "")) break;
+	let after = block;
+	for (const candidate of rest) {
+		if (following.length === 0 && isNoteBlock(candidate)) {
+			after = candidate;
+			continue;
+		}
 		following.push(candidate);
 	}
 	if (following.length === 0) {
-		return [{ op: "insert_markdown", after_node_id: block.node_id, markdown: entry }];
+		return [{ op: "insert_markdown", after_node_id: after.node_id, markdown: entry }];
 	}
-	const [first, ...rest] = following;
+	const [first, ...others] = following;
 	return [
 		{ op: "replace_block_markdown", node_id: first!.node_id, markdown: entry },
-		...rest.map((candidate) => ({ op: "delete_block", node_id: candidate.node_id })),
+		...others.map((candidate) => ({ op: "delete_block", node_id: candidate.node_id })),
 	];
 }

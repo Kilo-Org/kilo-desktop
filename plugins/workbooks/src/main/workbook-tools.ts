@@ -225,11 +225,13 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		"set_where_i_left_off",
 		defineTool({
 			description:
-				"Replace the Brief's \"Where I left off\": what was just done, what's next, and anything a fresh chat must know. Do this before stopping or when the context is running out.",
+				"Replace the Brief's \"Where I left off\" (and add the same entry at the top of the Change Log, when the workbook has one): what was just done, what's next, any (you) tasks, and anything a fresh chat must know. Do this before stopping or when the context is running out.",
 			input: z.object({ text: z.string().min(1), workbookId: workbookIdInput }),
 			run: async ({ text, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section: "brief", line: await writer.setWhereILeftOff(text) };
+				const { workbook, writer } = writerFor(workbookId, context);
+				const line = await writer.setWhereILeftOff(text);
+				const log = workbook.sections.find((section) => section.itemType === "log-entry");
+				return { section: "brief", ...(log ? { alsoIn: log.id } : {}), line };
 			},
 		}),
 	);

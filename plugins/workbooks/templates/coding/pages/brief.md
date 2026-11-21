@@ -1,6 +1,6 @@
 ## Where I left off
 
-_Updated by whoever (person or agent) last worked here._
+_The latest entry only; the full history, newest first, is on the Change Log page. Whoever (person or agent) last worked here adds the entry there and replaces this one._
 
 - Nothing yet.
 

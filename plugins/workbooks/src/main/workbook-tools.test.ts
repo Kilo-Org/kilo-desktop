@@ -81,6 +81,7 @@ describe("workbook tools", () => {
 			"decisions",
 			"findings",
 			"questions",
+			"change-log",
 		]);
 		const plan = (await call("read_workbook", { section: "plan" })).markdown;
 		expect(plan).toContain("**1. Refine");
@@ -223,16 +224,33 @@ describe("workbook tools", () => {
 		);
 	});
 
-	it("replace the Brief's Where I left off", async () => {
-		const { call, pages, workbook } = await boot();
+	it("replace the Brief's Where I left off, keeping its note, and log each entry newest first", async () => {
+		const { call, page, pages, workbook } = await boot();
+		const date = new Date().toISOString().slice(0, 10);
 
-		await call("set_where_i_left_off", { text: "Step 2 done; next step 3." });
+		await expect(
+			call("set_where_i_left_off", { text: "Step 2 done; next step 3." }),
+		).resolves.toEqual({
+			section: "brief",
+			alsoIn: "change-log",
+			line: `- ${date}: Step 2 done; next step 3.`,
+		});
+		await call("set_where_i_left_off", { text: "Step 3 done; next step 4." });
 
 		const brief = pages.markdown(pages.documentOf(workbook.projectId));
 		expect(brief).toMatch(
-			/## Where I left off\n\n- \d{4}-\d{2}-\d{2}: Step 2 done; next step 3.\n\n## Goal/,
+			/## Where I left off\n\n_The latest entry only;[^\n]*_\n\n- \d{4}-\d{2}-\d{2}: Step 3 done; next step 4.\n\n## Goal/,
 		);
 		expect(brief).not.toContain("Nothing yet.");
+		expect(brief).not.toContain("Step 2 done");
+		expect(page("change-log")).toMatch(
+			new RegExp(
+				`^_What happened in this workbook, newest first\\.[^\\n]*_\\n\\n- ${date}: Step 3 done; next step 4\\.\\n- ${date}: Step 2 done; next step 3\\.$`,
+			),
+		);
+		await expect(call("file_item", { section: "change-log", text: "x" })).rejects.toThrow(
+			"set_where_i_left_off",
+		);
 	});
 
 	it("need a workbook: the session's, or one named", async () => {
@@ -355,13 +373,57 @@ describe("withStatus and whereILeftOffEdits", () => {
 					{ node_id: "h", markdown: "## Where I left off" },
 					{ node_id: "a", markdown: "_note_" },
 					{ node_id: "b", markdown: "- old" },
+					{ node_id: "c", markdown: "older" },
 					{ node_id: "g", markdown: "## Goal" },
 				],
 				entry,
 			),
 		).toEqual([
-			{ op: "replace_block_markdown", node_id: "a", markdown: entry },
+			{ op: "replace_block_markdown", node_id: "b", markdown: entry },
+			{ op: "delete_block", node_id: "c" },
+		]);
+		expect(
+			whereILeftOffEdits(
+				[
+					{ node_id: "h", markdown: "## Where I left off" },
+					{ node_id: "a", markdown: "*note*" },
+				],
+				entry,
+			),
+		).toEqual([{ op: "insert_markdown", after_node_id: "a", markdown: entry }]);
+		expect(
+			whereILeftOffEdits(
+				[
+					{ node_id: "h", markdown: "## Where I left off\n\n*note*" },
+					{ node_id: "b", markdown: "- **bold** old" },
+					{ node_id: "g", markdown: "## Goal" },
+				],
+				entry,
+			),
+		).toEqual([
+			{
+				op: "replace_block_markdown",
+				node_id: "h",
+				markdown: `## Where I left off\n\n*note*\n\n${entry}`,
+			},
 			{ op: "delete_block", node_id: "b" },
+		]);
+		expect(
+			whereILeftOffEdits(
+				[
+					{
+						node_id: "b",
+						markdown: "## Where I left off\n\n_note_\n\n**Bold** old\n\n## Goal\n\nG",
+					},
+				],
+				entry,
+			),
+		).toEqual([
+			{
+				op: "replace_block_markdown",
+				node_id: "b",
+				markdown: `## Where I left off\n\n_note_\n\n${entry}\n\n## Goal\n\nG`,
+			},
 		]);
 		expect(whereILeftOffEdits([{ node_id: "h", markdown: "## Where I left off" }], entry)).toEqual([
 			{ op: "insert_markdown", after_node_id: "h", markdown: entry },

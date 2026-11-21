@@ -35,9 +35,12 @@ describe("createWorkbookContent", () => {
 			"How to work here",
 			"Plan",
 			"Decisions & findings",
+			"Change Log",
 		]);
 		expect(pages.markdown(created.guidePageId)).toContain("Extract, don't archive");
-		const [guide, plan, record] = pages.pagesOf(created.projectId).map((page) => page.id);
+		const [guide, plan, record, changeLog] = pages
+			.pagesOf(created.projectId)
+			.map((page) => page.id);
 		expect(guide).toBe(created.guidePageId);
 		expect(created.sections).toEqual([
 			{ id: "plan", title: "Steps", itemType: "plan-step", pageId: plan, heading: "Steps" },
@@ -63,6 +66,7 @@ describe("createWorkbookContent", () => {
 				heading: "Findings",
 			},
 			{ id: "questions", title: "Open questions", itemType: "question", heading: "Open questions" },
+			{ id: "change-log", title: "Change Log", itemType: "log-entry", pageId: changeLog },
 		]);
 		expect(pages.markdown(plan!)).toContain("Refine the Brief");
 	});

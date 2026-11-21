@@ -67,7 +67,7 @@ async function boot(...others: ReturnType<typeof templatePlugin>[]) {
 }
 
 describe("workbook templates", () => {
-	it("offers the built-in Coding template: the Brief, the guide, Plan and Decisions & findings", async () => {
+	it("offers the built-in Coding template: the Brief, the guide, Plan, Decisions & findings and Change Log", async () => {
 		const { host, templates } = await boot();
 
 		await expect
@@ -90,7 +90,9 @@ describe("workbook templates", () => {
 			["decisions", "record"],
 			["findings", "record"],
 			["questions", "brief"],
+			["change-log", undefined],
 		]);
+		expect(coding.sections.at(-1)).toMatchObject({ title: "Change Log", itemType: "log-entry" });
 		for (const section of coding.sections) expect(ITEM_TYPES).toContain(section.itemType);
 		expect(templates.getState().issues).toEqual([]);
 	});

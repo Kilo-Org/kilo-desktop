@@ -21,6 +21,8 @@ export const ITEM_TYPES = [
 	"reference",
 	"artifact",
 	"note",
+	/** A dated "where I left off" entry, newest first; the latest is also in the Brief. */
+	"log-entry",
 ] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 

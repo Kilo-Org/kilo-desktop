@@ -5,6 +5,7 @@ import blankNotes from "../../templates/blank/pages/notes.md?raw";
 import codingManifest from "../../templates/coding/workbook.json";
 import codingGuide from "../../templates/coding/AGENTS.md?raw";
 import codingBrief from "../../templates/coding/pages/brief.md?raw";
+import codingChangeLog from "../../templates/coding/pages/change-log.md?raw";
 import codingRecord from "../../templates/coding/pages/decisions-and-findings.md?raw";
 import codingPlan from "../../templates/coding/pages/plan.md?raw";
 import { templateFromFiles } from "./template-files";
@@ -15,6 +16,7 @@ export const BUILT_IN_TEMPLATES = {
 		templateFromFiles(codingManifest, {
 			"AGENTS.md": codingGuide,
 			"pages/brief.md": codingBrief,
+			"pages/change-log.md": codingChangeLog,
 			"pages/decisions-and-findings.md": codingRecord,
 			"pages/plan.md": codingPlan,
 		}),

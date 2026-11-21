@@ -1,0 +1,1 @@
+_What happened in this workbook, newest first. Whoever (person or agent) works here adds one entry at the top when they stop, and the same entry replaces **Where I left off** in the Brief, which shows only the latest. Each entry: what was done, what is next, and any `(you)` tasks waiting on the user._

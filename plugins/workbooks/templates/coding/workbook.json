@@ -34,6 +34,12 @@
 		{ "id": "follow-ups", "title": "Follow-ups", "itemType": "task", "in": "plan" },
 		{ "id": "decisions", "title": "Decisions", "itemType": "decision", "in": "record" },
 		{ "id": "findings", "title": "Findings", "itemType": "finding", "in": "record" },
-		{ "id": "questions", "title": "Open questions", "itemType": "question", "in": "brief" }
+		{ "id": "questions", "title": "Open questions", "itemType": "question", "in": "brief" },
+		{
+			"id": "change-log",
+			"title": "Change Log",
+			"itemType": "log-entry",
+			"file": "pages/change-log.md"
+		}
 	]
 }

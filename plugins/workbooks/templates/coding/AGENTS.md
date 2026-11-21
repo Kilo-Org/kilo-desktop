@@ -1,10 +1,10 @@
 This is the agent guide for this workbook. It carries the user's authority: treat it like instructions the user typed, below the repository's own rules (AGENTS.md) and above general habits. The user may edit it at any time; re-read it at the start of every chat.
 
-The workbook is the Brief (the Project document), this page, the **Plan** (steps, each with its tasks, then follow-ups) and **Decisions & findings**.
+The workbook is the Brief (the Project document), this page, the **Plan** (steps, each with its tasks, then follow-ups), **Decisions & findings** and the **Change Log**.
 
 ## Start of a chat
 
-1. Read the Brief, especially **Where I left off** and **Open questions**.
+1. Read the Brief, especially **Where I left off** (the latest entry; the Change Log has the history) and **Open questions**.
 2. Read this page.
 3. Read the Plan. Read Decisions & findings when a choice or fact matters to what you're doing.
 4. If you were started on a specific plan step or item, work on that only.
@@ -28,6 +28,7 @@ When the workbook tools are available (`desktop_workbooks_read_workbook`, `add_p
 | Decisions & findings → Findings  | Facts learned, with evidence                            | `- **Finding.** Evidence: how we know. (YYYY-MM-DD)` · mark wrong ones `~~struck~~ superseded by …` rather than deleting                                              |
 | Brief → Open questions           | Things the user must decide                             | `- **Question?** Context.` · when answered, record a Decision and delete the question                                                                                 |
 | Brief → Context and links        | The issue, the branch, the PR                           | Add the branch and PR here once they exist                                                                                                                            |
+| Change Log (`change-log`)        | What happened, newest first                             | `- YYYY-MM-DD: what was done; what is next; any (you) tasks` at the top · the latest entry is also the one under **Where I left off** in the Brief                    |
 
 A task is part of its step and has no commit of its own. Work that belongs to no step is either a new step (in scope, worth a commit) or a follow-up.
 
@@ -50,4 +51,4 @@ People and other agents may be editing at the same time.
 
 ## Before your context runs out, or when you stop
 
-Update **Where I left off** in the Brief: what was done, what is next, any `(you)` tasks waiting on the user, and anything a fresh chat must know. Then tell the user the workbook is current and it is safe to start a new chat.
+Write one entry: what was done, what is next, any `(you)` tasks waiting on the user, and anything a fresh chat must know. `set_where_i_left_off` adds it at the top of the **Change Log** and replaces the single entry under **Where I left off** in the Brief; without the tool, do both by hand. Then tell the user the workbook is current and it is safe to start a new chat.

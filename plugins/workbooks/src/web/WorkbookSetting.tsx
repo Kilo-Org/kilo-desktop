@@ -292,7 +292,7 @@ function WorkbookSetting({
 												: "No workbooks yet."}
 								</CommandEmpty>
 								{here.length > 0 ? (
-									<CommandGroup heading={grouped ? "This workspace" : undefined}>
+									<CommandGroup heading={grouped ? "Used in this workspace" : undefined}>
 										{here.map(workbookRow)}
 									</CommandGroup>
 								) : null}

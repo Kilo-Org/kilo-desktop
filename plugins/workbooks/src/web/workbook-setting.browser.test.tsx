@@ -406,7 +406,7 @@ describe("the Workbook setting on the New Session page", () => {
 
 		await openPicker();
 
-		await expect.element(page.getByText("This workspace")).toBeVisible();
+		await expect.element(page.getByText("Used in this workspace")).toBeVisible();
 		await expect.element(page.getByText("Other workbooks")).toBeVisible();
 		const rows = [
 			...page
@@ -429,7 +429,7 @@ describe("the Workbook setting on the New Session page", () => {
 		await openPicker();
 
 		await expect.element(page.getByText("Only here")).toBeVisible();
-		await expect.element(page.getByText("This workspace")).not.toBeInTheDocument();
+		await expect.element(page.getByText("Used in this workspace")).not.toBeInTheDocument();
 	});
 
 	it("works without a workspace: lists every workbook and creates new ones outside any", async () => {
@@ -443,7 +443,7 @@ describe("the Workbook setting on the New Session page", () => {
 
 		await openPicker();
 		await expect.element(page.getByTestId(`workbooks-continue-${existing.id}`)).toBeVisible();
-		await expect.element(page.getByText("This workspace")).not.toBeInTheDocument();
+		await expect.element(page.getByText("Used in this workspace")).not.toBeInTheDocument();
 		await userEvent.click(page.getByTestId("workbooks-new"));
 		await userEvent.click(page.getByTestId("workbooks-template-blank"));
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Scratch");

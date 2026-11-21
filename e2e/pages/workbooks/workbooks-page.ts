@@ -2,8 +2,9 @@ import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/p
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 /**
- * Page object for kilo.workbooks: the Workbook picker on the New Session page
- * and its New workbook wizard. Creating a workbook needs a signed-in Pages MCP server, so specs stop
+ * Page object for kilo.workbooks: the Workbook row on the New Session page
+ * (its picker, with New workbook pinned under the list) and its New workbook
+ * wizard. Creating a workbook needs a signed-in Pages MCP server, so specs stop
  * short of it.
  */
 export class WorkbooksPage {

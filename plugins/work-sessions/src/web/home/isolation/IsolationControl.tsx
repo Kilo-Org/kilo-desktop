@@ -34,7 +34,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/compon
 import { pickerMenuWidth } from "@kilo-desktop/ui/lib/menu-styles";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { LocationField } from "../LocationField";
+import { LocationField } from "@kilo-desktop/ui/components/location-capsule";
 import { BaseBranchPicker } from "./BaseBranchPicker";
 import type { IsolationMode } from "./isolation-preference";
 

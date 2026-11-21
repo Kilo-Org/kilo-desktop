@@ -116,7 +116,7 @@ async function newWorkbook(templateId = "coding") {
 const moreDetails = () => page.getByTestId("workbooks-more-details").element().textContent;
 
 describe("Start from a workbook on the New Session page", () => {
-	it("creates a workbook from the Coding template and starts a session on it", async () => {
+	it("creates a workbook from the Coding template and selects it, starting a session only from Start session", async () => {
 		const { host, started, log, pages } = await renderSection();
 
 		await newWorkbook();
@@ -128,12 +128,21 @@ describe("Start from a workbook on the New Session page", () => {
 		);
 		await userEvent.click(page.getByTestId("workbooks-create"));
 
-		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		await expect.element(page.getByTestId("workbooks-new-dialog")).not.toBeInTheDocument();
+		await expect
+			.poll(() => page.getByTestId("workbooks-picker-trigger").element().textContent)
+			.toContain("Fix the server bug");
+		expect(log.opened).toEqual([]);
 		const workbooks = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
 		expect(workbooks.map((workbook) => workbook.name)).toEqual(["Fix the server bug"]);
 		expect(pages.projects.size).toBe(1);
+
+		await userEvent.click(page.getByTestId("workbooks-start"));
+
+		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		expect(started[0]!.text).toContain('"Fix the server bug"');
+		// A workbook just made starts with its first move.
+		expect(started[0]!.text).toContain("## First\n\nRefine the Brief");
 		const sessions = host.renderer.kernelSdk.domainObjects.get(SessionWorkbooks)!;
 		await expect.poll(() => sessions.getState().bySession).toEqual({ wses_1: workbooks[0]!.id });
 	});
@@ -146,7 +155,7 @@ describe("Start from a workbook on the New Session page", () => {
 			name: "Existing",
 			values: { goal: "g" },
 		});
-		await expect.element(page.getByTestId("workbooks-start")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("workbooks-start")).toBeDisabled();
 
 		await openPicker();
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
@@ -167,6 +176,7 @@ describe("Start from a workbook on the New Session page", () => {
 		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		expect(started[0]!.text).toContain('"Existing"');
 		expect(started[0]!.text).not.toContain("## Work on this");
+		expect(started[0]!.text).not.toContain("## First\n\n");
 		await expect.element(page.getByTestId("workbooks-picker")).not.toBeInTheDocument();
 	});
 
@@ -186,6 +196,8 @@ describe("Start from a workbook on the New Session page", () => {
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Scratch");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Poke at things");
 		await userEvent.click(page.getByTestId("workbooks-create"));
+		await expect.element(page.getByTestId("workbooks-start")).toBeEnabled();
+		await userEvent.click(page.getByTestId("workbooks-start"));
 
 		await expect.poll(() => started.length).toBe(1);
 		const [workbook] = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
@@ -279,6 +291,7 @@ describe("Start from a workbook on the New Session page", () => {
 	it("offers New workbook in an empty picker, and closes the wizard on Cancel", async () => {
 		await renderSection();
 
+		await expect.element(page.getByTestId("workbooks-start")).toBeDisabled();
 		await openPicker();
 		await expect.element(page.getByText("No workbooks yet.")).toBeVisible();
 		await userEvent.click(page.getByTestId("workbooks-new"));
@@ -321,18 +334,31 @@ describe("Start from a workbook on the New Session page", () => {
 		});
 		await openPicker();
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
-		await expect.element(page.getByTestId("workbooks-start")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-start")).toBeEnabled();
+		await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Stays",
+			values: { goal: "g" },
+		});
 
 		await host.invoke(Workbooks, "forget", { id: workbook.id });
 
-		await expect.element(page.getByTestId("workbooks-start")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("workbooks-start")).toBeDisabled();
 		await expect
 			.poll(() => page.getByTestId("workbooks-picker-trigger").element().textContent)
-			.toBe("Workbook");
+			.toBe("Choose a workbook");
 	});
 
 	it("opens the picker from the keyboard", async () => {
-		await renderSection();
+		const { host } = await renderSection();
+		await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "blank",
+			name: "Any",
+			values: { goal: "g" },
+		});
+		await expect.element(page.getByTestId("workbooks-picker-trigger")).toBeVisible();
 
 		page.getByTestId("workbooks-picker-trigger").element().focus();
 		await userEvent.keyboard("{ArrowDown}");
@@ -399,6 +425,8 @@ describe("Start from a workbook on the New Session page", () => {
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Scratch");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Poke at things");
 		await userEvent.click(page.getByTestId("workbooks-create"));
+		await expect.element(page.getByTestId("workbooks-start")).toBeEnabled();
+		await userEvent.click(page.getByTestId("workbooks-start"));
 
 		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		const created = host.renderer.kernelSdk.domainObjects

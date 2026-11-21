@@ -2,7 +2,7 @@ import { KernelError, type DomainObjectHandle } from "@kilo-desktop/kernel";
 import type { Composer } from "@kilo-desktop/plugin-chat/contracts";
 import type { StartedWorkSession } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import type { CreateWorkbookInput, SessionWorkbooks, Workbooks } from "../contracts";
+import type { SessionWorkbooks, Workbooks } from "../contracts";
 
 export interface StartDeps {
 	readonly workbooks: DomainObjectHandle<typeof Workbooks> | null;
@@ -29,6 +29,8 @@ export async function startFromWorkbook(
 		...(input.focus ? { focus: input.focus } : {}),
 		...(input.fresh ? { fresh: true } : {}),
 	});
+	// After the kick-off on purpose: a workbook that can't be read must create no session.
+	// react-doctor-disable-next-line react-doctor/server-sequential-independent-await
 	const started = await deps.start();
 	try {
 		await sessions.methods.setActive({
@@ -42,16 +44,6 @@ export async function startFromWorkbook(
 	await started.open();
 	await composer.methods.insert({ workSessionId: started.workSessionId, text });
 	return started.workSessionId;
-}
-
-/** Creates a workbook from a template, then starts a work session on it. */
-export async function startNewWorkbook(
-	deps: StartDeps,
-	input: CreateWorkbookInput,
-): Promise<string> {
-	const { workbooks } = ready(deps);
-	const workbook = await workbooks.methods.create(input);
-	return startFromWorkbook(deps, { workbookId: workbook.id, fresh: true });
 }
 
 function ready(deps: StartDeps) {

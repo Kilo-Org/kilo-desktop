@@ -12,7 +12,7 @@ import {
 	type StartedChat,
 	type WorkSessionsControl,
 } from "../test/hosts";
-import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
+import { startFromWorkbook, type StartDeps } from "./start";
 
 const hosts: PluginHost[] = [];
 
@@ -37,11 +37,20 @@ async function boot() {
 	return { ...booted, started, workSessions, deps, log, sessions: objects.get(SessionWorkbooks)! };
 }
 
+/** Creates a workbook, then starts a session on it with its first move, as the New Session page does. */
+async function startNew(
+	deps: StartDeps,
+	input: Parameters<NonNullable<StartDeps["workbooks"]>["methods"]["create"]>[0],
+) {
+	const workbook = await deps.workbooks!.methods.create(input);
+	return startFromWorkbook(deps, { workbookId: workbook.id, fresh: true });
+}
+
 describe("starting a work session from a workbook", () => {
 	it("creates the workbook, starts a chat with the kick-off left in the composer, and makes it active", async () => {
 		const { deps, started, sessions, log } = await boot();
 
-		const workSessionId = await startNewWorkbook(deps, {
+		const workSessionId = await startNew(deps, {
 			workspaceId: "ws-1",
 			templateId: "coding",
 			name: "Fix the server bug",
@@ -82,13 +91,13 @@ describe("starting a work session from a workbook", () => {
 
 	it("forgets a session's workbook when the session is deleted or the workbook forgotten", async () => {
 		const { deps, sessions, workSessions } = await boot();
-		const first = await startNewWorkbook(deps, {
+		const first = await startNew(deps, {
 			workspaceId: "ws-1",
 			templateId: "coding",
 			name: "A",
 			values: { goal: "g" },
 		});
-		const second = await startNewWorkbook(deps, {
+		const second = await startNew(deps, {
 			workspaceId: "ws-1",
 			templateId: "coding",
 			name: "B",
@@ -105,7 +114,7 @@ describe("starting a work session from a workbook", () => {
 
 	it("clears a session's workbook and refuses an unknown one", async () => {
 		const { deps, sessions } = await boot();
-		const id = await startNewWorkbook(deps, {
+		const id = await startNew(deps, {
 			workspaceId: "ws-1",
 			templateId: "coding",
 			name: "A",

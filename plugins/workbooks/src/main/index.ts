@@ -14,6 +14,7 @@ import { kiloPagesCaller } from "./kilo-pages";
 import type { PagesToolCaller } from "./pages-tools";
 import { provideTemplates } from "./template-registry";
 import { provideSessionWorkbooks } from "./session-workbooks";
+import { implementWorkbookChatConfig } from "./workbook-chat-config";
 import { implementWorkbookTools } from "./workbook-tools";
 import { provideWorkbooks } from "./workbook-store";
 
@@ -25,7 +26,8 @@ export interface WorkbooksMainOptions {
 /**
  * kilo.workbooks in main: the workbook templates on offer (its built-ins
  * shipped through its own `template` point), the person's workbooks, each
- * work session's active workbook and the workbook agent tools.
+ * work session's active workbook, the workbook agent tools and the
+ * instructions chats in a session on a workbook are given.
  */
 export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): PluginEntry {
 	return definePlugin({
@@ -43,6 +45,7 @@ export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): Pl
 			});
 			provideSessionWorkbooks(sdk, workbooks);
 			implementWorkbookTools(sdk, { pages: (workbook) => pages(workbook.backend) });
+			implementWorkbookChatConfig(sdk, workbooks);
 		},
 	});
 }

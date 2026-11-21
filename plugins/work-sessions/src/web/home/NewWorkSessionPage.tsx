@@ -13,14 +13,14 @@ import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import {
 	NewWorkSessionOption,
-	NewWorkSessionSection,
+	NewWorkSessionSettingPoint,
 	Panes,
 	WorkSessions,
 	WorkSessionsWindow,
 	WorkSessionStarter,
 	Workspaces,
 	type NewWorkSessionOptionProps,
-	type NewWorkSessionSectionProps,
+	type NewWorkSessionSettingProps,
 	type StartedWorkSession,
 	type WorkSession,
 	type WorkSessionStarterProps,
@@ -190,19 +190,23 @@ function IsolationRow({
 
 /**
  * Where a new session runs, above the ways to start it (it applies to all
- * of them): the workspace, and when it is a repository,
- * the isolation and branch.
+ * of them): the workspace, and when it is a repository, the isolation and
+ * branch; then the `new-work-session-setting`s (kilo.workbooks' Workbook).
  */
 function LocationRow({
 	isolation,
 	starting,
 	activeWorkspaceId,
 	primaryFolder,
+	settings,
+	settingProps,
 }: {
 	readonly isolation: LauncherIsolation;
 	readonly starting: boolean;
 	readonly activeWorkspaceId: string | null;
 	readonly primaryFolder: string | null;
+	readonly settings: readonly Contribution<typeof NewWorkSessionSettingPoint>[];
+	readonly settingProps: NewWorkSessionSettingProps;
 }) {
 	return (
 		<div data-qa-id="launcher-location" className="@container flex w-full justify-center">
@@ -216,6 +220,10 @@ function LocationRow({
 					activeWorkspaceId={activeWorkspaceId}
 					primaryFolder={primaryFolder}
 				/>
+				{settings.map((setting) => {
+					const Setting = setting.implementation!.component;
+					return <Setting key={setting.key} {...settingProps} />;
+				})}
 			</LocationCapsule>
 		</div>
 	);
@@ -232,9 +240,9 @@ function LocationRow({
  * kind offered for new sessions, `pane-kind` `launch.newSession`, but
  * the starter's own) or empty. A `new-work-session-option` may take the place of the
  * read-only branch (kilo.git's branch picker) or, for a folder not under version
- * control, of the isolation control (kilo.git's Initialize Git). Under all of
- * that, `new-work-session-section`s offer roomier ways to start (kilo.workbooks'
- * Start from a workbook), each given the same `start()` as the starter.
+ * control, of the isolation control (kilo.git's Initialize Git).
+ * `new-work-session-setting`s end the location row (kilo.workbooks' Workbook);
+ * each applies to every session the page creates, before it opens.
  */
 export function NewWorkSessionPage() {
 	const panes = useDomainObject(Panes);
@@ -249,9 +257,37 @@ export function NewWorkSessionPage() {
 		(contribution) => contribution.implementation,
 	);
 	const focusRequest = useLauncherFocusRequest();
-	const sections = useExtensions(NewWorkSessionSection).filter(
+	const settings = useExtensions(NewWorkSessionSettingPoint).filter(
 		(contribution) => contribution.implementation,
 	);
+	const settingProps: NewWorkSessionSettingProps = {
+		workspaceId: activeWorkspaceId,
+		directory,
+		disabled: !creation.available || creation.starting,
+	};
+
+	/** Creates the session and applies the page's settings to it, before anything opens it. */
+	const create = async () => {
+		const created = await creation.create();
+		const session = {
+			workSessionId: created.session.id,
+			workspaceId: created.session.workspaceId,
+			directory: created.session.directory ?? directory,
+		};
+		for (const setting of settings) {
+			try {
+				// One at a time, in priority order: a later setting may build on an earlier one.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
+				await setting.implementation!.apply(session);
+			} catch (error) {
+				reportFailure(
+					"A New Session setting wasn't applied",
+					"The session started without it.",
+				)(error);
+			}
+		}
+		return created;
+	};
 
 	const [startingKind, setStartingKind] = useState<string | null>(null);
 
@@ -263,8 +299,7 @@ export function NewWorkSessionPage() {
 			if (kind && panes) await launchPane(panes, workSessionId, kind.id, kinds.layoutKindOf);
 			else if (!kind) await applyDefaultLayout(workSessionId);
 		};
-		creation
-			.create()
+		create()
 			.then(({ session, release }) => open(session.id).finally(release))
 			.catch(reportFailure("Could not start session", "No session was created."))
 			.finally(() => setStartingKind(null));
@@ -284,7 +319,7 @@ export function NewWorkSessionPage() {
 
 	const start = async (): Promise<StartedWorkSession> => {
 		try {
-			const { session, release } = await creation.create();
+			const { session, release } = await create();
 			return startedSession(session, directory, creation.sessions!, navigator, release);
 		} catch (error) {
 			reportFailure("Could not start session", "No session was created.")(error);
@@ -301,6 +336,8 @@ export function NewWorkSessionPage() {
 					starting={creation.starting}
 					activeWorkspaceId={activeWorkspaceId}
 					primaryFolder={directory}
+					settings={settings}
+					settingProps={settingProps}
 				/>
 			}
 			progress={
@@ -332,19 +369,6 @@ export function NewWorkSessionPage() {
 				startingKind={startingKind}
 				onStart={startWith}
 			/>
-			{sections.map((contribution) => (
-				<div key={contribution.key} data-qa-id="launcher-section" className="mt-2 w-full">
-					<RenderContribution<NewWorkSessionSectionProps>
-						contribution={contribution}
-						props={{
-							workspaceId: activeWorkspaceId,
-							directory,
-							disabled: !creation.available || creation.starting,
-							start,
-						}}
-					/>
-				</div>
-			))}
 		</LauncherPage>
 	);
 }

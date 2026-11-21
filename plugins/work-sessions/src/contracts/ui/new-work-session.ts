@@ -95,30 +95,45 @@ export const WorkSessionStarter = defineExtensionPoint({
 	implementation: implementation<ComponentType<WorkSessionStarterProps>>("renderer"),
 });
 
-/** What a New Session page section is given. */
-export interface NewWorkSessionSectionProps {
+/** What a New Session page setting is given while the page shows it. */
+export interface NewWorkSessionSettingProps {
 	/** The workspace a work session would start in; null for none. */
 	readonly workspaceId: string | null;
 	/** The workspace's primary folder, or null. */
 	readonly directory: string | null;
 	/** True while the page can't start a session (none available, or one is starting). */
 	readonly disabled: boolean;
+}
+
+/** A work session the New Session page has just created, before it opens. */
+export interface NewWorkSession {
+	readonly workSessionId: string;
+	readonly workspaceId: string | null;
+	/** Where it works: its copy, or the workspace's primary folder; null without a folder. */
+	readonly directory: string | null;
+}
+
+export interface NewWorkSessionSetting {
+	/** Its segment of the page's location row: a `LocationField` (label and picker). */
+	readonly component: ComponentType<NewWorkSessionSettingProps>;
 	/**
-	 * Creates a work session with the workspace and isolation chosen on the
-	 * page, without opening it; end with its `open` or `discard`, as the
-	 * starter does.
+	 * Applies the person's choice to a work session the page just created,
+	 * before it opens and before its first chat is configured. Every way the
+	 * page starts a session (the starter, a tool, an empty session) calls it.
+	 * A failure is reported and the session starts anyway.
 	 */
-	start(): Promise<StartedWorkSession>;
+	apply(session: NewWorkSession): void | Promise<void>;
 }
 
 /**
- * A section of the New Session page under the starter and the tools: another
- * way to start a work session that needs more room than a tile (e.g. starting
- * from a workbook). Sections show in priority order.
+ * A setting of the work sessions the New Session page starts, shown as a
+ * segment at the end of its location row (after Workspace, Use and Branch)
+ * with or without a workspace, e.g. the workbook a session works in.
+ * Settings show in priority order.
  */
-export const NewWorkSessionSection = defineExtensionPoint({
-	id: "kilo.work-sessions/new-work-session-section",
+export const NewWorkSessionSettingPoint = defineExtensionPoint({
+	id: "kilo.work-sessions/new-work-session-setting",
 	kind: "additive",
-	description: "A section of the New Session page: another way to start a session.",
-	implementation: implementation<ComponentType<NewWorkSessionSectionProps>>("renderer"),
+	description: "A setting of the sessions the New Session page starts, in its location row.",
+	implementation: implementation<NewWorkSessionSetting>("renderer"),
 });

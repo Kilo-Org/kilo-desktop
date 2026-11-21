@@ -179,9 +179,9 @@
 			"description": "The New Session page's body: how a person starts a session."
 		},
 		{
-			"id": "new-work-session-section",
+			"id": "new-work-session-setting",
 			"kind": "additive",
-			"description": "A section of the New Session page: another way to start a session."
+			"description": "A setting of the sessions the New Session page starts, in its location row."
 		},
 		{
 			"id": "permission-auto-answer",

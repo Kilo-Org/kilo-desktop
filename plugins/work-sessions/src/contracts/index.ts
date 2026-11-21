@@ -16,7 +16,7 @@ import {
 import {
 	LayoutPresets,
 	NewWorkSessionOption,
-	NewWorkSessionSection,
+	NewWorkSessionSettingPoint,
 	PaneKind,
 	PermissionAutoAnswer,
 	WorkSessionAction,
@@ -67,7 +67,7 @@ export const WORK_SESSIONS_DEFINITIONS: PluginDefinitions = {
 		WorkSessionAction,
 		WorkSessionListAction,
 		NewWorkSessionOption,
-		NewWorkSessionSection,
+		NewWorkSessionSettingPoint,
 		WorkSessionStarter,
 		PermissionAutoAnswer,
 		WorkspaceSource,

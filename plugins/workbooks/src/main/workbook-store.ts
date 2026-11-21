@@ -12,7 +12,7 @@ import {
 } from "../contracts";
 import { createWorkbookContent } from "./create-workbook";
 import { discoverWorkbooks, markerFor } from "./discover";
-import { kickoffText } from "./kickoff";
+import { workbookInstructions } from "./instructions";
 import {
 	nextStep,
 	openQuestions,
@@ -44,6 +44,8 @@ export interface WorkbookStore {
 	recordUse(id: string, workspaceId: string | null): void;
 	/** A saved workbook id as it is now (ids were random before they became Pages project ids). */
 	currentId(savedId: string): string | undefined;
+	/** The chat instructions for a work session on the workbook: its Brief and guide, read now. */
+	instructions(workbookId: string): Promise<string>;
 }
 
 const DEFAULT_BACKEND: WorkbookBackend = { kind: "pages-mcp", server: DEFAULT_PAGES_MCP_SERVER };
@@ -172,25 +174,10 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 						: openReviewTasks(tasks) + openReviewTasks(stepTasks(plan)),
 				};
 			},
-			kickoff: async ({ workbookId, focus, fresh }) => {
-				const workbook = find(workbookId);
-				const pages = deps.pages(workbook.backend);
-				const [brief, guide] = await Promise.all([
-					readMarkdown(pages, { project_id: workbook.projectId }),
-					workbook.guidePageId ? readMarkdown(pages, { page_id: workbook.guidePageId }) : undefined,
-				]);
-				const firstMove = fresh ? deps.template(workbook.templateId)?.firstMove : undefined;
-				return kickoffText(workbook, {
-					...(brief ? { brief } : {}),
-					...(guide ? { guide } : {}),
-					...(firstMove ? { firstMove } : {}),
-					...(focus ? { focus } : {}),
-				});
-			},
 		},
 	});
 
-	/** A page's markdown, or undefined when Pages can't be read (the kick-off then points at it instead). */
+	/** A page's markdown, or undefined when Pages can't be read (the instructions then point at it instead). */
 	async function readMarkdown(
 		pages: PagesToolCaller,
 		target: Readonly<Record<string, string>>,
@@ -299,7 +286,20 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 		workbooks.setState({ ...workbooks.state, ...status, workbooks: next });
 	}
 
-	return { recordUse, currentId };
+	async function instructions(workbookId: string): Promise<string> {
+		const workbook = find(workbookId);
+		const pages = deps.pages(workbook.backend);
+		const [brief, guide] = await Promise.all([
+			readMarkdown(pages, { project_id: workbook.projectId }),
+			workbook.guidePageId ? readMarkdown(pages, { page_id: workbook.guidePageId }) : undefined,
+		]);
+		return workbookInstructions(workbook, {
+			...(brief ? { brief } : {}),
+			...(guide ? { guide } : {}),
+		});
+	}
+
+	return { recordUse, currentId, instructions };
 }
 
 /** A reference saved while workbooks belonged to one workspace, read as used there since it was created. */

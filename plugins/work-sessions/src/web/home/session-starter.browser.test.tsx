@@ -9,10 +9,11 @@ import {
 	PaneKind,
 	WorkSessions,
 	WorkSessionsWindow,
-	NewWorkSessionSection,
+	NewWorkSessionSettingPoint,
 	WorkSessionStarter,
 	type IsolationOptions,
-	type NewWorkSessionSectionProps,
+	type NewWorkSession,
+	type NewWorkSessionSettingProps,
 	type StartedWorkSession,
 	type WorkSession,
 	type WorkSessionStarterProps,
@@ -127,31 +128,29 @@ const kindsPlugin = {
 	},
 };
 
-let sectionStarted: StartedWorkSession[] = [];
+let applied: NewWorkSession[] = [];
 
-/** A section that starts a session from its own button. */
-function TestSection(props: NewWorkSessionSectionProps) {
+/** A setting in the location row, applied to every session the page starts. */
+function TestSetting(props: NewWorkSessionSettingProps) {
 	return (
-		<button
-			type="button"
-			data-qa-id="test-section"
-			disabled={props.disabled}
-			onClick={async () => {
-				sectionStarted.push(await props.start());
-			}}
-		>
-			From a section in {props.workspaceId}
-		</button>
+		<span data-qa-id="test-setting" data-disabled={props.disabled}>
+			Setting for {props.workspaceId}
+		</span>
 	);
 }
 
-const sectionPlugin = {
-	manifest: testManifest("test.section", {
-		contributes: { extensions: { "kilo.work-sessions/new-work-session-section": [{ id: "s" }] } },
+const settingPlugin = {
+	manifest: testManifest("test.setting", {
+		contributes: { extensions: { "kilo.work-sessions/new-work-session-setting": [{ id: "s" }] } },
 	}),
 	web: {
 		activate(sdk: PluginSdk) {
-			sdk.extensions.implement(NewWorkSessionSection, "s", TestSection);
+			sdk.extensions.implement(NewWorkSessionSettingPoint, "s", {
+				component: TestSetting,
+				apply: (session) => {
+					applied.push(session);
+				},
+			});
 		},
 	},
 };
@@ -348,33 +347,43 @@ describe("the New Session page with a session starter", () => {
 		expect(started).toEqual([]);
 	});
 
-	it("shows sections under the tools, which start sessions where the location row says", async () => {
-		sectionStarted = [];
-		const { workSessions, window } = await renderWorkSessions({
+	it("ends the location row with settings, applied to a session started from a tool", async () => {
+		applied = [];
+		const { workSessions } = await renderWorkSessions({
 			workspaces: [workspace("w-app", "App")],
 			activeWorkspaceId: "w-app",
-			guests: [starterPlugin, kindsPlugin, sectionPlugin],
+			guests: [starterPlugin, kindsPlugin, settingPlugin],
 			isolation: REPOSITORY,
 		});
 		await expect
-			.element(page.getByTestId("launcher-section"))
-			.toHaveTextContent("From a section in w-app");
-		expect(
-			follows(
-				page.getByTestId("launcher-pane-test.kinds/terminal").element(),
-				page.getByTestId("launcher-section").element(),
-			),
-		).toBe(true);
+			.element(page.getByTestId("launcher-location-capsule").getByTestId("test-setting"))
+			.toHaveTextContent("Setting for w-app");
 
-		await page.getByTestId("launcher-section").getByRole("button").click();
+		await page.getByTestId("launcher-pane-test.kinds/terminal").click();
 
-		await vi.waitFor(() => expect(sectionStarted).toHaveLength(1), WAIT);
+		await vi.waitFor(() => expect(applied).toHaveLength(1), WAIT);
 		expect(workSessions.calls.create).toHaveBeenCalledWith({
 			workspaceId: "w-app",
 			isolation: { kind: "local" },
 		});
-		await sectionStarted[0]!.open();
-		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBe("wses_1"), WAIT);
+		expect(applied[0]).toMatchObject({ workSessionId: "wses_1", workspaceId: "w-app" });
+	});
+
+	it("applies settings before the starter gets its session", async () => {
+		applied = [];
+		started = [];
+		await renderWorkSessions({
+			workspaces: [workspace("w-app", "App")],
+			activeWorkspaceId: "w-app",
+			guests: [starterPlugin, kindsPlugin, settingPlugin],
+			isolation: REPOSITORY,
+		});
+
+		await page.getByRole("button", { name: "Send" }).click();
+
+		// So the started session's first chat already sees the setting.
+		await vi.waitFor(() => expect(started).toHaveLength(1), WAIT);
+		expect(applied.map((session) => session.workSessionId)).toEqual([started[0]!.workSessionId]);
 	});
 
 	it("starts the session where the location row says without showing it, until asked to", async () => {

@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
-import { kickoffInputSchema } from "./sessions";
 import { ITEM_TYPES } from "./templates";
 
 /**
@@ -132,8 +131,6 @@ export const Workbooks = defineDomainObject({
 		forget: method(z.object({ id: z.string() }), z.object({ forgotten: z.boolean() })),
 		/** Where the workbook is at (Where I left off, plan progress, open items), read from Pages. */
 		progress: method(z.object({ workbookId: z.string() }), workbookProgressSchema),
-		/** The first message for a chat starting work on a workbook, optionally on one item. */
-		kickoff: method(kickoffInputSchema, z.string()),
 	},
 	lookup: (state, id) => state.workbooks.find((workbook) => workbook.id === id),
 });
@@ -152,8 +149,9 @@ export function workbooksFor(
 	const here = workbooks
 		.filter((workbook) => workspaceId && usedHere(workbook))
 		.sort((a, b) => usedHere(b)!.localeCompare(usedHere(a)!));
+	const isHere = new Set(here);
 	const elsewhere = workbooks
-		.filter((workbook) => !here.includes(workbook))
+		.filter((workbook) => !isHere.has(workbook))
 		.sort((a, b) => b.lastUsedAt.localeCompare(a.lastUsedAt));
 	return { here, elsewhere };
 }

@@ -14,7 +14,8 @@
 		"kilo.core/tool": "optional",
 		"kilo.work-sessions/work-session-action": "optional",
 		"kilo.chat/tool-renderer": "optional",
-		"kilo.work-sessions/new-work-session-section": "optional"
+		"kilo.work-sessions/new-work-session-setting": "optional",
+		"kilo.core/chat-config": "optional"
 	},
 	"permissions": {
 		"host": ["os"]
@@ -147,9 +148,17 @@
 					}
 				}
 			],
-			"kilo.work-sessions/new-work-session-section": [
+			"kilo.work-sessions/new-work-session-setting": [
 				{
-					"id": "workbooks",
+					"id": "workbook",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				}
+			],
+			"kilo.core/chat-config": [
+				{
+					"id": "workbook",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}

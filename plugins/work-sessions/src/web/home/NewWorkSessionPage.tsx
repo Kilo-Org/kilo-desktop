@@ -189,6 +189,14 @@ function IsolationRow({
 }
 
 /**
+ * Inverted corners at the foot of the settings tab: a square either side,
+ * filled with the capsules' colour except for a quarter circle, so the tab
+ * curves into the location row like a browser tab.
+ */
+const TAB_FOOT =
+	"relative max-w-full before:pointer-events-none before:absolute before:bottom-0 before:-left-2.5 before:size-2.5 before:bg-[radial-gradient(circle_at_0_0,transparent_10px,color-mix(in_oklab,var(--color-foreground)_6%,transparent)_10.5px)] before:content-[''] after:pointer-events-none after:absolute after:-right-2.5 after:bottom-0 after:size-2.5 after:bg-[radial-gradient(circle_at_100%_0,transparent_10px,color-mix(in_oklab,var(--color-foreground)_6%,transparent)_10.5px)] after:content-['']";
+
+/**
  * Where a new session runs, above the ways to start it (it applies to all
  * of them): the workspace, and when it is a repository, the isolation and
  * branch; above it, the `new-work-session-setting`s (kilo.workbooks'
@@ -212,13 +220,16 @@ function LocationRow({
 	return (
 		<div data-qa-id="launcher-location" className="@container flex w-full flex-col items-center">
 			{settings.length > 0 ? (
-				// A tab sitting flush on the location row: rounded on top only.
-				<LocationCapsule data-qa-id="launcher-settings-capsule" className="rounded-b-none">
-					{settings.map((setting) => {
-						const Setting = setting.implementation!.component;
-						return <Setting key={setting.key} {...settingProps} />;
-					})}
-				</LocationCapsule>
+				// A tab sitting flush on the location row: rounded on top, with inverted
+				// corners where it meets the row (outside the capsule, which clips).
+				<div className={TAB_FOOT}>
+					<LocationCapsule data-qa-id="launcher-settings-capsule" className="rounded-b-none">
+						{settings.map((setting) => {
+							const Setting = setting.implementation!.component;
+							return <Setting key={setting.key} {...settingProps} />;
+						})}
+					</LocationCapsule>
+				</div>
 			) : null}
 			<LocationCapsule>
 				<LocationField label="Workspace">

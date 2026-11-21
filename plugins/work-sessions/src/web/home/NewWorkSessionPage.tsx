@@ -191,7 +191,7 @@ function IsolationRow({
 /**
  * Where a new session runs, above the ways to start it (it applies to all
  * of them): the workspace, and when it is a repository, the isolation and
- * branch; under it, the `new-work-session-setting`s (kilo.workbooks'
+ * branch; above it, the `new-work-session-setting`s (kilo.workbooks'
  * Workbook) in a capsule of their own.
  */
 function LocationRow({
@@ -214,6 +214,14 @@ function LocationRow({
 			data-qa-id="launcher-location"
 			className="@container flex w-full flex-col items-center gap-1.5"
 		>
+			{settings.length > 0 ? (
+				<LocationCapsule data-qa-id="launcher-settings-capsule">
+					{settings.map((setting) => {
+						const Setting = setting.implementation!.component;
+						return <Setting key={setting.key} {...settingProps} />;
+					})}
+				</LocationCapsule>
+			) : null}
 			<LocationCapsule>
 				<LocationField label="Workspace">
 					<WorkspaceChip disabled={starting} />
@@ -225,14 +233,6 @@ function LocationRow({
 					primaryFolder={primaryFolder}
 				/>
 			</LocationCapsule>
-			{settings.length > 0 ? (
-				<LocationCapsule data-qa-id="launcher-settings-capsule">
-					{settings.map((setting) => {
-						const Setting = setting.implementation!.component;
-						return <Setting key={setting.key} {...settingProps} />;
-					})}
-				</LocationCapsule>
-			) : null}
 		</div>
 	);
 }
@@ -249,7 +249,7 @@ function LocationRow({
  * the starter's own) or empty. A `new-work-session-option` may take the place of the
  * read-only branch (kilo.git's branch picker) or, for a folder not under version
  * control, of the isolation control (kilo.git's Initialize Git).
- * `new-work-session-setting`s sit in a row under it (kilo.workbooks' Workbook);
+ * `new-work-session-setting`s sit in a row above it (kilo.workbooks' Workbook);
  * each applies to every session the page creates, before it opens.
  */
 export function NewWorkSessionPage() {

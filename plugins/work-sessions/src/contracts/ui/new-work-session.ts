@@ -127,7 +127,7 @@ export interface NewWorkSessionSetting {
 
 /**
  * A setting of the work sessions the New Session page starts, shown as a
- * segment of a centred row under its location row (Workspace, Use, Branch)
+ * segment of a centred row above its location row (Workspace, Use, Branch)
  * with or without a workspace, e.g. the workbook a session works in.
  * Settings show in priority order.
  */
@@ -135,6 +135,6 @@ export const NewWorkSessionSettingPoint = defineExtensionPoint({
 	id: "kilo.work-sessions/new-work-session-setting",
 	kind: "additive",
 	description:
-		"A setting of the sessions the New Session page starts, in a row under its location row.",
+		"A setting of the sessions the New Session page starts, in a row above its location row.",
 	implementation: implementation<NewWorkSessionSetting>("renderer"),
 });

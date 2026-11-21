@@ -181,7 +181,7 @@
 		{
 			"id": "new-work-session-setting",
 			"kind": "additive",
-			"description": "A setting of the sessions the New Session page starts, in a row under its location row."
+			"description": "A setting of the sessions the New Session page starts, in a row above its location row."
 		},
 		{
 			"id": "permission-auto-answer",

@@ -60,7 +60,7 @@ function filterByKeywords(value: string, search: string, keywords?: string[]): n
 
 /**
  * The workbook a new work session works in, as a `new-work-session-setting`:
- * a "Workbook" segment in the row under the New Session page's location row, with a
+ * a "Workbook" segment in the row above the New Session page's location row, with a
  * searchable picker built to the dropdown standard (as the workspace picker:
  * every workbook, those used in the page's workspace first; "No workbook" to
  * clear it; "New workbook" pinned under the list, which opens the wizard and

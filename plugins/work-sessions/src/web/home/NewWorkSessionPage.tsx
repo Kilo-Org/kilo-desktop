@@ -192,7 +192,7 @@ function IsolationRow({
  * Where a new session runs, above the ways to start it (it applies to all
  * of them): the workspace, and when it is a repository, the isolation and
  * branch; above it, the `new-work-session-setting`s (kilo.workbooks'
- * Workbook) in a capsule of their own.
+ * Workbook) in a capsule of their own, a tab sitting on the location row.
  */
 function LocationRow({
 	isolation,
@@ -210,12 +210,10 @@ function LocationRow({
 	readonly settingProps: NewWorkSessionSettingProps;
 }) {
 	return (
-		<div
-			data-qa-id="launcher-location"
-			className="@container flex w-full flex-col items-center gap-0.5"
-		>
+		<div data-qa-id="launcher-location" className="@container flex w-full flex-col items-center">
 			{settings.length > 0 ? (
-				<LocationCapsule data-qa-id="launcher-settings-capsule">
+				// A tab sitting flush on the location row: rounded on top only.
+				<LocationCapsule data-qa-id="launcher-settings-capsule" className="rounded-b-none">
 					{settings.map((setting) => {
 						const Setting = setting.implementation!.component;
 						return <Setting key={setting.key} {...settingProps} />;

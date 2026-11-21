@@ -1,5 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
+import { cn } from "../lib/utils";
+
 /**
  * A row of labelled fields as one capsule, as the New Session page shows
  * where a session runs (Workspace › Use › Branch) and its workbook. It sizes
@@ -9,9 +11,12 @@ import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
  */
 export function LocationCapsule({
 	children,
+	className,
 	"data-qa-id": qaId = "launcher-location-capsule",
 }: {
 	readonly children: ReactNode;
+	/** E.g. square corners where it sits flush against another capsule. */
+	readonly className?: string;
 	readonly "data-qa-id"?: string;
 }) {
 	const content = useRef<HTMLDivElement>(null);
@@ -28,7 +33,10 @@ export function LocationCapsule({
 			data-qa-id={qaId}
 			// Width is measured from the content, so the first frame is unanimated (undefined → auto).
 			style={width === undefined ? undefined : { width }}
-			className="bg-foreground/6 max-w-full overflow-hidden rounded-[10px] transition-[width] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none"
+			className={cn(
+				"bg-foreground/6 max-w-full overflow-hidden rounded-[10px] transition-[width] duration-250 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none",
+				className,
+			)}
 		>
 			<div
 				ref={content}

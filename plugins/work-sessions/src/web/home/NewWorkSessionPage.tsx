@@ -212,7 +212,7 @@ function LocationRow({
 	return (
 		<div
 			data-qa-id="launcher-location"
-			className="@container flex w-full flex-col items-center gap-1.5"
+			className="@container flex w-full flex-col items-center gap-0.5"
 		>
 			{settings.length > 0 ? (
 				<LocationCapsule data-qa-id="launcher-settings-capsule">

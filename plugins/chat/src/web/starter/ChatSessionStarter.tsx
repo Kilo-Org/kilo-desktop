@@ -1,3 +1,4 @@
+import { useAui } from "@assistant-ui/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef, type FC } from "react";
 
@@ -18,7 +19,7 @@ import { AGENT_PANE_KIND, chatPaneObject, type ComposerContext } from "../../con
 import { ChatThread, type AgentPaneServices } from "../AgentPane";
 import { Composer } from "../composer/composer";
 import { ComposerActionSlotView } from "../composer/composer-actions";
-import { focusComposerIn } from "../composer-focus";
+import { focusComposerIn, type ComposerFocus } from "../composer-focus";
 import type { CreatedChat } from "../runtime/chat-backend";
 import { ChatConnectionProvider } from "../runtime/chat-connection";
 import { chatSystemPrompt, sessionFolders } from "../runtime/system-prompt";
@@ -28,6 +29,20 @@ import "../thread/composer.css";
 /** Chat text size in place of the UI one, as in the thread. */
 const CHAT_TYPOGRAPHY_CLASS =
 	"[--app-ui-text-size:var(--app-chat-text-size)] [--leading-relaxed:1.5]";
+
+/** Lets `Composer.prefillNewSession` reach the page's composer while it shows. */
+function StarterRegistration({ focus }: { focus: ComposerFocus }) {
+	const aui = useAui();
+	useEffect(
+		() =>
+			focus.registerStarter({
+				getText: () => aui.composer.getState().text,
+				setText: (next) => aui.composer.setText(next),
+			}),
+		[aui, focus],
+	);
+	return null;
+}
 
 /**
  * Origin's draft composer on the New Session page, with the `draft-footer`
@@ -187,6 +202,7 @@ function ChatSessionStarter({
 						handOverFirstPrompt
 						focusRoot={() => focusComposerIn(rootRef.current)}
 					>
+						<StarterRegistration focus={services.focus} />
 						<StarterComposer />
 					</ChatThread>
 				</ChatConnectionProvider>

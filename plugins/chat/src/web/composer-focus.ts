@@ -67,6 +67,10 @@ export class ComposerFocus {
 	/** Text given back to a mounted composer that it doesn't show yet, by `draftKey`. */
 	readonly #restoring = new Map<string, string>();
 	#pending: { workSessionId: string; paneId: string } | undefined;
+	/** The New Session page's composer while it's mounted. */
+	#starter: Pick<MountedComposer, "getText" | "setText"> | undefined;
+	/** Its draft while it isn't mounted: given to it when it mounts. */
+	#starterDraft = "";
 	#provider: DomainObjectProvider<typeof Composer> | undefined;
 	#sdk: PluginSdk | undefined;
 
@@ -92,6 +96,13 @@ export class ComposerFocus {
 					if (mounted) mounted.setText(appendText(mounted.getText(), text));
 					else this.setDraft(target, appendText(this.draft(target, pane?.id), text), pane?.id);
 					if (pane) this.#focusPane(target, pane.id);
+				},
+				prefillNewSession: ({ text, replacing }) => {
+					const current = this.#starter?.getText() ?? this.#starterDraft;
+					if (current.trim() && current !== replacing) return false;
+					if (this.#starter) this.#starter.setText(text);
+					else this.#starterDraft = text;
+					return true;
 				},
 				startChat: async ({ text, workspaceId }) => {
 					const workSessions = sdk.domainObjects.get(WorkSessions);
@@ -216,6 +227,21 @@ export class ComposerFocus {
 		return () => {
 			this.#mounted.delete(composer);
 			this.#restoring.delete(draftKey(workSessionId, paneId));
+		};
+	}
+
+	/**
+	 * The New Session page's composer, while mounted: takes the draft
+	 * `prefillNewSession` kept for it, and keeps what's unsent when it goes
+	 * (a sent message has emptied it), so the next visit shows it again.
+	 */
+	registerStarter(composer: Pick<MountedComposer, "getText" | "setText">): () => void {
+		this.#starter = composer;
+		if (this.#starterDraft && !composer.getText()) composer.setText(this.#starterDraft);
+		return () => {
+			if (this.#starter !== composer) return;
+			this.#starterDraft = composer.getText();
+			this.#starter = undefined;
 		};
 	}
 

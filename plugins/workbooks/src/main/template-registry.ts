@@ -68,6 +68,7 @@ export function provideTemplates(sdk: PluginSdk): {
 				description: template.description,
 				...(template.icon ? { icon: template.icon } : {}),
 				fields: template.brief.fields,
+				firstMove: template.firstMove,
 				source: contribution.key,
 			});
 		}

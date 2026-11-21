@@ -107,6 +107,7 @@ export const workbookTemplateSchema = z
 		for (const id of repeated(template.pages.map((page) => page.id))) {
 			context.addIssue({ code: "custom", message: `page "${id}" appears more than once` });
 		}
+		const pageMarkdown = new Map(template.pages.map((page) => [page.id, page.markdown]));
 		for (const section of template.sections) {
 			if (section.in === undefined) {
 				if (section.markdown === undefined) {
@@ -118,9 +119,7 @@ export const workbookTemplateSchema = z
 				continue;
 			}
 			const holder =
-				section.in === BRIEF_PAGE
-					? template.brief.markdown
-					: template.pages.find((page) => page.id === section.in)?.markdown;
+				section.in === BRIEF_PAGE ? template.brief.markdown : pageMarkdown.get(section.in);
 			if (holder === undefined) {
 				context.addIssue({
 					code: "custom",
@@ -164,6 +163,8 @@ export const templateSummarySchema = z.object({
 	description: z.string(),
 	icon: z.string().optional(),
 	fields: z.array(briefFieldSchema),
+	/** What the first chat in a new workbook does. */
+	firstMove: z.string(),
 	/** The contribution that provides it, e.g. `kilo.workbooks/coding`. */
 	source: z.string(),
 });

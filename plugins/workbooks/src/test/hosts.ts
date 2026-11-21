@@ -12,7 +12,6 @@ import {
 	WORK_SESSIONS_DEFINITIONS,
 	WorkSessions,
 	Workspaces,
-	type StartedWorkSession,
 	type WorkSession,
 	type Workspace,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
@@ -89,14 +88,13 @@ export function workSessionsStandIn(
 	};
 }
 
-/** What the chat stand-in's composer was asked to hold. */
-export interface StartedChat {
-	readonly text: string;
-	readonly workSessionId: string | undefined;
+/** The New Session page's draft, as the chat stand-in's composer holds it. */
+export interface NewSessionDraft {
+	text: string;
 }
 
-/** kilo.chat's composer in the window: records the text put in each session's composer. */
-export function chatStandIn(started: StartedChat[]) {
+/** kilo.chat's composer in the window: keeps the New Session draft, as `prefillNewSession` sets it. */
+export function chatStandIn(draft: NewSessionDraft) {
 	return {
 		manifest: chatManifest,
 		definitions: CHAT_DEFINITIONS,
@@ -106,41 +104,17 @@ export function chatStandIn(started: StartedChat[]) {
 					initialState: { focusedWorkSessionId: null },
 					methods: {
 						focus: () => undefined,
-						insert: ({ workSessionId, text }) => {
-							started.push({ text, workSessionId });
-						},
+						insert: unused,
 						startChat: unused,
+						prefillNewSession: ({ text, replacing }) => {
+							if (draft.text.trim() && draft.text !== replacing) return false;
+							draft.text = text;
+							return true;
+						},
 					},
 				});
 			},
 		}),
-	};
-}
-
-/** What happened to the sessions a `pageStart` created. */
-export interface PageStarts {
-	readonly opened: string[];
-	readonly discarded: string[];
-}
-
-/** The New Session page's `start()`: numbered sessions, recording which were opened or discarded. */
-export function pageStart(log: PageStarts = { opened: [], discarded: [] }) {
-	let next = 0;
-	return async (): Promise<StartedWorkSession> => {
-		next += 1;
-		const workSessionId = `wses_${next}`;
-		return {
-			workSessionId,
-			directory: "/repo",
-			workspaceId: "ws-1",
-			branch: null,
-			open: async () => {
-				log.opened.push(workSessionId);
-			},
-			discard: async () => {
-				log.discarded.push(workSessionId);
-			},
-		};
 	};
 }
 
@@ -215,7 +189,8 @@ export async function bootWorkbooks(
 		readonly workSessions?: { current?: WorkSessionsControl };
 		/** The work sessions kilo.work-sessions starts with. */
 		readonly sessions?: WorkSession[];
-		readonly started?: StartedChat[];
+		/** The New Session draft the chat stand-in keeps. */
+		readonly draft?: NewSessionDraft;
 		/** The `workbooks` flag; on unless a test turns it off. */
 		readonly flag?: boolean;
 	} = {},
@@ -228,7 +203,7 @@ export async function bootWorkbooks(
 			options.viaKilo ? coreWithServer() : coreRegistration,
 			workSessionsStandIn([WORKSPACE], options.workSessions, options.sessions),
 			shellRegistration,
-			chatStandIn(options.started ?? []),
+			chatStandIn(options.draft ?? { text: "" }),
 			{
 				manifest,
 				definitions: WORKBOOKS_DEFINITIONS,

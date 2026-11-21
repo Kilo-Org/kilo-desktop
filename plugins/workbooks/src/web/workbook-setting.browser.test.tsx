@@ -12,7 +12,7 @@ import {
 	type NewWorkSessionSetting,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { bootWorkbooks, type GuestPlugin } from "../test/hosts";
+import { bootWorkbooks, type GuestPlugin, type NewSessionDraft } from "../test/hosts";
 
 const hosts: PluginHost[] = [];
 const slots: { unmount(): void }[] = [];
@@ -66,7 +66,9 @@ async function renderSetting(
 		others?: readonly GuestPlugin[];
 	} = {},
 ) {
+	const draft: NewSessionDraft = { text: "" };
 	const booted = await bootWorkbooks({
+		draft,
 		...(options.pages ? { pages: options.pages } : {}),
 		...(options.others ? { others: options.others } : {}),
 	});
@@ -91,7 +93,7 @@ async function renderSetting(
 		await setting.apply({ workSessionId, workspaceId: "ws-1", directory: "/repo" });
 		return objects.get(SessionWorkbooks)!.lookup(workSessionId) ?? null;
 	};
-	return { ...booted, startSession };
+	return { ...booted, startSession, draft };
 }
 
 const trigger = () => page.getByTestId("workbooks-picker-trigger").element().textContent;
@@ -172,6 +174,66 @@ describe("the Workbook setting on the New Session page", () => {
 		await expect.poll(trigger).toBe("None");
 		await expect(startSession("wses_3")).resolves.toBeNull();
 	});
+	it("suggests the first message: the first move for a workbook just made, else carry on", async () => {
+		const { host, draft, startSession } = await renderSetting();
+		const existing = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Existing",
+			values: { goal: "g" },
+		});
+
+		await openPicker();
+		await userEvent.click(page.getByTestId(`workbooks-continue-${existing.id}`));
+		await expect
+			.poll(() => draft.text)
+			.toBe(
+				`Let's carry on with the workbook "Existing": say where we left off and what's next, then continue.`,
+			);
+
+		await newWorkbook();
+		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Clock");
+		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Show the time");
+		await userEvent.click(page.getByTestId("workbooks-create"));
+		await expect
+			.poll(() => draft.text)
+			.toMatch(/^Let's start the workbook "Clock". Refine the Brief/);
+
+		// Once a session has started on it, it's no longer new.
+		await startSession();
+		draft.text = "";
+		await openPicker();
+		await userEvent.click(page.getByTestId(`workbooks-continue-${existing.id}`));
+		await openPicker();
+		const clock = host.renderer.kernelSdk.domainObjects
+			.get(Workbooks)!
+			.getState()
+			.workbooks.find((workbook) => workbook.name === "Clock")!;
+		await userEvent.click(page.getByTestId(`workbooks-continue-${clock.id}`));
+		await expect.poll(() => draft.text).toMatch(/^Let's carry on with the workbook "Clock"/);
+
+		await openPicker();
+		await userEvent.click(page.getByTestId("workbooks-none"));
+		await expect.poll(() => draft.text).toBe("");
+	});
+
+	it("never replaces what the person typed", async () => {
+		const { host, draft } = await renderSetting();
+		const workbook = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Existing",
+			values: { goal: "g" },
+		});
+		draft.text = "My own words";
+
+		await openPicker();
+		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+		await expect.poll(trigger).toContain("Existing");
+
+		expect(draft.text).toBe("My own words");
+	});
+
 	it("asks for a template first, then that template's Brief, with Back to the templates", async () => {
 		const { host } = await renderSetting();
 

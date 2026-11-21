@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore, type KeyboardEvent } from "r
 
 import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Composer } from "@kilo-desktop/plugin-chat/contracts";
 import type {
 	NewWorkSession,
 	NewWorkSessionSetting,
@@ -66,7 +67,11 @@ function filterByKeywords(value: string, search: string, keywords?: string[]): n
  * selects the workbook it makes). Choosing starts nothing: whatever the page
  * then starts (a first message, a tool, an empty session) is set to work in
  * the workbook before it opens, so its chats are given the workbook's
- * instructions. The list is the last one found in Pages, refreshed when the
+ * instructions (its Brief and guide). Choosing one also suggests the first
+ * message in the New Session draft, short and editable: the template's first
+ * move for a workbook just made here, otherwise carry on from where it was
+ * left; it never replaces what the person typed, and goes again with "No
+ * workbook". The list is the last one found in Pages, refreshed when the
  * setting shows and each time the picker opens.
  */
 export function workbookSetting(
@@ -90,6 +95,18 @@ async function applyWorkbook(
 	const sessions = sdk.domainObjects.get(SessionWorkbooks);
 	if (!sessions) throw new KernelError("UNAVAILABLE", "Workbooks aren't available.");
 	await sessions.methods.setActive({ workSessionId: session.workSessionId, workbookId });
+	selection.fresh.delete(workbookId);
+}
+
+/** The first message suggested for a session on the workbook. */
+export function suggestedFirstMessage(
+	workbook: Workbook,
+	template: TemplateSummary | undefined,
+	fresh: boolean,
+): string {
+	if (fresh && template)
+		return `Let's start the workbook "${workbook.name}". ${template.firstMove}`;
+	return `Let's carry on with the workbook "${workbook.name}": say where we left off and what's next, then continue.`;
 }
 
 function WorkbookSetting({
@@ -115,6 +132,24 @@ function WorkbookSetting({
 	// A forgotten workbook is no selection.
 	const selected = all.find((workbook) => workbook.id === selectedId) ?? null;
 	const [error, setError] = useState<string | null>(null);
+	const composer = useDomainObject(Composer);
+	const selectedTemplate = selected
+		? templates.find((candidate) => candidate.id === selected.templateId)
+		: undefined;
+	const suggestion = selected
+		? suggestedFirstMessage(selected, selectedTemplate, selection.fresh.has(selected.id))
+		: "";
+	// Shown again on each visit to the page, until the person types their own.
+	useEffect(() => {
+		if (!composer || (!suggestion && !selection.suggestion)) return;
+		const replacing = selection.suggestion;
+		void composer.methods
+			.prefillNewSession({ text: suggestion, ...(replacing ? { replacing } : {}) })
+			.then((set) => {
+				if (set) selection.suggestion = suggestion || undefined;
+			})
+			.catch(() => undefined);
+	}, [composer, selection, suggestion]);
 
 	const select = (workbook: Workbook) => {
 		selection.set(workbook.id);
@@ -131,6 +166,7 @@ function WorkbookSetting({
 				name,
 				values,
 			});
+			selection.fresh.add(workbook.id);
 			selection.set(workbook.id);
 			setCreating(false);
 		} catch (failure) {
@@ -184,10 +220,6 @@ function WorkbookSetting({
 			onCreate={(templateId, name, values) => void create(templateId, name, values)}
 		/>
 	) : null;
-
-	const selectedTemplate = selected
-		? templates.find((candidate) => candidate.id === selected.templateId)
-		: undefined;
 
 	return (
 		<>

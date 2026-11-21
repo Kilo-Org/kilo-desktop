@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { chatPaneObject } from "../../contracts";
+import { chatPaneObject, Composer } from "../../contracts";
 import type { RecordedRequest } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
 
@@ -52,6 +52,25 @@ describe("the New Session page's composer", () => {
 		} finally {
 			newSession.remove();
 		}
+	});
+
+	it("takes a suggested first message, never over what the person typed", async () => {
+		const chat = await renderChat({ starter: {} });
+		await expect.element(composerInput()).toBeVisible();
+		const composer = chat.host.renderer.kernelSdk.domainObjects.get(Composer)!;
+		const prefill = (text: string, replacing?: string) =>
+			composer.methods.prefillNewSession({ text, ...(replacing ? { replacing } : {}) });
+
+		await expect(prefill("Pick up where we left off.")).resolves.toBe(true);
+		await expect.element(composerInput()).toHaveTextContent("Pick up where we left off.");
+		await expect(prefill("Start the workbook.", "Pick up where we left off.")).resolves.toBe(true);
+		await expect.element(composerInput()).toHaveTextContent("Start the workbook.");
+		await expect(prefill("", "Start the workbook.")).resolves.toBe(true);
+		await expect.element(page.getByTestId("kilo-composer-send")).toBeDisabled();
+
+		await userEvent.fill(composerInput(), "My own words");
+		await expect(prefill("Pick up where we left off.")).resolves.toBe(false);
+		await expect.element(composerInput()).toHaveTextContent("My own words");
 	});
 
 	it("tucks a draft-footer warning under the composer", async () => {

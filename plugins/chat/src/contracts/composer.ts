@@ -338,7 +338,8 @@ const workSessionTarget = z.object({
  * This window's composers. `focus` and `insert` open the work session's
  * agent pane if it isn't shown; `startChat` starts a new work session with
  * an agent pane, as the New Session page does, with the text in its
- * composer for the person to send. Unsent text lives in `kilo.chat/drafts`.
+ * composer for the person to send; `prefillNewSession` suggests the New
+ * Session page's first message. Unsent text lives in `kilo.chat/drafts`.
  */
 export const Composer = defineDomainObject({
 	id: "kilo.chat/composer",
@@ -352,6 +353,16 @@ export const Composer = defineDomainObject({
 		startChat: method(
 			z.object({ text: z.string(), workspaceId: z.string().min(1).nullable().optional() }),
 			z.object({ workSessionId: z.string() }),
+		),
+		/**
+		 * Sets the New Session page's draft to `text` (empty clears it), only
+		 * while the person hasn't typed their own: the draft is empty or still
+		 * exactly `replacing`, a suggestion this caller made before. Kept for the
+		 * page's composer when it isn't showing. Resolves whether it was set.
+		 */
+		prefillNewSession: method(
+			z.object({ text: z.string(), replacing: z.string().optional() }),
+			z.boolean(),
 		),
 	},
 });

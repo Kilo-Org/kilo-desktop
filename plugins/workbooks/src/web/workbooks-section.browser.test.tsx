@@ -121,6 +121,7 @@ describe("Start from a workbook on the New Session page", () => {
 
 		await newWorkbook();
 		await expect.element(page.getByTestId("workbooks-create")).toBeDisabled();
+		await expect.element(page.getByTestId("workbooks-create")).toHaveTextContent("Create workbook");
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Fix the server bug");
 		await userEvent.fill(
 			page.getByTestId("workbooks-field-goal").element(),

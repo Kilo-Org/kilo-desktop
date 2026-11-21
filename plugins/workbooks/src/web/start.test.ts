@@ -37,7 +37,7 @@ async function boot() {
 	return { ...booted, started, workSessions, deps, log, sessions: objects.get(SessionWorkbooks)! };
 }
 
-/** Creates a workbook, then starts a session on it with its first move, as the New Session page does. */
+/** Creates a workbook, then starts a session on it with its first move, as the New Session page does once it is chosen. */
 async function startNew(
 	deps: StartDeps,
 	input: Parameters<NonNullable<StartDeps["workbooks"]>["methods"]["create"]>[0],

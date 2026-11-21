@@ -309,7 +309,7 @@ function BriefStep({
 						data-qa-id="workbooks-create"
 					>
 						{busy ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
-						{busy ? "Creating…" : "Create and start"}
+						{busy ? "Creating…" : "Create workbook"}
 					</Button>
 				</DialogFooter>
 			</form>

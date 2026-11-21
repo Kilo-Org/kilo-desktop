@@ -187,7 +187,7 @@ describe("the Workbook setting on the New Session page", () => {
 		await userEvent.click(page.getByTestId(`workbooks-continue-${existing.id}`));
 		await expect
 			.poll(() => draft.text)
-			.toBe(`Let's carry on with the workbook "Existing": say where we left off and what's next.`);
+			.toBe(`Let's carry on with workbook "Existing": say where we left off and what's next.`);
 
 		await newWorkbook();
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Clock");
@@ -208,7 +208,7 @@ describe("the Workbook setting on the New Session page", () => {
 			.getState()
 			.workbooks.find((workbook) => workbook.name === "Clock")!;
 		await userEvent.click(page.getByTestId(`workbooks-continue-${clock.id}`));
-		await expect.poll(() => draft.text).toMatch(/^Let's carry on with the workbook "Clock"/);
+		await expect.poll(() => draft.text).toMatch(/^Let's carry on with workbook "Clock"/);
 
 		await openPicker();
 		await userEvent.click(page.getByTestId("workbooks-none"));

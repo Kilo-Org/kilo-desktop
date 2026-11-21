@@ -98,14 +98,20 @@ async function applyWorkbook(
 	selection.fresh.delete(workbookId);
 }
 
+const DEFAULT_FIRST_MOVE =
+	"Refine the Brief and draft the Plan, then stop for me to confirm before building.";
+
 /** The first message suggested for a session on the workbook. */
 export function suggestedFirstMessage(
 	workbook: Workbook,
 	template: TemplateSummary | undefined,
 	fresh: boolean,
 ): string {
-	if (fresh && template)
-		return `Let's start the workbook "${workbook.name}". ${template.firstMove}`;
+	if (fresh) {
+		// A template summary from a main process older than the window carries no first move.
+		const firstMove = (template?.firstMove as string | undefined)?.trim() || DEFAULT_FIRST_MOVE;
+		return `Let's start the workbook "${workbook.name}". ${firstMove}`;
+	}
 	return `Let's carry on with the workbook "${workbook.name}": say where we left off and what's next, then continue.`;
 }
 

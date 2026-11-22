@@ -191,10 +191,11 @@ function IsolationRow({
 /**
  * Inverted corners at the foot of the settings tab: a square either side,
  * filled with the capsules' colour except for a quarter circle, so the tab
- * curves into the location row like a browser tab.
+ * curves into the location row like a browser tab. 14px, a little wider than
+ * the capsules' own corners, with a 1px blended edge, so the curve is soft.
  */
 const TAB_FOOT =
-	"relative max-w-full before:pointer-events-none before:absolute before:bottom-0 before:-left-2.5 before:size-2.5 before:bg-[radial-gradient(circle_at_0_0,transparent_10px,color-mix(in_oklab,var(--color-foreground)_6%,transparent)_10.5px)] before:content-[''] after:pointer-events-none after:absolute after:-right-2.5 after:bottom-0 after:size-2.5 after:bg-[radial-gradient(circle_at_100%_0,transparent_10px,color-mix(in_oklab,var(--color-foreground)_6%,transparent)_10.5px)] after:content-['']";
+	"relative max-w-full before:pointer-events-none before:absolute before:bottom-0 before:-left-3.5 before:size-3.5 before:bg-[radial-gradient(circle_at_0_0,transparent_13.25px,color-mix(in_oklab,var(--color-foreground)_6%,transparent)_14.25px)] before:content-[''] after:pointer-events-none after:absolute after:-right-3.5 after:bottom-0 after:size-3.5 after:bg-[radial-gradient(circle_at_100%_0,transparent_13.25px,color-mix(in_oklab,var(--color-foreground)_6%,transparent)_14.25px)] after:content-['']";
 
 /**
  * Where a new session runs, above the ways to start it (it applies to all

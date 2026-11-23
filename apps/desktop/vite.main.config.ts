@@ -12,6 +12,7 @@ import {
 	requireViteEnvironmentVariable,
 } from "./config/build-environment.js";
 import { getReleaseTrack, getUpdatePublishUrls } from "./config/release.js";
+import { sentryReleaseName } from "./config/sentry-release.js";
 import appInfo from "./package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -23,6 +24,7 @@ export default defineConfig(({ command }) => {
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
 	const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
+	const sentryRelease = sentryReleaseName(appInfo.version);
 
 	return {
 		plugins: [
@@ -52,12 +54,18 @@ export default defineConfig(({ command }) => {
 				...(process.env.SENTRY_ORG && { org: process.env.SENTRY_ORG }),
 				project: process.env.SENTRY_PROJECT ?? "kilo-desktop",
 				release: {
-					name: `${appInfo.name}@${appInfo.version}`,
+					name: sentryRelease,
 					deploy: {
 						env: process.env.APP_MODE ?? environment,
 					},
 				},
 				...(uploadSourcemaps && {
+					// The plugin only logs a failed release or upload, so a release
+					// would ship with stack traces Sentry cannot symbolicate (and
+					// Forge hides this build's log). Fail the build instead.
+					errorHandler: (error: Error) => {
+						throw error;
+					},
 					// Absolute and rooted at `.vite/`: Sentry globs this without
 					// `dot: true`, so a bare `**/*.map` never descends into the
 					// dot-prefixed Forge output and the map (with full
@@ -72,6 +80,7 @@ export default defineConfig(({ command }) => {
 		define: {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_TRACK: JSON.stringify(track),
+			SENTRY_RELEASE_NAME: JSON.stringify(sentryRelease),
 			UPDATE_PUBLISH_URLS: JSON.stringify(getUpdatePublishUrls(process.env, track)),
 		},
 		resolve: {

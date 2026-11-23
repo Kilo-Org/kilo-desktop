@@ -58,6 +58,10 @@ export function initSentry(preferences: PreferencesStore): void {
 
 	Sentry.init({
 		dsn,
+		// The SDK default is `<app.name>@<version>`, and app.name is the
+		// track's product name; this is the release the renderer reports and
+		// source maps upload under (config/sentry-release.ts).
+		release: SENTRY_RELEASE_NAME,
 		environment: RELEASE_TRACK,
 		tracesSampleRate: 0.1,
 		dataCollection: DATA_COLLECTION,

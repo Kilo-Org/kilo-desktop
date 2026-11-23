@@ -86,17 +86,24 @@ describe("packaged production dependencies", () => {
 		expect(tooling).toContain("sentry");
 	});
 
-	it("names the renderer's Sentry release after the desktop version, like the main process", () => {
-		// Without an explicit name the Sentry Vite plugin injects the git commit
-		// SHA, splitting one build into a SHA release (renderer) and a version
-		// release (main) that Sentry cannot filter or resolve by version.
+	it("gives main, the renderer and both source-map uploads one Sentry release", () => {
+		// The renderer reports the release its Vite plugin injects and main the
+		// one it is built with; a mismatch splits one build across two releases.
 		const main = readFileSync(path.join(desktopRoot, "vite.main.config.ts"), "utf8");
 		const renderer = readFileSync(path.join(workspaceRoot, "apps/web/vite.config.ts"), "utf8");
 
-		expect(main).toContain('import appInfo from "./package.json"');
-		expect(main).toContain("name: `${appInfo.name}@${appInfo.version}`");
-		expect(renderer).toContain('import desktopInfo from "../desktop/package.json"');
-		expect(renderer).toContain("release: { name: `${desktopInfo.name}@${desktopInfo.version}` }");
+		expect(main).toContain("const sentryRelease = sentryReleaseName(appInfo.version)");
+		expect(main).toContain("name: sentryRelease,");
+		expect(main).toContain("SENTRY_RELEASE_NAME: JSON.stringify(sentryRelease)");
+		expect(renderer).toContain("release: { name: sentryReleaseName(desktopInfo.version) }");
+	});
+
+	it("fails a build whose Sentry release or source-map upload fails", () => {
+		// The Sentry Vite plugin only logs these errors by default.
+		for (const config of ["apps/desktop/vite.main.config.ts", "apps/web/vite.config.ts"]) {
+			const source = readFileSync(path.join(workspaceRoot, config), "utf8");
+			expect(source, config).toMatch(/errorHandler: \(error: Error\) => \{\s*throw error;/);
+		}
 	});
 
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {

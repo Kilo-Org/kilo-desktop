@@ -34,6 +34,7 @@ import { useLauncherIsolation, type LauncherIsolation } from "./isolation/use-la
 import { useLauncherFocusRequest } from "./launcher-focus";
 import { LocationCapsule } from "./LocationCapsule";
 import { LocationField } from "./LocationField";
+import { PixelGlow } from "./PixelGlow";
 import { StartWithTool } from "./StartWithTool";
 import { WelcomeHeadline } from "./WelcomeHeadline";
 import { WorkspaceChip } from "./WorkspaceChip";
@@ -383,11 +384,12 @@ function LauncherPage({
 }) {
 	return (
 		<div data-qa-id="workbench-launcher" className="relative flex min-h-0 flex-1 flex-col">
+			<PixelGlow />
 			<div
 				data-qa-id="launcher-body"
 				inert={starting}
 				aria-busy={starting}
-				className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6"
+				className="relative flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto p-6"
 			>
 				<div className="flex w-full max-w-[50rem] flex-col items-center px-4">
 					<WelcomeHeadline />

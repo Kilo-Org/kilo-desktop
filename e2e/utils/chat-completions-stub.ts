@@ -56,6 +56,7 @@ export type CapturedCompletionError = {
 	promptText: string;
 	status: number;
 	message: string;
+	attempts: number;
 };
 
 export type ChatCompletionsStubError = {
@@ -71,7 +72,7 @@ export type ChatCompletionsStub = {
 /**
  * Local stand-in for a custom OpenAI-compatible provider's
  * `/chat/completions` endpoint, so chat-attachment e2e specs get a
- * deterministic assistant reply instead of depending on a real model call —
+ * deterministic assistant reply or marker-keyed error instead of depending on a real model call —
  * no provider API keys exist in CI (see `kilo-gateway-stub.ts` for the
  * equivalent pattern used for the Kilo Gateway catalog).
  *
@@ -105,8 +106,7 @@ export async function startChatCompletionsStub(
 	errors: Record<string, ChatCompletionsStubError> = {},
 ): Promise<ChatCompletionsStub> {
 	const requests: CapturedCompletionRequest[] = [];
-	type ErrorCount = { promptText: string; status: number; message: string; count: number };
-	const errorsByPrompt = new Map<string, ErrorCount>();
+	const errorsByPrompt = new Map<string, CapturedCompletionError>();
 
 	const server = createServer((request, response) => {
 		handle(request, response, {
@@ -120,21 +120,17 @@ export async function startChatCompletionsStub(
 			},
 			getError: (captured) => {
 				const error = resolveMatch(captured.promptText, errors);
-				if (!error) return undefined;
+				if (!error || captured.isTitleRequest) return undefined;
 				const previous = errorsByPrompt.get(captured.promptText);
 				if (previous) {
-					previous.count += 1;
+					previous.attempts += 1;
 					return error;
 				}
-				errorsByPrompt.set(captured.promptText, {
-					promptText: captured.promptText,
-					...error,
-					count: 1,
-				});
+				const firstAttempt = { promptText: captured.promptText, ...error, attempts: 1 };
+				errorsByPrompt.set(captured.promptText, firstAttempt);
 				return error;
 			},
-			getErrorHistory: () =>
-				[...errorsByPrompt.values()].map(({ count, ...error }) => ({ ...error, attempts: count })),
+			getErrorHistory: () => [...errorsByPrompt.values()],
 		}).catch((error: unknown) => {
 			logger.warn(
 				`Chat completions stub failed ${request.method} ${request.url}: ${String(error)}`,

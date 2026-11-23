@@ -70,7 +70,6 @@ export class ChatComposerPage {
 	// sr-only span ("Remove file"), not an aria-label attribute.
 	private readonly attachmentRemoveButton = () =>
 		this.attachmentRoots().getByRole("button", { name: "Remove file" });
-	private readonly modelSelector = () => getLocatorByRole("combobox", { name: "Select model" });
 	private readonly modelSelectorValue = () =>
 		this.starter().locator('[data-slot="model-selector-value"]');
 	private readonly chatMessageError = () => this.thread().getByTestId("chat-message-error");
@@ -160,14 +159,17 @@ export class ChatComposerPage {
 	}
 
 	async verifyNoModelSelected(): Promise<void> {
-		await expectElementToHaveAttribute(
-			this.starter().locator('[data-slot="model-selector-value"]'),
-			"data-model-selected",
-			"false",
-			{ message: "The New Session composer should have no selected model" },
-		);
+		await expectElementToHaveAttribute(this.modelSelectorValue(), "data-model-selected", "false", {
+			message: "The New Session composer should have no selected model",
+		});
 	}
 
+	/**
+	 * The welcome composer is still the draft and the launcher idle. A send
+	 * marks the launcher busy (inert, aria-busy) as soon as it begins, so call
+	 * this only after a later keystroke has landed in the composer: keys are
+	 * processed in order, so a send that Enter started can't be read as idle.
+	 */
 	async verifyStillOnDraft(): Promise<void> {
 		await expectElementToBeVisible(this.starter(), {
 			message: "The New Session page's starter should still be showing",
@@ -228,6 +230,7 @@ export class ChatComposerPage {
 		await click(this.attachmentRemoveButton());
 	}
 
+	/** Confirms a failed first-send did not discard the submitted message or error from the opened chat. */
 	async verifyNoModelMessageOutcome(message: string): Promise<void> {
 		await expectElementToBeVisible(this.userMessage(message), {
 			message: `The no-model message "${message}" should remain visible`,

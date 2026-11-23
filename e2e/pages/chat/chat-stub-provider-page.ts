@@ -7,6 +7,7 @@ import { AiProvidersPage } from "../shell/ai-providers-page.js";
 import {
 	CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH,
 	CHAT_COMPLETIONS_STUB_URL_ENV,
+	type CapturedCompletionError,
 	type CapturedCompletionRequest,
 } from "../../utils/chat-completions-stub.js";
 
@@ -81,12 +82,7 @@ export class ChatStubProviderPage {
 	 */
 	private async getCapturedRequestAndErrors(marker: string): Promise<{
 		request: CapturedCompletionRequest | null;
-		errors: readonly {
-			promptText: string;
-			status: number;
-			message: string;
-			attempts: number;
-		}[];
+		errors: readonly CapturedCompletionError[];
 	}> {
 		const url = `${this.stubUrl()}${CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH}?marker=${encodeURIComponent(marker)}`;
 		const deadline = Date.now() + REQUEST_POLL_TIMEOUT_MS;
@@ -94,12 +90,7 @@ export class ChatStubProviderPage {
 			const response = await getRequest(url);
 			const payload = (await response.json()) as {
 				request: CapturedCompletionRequest | null;
-				errors: readonly {
-					promptText: string;
-					status: number;
-					message: string;
-					attempts: number;
-				}[];
+				errors: readonly CapturedCompletionError[];
 			};
 			if (payload.request) return payload;
 			if (Date.now() >= deadline) {

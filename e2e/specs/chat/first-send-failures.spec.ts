@@ -24,7 +24,9 @@ test("shows a rejected first prompt in the opened chat without retrying into suc
 	chatStubProviderPage,
 	chatComposerPage,
 	chatModelSelectorPage,
-}) => {
+}, testInfo) => {
+	const marker = `${chatFirstSendFailuresData.serverFailureMarker}-ATTEMPT-${testInfo.retry}`;
+	const prompt = `${marker} rejected first message`;
 	await appShellPage.verifyShellIsLoaded();
 	await appShellPage.openSettings();
 	await chatStubProviderPage.configureStubProvider();
@@ -34,12 +36,12 @@ test("shows a rejected first prompt in the opened chat without retrying into suc
 	await chatModelSelectorPage.openModelSelector();
 	await chatModelSelectorPage.selectCustomProviderRail(CUSTOM_PROVIDER_ID);
 	await chatModelSelectorPage.selectModel(CUSTOM_MODEL_OPTION_ID);
-	await chatComposerPage.send(chatFirstSendFailuresData.serverFailurePrompt);
+	await chatComposerPage.send(prompt);
 
-	await chatComposerPage.verifyChatStarted(chatFirstSendFailuresData.serverFailurePrompt);
+	await chatComposerPage.verifyChatStarted(prompt);
 	await chatComposerPage.verifySendFailureVisible(chatFirstSendFailuresData.serverFailureMessage);
 	await chatStubProviderPage.verifyCapturedErrorResponse(
-		chatFirstSendFailuresData.serverFailureMarker,
+		marker,
 		400,
 		chatFirstSendFailuresData.serverFailureMessage,
 	);

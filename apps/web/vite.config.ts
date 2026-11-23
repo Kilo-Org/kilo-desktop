@@ -17,6 +17,7 @@ import {
 	criticalThemeStyle,
 	themeBootstrapScript,
 } from "../../packages/ui/src/themes/theme-tokens";
+import { sentryReleaseName } from "../desktop/config/sentry-release";
 import desktopInfo from "../desktop/package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -56,12 +57,17 @@ export default defineConfig({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			...(process.env.SENTRY_ORG && { org: process.env.SENTRY_ORG }),
 			project: process.env.SENTRY_PROJECT ?? "kilo-desktop",
-			// Same release as the main process (vite.main.config.ts). Unset, the
-			// plugin injects the git SHA, so renderer events land in a release
-			// Sentry cannot filter or resolve by version. The desktop manifest is
-			// stamped with the track's publish version before release builds.
-			release: { name: `${desktopInfo.name}@${desktopInfo.version}` },
+			// The renderer SDK reports the release this injects, so it must be
+			// main's (config/sentry-release.ts). Unset, the plugin injects the
+			// git SHA. The desktop manifest is stamped with the track's publish
+			// version before release builds.
+			release: { name: sentryReleaseName(desktopInfo.version) },
 			...(uploadSourcemaps && {
+				// The plugin only logs a failed release or upload; fail the build
+				// rather than ship renderer stack traces Sentry cannot symbolicate.
+				errorHandler: (error: Error) => {
+					throw error;
+				},
 				// Absolute and rooted at `dist/`: Sentry resolves a relative glob
 				// against the process cwd, so a bare `**/*.map` would sweep the
 				// whole repo if the build ever ran from the root. Forward slashes

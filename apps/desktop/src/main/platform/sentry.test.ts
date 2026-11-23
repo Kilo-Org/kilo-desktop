@@ -45,6 +45,7 @@ function fakePreferences(overrides: Partial<PreferencesStore> = {}): Preferences
 function initWithPreferences(preferences: PreferencesStore): ElectronMainOptions {
 	vi.stubEnv("VITE_SENTRY_DSN", "https://key@sentry.example/1");
 	vi.stubGlobal("RELEASE_TRACK", "stable");
+	vi.stubGlobal("SENTRY_RELEASE_NAME", "kilo-desktop@1.2.3");
 	init.mockClear();
 	send.mockClear();
 	initSentry(preferences);
@@ -133,6 +134,12 @@ describe("initSentry", () => {
 		expect(send).not.toHaveBeenCalled();
 	});
 
+	it("reports the build's release, the one the renderer reports and source maps upload under", () => {
+		const { release } = initWithPreferences(fakePreferences());
+
+		expect(release).toBe("kilo-desktop@1.2.3");
+	});
+
 	it("keeps the restrictive v10 data-collection defaults (no user info, cookies, or bodies)", () => {
 		const { dataCollection } = initWithPreferences(fakePreferences());
 
@@ -160,6 +167,7 @@ describe("initSentry without a DSN", () => {
 	it("reports only to the local Spotlight sidecar in a dev build", () => {
 		vi.stubEnv("VITE_SENTRY_DSN", "");
 		vi.stubGlobal("RELEASE_TRACK", "preview");
+		vi.stubGlobal("SENTRY_RELEASE_NAME", "kilo-desktop@1.2.3");
 		init.mockClear();
 
 		initAsDevBuild(fakePreferences());

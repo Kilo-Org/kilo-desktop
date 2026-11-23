@@ -5,6 +5,7 @@ import {
 	expectElementToBeHidden,
 	expectElementToBeVisible,
 	expectElementToHaveAttribute,
+	expectElementToHaveText,
 	fill,
 	focus,
 	getAttribute,
@@ -46,6 +47,7 @@ export class SessionListPage {
 
 	private readonly renameInput = () => getLocatorByTestId(SESSION_LIST.itemRenameTestId);
 	private readonly activeRows = () => this.list().getByTestId(SESSION_LIST.itemTestId);
+	private readonly rowTitles = () => this.list().getByTestId(SESSION_LIST.itemTitleTestId);
 	private readonly archivedRow = (title: string): Locator =>
 		this.list().getByTestId(SESSION_LIST.archivedItemTestId).filter({ hasText: title });
 	private readonly rowTrigger = (title: string): Locator =>
@@ -61,6 +63,10 @@ export class SessionListPage {
 	private readonly menuArchive = () => getLocatorByTestId(SESSION_LIST.menuArchiveTestId);
 	private readonly menuDelete = () => getLocatorByTestId(SESSION_LIST.menuDeleteTestId);
 	private readonly deleteConfirm = () => getLocatorByTestId(SESSION_LIST.deleteConfirmTestId);
+	private readonly deleteCancel = () => getLocatorByTestId(SESSION_LIST.deleteCancelTestId);
+	private readonly deleteDialog = () => getLocatorByTestId(SESSION_LIST.deleteDialogTestId);
+	private readonly deleteChatPreview = () =>
+		getLocatorByTestId(SESSION_LIST.deleteChatPreviewTestId);
 	private readonly bulkRestore = () => getLocatorByTestId(SESSION_LIST.bulkRestoreTestId);
 	private readonly bulkArchive = () => getLocatorByTestId(SESSION_LIST.bulkArchiveTestId);
 	private readonly breadcrumb = () => getLocatorByTestId(SESSION_LIST.breadcrumbTestId);
@@ -77,20 +83,61 @@ export class SessionListPage {
 	 * New Session page costs a second each, which a virtualized list needs far
 	 * too many of to be worth doing through the UI.
 	 */
-	async seedSessions(titles: readonly string[]): Promise<void> {
+	async seedSessions(titles: readonly string[]): Promise<string[]> {
+		const ids: string[] = [];
 		for (const title of titles) {
-			await callDomainObject({
+			const created = (await callDomainObject({
 				domainId: "kilo.work-sessions/work-sessions",
 				method: "create",
 				input: { title },
 				caller: WORK_SESSIONS_CALLER,
-			});
+			})) as { id: string };
+			ids.push(created.id);
 		}
+		return ids;
 	}
 
 	/** Registers a workspace and makes it the active one (test setup). */
 	async createWorkspaceAt(folderPath: string, name: string): Promise<string> {
 		return createAndActivateWorkspace(folderPath, name);
+	}
+
+	/**
+	 * Deletes seeded sessions straight through the domain object (test
+	 * teardown). The app is worker-scoped, so what a test seeds is still there
+	 * for the next one. By id rather than by row: it costs one call instead of
+	 * a row menu and a confirmation each, and it works for a session a failed
+	 * test never got on screen.
+	 */
+	async removeSessions(ids: readonly string[]): Promise<void> {
+		for (const id of ids) {
+			await callDomainObject({
+				domainId: "kilo.work-sessions/work-sessions",
+				method: "remove",
+				input: { id },
+				caller: WORK_SESSIONS_CALLER,
+			});
+		}
+	}
+
+	/**
+	 * Unregisters a workspace (test teardown). The app is worker-scoped, so a
+	 * workspace a test leaves behind is still there for the next one — and a
+	 * second one of the same name makes a result locator ambiguous.
+	 */
+	async removeWorkspace(workspaceId: string): Promise<void> {
+		await callDomainObject({
+			domainId: "kilo.work-sessions/workspaces",
+			method: "setActive",
+			input: { id: null },
+			caller: WORK_SESSIONS_CALLER,
+		});
+		await callDomainObject({
+			domainId: "kilo.work-sessions/workspaces",
+			method: "remove",
+			input: { id: workspaceId },
+			caller: WORK_SESSIONS_CALLER,
+		});
 	}
 
 	/** Asks main to re-check which workspace folders it can still reach. */
@@ -103,13 +150,14 @@ export class SessionListPage {
 	}
 
 	/** Seeds one session inside a workspace, so the filter has both kinds to sort. */
-	async seedSessionInWorkspace(title: string, workspaceId: string): Promise<void> {
-		await callDomainObject({
+	async seedSessionInWorkspace(title: string, workspaceId: string): Promise<string> {
+		const created = (await callDomainObject({
 			domainId: "kilo.work-sessions/work-sessions",
 			method: "create",
 			input: { title, workspaceId },
 			caller: WORK_SESSIONS_CALLER,
-		});
+		})) as { id: string };
+		return created.id;
 	}
 
 	/** Starts an inline rename from the row menu, leaving the field open. */
@@ -221,9 +269,39 @@ export class SessionListPage {
 	}
 
 	async scrollToBottom(): Promise<void> {
-		await this.list()
-			.getByTestId(SESSION_LIST.inboxTestId)
-			.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+		await this.inbox().evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+	}
+
+	/**
+	 * The listed titles, in the order the list shows them. An array of exact
+	 * titles also pins how many rows are listed.
+	 */
+	async verifyRowOrder(titles: readonly string[]): Promise<void> {
+		await expectElementToHaveText(this.rowTitles(), [...titles], {
+			message: `The list should show ${titles.join(", ")} in that order`,
+		});
+	}
+
+	/** Asks to delete a session, leaving the confirmation open. */
+	async openDeleteDialog(title: string): Promise<void> {
+		await this.openRowMenu(title);
+		await click(this.menuDelete());
+		await expectElementToBeVisible(this.deleteDialog(), "Deleting a session should ask first");
+	}
+
+	/** The confirmation names the session it would delete, so a stray click is visible. */
+	async verifyDeleteDialogNames(title: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.deleteChatPreview().getByText(title, { exact: true }),
+			`The delete confirmation should name ${title}`,
+		);
+	}
+
+	async cancelDelete(): Promise<void> {
+		await click(this.deleteCancel());
+		await expectElementToBeHidden(this.deleteDialog(), {
+			message: "Cancel should close the delete confirmation",
+		});
 	}
 
 	async verifyListed(title: string): Promise<void> {

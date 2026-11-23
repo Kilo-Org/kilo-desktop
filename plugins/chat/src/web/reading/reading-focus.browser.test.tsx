@@ -77,38 +77,47 @@ async function showReply(
 
 const inFocus = () => page.getByTestId("chat-focus-content");
 
+/** The reply's blocks in order, as Focus moves through them. */
+const REPLY_BLOCKS = [
+	"Plan",
+	"First we read the login handler.",
+	"Then we fix the redirect after sign-in.",
+	"Finally we add a regression test.",
+];
+
+/** Of `blocks`, the one level with the rail: where "Focus from here" enters (the text's middle in view). */
+function paragraphAtRail(blocks: readonly string[]): string {
+	const rail = page.getByTestId("chat-focus-rail").element().getBoundingClientRect();
+	const y = (rail.top + rail.bottom) / 2;
+	const distance = (text: string) => {
+		const box = page.getByText(text, { exact: true }).first().element().getBoundingClientRect();
+		return y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+	};
+	return blocks.reduce((best, text) => (distance(text) < distance(best) ? text : best));
+}
+
 describe("Focus in the chat", () => {
-	it("enters from the rail at the hovered paragraph and exits on Esc", async () => {
+	it("enters from the rail at the paragraph level with it and exits on Esc", async () => {
 		await showReply();
+		const opacity = (text: string) =>
+			(inFocus().getByText(text, { exact: true }).element() as HTMLElement).style.opacity;
 
 		await page.getByText("Then we fix the redirect after sign-in.").first().hover();
+		const started = paragraphAtRail(REPLY_BLOCKS);
 		await page.getByRole("button", { name: "Focus from here" }).click();
 
 		const takeover = page.getByTestId("shell-takeover");
 		await expect.element(takeover).toBeVisible();
-		await expect
-			.element(inFocus().getByText("Then we fix the redirect after sign-in."))
-			.toBeVisible();
-		await expect
-			.poll(
-				() =>
-					(inFocus().getByText("Then we fix the redirect after sign-in.").element() as HTMLElement)
-						.style.opacity,
-			)
-			.toBe("");
-		expect(
-			(inFocus().getByText("First we read the login handler.").element() as HTMLElement).style
-				.opacity,
-		).toBe("0.3");
+		await expect.poll(() => opacity(started)).toBe("");
+		const index = REPLY_BLOCKS.indexOf(started);
+		const [key, neighbour] =
+			index < REPLY_BLOCKS.length - 1
+				? (["{ArrowDown}", REPLY_BLOCKS[index + 1]!] as const)
+				: (["{ArrowUp}", REPLY_BLOCKS[index - 1]!] as const);
+		expect(opacity(neighbour)).toBe("0.3");
 
-		await userEvent.keyboard("{ArrowDown}");
-		await expect
-			.poll(
-				() =>
-					(inFocus().getByText("Finally we add a regression test.").element() as HTMLElement).style
-						.opacity,
-			)
-			.toBe("");
+		await userEvent.keyboard(key);
+		await expect.poll(() => opacity(neighbour)).toBe("");
 
 		await userEvent.keyboard("{Escape}");
 		await expect.element(page.getByTestId("shell-takeover")).not.toBeInTheDocument();
@@ -117,12 +126,13 @@ describe("Focus in the chat", () => {
 	it("shows the whole chat, prompts included, starting on the paragraph it was entered from", async () => {
 		await showReply([], { earlierTurn: true });
 		const opacity = (text: string) =>
-			(inFocus().getByText(text).element() as HTMLElement).style.opacity;
+			(inFocus().getByText(text, { exact: true }).element() as HTMLElement).style.opacity;
 
 		await page.getByText("Then we fix the redirect after sign-in.").first().hover();
+		const started = paragraphAtRail([EARLIER_ANSWER, ...REPLY_BLOCKS]);
 		await page.getByRole("button", { name: "Focus from here" }).click();
 
-		await expect.poll(() => opacity("Then we fix the redirect after sign-in.")).toBe("");
+		await expect.poll(() => opacity(started)).toBe("");
 		for (const text of [EARLIER_PROMPT, EARLIER_ANSWER, "How do we fix login?"]) {
 			await expect.element(inFocus().getByText(text)).toBeInTheDocument();
 		}
@@ -130,12 +140,12 @@ describe("Focus in the chat", () => {
 		expect(prompt.closest('[data-role="user"]')).not.toBeNull();
 		expect(prompt.closest("[data-reading-surface]")).toBeNull();
 
-		await userEvent.keyboard("{ArrowUp}{ArrowUp}{ArrowUp}");
-		await expect.poll(() => opacity("How do we fix login?")).toBe("");
-		await userEvent.keyboard("{ArrowUp}");
-		await expect.poll(() => opacity(EARLIER_ANSWER)).toBe("");
-		await userEvent.keyboard("{ArrowUp}");
-		await expect.poll(() => opacity(EARLIER_PROMPT)).toBe("");
+		// ↑ walks back through every block before it, prompts included, to the first prompt.
+		const chat = [EARLIER_PROMPT, EARLIER_ANSWER, "How do we fix login?", ...REPLY_BLOCKS];
+		for (let index = chat.indexOf(started) - 1; index >= 0; index -= 1) {
+			await userEvent.keyboard("{ArrowUp}");
+			await expect.poll(() => opacity(chat[index]!)).toBe("");
+		}
 
 		await userEvent.keyboard("{Escape}");
 		await expect.element(page.getByTestId("shell-takeover")).not.toBeInTheDocument();

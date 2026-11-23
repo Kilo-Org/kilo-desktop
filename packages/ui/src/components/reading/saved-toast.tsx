@@ -1,7 +1,8 @@
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, XIcon } from "lucide-react";
 import { useEffect, useState, type FC } from "react";
 
 import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export interface SavedToastProps {
 	readonly message: string;
@@ -9,15 +10,23 @@ export interface SavedToastProps {
 	readonly onView?: () => void;
 	readonly onUndo?: () => void;
 	readonly onClose: () => void;
+	/**
+	 * Shows a close (X) button inside the toast, at its right: for a toast in
+	 * the window's toast stack, which stays until it times out or is closed.
+	 */
+	readonly dismissible?: boolean;
+	readonly className?: string;
 	/** How long it stays, paused while hovered or focused. */
 	readonly durationMs?: number;
 	readonly qaId?: string;
 }
 
 /**
- * The pane's confirmation after saving: a check, the message, View and Undo.
- * Shown at the bottom centre of the pane; it closes after five seconds,
- * waiting while the pointer or focus is on it, and after either action.
+ * The confirmation after saving or removing: a check, the message, View and
+ * Undo (and a close button where it sits in the window's toast stack). Shown
+ * at the bottom centre of the pane or the Focus reader, or as the Saved page's
+ * toast; it closes after five seconds, waiting while the pointer or focus is
+ * on it, and after either action.
  */
 // A new message is a new toast: keying on it restarts the countdown.
 export const SavedToast: FC<SavedToastProps> = (props) => (
@@ -30,6 +39,8 @@ const SavedToastBody: FC<SavedToastProps> = ({
 	onUndo,
 	onClose,
 	durationMs = 5_000,
+	dismissible = false,
+	className,
 	qaId = "saved-toast",
 }) => {
 	const [paused, setPaused] = useState(false);
@@ -45,7 +56,10 @@ const SavedToastBody: FC<SavedToastProps> = ({
 		<div
 			role="status"
 			data-qa-id={qaId}
-			className="bg-popover text-popover-foreground border-border-subtle pointer-events-auto flex h-9 items-center gap-2 rounded-lg border pr-1 pl-3 text-xs shadow-lg"
+			className={cn(
+				"bg-popover text-popover-foreground border-border-subtle pointer-events-auto flex h-9 items-center gap-2 rounded-lg border pr-1 pl-3 text-xs shadow-lg",
+				className,
+			)}
 			onPointerEnter={() => setPaused(true)}
 			onPointerLeave={() => setPaused(false)}
 			onFocus={() => setPaused(true)}
@@ -53,32 +67,47 @@ const SavedToastBody: FC<SavedToastProps> = ({
 		>
 			<CheckIcon aria-hidden="true" className="size-3.5" />
 			<span>{message}</span>
-			{onView ? (
-				<button
-					type="button"
-					className={action}
-					data-qa-id={`${qaId}-view`}
-					onClick={() => {
-						onView();
-						onClose();
-					}}
-				>
-					View
-				</button>
-			) : null}
-			{onUndo ? (
-				<button
-					type="button"
-					className={action}
-					data-qa-id={`${qaId}-undo`}
-					onClick={() => {
-						onUndo();
-						onClose();
-					}}
-				>
-					Undo
-				</button>
-			) : null}
+			{/* No gap between the actions: their own padding spaces View and Undo as far
+			    apart as the message is from View. */}
+			<span className="flex items-center">
+				{onView ? (
+					<button
+						type="button"
+						className={action}
+						data-qa-id={`${qaId}-view`}
+						onClick={() => {
+							onView();
+							onClose();
+						}}
+					>
+						View
+					</button>
+				) : null}
+				{onUndo ? (
+					<button
+						type="button"
+						className={action}
+						data-qa-id={`${qaId}-undo`}
+						onClick={() => {
+							onUndo();
+							onClose();
+						}}
+					>
+						Undo
+					</button>
+				) : null}
+				{dismissible ? (
+					<button
+						type="button"
+						aria-label="Close"
+						className="text-muted-foreground hover:text-foreground hover:bg-state-hover focus-visible:ring-ring/50 flex size-6 items-center justify-center rounded-md outline-none focus-visible:ring-2"
+						data-qa-id={`${qaId}-close`}
+						onClick={onClose}
+					>
+						<XIcon aria-hidden="true" className="size-3.5" />
+					</button>
+				) : null}
+			</span>
 		</div>
 	);
 };

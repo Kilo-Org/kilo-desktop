@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import {
 	DEFAULT_READING_SETTINGS,
@@ -52,6 +52,16 @@ function Harness({
 
 afterEach(cleanup);
 
+/** Moves the Text size slider by one step per press, from the keyboard. */
+async function stepTextSize(key: "{ArrowRight}" | "{ArrowLeft}", times = 1) {
+	page
+		.getByTestId("reading-size-slider")
+		.element()
+		.querySelector<HTMLInputElement>('input[type="range"]')!
+		.focus();
+	for (let press = 0; press < times; press += 1) await userEvent.keyboard(key);
+}
+
 describe("ReadingControl", () => {
 	it("opens above its Aa button, pressed while open, with the reading settings", async () => {
 		render(<Harness />);
@@ -82,8 +92,7 @@ describe("ReadingControl", () => {
 
 		await page.getByRole("radio", { name: "Gruvbox" }).click();
 		await page.getByTestId("reading-mode-light").click();
-		await page.getByRole("button", { name: "Larger text" }).click();
-		await page.getByRole("button", { name: "Larger text" }).click();
+		await stepTextSize("{ArrowRight}", 2);
 		await page.getByRole("radio", { name: "Loosest" }).click();
 
 		await expect.element(page.getByTestId("reading-theme-name")).toHaveTextContent("Gruvbox");
@@ -101,13 +110,12 @@ describe("ReadingControl", () => {
 	it("stops the text size at its limits", async () => {
 		render(<Harness />);
 		await page.getByTestId("reading-trigger").click();
-		const smaller = page.getByRole("button", { name: "Smaller text" });
 
-		await smaller.click();
-		await smaller.click();
+		await stepTextSize("{ArrowLeft}", 4);
 
 		await expect.element(page.getByTestId("reading-size")).toHaveTextContent("12px");
-		await expect.element(smaller).toBeDisabled();
+		await stepTextSize("{ArrowRight}", 9);
+		await expect.element(page.getByTestId("reading-size")).toHaveTextContent("20px");
 	});
 
 	it("shows Focus options and the footnote only while Focus is on", async () => {

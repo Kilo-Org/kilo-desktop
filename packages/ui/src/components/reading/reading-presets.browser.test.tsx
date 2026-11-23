@@ -121,6 +121,16 @@ const presetsTrigger = () => page.getByTestId("reading-presets-trigger");
 
 afterEach(cleanup);
 
+/** Moves the Text size slider by one step per press, from the keyboard. */
+async function stepTextSize(key: "{ArrowRight}" | "{ArrowLeft}", times = 1) {
+	page
+		.getByTestId("reading-size-slider")
+		.element()
+		.querySelector<HTMLInputElement>('input[type="range"]')!
+		.focus();
+	for (let press = 0; press < times; press += 1) await userEvent.keyboard(key);
+}
+
 describe("ReadingControl presets", () => {
 	it("starts with a disabled empty row and no Save… until something changes", async () => {
 		render(<Harness />);
@@ -145,8 +155,7 @@ describe("ReadingControl presets", () => {
 		render(<Harness />);
 		await openPanel();
 		await page.getByRole("radio", { name: "Gruvbox" }).click();
-		await page.getByRole("button", { name: "Larger text" }).click();
-		await page.getByRole("button", { name: "Larger text" }).click();
+		await stepTextSize("{ArrowRight}", 2);
 
 		await page.getByTestId("reading-preset-save").click();
 
@@ -237,7 +246,7 @@ describe("ReadingControl presets", () => {
 	it("turns Save… into Update once the active preset is changed, and Reset goes back to it", async () => {
 		render(<Harness initialSettings={LATE_NIGHT} initialPresets={twoPresets} />);
 		await openPanel();
-		await page.getByRole("button", { name: "Larger text" }).click();
+		await stepTextSize("{ArrowRight}");
 		await expect.element(page.getByTestId("reading-size")).toHaveTextContent("17px");
 		await expect.element(page.getByTestId("reading-presets-unsaved")).toBeInTheDocument();
 
@@ -245,7 +254,7 @@ describe("ReadingControl presets", () => {
 		await expect.element(page.getByTestId("reading-size")).toHaveTextContent("16px");
 		await expect.element(page.getByTestId("reading-presets-unsaved")).not.toBeInTheDocument();
 
-		await page.getByRole("button", { name: "Larger text" }).click();
+		await stepTextSize("{ArrowRight}");
 		const update = page.getByTestId("reading-preset-update");
 		await expect.element(update).toHaveTextContent("Update");
 		await expect.element(update).toHaveAccessibleName("Update “Late night”");

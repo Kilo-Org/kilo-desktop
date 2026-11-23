@@ -22,6 +22,7 @@ import {
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
 import { Input } from "@kilo-desktop/ui/components/input";
+import { SavedToast } from "@kilo-desktop/ui/components/reading/saved-toast";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { ageBucket, countBucket, lengthBucket } from "@kilo-desktop/ui/lib/reading/buckets";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -192,16 +193,25 @@ export const SavedView: FC = () => {
 				ageBucket: ageOf(item),
 			});
 			if (!removed) return;
-			toast("Removed from Saved", {
-				action: {
-					label: "Undo",
-					onClick: () => {
-						void saved?.methods.restore({ item: removed }).catch(() => {
-							track("saved-action-failed", { action: "restore", kind });
-						});
-					},
-				},
-			});
+			// The same toast Save shows in the chat, so both read alike; it times
+			// itself out, so the stack keeps it until it closes.
+			toast.custom(
+				(id) => (
+					<SavedToast
+						message="Removed from Saved"
+						onUndo={() => {
+							void saved?.methods.restore({ item: removed }).catch(() => {
+								track("saved-action-failed", { action: "restore", kind });
+							});
+						}}
+						onClose={() => toast.dismiss(id)}
+						dismissible
+						className="ml-auto w-fit"
+						qaId="saved-page-toast"
+					/>
+				),
+				{ duration: Number.POSITIVE_INFINITY },
+			);
 		} catch {
 			track("saved-action-failed", { action: "remove", kind });
 		}

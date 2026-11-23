@@ -136,7 +136,7 @@ export const PaneFocusRail: FC<{
 	);
 };
 
-/** The reply target a rail click means: the hovered block within its reply. */
+/** The reply target a rail click means: the block at the middle of the text in view, within its reply. */
 export function replyTargetFromRail(target: FocusRailTarget): ChatFocusTarget | null {
 	const first = target.block.elements[0];
 	const message = first?.closest<HTMLElement>("[data-message-id]");

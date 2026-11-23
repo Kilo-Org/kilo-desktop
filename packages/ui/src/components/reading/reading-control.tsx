@@ -273,31 +273,27 @@ function ReadingPanel({
 				</div>
 			</section>
 
+			{/* A slider with its size beside it, like Settings → Appearance's text sizes. */}
 			<Row label="Text size">
-				<div className="flex items-center gap-1" role="group" aria-label="Text size">
-					<StepButton
-						label="Smaller text"
-						disabled={settings.textSizeStep <= TEXT_SIZE_STEP_RANGE.min}
-						onClick={() => onChange({ textSizeStep: settings.textSizeStep - 1 }, "text-size")}
-						qaId={`${qaId}-size-down`}
-					>
-						<span className="text-[11px]">A</span>
-					</StepButton>
+				<div className="flex w-36 items-center gap-2">
+					<Slider
+						aria-label="Text size"
+						min={baseSize + TEXT_SIZE_STEP_RANGE.min}
+						max={baseSize + TEXT_SIZE_STEP_RANGE.max}
+						step={1}
+						value={size}
+						onValueChange={(value) => {
+							const next = (Array.isArray(value) ? value[0]! : value) - baseSize;
+							if (next !== settings.textSizeStep) onChange({ textSizeStep: next }, "text-size");
+						}}
+						data-qa-id={`${qaId}-size-slider`}
+					/>
 					<span
-						className="text-foreground w-11 text-center text-xs tabular-nums"
-						aria-live="polite"
+						className="text-muted-foreground w-9 text-right text-xs tabular-nums"
 						data-qa-id={`${qaId}-size`}
 					>
 						{size}px
 					</span>
-					<StepButton
-						label="Larger text"
-						disabled={settings.textSizeStep >= TEXT_SIZE_STEP_RANGE.max}
-						onClick={() => onChange({ textSizeStep: settings.textSizeStep + 1 }, "text-size")}
-						qaId={`${qaId}-size-up`}
-					>
-						<span className="text-[16px]">A</span>
-					</StepButton>
 				</div>
 			</Row>
 
@@ -410,33 +406,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 			<span className="text-muted-foreground min-w-0 text-xs whitespace-nowrap">{label}</span>
 			{children}
 		</div>
-	);
-}
-
-function StepButton({
-	label,
-	disabled,
-	onClick,
-	qaId,
-	children,
-}: {
-	label: string;
-	disabled: boolean;
-	onClick: () => void;
-	qaId: string;
-	children: ReactNode;
-}) {
-	return (
-		<button
-			type="button"
-			aria-label={label}
-			disabled={disabled}
-			onClick={onClick}
-			data-qa-id={qaId}
-			className="text-foreground hover:bg-state-hover focus-visible:ring-ring/50 flex size-7 items-center justify-center rounded-md font-serif outline-none focus-visible:ring-2 disabled:opacity-40"
-		>
-			{children}
-		</button>
 	);
 }
 

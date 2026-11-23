@@ -92,7 +92,8 @@ export class ReadingPage {
 	}
 
 	async makeTextLarger(): Promise<void> {
-		await click(this.aa("popover").getByRole("button", { name: "Larger text" }));
+		await this.aa("size-slider").locator('input[type="range"]').focus();
+		await getPage().keyboard.press("ArrowRight");
 	}
 
 	/**

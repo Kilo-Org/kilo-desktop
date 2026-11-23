@@ -97,6 +97,45 @@ describe("SavedToast", () => {
 		expect(onClose).toHaveBeenCalledTimes(2);
 	});
 
+	it("spaces View and Undo as far apart as the message is from View", async () => {
+		render(
+			<SavedToast
+				message="Added to Saved"
+				onView={() => {}}
+				onUndo={() => {}}
+				onClose={() => {}}
+			/>,
+		);
+		const textBox = (element: Element) => {
+			const range = document.createRange();
+			range.selectNodeContents(element);
+			return range.getBoundingClientRect();
+		};
+		const message = textBox(page.getByText("Added to Saved").element());
+		const view = textBox(page.getByRole("button", { name: "View" }).element());
+		const undo = textBox(page.getByRole("button", { name: "Undo" }).element());
+
+		expect(Math.abs(undo.left - view.right - (view.left - message.right))).toBeLessThan(1);
+	});
+
+	it("offers a close button inside it, at its right, when dismissible", async () => {
+		const onClose = vi.fn();
+		render(
+			<SavedToast message="Removed from Saved" onUndo={() => {}} onClose={onClose} dismissible />,
+		);
+		const toast = page.getByRole("status").element().getBoundingClientRect();
+		const close = page.getByRole("button", { name: "Close" });
+		const box = close.element().getBoundingClientRect();
+
+		expect(box.right).toBeLessThanOrEqual(toast.right);
+		expect(box.top).toBeGreaterThanOrEqual(toast.top);
+		expect(box.left).toBeGreaterThan(
+			page.getByRole("button", { name: "Undo" }).element().getBoundingClientRect().right - 1,
+		);
+		await close.click();
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
 	it("closes by itself, waiting while the pointer is on it", async () => {
 		const onClose = vi.fn();
 		render(<SavedToast message="Removed from Saved" onClose={onClose} durationMs={150} />);

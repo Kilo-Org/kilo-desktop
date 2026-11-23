@@ -16,6 +16,7 @@ function Transcript({ onFocusFrom }: { onFocusFrom: (target: FocusRailTarget) =>
 					<div className="aui-md">
 						<p>First paragraph.</p>
 						<p>Second paragraph.</p>
+						<p>Third paragraph.</p>
 					</div>
 				</div>
 				<p>Not reading text.</p>
@@ -49,24 +50,48 @@ function CentredTranscript({ onFocusFrom }: { onFocusFrom: (target: FocusRailTar
 	);
 }
 
+/** Reading text taller than the scrolling box that shows it. */
+function ScrollingTranscript() {
+	const [host, setHost] = useState<HTMLDivElement | null>(null);
+	return (
+		<TooltipProvider>
+			<div data-qa-id="scroller" style={{ height: 200, overflowY: "auto", width: 600 }}>
+				<div ref={setHost} style={{ position: "relative" }}>
+					<div data-reading-surface="reply">
+						<div className="aui-md">
+							{Array.from({ length: 30 }, (_, index) => (
+								<p key={index}>Paragraph {index + 1}.</p>
+							))}
+						</div>
+					</div>
+					<FocusRail host={host} onFocusFrom={() => {}} />
+				</div>
+			</div>
+		</TooltipProvider>
+	);
+}
+
 afterEach(cleanup);
 
 describe("FocusRail", () => {
-	it("appears level with the hovered paragraph and enters Focus there", async () => {
+	it("appears at the middle of the text in view, stays put as the pointer moves, and enters Focus there", async () => {
 		const targets: FocusRailTarget[] = [];
 		render(<Transcript onFocusFrom={(target) => targets.push(target)} />);
 		await expect.element(page.getByTestId("focus-rail")).not.toBeInTheDocument();
 
-		await page.getByText("Second paragraph.").hover();
+		await page.getByText("First paragraph.").hover();
 
 		const rail = page.getByTestId("focus-rail");
 		await expect.element(rail).toBeVisible();
-		await expect.element(page.getByTestId("focus-rail-marker")).toBeVisible();
-		const paragraph = page.getByText("Second paragraph.").element().getBoundingClientRect();
-		const railBox = rail.element().getBoundingClientRect();
-		expect(
-			Math.abs((railBox.top + railBox.bottom) / 2 - (paragraph.top + paragraph.bottom) / 2),
-		).toBeLessThan(8);
+		const surface = document.querySelector("[data-reading-surface]")!.getBoundingClientRect();
+		const middle = (box: DOMRect) => (box.top + box.bottom) / 2;
+		const railTop = rail.element().getBoundingClientRect().top;
+		expect(Math.abs(middle(rail.element().getBoundingClientRect()) - middle(surface))).toBeLessThan(
+			2,
+		);
+
+		await page.getByText("Third paragraph.").hover();
+		expect(rail.element().getBoundingClientRect().top).toBe(railTop);
 
 		await page.getByRole("button", { name: "Focus from here" }).click();
 
@@ -75,7 +100,28 @@ describe("FocusRail", () => {
 		expect(targets[0]!.surface.dataset.readingSurface).toBe("reply");
 	});
 
-	it("stays while the pointer crosses from a lower line, past the column's edge, to a rail placed outside", async () => {
+	it("keeps its place in the view while the text scrolls under it", async () => {
+		render(<ScrollingTranscript />);
+		await page.getByText("Paragraph 3.").hover();
+		const rail = page.getByTestId("focus-rail");
+		await expect.element(rail).toBeVisible();
+		const scroller = page.getByTestId("scroller").element();
+		const viewMiddle = () => {
+			const box = scroller.getBoundingClientRect();
+			return (box.top + box.bottom) / 2;
+		};
+		const railMiddle = () => {
+			const box = rail.element().getBoundingClientRect();
+			return (box.top + box.bottom) / 2;
+		};
+		expect(Math.abs(railMiddle() - viewMiddle())).toBeLessThan(2);
+
+		scroller.scrollTop = 300;
+
+		await expect.poll(() => Math.abs(railMiddle() - viewMiddle())).toBeLessThan(2);
+	});
+
+	it("stays while the pointer crosses past the column's edge to a rail placed outside", async () => {
 		const targets: FocusRailTarget[] = [];
 		render(<CentredTranscript onFocusFrom={(target) => targets.push(target)} />);
 		const paragraph = page.getByText(LONG_PARAGRAPH);
@@ -87,8 +133,9 @@ describe("FocusRail", () => {
 		await expect.element(page.getByTestId("focus-rail")).toBeVisible();
 		const pane = page.getByTestId("pane").element().getBoundingClientRect();
 		const column = page.getByTestId("column").element().getBoundingClientRect();
+		const rail = page.getByTestId("focus-rail").element().getBoundingClientRect();
 		await userEvent.hover(page.getByTestId("pane"), {
-			position: { x: column.right - pane.left + 2, y: text.top - pane.top + lowerLine },
+			position: { x: column.right - pane.left + 2, y: (rail.top + rail.bottom) / 2 - pane.top },
 		});
 		await expect.element(page.getByTestId("focus-rail")).toBeVisible();
 

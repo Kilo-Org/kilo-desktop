@@ -153,6 +153,11 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 					return options.authorize?.(path) ?? { allowed: true, path };
 				},
 				checkFolders: () => undefined,
+				newFolderLocation: () => ({ path: null }),
+				newFolderPath: () => {
+					throw new Error("newFolderPath is not faked here.");
+				},
+				rememberNewFolderLocation: () => undefined,
 			},
 		});
 	}

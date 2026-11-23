@@ -46,7 +46,13 @@ export interface PersistedAdoption extends Record<string, unknown> {
 	keybindingsMoved: boolean;
 }
 
+export interface PersistedNewFolderLocation extends Record<string, unknown> {
+	/** The folder the last new workspace folder was made in; "" before any. */
+	lastParentPath: string;
+}
+
 export const WORKSPACES_NAMESPACE = "workspaces";
+export const NEW_FOLDER_LOCATION_NAMESPACE = "new-folder-location";
 export const WORK_SESSIONS_NAMESPACE = "work-sessions";
 export const PANES_NAMESPACE = "panes";
 export const LAYOUT_PRESETS_NAMESPACE = "layout-presets";
@@ -61,6 +67,13 @@ export function workspacesStore(sdk: PluginSdk): KvStore<PersistedWorkspaces> {
 			importedFromOrigin: false,
 			originImportVerified: false,
 		},
+	});
+}
+
+export function newFolderLocationStore(sdk: PluginSdk): KvStore<PersistedNewFolderLocation> {
+	return mainHost(sdk).storage.kv<PersistedNewFolderLocation>({
+		namespace: NEW_FOLDER_LOCATION_NAMESPACE,
+		defaults: { lastParentPath: "" },
 	});
 }
 

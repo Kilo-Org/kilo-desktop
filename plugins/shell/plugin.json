@@ -405,11 +405,6 @@
 					"id": "work-style",
 					"label": "Work style",
 					"priority": 800
-				},
-				{
-					"id": "features",
-					"label": "Features",
-					"priority": 100
 				}
 			],
 			"kilo.shell/menu-item": [

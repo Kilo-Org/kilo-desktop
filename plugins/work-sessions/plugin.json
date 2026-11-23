@@ -192,10 +192,22 @@
 			"id": "saved-source",
 			"kind": "additive",
 			"description": "A kind of Saved item: what saves it and how to go back to it."
+		},
+		{
+			"id": "workspace-source",
+			"kind": "additive",
+			"description": "A way to start a workspace, offered in the New workspace dialog."
 		}
 	],
 	"contributes": {
 		"extensions": {
+			"kilo.work-sessions/workspace-source": [
+				{
+					"id": "local-folder",
+					"title": "Local folder",
+					"description": "Use folders on this computer, or create a new one."
+				}
+			],
 			"kilo.shell/main": [
 				{
 					"id": "work-sessions"

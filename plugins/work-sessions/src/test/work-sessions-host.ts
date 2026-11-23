@@ -279,6 +279,9 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 					},
 					authorize: () => ({ allowed: false }),
 					checkFolders: () => undefined,
+					newFolderLocation: () => ({ path: null }),
+					newFolderPath: unused,
+					rememberNewFolderLocation: () => undefined,
 				},
 			},
 		);

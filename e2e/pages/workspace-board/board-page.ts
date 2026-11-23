@@ -9,7 +9,11 @@ import {
 } from "@anaconda/playwright-utils";
 import { getAllPages, getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect, type Locator, type Page } from "@playwright/test";
+
+import { sessionListData } from "../../testdata/work-sessions/session-list.js";
 import { runFromCommandPalette } from "../shell/command-palette.js";
+
+const SESSION_LIST = sessionListData.locators;
 
 /**
  * Page object for kilo.workspace-board's workspace board. Every step targets the
@@ -18,6 +22,36 @@ import { runFromCommandPalette } from "../shell/command-palette.js";
  * could be a leftover from another run.
  */
 export class BoardPage {
+	// --- Locators ---
+
+	private readonly rowMore = (row: Locator): Locator =>
+		row.getByTestId(SESSION_LIST.itemMoreTestId);
+	private activeRow(): Locator {
+		return getLocator(`[data-qa-id="${SESSION_LIST.itemTestId}"][data-active="true"]`);
+	}
+
+	private sessionRow(): Locator {
+		return getLocator(
+			`[data-qa-id="${SESSION_LIST.itemTestId}"][data-session-id="${this.requireSessionId()}"]`,
+		);
+	}
+
+	private column(columnId: string): Locator {
+		return getLocatorByTestId(`workspace-board-column-${columnId}`);
+	}
+
+	private card(columnId: string): Locator {
+		return this.column(columnId).getByTestId(`workspace-board-card-${this.requireSessionId()}`);
+	}
+
+	private boardWindowCard(columnId: string): Locator {
+		return this.requireBoardWindow()
+			.getByTestId(`workspace-board-column-${columnId}`)
+			.getByTestId(`workspace-board-card-${this.requireSessionId()}`);
+	}
+
+	// --- Steps and assertions ---
+
 	private sessionId: string | undefined;
 	private boardWindow: Page | undefined;
 
@@ -47,7 +81,10 @@ export class BoardPage {
 	async addSessionToColumn(columnId: string): Promise<void> {
 		const row = this.sessionRow();
 		await hover(row);
-		await click(row.getByTestId("session-list-item-more"));
+		// The row's timestamp slot only fades on hover rather than leaving the
+		// layer, so it can sit over the "…" trigger and swallow the click. The
+		// trigger is visible and stable; only the hit-target check is in the way.
+		await click(this.rowMore(row), { force: true });
 		await pressLocatorKeyboard(
 			getLocatorByTestId("session-menu-kilo.workspace-board/add-to-board"),
 			"ArrowRight",
@@ -154,33 +191,9 @@ export class BoardPage {
 		return boardWindow;
 	}
 
-	private boardWindowCard(columnId: string): Locator {
-		return this.requireBoardWindow()
-			.getByTestId(`workspace-board-column-${columnId}`)
-			.getByTestId(`workspace-board-card-${this.requireSessionId()}`);
-	}
-
 	private requireBoardWindow(): Page {
 		if (!this.boardWindow) throw new Error("Pop the board out first.");
 		return this.boardWindow;
-	}
-
-	private activeRow(): Locator {
-		return getLocator('[data-qa-id="session-list-item"][data-active="true"]');
-	}
-
-	private sessionRow(): Locator {
-		return getLocator(
-			`[data-qa-id="session-list-item"][data-session-id="${this.requireSessionId()}"]`,
-		);
-	}
-
-	private column(columnId: string): Locator {
-		return getLocatorByTestId(`workspace-board-column-${columnId}`);
-	}
-
-	private card(columnId: string): Locator {
-		return this.column(columnId).getByTestId(`workspace-board-card-${this.requireSessionId()}`);
 	}
 
 	private requireSessionId(): string {

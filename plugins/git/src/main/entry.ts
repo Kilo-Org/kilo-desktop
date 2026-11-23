@@ -2,8 +2,10 @@ import { definePlugin, type PluginEntry } from "@kilo-desktop/kernel";
 
 import { activateBranchNamer } from "./branch-namer";
 import { activateChangesTool } from "./changes-tool";
+import { activateClone } from "./clone";
 import { activatePullRequests } from "./pull-requests";
 import { activateRepository, type RepositoryOptions } from "./repository";
+import { createDefaultGitClient } from "./shared/git-client";
 import type { PullRequestSource } from "./shared/pull-request-source";
 
 export interface GitMainOptions extends RepositoryOptions {
@@ -17,15 +19,20 @@ export interface GitMainOptions extends RepositoryOptions {
  * kilo.git in main, composed from areas that meet only through kilo.git's
  * own contracts and the plugins below it: the repository (one git service
  * behind `kilo.git/repository`, the `kilo.work-sessions/vcs` contribution and
- * the `kilo-git` patch protocol), the pull request of each work session's
- * directory, the branch namer that renames a new copy's branch once its
- * chat's task is clear, and the agent's `changes_open` tool. Every area works
- * without kilo.work-sessions and kilo.core, following them as they come and go.
+ * the `kilo-git` patch protocol), cloning a repository into a new workspace
+ * (`kilo.git/clone` and `kilo.git/github-repositories`), the pull request of
+ * each work session's directory, the branch namer that renames a new copy's
+ * branch once its chat's task is clear, and the agent's `changes_open` tool.
+ * The entry makes the one git client the repository and clone areas share.
+ * Every area works without kilo.work-sessions and kilo.core, following them
+ * as they come and go.
  */
 export function createGitMainEntry(options: GitMainOptions = {}): PluginEntry {
 	return definePlugin({
 		activate(sdk) {
-			const repository = activateRepository(sdk, options);
+			const client = options.createClient?.() ?? createDefaultGitClient(sdk.logger);
+			const repository = activateRepository(sdk, { createClient: () => client });
+			activateClone(sdk, { client });
 			activatePullRequests(sdk, {
 				source: options.pullRequestSource ?? repository.pullRequestSource,
 				...(options.now ? { now: options.now } : {}),

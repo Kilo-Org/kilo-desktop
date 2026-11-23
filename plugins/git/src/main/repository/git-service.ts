@@ -7,13 +7,12 @@ import { execa, type ExecaError } from "execa";
 import pLimit from "p-limit";
 
 import { KernelError, type KernelLogger } from "@kilo-desktop/kernel";
-import type { GitClient, GitPatchFile } from "@kilo-desktop/git-client";
+import type { GitPatchFile } from "@kilo-desktop/git-client";
 import {
 	GitErrorCode,
 	GitFileTooLargeError,
 	GitNotDetectedError,
 	UnsupportedGitVersionError,
-	createGitClient,
 	isGitError,
 	isMaxBufferExceededError,
 } from "@kilo-desktop/git-client";
@@ -36,8 +35,17 @@ import {
 	finderPick,
 	parseBatchResponse,
 } from "./pull-request-batch";
-import { unsupportedGitVersionToKernelError } from "./unsupported-git-version";
-import { GIT_NOT_FOUND_MESSAGE, WorktreeManager } from "./worktree-manager";
+import {
+	afterEnvironment,
+	createDefaultGitClient,
+	type GitClientSlice,
+} from "../shared/git-client";
+import {
+	GIT_NOT_FOUND_MESSAGE,
+	ghErrorToKernelError,
+	unsupportedGitVersionToKernelError,
+} from "../shared/git-errors";
+import { WorktreeManager } from "./worktree-manager";
 
 export interface GitPullRequest {
 	readonly number: number;
@@ -157,9 +165,6 @@ function visibleBranches(branches: ReadonlyArray<IBranch>): GitBranch[] {
 	});
 }
 
-/** `GitClient` minus what the service does not use; new `GitClient` members join the slice automatically. */
-export type GitClientSlice = Omit<GitClient, "path" | "satisfies" | "symbolicRef">;
-
 /**
  * The visible branches' recently checked-out local branch names, in reflog
  * order: the default branch is excluded (it has its own group), names with
@@ -223,20 +228,6 @@ export interface GitServiceOptions {
 	readonly environmentReady?: () => Promise<void>;
 }
 
-/** `client`, each of whose (async) methods first waits for `ready`. */
-function afterEnvironment(client: GitClientSlice, ready: () => Promise<void>): GitClientSlice {
-	return new Proxy(client, {
-		get(target, prop, receiver) {
-			const value: unknown = Reflect.get(target, prop, receiver);
-			if (typeof value !== "function") return value;
-			return async (...args: unknown[]) => {
-				await ready();
-				return Reflect.apply(value, target, args);
-			};
-		},
-	});
-}
-
 /**
  * Defense in depth for a renderer-reachable file-read primitive: the contract
  * only validates non-empty strings, so the service itself rejects absolute
@@ -283,12 +274,6 @@ function toWorktreeEntries(entries: ReadonlyArray<WorktreeEntry>): GitWorktreeEn
 			},
 		];
 	});
-}
-
-function createDefaultClient(logger: KernelLogger): GitClientSlice {
-	// git-client's `GitLogger` is the narrow `{ error }` interface, which
-	// `KernelLogger` satisfies directly.
-	return createGitClient({ logger });
 }
 
 /**
@@ -341,24 +326,6 @@ function gitActionErrorToKernelError(error: unknown): unknown {
 		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
 	return gitUnavailableToKernelError(error);
-}
-
-export function ghErrorToKernelError(error: unknown): KernelError {
-	const failure = error as Partial<ExecaError>;
-	const detail = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
-	if ((failure as { code?: string }).code === "ENOENT") {
-		return new KernelError(
-			"BUSINESS",
-			"GitHub CLI (gh) is not installed. Install it from https://cli.github.com/.",
-		);
-	}
-	if (/auth login|not logged|authentication/i.test(detail)) {
-		return new KernelError(
-			"BUSINESS",
-			"Not authenticated with GitHub CLI. Run 'gh auth login' first.",
-		);
-	}
-	return new KernelError("BUSINESS", detail || "GitHub CLI operation failed.");
 }
 
 function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
@@ -582,7 +549,7 @@ export class GitService {
 	readonly #fetches = new Map<string, { promise: Promise<void> | null; settledAt: number }>();
 
 	constructor(options: GitServiceOptions) {
-		const client = options.createClient?.() ?? createDefaultClient(options.logger);
+		const client = options.createClient?.() ?? createDefaultGitClient(options.logger);
 		this.#environmentReady = options.environmentReady ?? (() => Promise.resolve());
 		this.#client = options.environmentReady
 			? afterEnvironment(client, options.environmentReady)

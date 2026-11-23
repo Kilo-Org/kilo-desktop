@@ -29,6 +29,7 @@ import {
 	WorkSessionStarter,
 	WorkSessionsView,
 	WorkSessionsWindow,
+	WorkspaceSource,
 } from "./ui";
 
 export * from "./model";
@@ -70,6 +71,7 @@ export const WORK_SESSIONS_DEFINITIONS: PluginDefinitions = {
 		WorkSessionStarter,
 		PermissionAutoAnswer,
 		SavedSource,
+		WorkspaceSource,
 	],
 	domainObjects: [
 		Workspaces,

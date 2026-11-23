@@ -1643,6 +1643,114 @@ describe("nteract Kilo plugin", () => {
 		expect(session.saveNotebook).toHaveBeenCalledWith(externalPath);
 	});
 
+	describe("notebook location", () => {
+		async function workspaceWithOutsideNotebook() {
+			const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "nteract-location-")));
+			const workspace = path.join(root, "workspace");
+			const outside = path.join(root, "outside");
+			await mkdir(workspace);
+			await mkdir(outside);
+			await writeFile(path.join(workspace, "inside.ipynb"), "{}");
+			await writeFile(path.join(outside, "notes.ipynb"), "{}");
+			await symlink(path.join(outside, "notes.ipynb"), path.join(workspace, "linked.ipynb"));
+			await symlink(outside, path.join(workspace, "exports"));
+			await symlink(path.join(outside, "missing.ipynb"), path.join(workspace, "dangling.ipynb"));
+			return { workspace, outside };
+		}
+
+		async function pluginWithNotebookAt(notebookPath: string) {
+			const session = {
+				notebookId: NOTEBOOK_ID,
+				listCells: vi.fn(async () => []),
+				getExecutionView: vi.fn(() => ({ cell_execution_ids: {}, executions: {} })),
+				saveNotebook: vi.fn(async () => undefined),
+				close: vi.fn(async () => undefined),
+			};
+			const hooks = await createNteractKiloPlugin({
+				loadRuntimedNode: () => ({
+					openNotebook: vi.fn(async () => session),
+					listActiveNotebooks: vi.fn(async () => [{ notebookId: NOTEBOOK_ID, notebookPath }]),
+				}),
+			})();
+			return { hooks, session };
+		}
+
+		function contextIn(workspace: string, ask: () => Promise<void>) {
+			return { ...toolContext({ worktree: workspace }), directory: workspace, ask };
+		}
+
+		it("reads a workspace notebook without asking", async () => {
+			const { workspace } = await workspaceWithOutsideNotebook();
+			const { hooks, session } = await pluginWithNotebookAt(path.join(workspace, "inside.ipynb"));
+			const ask = vi.fn(async () => undefined);
+
+			await hooks.tool.notebooks_read.execute(
+				{ notebook_id: NOTEBOOK_ID },
+				contextIn(workspace, ask),
+			);
+
+			expect(ask).not.toHaveBeenCalled();
+			expect(session.listCells).toHaveBeenCalledOnce();
+		});
+
+		it("asks once per Kilo session before reading a notebook whose file is outside the workspace", async () => {
+			const { workspace, outside } = await workspaceWithOutsideNotebook();
+			const { hooks, session } = await pluginWithNotebookAt(path.join(workspace, "linked.ipynb"));
+			const ask = vi
+				.fn<() => Promise<void>>()
+				.mockRejectedValueOnce(new Error("rejected"))
+				.mockResolvedValue(undefined);
+			const context = contextIn(workspace, ask);
+			const read = () => hooks.tool.notebooks_read.execute({ notebook_id: NOTEBOOK_ID }, context);
+
+			await expect(read()).rejects.toThrow("rejected");
+			expect(session.listCells).not.toHaveBeenCalled();
+			await read();
+			await read();
+
+			expect(ask).toHaveBeenCalledTimes(2);
+			expect(ask).toHaveBeenLastCalledWith({
+				permission: "external_directory",
+				patterns: [path.join(outside, "*")],
+				always: [path.join(outside, "*")],
+				metadata: expect.objectContaining({
+					filepath: path.join(outside, "notes.ipynb"),
+					parentDir: outside,
+					notebook_id: NOTEBOOK_ID,
+				}),
+			});
+			expect(session.listCells).toHaveBeenCalledTimes(2);
+		});
+
+		it.each([
+			[
+				"a new folder under a workspace symlink to an outside folder",
+				"exports/new/copy.ipynb",
+				["new", "copy.ipynb"],
+			],
+			["a workspace symlink to a missing outside file", "dangling.ipynb", ["missing.ipynb"]],
+		])("asks once per session before saving to %s", async (_, savePath, outsideParts) => {
+			const { workspace, outside } = await workspaceWithOutsideNotebook();
+			const { hooks, session } = await pluginWithNotebookAt(path.join(workspace, "inside.ipynb"));
+			const ask = vi.fn(async () => undefined);
+			const context = contextIn(workspace, ask);
+			const save = () =>
+				hooks.tool.notebooks_save.execute({ notebook_id: NOTEBOOK_ID, path: savePath }, context);
+
+			await save();
+			await save();
+
+			expect(ask).toHaveBeenCalledOnce();
+			expect(ask).toHaveBeenCalledWith(
+				expect.objectContaining({
+					permission: "external_directory",
+					patterns: [path.join(outside, ...outsideParts)],
+				}),
+			);
+			expect(session.saveNotebook).toHaveBeenCalledTimes(2);
+		});
+	});
+
 	it("closes native notebook peers when their Kilo session is deleted", async () => {
 		const session = {
 			notebookId: NOTEBOOK_ID,

@@ -70,8 +70,6 @@ export class ChatComposerPage {
 	// sr-only span ("Remove file"), not an aria-label attribute.
 	private readonly attachmentRemoveButton = () =>
 		this.attachmentRoots().getByRole("button", { name: "Remove file" });
-	private readonly modelSelectorValue = () =>
-		this.starter().locator('[data-slot="model-selector-value"]');
 	private readonly chatMessageError = () => this.thread().getByTestId("chat-message-error");
 	// Specs send one message per test, so strict mode throws rather than
 	// grabbing the wrong reply if a future spec sends more than once.
@@ -156,12 +154,6 @@ export class ChatComposerPage {
 				message: `The sent message should show "${line}" in the transcript`,
 			});
 		}
-	}
-
-	async verifyNoModelSelected(): Promise<void> {
-		await expectElementToHaveAttribute(this.modelSelectorValue(), "data-model-selected", "false", {
-			message: "The New Session composer should have no selected model",
-		});
 	}
 
 	/**

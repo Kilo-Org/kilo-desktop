@@ -11,7 +11,7 @@ test("shows a rejected first prompt in the opened chat without retrying into suc
 	chatComposerPage,
 	chatModelSelectorPage,
 }, testInfo) => {
-	const marker = `${chatFirstSendFailuresData.serverFailureMarker}-ATTEMPT-${testInfo.retry}`;
+	const marker = `${chatFirstSendFailuresData.serverFailureMarker}-RUN-${testInfo.repeatEachIndex}-ATTEMPT-${testInfo.retry}`;
 	const prompt = chatFirstSendFailuresData.serverFailurePrompt.replace(
 		chatFirstSendFailuresData.serverFailureMarker,
 		marker,

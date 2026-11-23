@@ -80,7 +80,15 @@ export class ChatStubProviderPage {
 	 * whose typed message text contains `promptMarker`, so a spec can assert
 	 * on exactly what the model request carried for its own send.
 	 */
-	private async getCapturedRequestAndErrors(marker: string): Promise<{
+	private async getCapturedRequestAndErrors(
+		marker: string,
+		isReady: (payload: {
+			request: CapturedCompletionRequest | null;
+			errors: readonly CapturedCompletionError[];
+		}) => boolean = (payload) => payload.request !== null,
+		waitError: (marker: string) => string = (value) =>
+			`Chat completions stub never received a request matching "${value}"`,
+	): Promise<{
 		request: CapturedCompletionRequest | null;
 		errors: readonly CapturedCompletionError[];
 	}> {
@@ -92,9 +100,9 @@ export class ChatStubProviderPage {
 				request: CapturedCompletionRequest | null;
 				errors: readonly CapturedCompletionError[];
 			};
-			if (payload.request) return payload;
+			if (isReady(payload)) return payload;
 			if (Date.now() >= deadline) {
-				throw new Error(`Chat completions stub never received a request matching "${marker}"`);
+				throw new Error(waitError(marker));
 			}
 			await getPage().waitForTimeout(REQUEST_POLL_INTERVAL_MS);
 		}
@@ -113,7 +121,11 @@ export class ChatStubProviderPage {
 		status: number,
 		message: string,
 	): Promise<void> {
-		const payload = await this.getCapturedRequestAndErrors(marker);
+		const payload = await this.getCapturedRequestAndErrors(
+			marker,
+			(response) => response.errors.length > 0,
+			(value) => `Chat completions stub never recorded an error matching "${value}"`,
+		);
 		const error = payload.errors.find(
 			(entry) => entry.status === status && entry.message === message,
 		);
@@ -123,6 +135,7 @@ export class ChatStubProviderPage {
 
 	/**
 	 * Resolves `waitForCapturedRequest(promptMarker)` and asserts it carried
+	 * exactly one image part whose decoded byte length matches
 	 * `expectedByteLength` — proof the uploaded fixture's actual bytes, not
 	 * just "some image", reached the model request.
 	 */

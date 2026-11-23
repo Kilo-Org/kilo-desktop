@@ -9,6 +9,7 @@ import {
 	neverAutoReplied,
 	permissionRendererApplies,
 	queuePreview,
+	toolResultText,
 } from "./index";
 
 describe("permissionRendererApplies", () => {
@@ -58,5 +59,30 @@ describe("queuePreview", () => {
 			}),
 		).toBe("Attachment");
 		expect(queuePreview({ text: "", attachmentParts: [] })).toBe("Message");
+	});
+});
+
+describe("toolResultText", () => {
+	it("reads a tool's output as text: a string, or an MCP result's text content", () => {
+		expect(toolResultText("SOLVE_FAILED: no luck")).toBe("SOLVE_FAILED: no luck");
+		expect(
+			toolResultText({
+				content: [
+					{ type: "text", text: "POLICY_BLOCKED: pillow" },
+					{ type: "image", data: "AAAA" },
+					{ type: "text", text: '[policy] {"policyNote":true}' },
+				],
+			}),
+		).toBe('POLICY_BLOCKED: pillow\n[policy] {"policyNote":true}');
+		expect(toolResultText([{ type: "text", text: "NOT_SIGNED_IN" }])).toBe("NOT_SIGNED_IN");
+	});
+
+	it("falls back to JSON for other outputs, and to nothing without one", () => {
+		expect(toolResultText({ ok: true })).toBe('{"ok":true}');
+		expect(toolResultText(undefined)).toBe("");
+		expect(toolResultText(null)).toBe("");
+		const cyclic: Record<string, unknown> = {};
+		cyclic.self = cyclic;
+		expect(toolResultText(cyclic)).toBe("");
 	});
 });

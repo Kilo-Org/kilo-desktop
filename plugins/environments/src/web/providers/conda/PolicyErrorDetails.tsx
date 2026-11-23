@@ -81,15 +81,32 @@ function blockedBy({ policy, org }: PolicyBlockedPackage): string {
 
 const selectSigningIn = (state: { signingIn: boolean }) => state.signingIn;
 
-function AnacondaSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
+export type AnacondaSignInOutcome =
+	| { status: "signed-in" }
+	| { status: "failed"; reason: string }
+	| null;
+
+export interface AnacondaSignInState {
+	/** False without kilo.anaconda: there is no sign-in to offer. */
+	available: boolean;
+	signingIn: boolean;
+	/** The last attempt's outcome; null before one and after a cancelled one. */
+	outcome: AnacondaSignInOutcome;
+	signIn: () => void;
+}
+
+/**
+ * Anaconda sign-in through `kilo.anaconda/account`, for a surface that draws
+ * its own button: whether it is offered, whether it is running, and how the
+ * last attempt ended. A cancelled browser sign-in is not a failure.
+ */
+export function useAnacondaSignIn(onSignedIn?: () => void): AnacondaSignInState {
 	const account = useDomainObject(AnacondaAccount);
 	const signingIn = useDomainObjectState(AnacondaAccount, selectSigningIn) ?? false;
-	const [outcome, setOutcome] = useState<
-		{ status: "signed-in" } | { status: "failed"; reason: string } | null
-	>(null);
-	if (!account) return null;
+	const [outcome, setOutcome] = useState<AnacondaSignInOutcome>(null);
 
-	const handleSignIn = async () => {
+	const signIn = async () => {
+		if (!account) return;
 		setOutcome(null);
 		const result: AnacondaAccountResult = await account.methods
 			.signIn(undefined)
@@ -105,6 +122,22 @@ function AnacondaSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
 		}
 	};
 
+	return { available: account !== null, signingIn, outcome, signIn: () => void signIn() };
+}
+
+/** The "Sign in to Anaconda" button's icon: a spinner while the sign-in runs. */
+export function AnacondaSignInIcon({ signingIn }: { signingIn: boolean }) {
+	return signingIn ? (
+		<Spinner data-icon="inline-start" aria-hidden="true" />
+	) : (
+		<LogInIcon data-icon="inline-start" aria-hidden="true" />
+	);
+}
+
+function AnacondaSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
+	const { available, signingIn, outcome, signIn } = useAnacondaSignIn(onSignedIn);
+	if (!available) return null;
+
 	return (
 		<div className="flex flex-col items-start gap-1.5">
 			<Button
@@ -112,14 +145,10 @@ function AnacondaSignIn({ onSignedIn }: { onSignedIn?: () => void }) {
 				variant="outline"
 				size="xs"
 				disabled={signingIn}
-				onClick={() => void handleSignIn()}
+				onClick={signIn}
 				data-qa-id="environments-anaconda-sign-in"
 			>
-				{signingIn ? (
-					<Spinner data-icon="inline-start" aria-hidden="true" />
-				) : (
-					<LogInIcon data-icon="inline-start" aria-hidden="true" />
-				)}
+				<AnacondaSignInIcon signingIn={signingIn} />
 				Sign in to Anaconda
 			</Button>
 			{outcome?.status === "signed-in" ? (

@@ -4,6 +4,7 @@ import { isHtmlRenderToolName, readHtmlRenderArgs } from "../../contracts";
 import { isHostableMcpAppTool } from "../mcp-apps/mcp-app-registry";
 import { shouldExcludeToolCallFromActivityGroup } from "../plan/plan-projection";
 import { isHiddenOpenCodeDataPart } from "./opencode-data-part";
+import { isStandaloneToolCallPart } from "./standalone-tool-calls";
 import { isSignInRefusedToolPart } from "./tool-sign-in";
 import { getGroupKeyForTool, isComposerProjectedTool, isDelegationTool } from "./tool-categories";
 
@@ -116,6 +117,7 @@ const shouldKeepPartOutsideActivity = (
 		isSignInRefusedToolPart(part) ||
 		Boolean(getMcpAppFromToolPart(part) && isHostableMcpAppTool(part.toolName)) ||
 		Boolean(context.toolUIs?.[part.toolName]?.[0]?.standalone) ||
+		isStandaloneToolCallPart(part) ||
 		shouldExcludeToolCallFromActivityGroup(part, options));
 
 const indexHiddenActivityNeighbors = (

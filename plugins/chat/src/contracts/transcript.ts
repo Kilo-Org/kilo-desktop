@@ -63,6 +63,41 @@ export interface ToolRendererProps extends ToolCallProps {
 
 export interface ToolRendererImplementation {
 	readonly component: ComponentType<ToolRendererProps>;
+	/**
+	 * Keeps one call out of the activity groups and the settled turn's fold,
+	 * as the `standalone` metadata does for every call of the tool: a renderer
+	 * that turns only some calls into an actionable card (a failure the person
+	 * can fix) picks those. Asked of the tool's highest-priority renderer.
+	 */
+	readonly isStandalone?: (call: ToolCallProps) => boolean;
+}
+
+/**
+ * A tool call's output as text: a string as it is, an MCP result's (or bare
+ * `content` list's) text parts joined by lines, anything else as JSON, and
+ * nothing when the call has no output.
+ */
+export function toolResultText(result: unknown): string {
+	if (result === undefined || result === null) return "";
+	if (typeof result === "string") return result;
+	const content = Array.isArray(result) ? result : mcpContent(result);
+	if (content) return content.flatMap(textOf).join("\n");
+	try {
+		return JSON.stringify(result) ?? "";
+	} catch {
+		return "";
+	}
+}
+
+function mcpContent(result: unknown): unknown[] | undefined {
+	if (typeof result !== "object" || result === null || !("content" in result)) return undefined;
+	return Array.isArray(result.content) ? result.content : undefined;
+}
+
+function textOf(part: unknown): string[] {
+	if (typeof part !== "object" || part === null) return [];
+	const { type, text } = part as { type?: unknown; text?: unknown };
+	return type === "text" && typeof text === "string" ? [text] : [];
 }
 
 /**
@@ -71,7 +106,8 @@ export interface ToolRendererImplementation {
  * and Kilo's built-in tools by name (`bash`, `read`); the highest-priority
  * contribution for a tool renders it and is handed the next one as
  * `Original`. `standalone` keeps the calls out of the activity groups and the
- * settled turn's fold (cards that stay actionable); `category` puts them in a
+ * settled turn's fold (cards that stay actionable), and an implementation's
+ * `isStandalone` does so for the calls it picks; `category` puts them in a
  * built-in group. kilo.chat's own renderers come through it too.
  */
 export const ToolRenderer = defineExtensionPoint({

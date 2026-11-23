@@ -368,6 +368,67 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.effort).toBe("low");
 	});
 
+	it("restores supported per-agent effort when the global preference is stale", () => {
+		const preferences: PersistedModelPreferences = {
+			modelSelections: {},
+			preferred: { ...defaultModel, variant: "max" },
+			variantSelections: { "code/anthropic/claude-sonnet": "low" },
+			recentModels: [],
+			favorites: [],
+		};
+		const remembered: Array<string | undefined> = [];
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				undefined,
+				{ agent: "code" },
+				preferences,
+				(_agent, _model, effort) => remembered.push(effort),
+			),
+		);
+		act(() => result.current.setModel(alternateModel));
+		act(() => result.current.setEffort("high"));
+		act(() => result.current.setModel(defaultModel));
+
+		expect(result.current.effort).toBe("low");
+		expect(remembered.at(-1)).toBe("low");
+	});
+
+	it.each([
+		{ case: "keeps the saved effort", edit: undefined, expected: "low" },
+		{ case: "remembers an explicit effort edit", edit: "medium", expected: "medium" },
+	])("$case for a catalog fallback model", ({ edit, expected }) => {
+		const thirdModel = { providerID: "anthropic", modelID: "third" };
+		const withThirdModel = {
+			...catalog,
+			models: [
+				...catalog.models,
+				{ ...thirdModel, id: "anthropic/third", name: "Third", efforts: true },
+			],
+		};
+		const { result, rerender } = renderHook(
+			(activeCatalog: KiloModelCatalog) => usePersistedModelSelection(activeCatalog),
+			{ initialProps: withThirdModel },
+		);
+		act(() => result.current.setEffort("low"));
+		act(() => result.current.setModel(alternateModel));
+		act(() => result.current.setEffort("high"));
+		rerender({
+			...withThirdModel,
+			models: withThirdModel.models.filter((entry) => entry.modelID !== alternateModel.modelID),
+		});
+		expect(result.current.model).toEqual(defaultModel);
+
+		if (edit !== undefined) act(() => result.current.setEffort(edit));
+		act(() => result.current.setModel(thirdModel));
+		act(() => result.current.setModel(defaultModel));
+		expect(result.current.effort).toBe(expected);
+
+		rerender(withThirdModel);
+		act(() => result.current.setModel(alternateModel));
+		expect(result.current.effort).toBe("high");
+	});
+
 	it("falls back to the catalog default and applies effort to that model", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
@@ -667,6 +728,35 @@ describe("usePersistedModelSelection", () => {
 			act(() => result.current.setModel(alternateModel));
 			expect(result.current.effort).toBe("low");
 		});
+
+		it.each([
+			{ case: "updates", sessionEffort: "medium", restoredEffort: "medium" },
+			{ case: "clears", sessionEffort: undefined, restoredEffort: "low" },
+		])(
+			"uses current history after the session $case a model's effort",
+			({ sessionEffort, restoredEffort }) => {
+				const { result } = renderHook(() =>
+					usePersistedModelSelection(catalog, "chat-a", { agent: "code" }),
+				);
+				const hydrate = (model: KiloModelRef, effort?: string) =>
+					act(() =>
+						result.current.hydrateThreadModel("chat-a", {
+							agent: "code",
+							model,
+							...(effort === undefined ? {} : { effort }),
+						}),
+					);
+				hydrate(defaultModel, "high");
+				act(() => result.current.setModel(alternateModel));
+				hydrate(alternateModel, "high");
+				hydrate(defaultModel, sessionEffort);
+				hydrate(alternateModel, "low");
+
+				act(() => result.current.setModel(defaultModel));
+
+				expect(result.current.effort).toBe(restoredEffort);
+			},
+		);
 
 		it("shows no model for a chat until its Kilo session is read, rather than the remembered one", () => {
 			const chats = new ChatSelections();

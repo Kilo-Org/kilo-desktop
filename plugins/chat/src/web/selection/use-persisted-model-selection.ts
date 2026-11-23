@@ -101,14 +101,26 @@ function normalizeEffort(effort: string | undefined): string | undefined {
 	return effort || undefined;
 }
 
-function rememberedEffort(
+function rememberModelEffort(
+	effortByModel: SelectionState["effortByModel"],
+	model: KiloModelRef | undefined,
+	effort: string | undefined,
+): SelectionState["effortByModel"] {
+	if (!model) return effortByModel;
+	const modelId = modelRefToId(model);
+	const remembered = normalizeEffort(effort);
+	if (effortByModel[modelId] === remembered) return effortByModel;
+	const next = { ...effortByModel };
+	if (remembered === undefined) delete next[modelId];
+	else next[modelId] = remembered;
+	return next;
+}
+
+function rememberedAgentEffort(
 	preferences: PersistedModelPreferences | undefined,
 	agent: string,
 	model: KiloModelRef,
 ): string | undefined {
-	if (sameModel(model, preferences?.preferred)) {
-		return preferences?.preferred?.variant || undefined;
-	}
 	return normalizeEffort(preferences?.variantSelections[variantKey(agent, model)]);
 }
 
@@ -218,7 +230,7 @@ export function usePersistedModelSelection(
 	const defaultEffort = defaultModel
 		? sameModel(defaultModel, preferences?.preferred)
 			? normalizeEffort(preferences?.preferred?.variant)
-			: (rememberedEffort(preferences, agent, defaultModel) ??
+			: (rememberedAgentEffort(preferences, agent, defaultModel) ??
 				(sameModel(defaultModel, configuredModel) ? agentDefault?.effort : undefined))
 		: undefined;
 	const defaultSelection: SelectionState = defaultModel
@@ -260,17 +272,21 @@ export function usePersistedModelSelection(
 		if (opensUnknownChat) return;
 		const entry = catalogEntry(catalog, next);
 		const nextEfforts = entry ? normalizeEfforts(entry.efforts) : selection.efforts;
-		const effortByModel =
-			model && selection.effort
-				? { ...selection.effortByModel, [modelRefToId(model)]: selection.effort }
-				: selection.effortByModel;
+		const effortByModel = rememberModelEffort(
+			selection.effortByModel,
+			selection.modelOverride,
+			selection.effort,
+		);
 		const localEffort = effortByModel[modelRefToId(next)];
-		const savedEffort = rememberedEffort(preferences, agent, next);
+		const preferredEffort = sameModel(next, preferences?.preferred)
+			? normalizeEffort(preferences?.preferred?.variant)
+			: undefined;
+		const agentEffort = rememberedAgentEffort(preferences, agent, next);
 		const nextEffort = entry
-			? ([localEffort, savedEffort].find((effort) =>
+			? ([localEffort, preferredEffort, agentEffort].find((effort) =>
 					nextEfforts?.some(({ id }) => id === effort),
 				) ?? preserveEffort(selection.effort, nextEfforts))
-			: (localEffort ?? savedEffort ?? selection.effort);
+			: (localEffort ?? preferredEffort ?? agentEffort ?? selection.effort);
 		store.update((current) => {
 			const active = current[scope] ?? selection;
 			const nextName = entry?.name ?? active.name;
@@ -293,8 +309,7 @@ export function usePersistedModelSelection(
 
 	const setEffort = (next: string) => {
 		if (opensUnknownChat) return;
-		const activeModel =
-			resolveCatalogModel(catalog, selection.modelOverride) ?? pickDefaultModel(catalog);
+		const activeModel = model;
 		store.update((current) => {
 			const active = current[scope] ?? selection;
 			if (activeModel) {
@@ -305,16 +320,22 @@ export function usePersistedModelSelection(
 					...current,
 					[scope]: {
 						...active,
+						modelOverride: activeModel,
 						effort: next,
 						name: nextName,
 						efforts: nextEfforts,
+						effortByModel: sameModel(activeModel, active.modelOverride)
+							? active.effortByModel
+							: rememberModelEffort(active.effortByModel, active.modelOverride, active.effort),
 						dirty: true,
 					},
 				};
 			}
 			return { ...current, [scope]: { ...active, effort: next, dirty: true } };
 		});
-		if (threadId === undefined && agent && activeModel) onRemember?.(agent, activeModel, next);
+		if (threadId === undefined && agent && validatedModel) {
+			onRemember?.(agent, validatedModel, next);
+		}
 	};
 	const hydrateThreadModel = (
 		id: string,
@@ -336,7 +357,11 @@ export function usePersistedModelSelection(
 					name: undefined,
 					effort: next.effort,
 					efforts: undefined,
-					effortByModel: existing?.effortByModel ?? {},
+					effortByModel: rememberModelEffort(
+						existing?.effortByModel ?? DEFAULT_SELECTION.effortByModel,
+						next.model,
+						next.effort,
+					),
 					dirty: false,
 				},
 			};

@@ -126,11 +126,15 @@ export class ChatStubProviderPage {
 			(response) => response.errors.length > 0,
 			(value) => `Chat completions stub never recorded an error matching "${value}"`,
 		);
-		const error = payload.errors.find(
+		const matchingErrors = payload.errors.filter(
 			(entry) => entry.status === status && entry.message === message,
 		);
-		expect(error, `The stub should return HTTP ${status} with "${message}"`).toBeDefined();
-		expect(error?.attempts, "The failed prompt should not be retried by the Kilo CLI").toBe(1);
+		expect(
+			matchingErrors.length,
+			`The stub should return HTTP ${status} with "${message}"`,
+		).toBeGreaterThan(0);
+		const attempts = matchingErrors.reduce((total, entry) => total + entry.attempts, 0);
+		expect(attempts, "The failed prompt should not be retried by the Kilo CLI").toBe(1);
 	}
 
 	/**

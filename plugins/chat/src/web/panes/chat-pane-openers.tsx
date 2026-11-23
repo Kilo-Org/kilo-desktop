@@ -136,7 +136,7 @@ export function ChatPaneOpeners({
 		panes && workSessionId && chatId
 			? {
 					rootChatId: chatId,
-					open: () =>
+					open: (options) =>
 						void panes.methods
 							.open({
 								workSessionId,
@@ -144,6 +144,7 @@ export function ChatPaneOpeners({
 								paneId: swarmPaneId(chatId),
 								title: "Swarm board",
 								object: chatPaneObject(chatId),
+								...(options?.activate === false ? { activate: false } : {}),
 							})
 							.catch(reportOpenFailure),
 				}

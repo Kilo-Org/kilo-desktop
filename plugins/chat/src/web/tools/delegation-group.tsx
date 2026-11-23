@@ -24,6 +24,7 @@ import {
 	isActiveSubagentStatus,
 	type SubagentDisplayStatus,
 } from "../subagents/subagent-state";
+import { SwarmCard } from "../swarm/SwarmCard";
 import {
 	ACTIVITY_CONTENT_ANIMATION,
 	ActivityDisclosureIcon,
@@ -180,6 +181,7 @@ const DelegationGroupImpl: FC<PropsWithChildren<{ group: { indices: readonly num
 					</div>
 				</CollapsibleContent>
 			</Collapsible>
+			<SwarmCard />
 		</div>
 	);
 };

@@ -5,6 +5,7 @@ import { HtmlRenderToolUI } from "../html-render/HtmlRenderToolUI";
 import { PlanAware, PlanExitTool } from "./plan-aware";
 import { ApplyPatchDiff } from "./tool-ui-apply-patch";
 import { BashTerminal } from "./tool-ui-bash";
+import { BoardPostActivity, BoardReadActivity } from "./tool-ui-board";
 import { EditDiff } from "./tool-ui-edit";
 import { GlobActivity, GrepActivity, ReadActivity } from "./tool-ui-read-search";
 import { SkillActivity } from "./tool-ui-skill";
@@ -32,7 +33,8 @@ const NOTHING: ToolRendererImplementation = { component: () => null };
 /**
  * kilo.chat's own `kilo.chat/tool-renderer` contributions (keys as in
  * plugin.json): origin's renderers for Kilo's built-in tools and the
- * `html_render` page, and the plan card for `plan_exit`.
+ * `html_render` page, the plan card for `plan_exit`, and Kilo Swarm's board
+ * posts (standalone, so a post stays in the transcript with its `#n`) and reads.
  */
 export const BUILTIN_TOOL_RENDERERS: Readonly<Record<string, ToolRendererImplementation>> = {
 	read: renders(ReadActivity),
@@ -50,4 +52,6 @@ export const BUILTIN_TOOL_RENDERERS: Readonly<Record<string, ToolRendererImpleme
 	todo: NOTHING,
 	"html-render": renders(HtmlRenderToolUI),
 	"plan-exit": renders(PlanExitTool),
+	"board-post": renders(BoardPostActivity),
+	"board-read": renders(BoardReadActivity),
 };

@@ -29,3 +29,12 @@ export function useNow(everyMs = 30_000): number {
 	}, [everyMs]);
 	return now;
 }
+
+/** A clock time like "12:05"; "just now" for the last minute. */
+export function postTime(timestamp: number, now: number): string {
+	if (now - timestamp < 60_000) return "just now";
+	return clockTime(timestamp);
+}
+
+export const clockTime = (timestamp: number) =>
+	new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

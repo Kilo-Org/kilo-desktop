@@ -21,6 +21,17 @@ const chat = {
 	time: { created: 1, updated: 2 },
 };
 
+const USAGE = {
+	sessionIDs: ["ses_a", "ses_b"],
+	sessionCost: 0.5,
+	totals: {
+		steps: 3,
+		cost: 1.25,
+		tokens: { input: 10, output: 20, reasoning: 0, cache: { read: 5, write: 1 } },
+	},
+	models: [],
+};
+
 async function readBody(request: IncomingMessage): Promise<unknown> {
 	const chunks: Buffer[] = [];
 	for await (const chunk of request) chunks.push(chunk as Buffer);
@@ -60,6 +71,11 @@ async function fakeServer(
 			return;
 		}
 		response.setHeader("content-type", "application/json");
+		if (url.pathname === "/session/ses_gone/model-usage") {
+			response.statusCode = 404;
+			response.end(JSON.stringify({ name: "NotFound" }));
+			return;
+		}
 		const bodies: Record<string, unknown> = {
 			"/experimental/session": [chat, { id: "broken" }],
 			"/session/ses_a": {
@@ -72,6 +88,8 @@ async function fakeServer(
 			"/question": [{ id: "que_1", sessionID: "ses_a", questions: [] }],
 			"/session": { ...chat, id: "ses_new" },
 			"/session/ses_new/message": { info: { structured: { message: "Fix it" } }, parts: [] },
+			"/session/ses_a/model-usage": USAGE,
+			"/global/config": { shared_agent_board: false },
 		};
 		response.end(JSON.stringify(bodies[url.pathname] ?? true));
 	});
@@ -327,6 +345,27 @@ describe("the Kilo chat client", () => {
 		for await (const _event of kilo.events(new AbortController().signal));
 
 		expect(request(seen, "GET", "/global/event")?.skipForkSync).toBe("1");
+	});
+
+	it("reads a chat tree's usage in the chat's directory, and null where the server has none", async () => {
+		const { kilo, seen } = await connect();
+
+		expect(await kilo.usage("/projects/app", "ses_a")).toEqual(USAGE);
+		expect(await kilo.usage("/projects/app", "ses_gone")).toBeNull();
+		expect(request(seen, "GET", "/session/ses_a/model-usage")?.directory).toBe("/projects/app");
+	});
+
+	it("reads and writes the user's global config in the server's global directory", async () => {
+		const { kilo, seen } = await connect();
+
+		expect(await kilo.globalConfig()).toEqual({ shared_agent_board: false });
+		await kilo.updateGlobalConfig({ shared_agent_board: true });
+
+		expect(request(seen, "GET", "/global/config")?.directory).toBe("/app/runtime");
+		expect(request(seen, "PATCH", "/global/config")).toMatchObject({
+			directory: "/app/runtime",
+			body: { shared_agent_board: true },
+		});
 	});
 
 	it("streams the server's events with the directory they came from", async () => {

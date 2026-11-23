@@ -18,6 +18,7 @@ import {
 } from "../../test/fake-kilo-server";
 import { expandAll, expandUntil, toolPart, turnWork } from "../../test/transcript";
 import { renderChat } from "../../test/render-chat";
+import { DEFAULT_SWARM_PREFERENCES, useSwarmPreferences } from "../swarm/swarm-preferences";
 import { resetPlanApprovalUiState } from "./use-approve-plan";
 
 beforeEach(() => {
@@ -450,6 +451,10 @@ describe("subagent panes", () => {
 });
 
 describe("running subagents", () => {
+	// The one-line strip these tests drive is what shows with the swarm shelf turned off.
+	beforeEach(() => useSwarmPreferences.setState({ shelf: false }));
+	afterEach(() => useSwarmPreferences.setState(DEFAULT_SWARM_PREFERENCES));
+
 	async function working() {
 		const fake = server(planTurn([task("call_t1", "ses_c1", "Audit login", "running")]), {
 			ses_c1: childReply("ses_c1", "Working"),

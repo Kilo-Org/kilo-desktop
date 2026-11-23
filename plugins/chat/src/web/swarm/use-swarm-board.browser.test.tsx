@@ -57,6 +57,8 @@ async function mountBoard() {
 		team: vi.fn(async (): Promise<SwarmTeam | null> => null),
 		reset: vi.fn(async (_input: { chatId: string; revision: number }) => board(1, [])),
 		cancelJob: vi.fn(async () => undefined),
+		setEnabled: vi.fn(async () => undefined),
+		usage: vi.fn(async () => null),
 	};
 	const host = await createTestKernelPair({
 		main: [
@@ -66,7 +68,7 @@ async function mountBoard() {
 				entry: {
 					activate(sdk) {
 						swarm = sdk.domainObjects.provide(Swarm, {
-							initialState: { boardEvents: true, team: true },
+							initialState: { boardEvents: true, team: true, enabled: true },
 							methods,
 						});
 					},

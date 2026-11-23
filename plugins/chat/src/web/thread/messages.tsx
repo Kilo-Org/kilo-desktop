@@ -96,6 +96,7 @@ import { MarkdownText } from "./markdown-text";
 import { Reasoning } from "./reasoning";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import { useShellCopyText } from "./use-shell-copy-text";
+import { useFirstUserMessageCaption } from "./user-message-caption";
 import {
 	AssistantWorkingIndicator,
 	formatTurnDuration,
@@ -650,6 +651,11 @@ const UserMessage: FC = () => {
 	const virtualize = useVirtualizeMessage();
 	// Dim while a revert is in flight from a boundary before this message.
 	const dimmed = useIsAfterPendingBoundary(useRevertPending().pendingId);
+	const firstCaption = useFirstUserMessageCaption();
+	const isFirstUserMessage = useAuiState(
+		(s) => s.thread.messages.find((message) => message.role === "user")?.id === s.message.id,
+	);
+	const caption = firstCaption && isFirstUserMessage ? firstCaption : null;
 	return (
 		<MessagePrimitive.Root
 			data-slot="aui_user-message-root"
@@ -660,6 +666,14 @@ const UserMessage: FC = () => {
 			)}
 			data-role="user"
 		>
+			{caption ? (
+				<span
+					className="text-muted-foreground col-start-2 justify-self-end text-xs"
+					data-qa-id="kilo-user-message-caption"
+				>
+					{caption}
+				</span>
+			) : null}
 			<UserMessageAttachments />
 			<div className="aui-user-message-content-wrapper relative col-start-2 w-fit max-w-full min-w-0 justify-self-end pb-7">
 				<div className="aui-user-message-content text-foreground bg-pane-raised rounded-xl px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">

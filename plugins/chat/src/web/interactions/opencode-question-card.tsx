@@ -56,10 +56,13 @@ const NO_CHATS = "Kilo isn't available right now.";
 export const OpenCodeQuestionQuestionnaire = ({
 	request,
 	origin,
+	submitLabel = "Submit",
 }: {
 	request: OpenCodeQuestionRequest;
 	/** Set when a subagent, not the chat's own session, asked the question. */
 	origin?: SubagentOrigin | undefined;
+	/** The submit button's text (the Swarm Board names the agent it answers). */
+	submitLabel?: string;
 }) => {
 	const chats = useDomainObject(Chats);
 	const [submissionState, setSubmissionState] = useState<"reply" | "reject" | null>(null);
@@ -198,7 +201,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 								{submissionState === "reply" ? (
 									<Spinner data-icon="inline-start" aria-hidden="true" />
 								) : null}
-								Submit
+								{submitLabel}
 							</QuestionnaireSubmit>
 						</div>
 					</div>

@@ -5,31 +5,58 @@ import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { CHAT_TELEMETRY_EVENTS } from "../../contracts";
+import { SwarmShelf } from "../swarm/SwarmShelf";
+import { useSwarmPreferences } from "../swarm/swarm-preferences";
 import { useOpenSwarmBoard } from "../swarm/use-open-swarm-board";
-import { useSwarmUnread } from "../swarm/use-swarm-unread";
+import { useSwarmAutoOpen } from "../swarm/use-swarm-auto-open";
+import { useSwarmEnabled, useSwarmSummary } from "../swarm/use-swarm-summary";
 import { COMPOSER_SHELF_HEADER_CLASS, ComposerShelf } from "../thread/composer-shelf";
 import { useDelegationRevealStore } from "./delegation-reveal-store";
 import { useSubagentActivity } from "./SubagentActivityContext";
 
 /**
- * A one-line shelf above the composer once the chat has delegated to
- * subagents. The transcript's delegation rows are where subagents are opened
- * and stopped; while some run, this points at them (when scrolled away,
- * folded, or delegated in the background) and jumps to the first running
- * one. Board opens the chat's Swarm Board: the team and what they post.
+ * What sits above the composer once the chat has delegated to subagents: the
+ * swarm shelf (faces, the newest post or who waits on the person, and the
+ * Swarm Board) where the chat has a board and the person keeps the shelf on;
+ * otherwise the one-line strip, which jumps to the first running delegation
+ * row (the transcript's rows are where subagents are opened and stopped).
+ * It also opens the board by itself when the swarm grows past the person's
+ * threshold.
  */
 export function ComposerSubagentStrip() {
 	const { activities, activeActivities } = useSubagentActivity();
 	const reveal = useDelegationRevealStore((state) => state.reveal);
-	const openBoard = useOpenSwarmBoard();
+	const shelfOn = useSwarmPreferences((state) => state.shelf);
+	const board = useOpenSwarmBoard();
+	const openBoard = useSwarmEnabled() ? board : null;
 	const telemetry = useDomainObject(KernelTelemetry);
-	const first = activeActivities[0];
-	const unread = useSwarmUnread(
-		openBoard?.rootChatId ?? null,
-		`${activities.length}:${activeActivities.length}`,
-	);
+	const summary = useSwarmSummary(activities.length > 0 && openBoard ? openBoard.rootChatId : null);
+	useSwarmAutoOpen(openBoard, activities.length, activeActivities.length);
 	if (activities.length === 0) return null;
 
+	const trackedOpen = () => {
+		if (!openBoard) return;
+		void telemetry?.methods
+			.track({
+				event: CHAT_TELEMETRY_EVENTS.swarmBoardOpened,
+				data: { running: activeActivities.length },
+			})
+			.catch(() => undefined);
+		openBoard.open();
+	};
+	if (shelfOn && openBoard && summary) {
+		return (
+			<SwarmShelf
+				board={openBoard}
+				summary={summary}
+				activities={activities}
+				onOpenBoard={trackedOpen}
+			/>
+		);
+	}
+
+	const first = activeActivities[0];
+	const unread = summary?.newCount ?? 0;
 	const label = first ? `${activeActivities.length} Running` : `${activities.length} Finished`;
 	return (
 		<ComposerShelf data-qa-id="kilo-composer-subagents">
@@ -60,15 +87,7 @@ export function ComposerSubagentStrip() {
 					<button
 						type="button"
 						className="text-foreground/70 hover:text-foreground flex shrink-0 items-center gap-1 px-2 text-xs"
-						onClick={() => {
-							void telemetry?.methods
-								.track({
-									event: CHAT_TELEMETRY_EVENTS.swarmBoardOpened,
-									data: { running: activeActivities.length },
-								})
-								.catch(() => undefined);
-							openBoard.open();
-						}}
+						onClick={trackedOpen}
 						aria-label={unread > 0 ? `Board, ${unread} new` : "Board"}
 						data-qa-id="kilo-composer-swarm-board"
 					>

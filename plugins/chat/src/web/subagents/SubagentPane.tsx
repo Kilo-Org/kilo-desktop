@@ -3,12 +3,13 @@ import { BotIcon, CircleAlertIcon } from "lucide-react";
 import type { FC, ReactNode } from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
-import { useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
-import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { Panes, WorkSessions, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import { subagentPaneChildChatId, subagentPaneParentChatId } from "../../contracts";
+import { Composer, subagentPaneChildChatId, subagentPaneParentChatId } from "../../contracts";
 import { PendingInteractionPrompt } from "../interactions/opencode-composer-interaction";
 import {
 	PendingInteractionsScope,
@@ -16,10 +17,13 @@ import {
 } from "../interactions/PendingInteractionsContext";
 import { ChatPaneOpeners } from "../panes/chat-pane-openers";
 import { SubagentPaneHeader } from "../swarm/SubagentPaneHeader";
+import { teamRootOf } from "../swarm/swarm-colors";
+import { focusChatComposer } from "../swarm/swarm-pane-actions";
 import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { ReadonlyThread } from "../thread/thread";
 import { TranscriptProviders } from "../thread/transcript-scope";
+import { FirstUserMessageCaptionContext } from "../thread/user-message-caption";
 import { childSessionIdForToolCall, selectSubagentTranscript } from "./subagent-state";
 
 const EMPTY_MESSAGES: readonly never[] = [];
@@ -31,8 +35,9 @@ export const SubagentIcon: FC<{ className?: string }> = ({ className }) => (
 /**
  * The subagent pane: one child chat's transcript (the chat its `object`
  * names), read-only, with the prompt it is waiting on, headed in the worker's
- * team color (as the Swarm Board shows it). The person messages workers from
- * the Swarm Board. It runs its own
+ * team color (as the Swarm Board shows it). Its first prompt is the task the
+ * main agent gave it; the main agent steers it, so the footer points the
+ * person to the main chat. It runs its own
  * runtime for the chat that delegated it (kilo.core's current record of the
  * child's parent, else the pane's hint, else the work session's first chat for
  * origin's panes) and finds the child there.
@@ -62,7 +67,11 @@ function SubagentPane({
 
 	return (
 		<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-subagent-pane">
-			<SubagentPaneHeader childChatId={childChatId} parentHint={parentChatId} />
+			<SubagentPaneHeader
+				workSessionId={workSessionId}
+				childChatId={childChatId}
+				parentHint={parentChatId}
+			/>
 			<ChatMirror services={services} workSessionId={workSessionId} chatId={parentChatId}>
 				<ChatPaneOpeners workSessionId={workSessionId} chatId={childChatId ?? null}>
 					<TranscriptProviders
@@ -73,7 +82,49 @@ function SubagentPane({
 					</TranscriptProviders>
 				</ChatPaneOpeners>
 			</ChatMirror>
+			{childChatId ? (
+				<SubagentPaneFooter workSessionId={workSessionId} parentChatId={parentChatId} />
+			) : null}
 		</div>
+	);
+}
+
+/** Points the person to the main agent, which is what steers its subagents. */
+function SubagentPaneFooter({
+	workSessionId,
+	parentChatId,
+}: {
+	readonly workSessionId: string;
+	readonly parentChatId: string | null;
+}) {
+	const panes = useDomainObject(Panes);
+	const composer = useDomainObject(Composer);
+	const mainChatId = useDomainObjectState(Chats, (state: DomainObjectState<typeof Chats>) =>
+		parentChatId ? teamRootOf(parentChatId, state.chats) : null,
+	);
+	const messageMain = () => {
+		if (!panes || !mainChatId) return;
+		void focusChatComposer(panes, composer, workSessionId, mainChatId).catch(() =>
+			toast.error("Could not open the main chat"),
+		);
+	};
+	return (
+		<p
+			className="text-muted-foreground shrink-0 px-3 py-2 text-center text-xs"
+			data-qa-id="subagent-pane-footer"
+		>
+			Subagents are steered by the main agent.{" "}
+			{panes && mainChatId ? (
+				<button
+					type="button"
+					className="text-primary-ink underline-offset-2 hover:underline"
+					onClick={messageMain}
+					data-qa-id="subagent-pane-steer"
+				>
+					Message the main agent
+				</button>
+			) : null}
+		</p>
 	);
 }
 
@@ -169,7 +220,9 @@ function SubagentTranscript({ childSessionId }: { childSessionId: string | undef
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="subagent-pane-transcript">
 			<ReadonlyThreadProvider messages={transcript.messages}>
-				<ReadonlyThread />
+				<FirstUserMessageCaptionContext.Provider value="From the main agent">
+					<ReadonlyThread />
+				</FirstUserMessageCaptionContext.Provider>
 			</ReadonlyThreadProvider>
 		</div>
 	);

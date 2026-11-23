@@ -7,10 +7,7 @@ import {
 	EMPTY_FILTER,
 	filterMessages,
 	isFiltering,
-	latestResults,
 	openQuestions,
-	threadsOf,
-	typeCounts,
 	unreadCount,
 } from "./board-insights";
 
@@ -36,19 +33,6 @@ describe("openQuestions", () => {
 			post("m7", { type: "INFO" }),
 		];
 		expect([...openQuestions(messages)]).toEqual(["m1", "m4"]);
-	});
-});
-
-describe("latestResults", () => {
-	it("keeps each sender's newest RESULT, oldest sender first", () => {
-		const messages = [
-			post("m1", { type: "RESULT", from: "ses_b" }),
-			post("m2", { type: "RESULT", from: "ses_a" }),
-			post("m3", { type: "RESULT", from: "ses_b", body: "newer" }),
-			post("m4", { type: "INFO", from: "ses_c" }),
-			post("m5", { type: "RESULT", from: "user" }),
-		];
-		expect(latestResults(messages).map((message) => message.id)).toEqual(["m3", "m2"]);
 	});
 });
 
@@ -79,52 +63,39 @@ describe("filterMessages", () => {
 		]);
 		expect(
 			ids(
-				filterMessages(messages, { ...EMPTY_FILTER, agents: new Set(["main"]), direction: "from" }),
+				filterMessages(
+					messages,
+					{ ...EMPTY_FILTER, agents: new Set(["ses_root"]), direction: "from" },
+					{ mainChatId: "ses_root" },
+				),
 			),
 		).toEqual(["m2"]);
 	});
 
-	it("filters by type, open questions and text (any case), combined", () => {
-		expect(
-			ids(filterMessages(messages, { ...EMPTY_FILTER, types: new Set(["RESULT", "INFO"]) })),
-		).toEqual(["m1", "m3"]);
-		expect(ids(filterMessages(messages, { ...EMPTY_FILTER, openOnly: true }))).toEqual(["m2"]);
-		expect(ids(filterMessages(messages, { ...EMPTY_FILTER, query: "SCHEMA" }))).toEqual(["m2"]);
-		expect(
-			ids(filterMessages(messages, { ...EMPTY_FILTER, query: "e", types: new Set(["INFO"]) })),
-		).toEqual(["m3"]);
-	});
-});
-
-describe("typeCounts", () => {
-	it("counts each type", () => {
-		const counts = typeCounts([
-			post("m1", { type: "ASK" }),
-			post("m2", { type: "ASK" }),
-			post("m3"),
-		]);
-		expect(counts).toEqual({ INFO: 1, ASK: 2, RESULT: 0, HOLD: 0, VETO: 0 });
-	});
-});
-
-describe("threadsOf", () => {
-	it("nests replies (and replies to replies) under the post they answer, in time order", () => {
-		const messages = [
-			post("m1"),
-			post("m2", { replyTo: "m1" }),
-			post("m3"),
-			post("m4", { replyTo: "m2" }),
-			post("m5", { replyTo: "gone" }),
+	it("narrows to blocking posts or posts to the person", () => {
+		const withHold = [
+			...messages,
+			post("m4", { type: "HOLD", to: "ses_b" }),
+			post("m5", { to: "user" }),
 		];
-		const threads = threadsOf(messages);
-		expect(
-			threads.map((thread) => [thread.root.id, thread.replies.map((reply) => reply.id)]),
-		).toEqual([
-			["m1", ["m2", "m4"]],
-			["m3", []],
-			["m5", []],
+		expect(ids(filterMessages(withHold, { ...EMPTY_FILTER, chip: "blocking" }))).toEqual(["m4"]);
+		expect(ids(filterMessages(withHold, { ...EMPTY_FILTER, chip: "mentions" }))).toEqual(["m5"]);
+		expect(ids(filterMessages(withHold, { ...EMPTY_FILTER, chip: "needs-you" }))).toEqual([]);
+	});
+
+	it("searches bodies (any case), agent names and #numbers", () => {
+		const nameOf = (id: string) => (id === "ses_b" ? "Webhooks" : id);
+		const numbers = new Map([
+			["m1", 1],
+			["m2", 2],
+			["m3", 3],
 		]);
-		expect(threads[2]?.orphan).toBe(true);
+		const search = (query: string) =>
+			ids(filterMessages(messages, { ...EMPTY_FILTER, query }, { nameOf, numbers }));
+		expect(search("SCHEMA")).toEqual(["m2"]);
+		expect(search("webhooks")).toEqual(["m3"]);
+		expect(search("#2")).toEqual(["m2"]);
+		expect(search("#9")).toEqual([]);
 	});
 });
 

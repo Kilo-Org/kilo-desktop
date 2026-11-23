@@ -476,6 +476,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 			initialState: {
 				boardEvents: options.boardEvents ?? false,
 				team: options.teams !== undefined,
+				enabled: true,
 			},
 			methods: {
 				board: ({ chatId, before, limit }) => {
@@ -512,6 +513,10 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				cancelJob: ({ chatId, jobId }) => {
 					calls.cancelJob({ chatId, jobId });
 				},
+				setEnabled: ({ enabled }) => {
+					swarm!.setState({ ...swarm!.state, enabled });
+				},
+				usage: () => null,
 			},
 		});
 	}

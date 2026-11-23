@@ -28,25 +28,47 @@ function saveSeen(storage: Storage | undefined, seen: Seen): void {
 	}
 }
 
+/**
+ * Something a surface outside the board asked it to show when it next renders:
+ * an agent's posts (opening the agent from the board filters to it), a
+ * question waiting on the person, or a post by id.
+ */
+export type BoardFocus =
+	| { readonly kind: "agent"; readonly chatId: string }
+	| { readonly kind: "question"; readonly chatId: string }
+	| { readonly kind: "post"; readonly messageId: string };
+
 interface SwarmBoardState {
 	/** Each board's filter, while the window lives. */
 	readonly filters: Readonly<Record<string, BoardFilter>>;
 	/** The newest post the person has seen on each board (ms), kept across restarts. */
 	readonly seen: Readonly<Seen>;
+	/** Per board, what it should show next; the board clears it once shown. */
+	readonly focus: Readonly<Record<string, BoardFocus>>;
 	setFilter(rootChatId: string, filter: BoardFilter): void;
 	markSeen(rootChatId: string, timestamp: number): void;
+	requestFocus(rootChatId: string, focus: BoardFocus): void;
+	clearFocus(rootChatId: string): void;
 }
 
 /**
  * What the person did with each Swarm Board: its filter (per window, so a
- * reopened board keeps it) and how far they read (in localStorage, so the
- * Board button can count what's new and the board can mark it).
+ * reopened board keeps it), how far they read (in localStorage, so the
+ * composer's shelf can count what's new and the board can mark it), and what
+ * another surface asked it to show (the shelf's Answer, say).
  */
 export function createSwarmBoardStore(storage: Storage | undefined = globalThis.localStorage) {
 	return create<SwarmBoardState>((set, get) => ({
 		filters: {},
+		focus: {},
 		seen: loadSeen(storage),
 		setFilter: (rootChatId, filter) => set({ filters: { ...get().filters, [rootChatId]: filter } }),
+		requestFocus: (rootChatId, focus) => set({ focus: { ...get().focus, [rootChatId]: focus } }),
+		clearFocus: (rootChatId) => {
+			if (!(rootChatId in get().focus)) return;
+			const { [rootChatId]: _cleared, ...rest } = get().focus;
+			set({ focus: rest });
+		},
 		markSeen: (rootChatId, timestamp) => {
 			const seen = get().seen;
 			if ((seen[rootChatId] ?? 0) >= timestamp) return;

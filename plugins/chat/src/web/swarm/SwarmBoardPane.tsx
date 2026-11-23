@@ -1,25 +1,30 @@
 import {
-	BotIcon,
 	ArrowDownIcon,
 	ArrowUpRightIcon,
 	CheckIcon,
-	ChevronsDownUpIcon,
-	ChevronsUpDownIcon,
 	CircleAlertIcon,
 	ClipboardCopyIcon,
-	MessagesSquareIcon,
 	EllipsisIcon,
-	RefreshCwIcon,
+	MessageSquareIcon,
+	MessagesSquareIcon,
+	SquareIcon,
 	Trash2Icon,
-	UsersIcon,
 	XIcon,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type FC } from "react";
+import {
+	useEffect,
+	useEffectEvent,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type FC,
+	type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { KernelTelemetry, type DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
-import { Chats, type BoardMessage } from "@kilo-desktop/plugin-core/contracts";
+import { Chats, Swarm, type BoardMessage } from "@kilo-desktop/plugin-core/contracts";
 import { Panes, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import {
@@ -33,7 +38,6 @@ import {
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Badge } from "@kilo-desktop/ui/components/badge";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -60,48 +64,64 @@ import {
 	CHAT_TELEMETRY_EVENTS,
 	chatPaneObject,
 	paneChatId,
+	SWARM_PANE_KIND,
+	swarmConversationMetadata,
+	swarmConversationPaneId,
+	swarmPaneConversation,
 	swarmPaneRootChatId,
 	type ComposerFolder,
 } from "../../contracts";
+import { OpenCodePermissionCard } from "../interactions/opencode-permission-card";
+import { OpenCodeQuestionQuestionnaire } from "../interactions/opencode-question-card";
+import {
+	PendingInteractionsProvider,
+	usePendingInteractions,
+} from "../interactions/PendingInteractionsContext";
 import { ChatPaneOpeners } from "../panes/chat-pane-openers";
-import type { ChatMirrorServices } from "../runtime/chat-mirror";
+import { isPlanFollowupRequest } from "../plan/plan-followup";
+import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
 import { useOpenSubagentPane } from "../subagents/use-open-subagent-pane";
 import { useChatMarkdownExtensions } from "../thread/chat-markdown";
 import { useShellCopyText } from "../thread/use-shell-copy-text";
-import { BoardFilterBar, type FilterAgent } from "./board-filter-bar";
+import { postNumbers } from "./board-feed";
 import {
 	boardMarkdown,
 	EMPTY_FILTER,
 	filterMessages,
+	isBlocking,
 	isFiltering,
-	latestResults,
-	openQuestions,
-	threadsOf,
-	typeCounts,
+	type BoardFilter,
 } from "./board-insights";
 import {
-	AgentPost,
+	BoardPost,
+	FailedAgentCard,
 	isLong,
-	NewMessagesDivider,
-	ResultsDigest,
-	ThreadReplies,
+	NeedsYouItem,
+	NewPostsDivider,
+	SwarmDoneMarker,
+	WritingIndicator,
 	type PostContext,
 } from "./board-posts";
-import { useBoardFilter, useSwarmBoardStore } from "./swarm-board-store";
+import { BoardSearch, SEARCH_FROM_POSTS } from "./board-search";
+import { MembersView } from "./MembersView";
+import { postRefsExtension } from "./remark-post-refs";
+import { useBoardFilter, useSwarmBoardStore, type BoardFocus } from "./swarm-board-store";
 import { MAIN_AGENT_COLOR } from "./swarm-colors";
-import { participantName } from "./swarm-team";
-import { useNow } from "./swarm-time";
-import { TeamRow } from "./team-section";
-import { TeamRuns } from "./TeamRuns";
-import { TimelineKeyButton } from "./timeline-key";
-import { teamRuns } from "./team-timeline";
-import { useSwarmBoard } from "./use-swarm-board";
+import type { GraphMember, GraphPost } from "./swarm-graph";
+import { SwarmGraph } from "./SwarmGraph";
+import { AgentAvatar } from "./swarm-parts";
+import { isActive, participantName, type TeamMember } from "./swarm-team";
+import { clockTime, useNow } from "./swarm-time";
+import { useAgentActivity } from "./use-agent-activity";
+import { useSwarmBoard, type SwarmBoardView } from "./use-swarm-board";
 
 export const SwarmIcon: FC<{ className?: string }> = ({ className }) => (
 	<MessagesSquareIcon className={className} />
 );
 
 const NO_FOLDERS: readonly ComposerFolder[] = [];
+/** Kilo's board name for the root chat. */
+const MAIN = "main";
 
 /** Sends a `kilo.chat` telemetry event; never fails the caller. */
 function useTrack() {
@@ -111,12 +131,13 @@ function useTrack() {
 }
 
 /**
- * The Swarm Board pane: a root chat's Kilo Swarm — the team (the main agent
- * and its subagents, each in its color, shared with its own pane) and its
- * timeline, their background jobs, and the shared board the agents
- * coordinate on. Read-only: the board is agent-to-agent, so the person
- * reads, filters and searches it, opens an agent's transcript, stops a
- * background job or clears the board, but never posts.
+ * The Swarm Board pane: a root chat's Kilo Swarm as a live conversation.
+ * Board shows the agents' posts as messages (sender → recipient · #n · time),
+ * with what waits on the person (questions, permission prompts) answered in
+ * place, failures, who is writing and when the swarm is done. Members shows
+ * each agent and what it is doing; Graph who talks to whom. A conversation
+ * pane (metadata names two agents) shows only their posts. The person never
+ * posts: they answer prompts, stop agents, open transcripts or clear the board.
  */
 export function createSwarmBoardPane(services: ChatMirrorServices): FC<PaneProps> {
 	return (props) => <SwarmBoardPane {...props} services={services} />;
@@ -142,30 +163,25 @@ function SwarmBoardPane({
 		);
 	}
 	return (
-		<ChatPaneOpeners workSessionId={workSessionId} chatId={rootChatId}>
-			<SwarmBoard
-				rootChatId={rootChatId}
-				workSessionId={workSessionId}
-				visible={visible}
-				services={services}
-			/>
-		</ChatPaneOpeners>
+		<ChatMirror services={services} workSessionId={workSessionId} chatId={rootChatId}>
+			<PendingInteractionsProvider>
+				<ChatPaneOpeners workSessionId={workSessionId} chatId={rootChatId}>
+					<SwarmBoard
+						rootChatId={rootChatId}
+						workSessionId={workSessionId}
+						visible={visible}
+						services={services}
+						conversation={swarmPaneConversation(pane)}
+					/>
+				</ChatPaneOpeners>
+			</PendingInteractionsProvider>
+		</ChatMirror>
 	);
 }
 
-/** File links in posts, like the transcript's: the root chat's workspace folders. */
-function useBoardMarkdownExtensions(rootChatId: string, workSessionId: string) {
-	const workspaceFolders =
-		useDomainObjectState(
-			Chats,
-			(state: DomainObjectState<typeof Chats>) => state.chats[rootChatId]?.workspaceFolders,
-		) ?? NO_FOLDERS;
-	return useChatMarkdownExtensions({ workSessionId, workspaceFolders });
-}
-
-/** Scrolls a post into view and flashes it. */
-function revealPost(list: HTMLElement | null, messageId: string): boolean {
-	const element = list?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`);
+/** Scrolls an element of the feed into view and flashes it. */
+function reveal(list: HTMLElement | null, selector: string): boolean {
+	const element = list?.querySelector<HTMLElement>(selector);
 	if (!element) return false;
 	const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 	element.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
@@ -178,54 +194,250 @@ function revealPost(list: HTMLElement | null, messageId: string): boolean {
 	return true;
 }
 
+const postSelector = (messageId: string) => `[data-message-id="${CSS.escape(messageId)}"]`;
+const questionSelector = (chatId: string) => `[data-needs-you-chat="${CSS.escape(chatId)}"]`;
+
+/** Where a focus request asked before the board opened points in the feed. */
+function revealFor(focus: BoardFocus | undefined): string | null {
+	if (focus?.kind === "post") return postSelector(focus.messageId);
+	return focus?.kind === "question" ? questionSelector(focus.chatId) : null;
+}
+
+/** The header's one status: what needs the person first, then failures, work, and the end. */
+function StatusPill({
+	board,
+	finishedAt,
+}: {
+	board: SwarmBoardView;
+	finishedAt: number | undefined;
+}) {
+	const needsYou = board.team.filter((member) => member.needsYou).length;
+	const failed = board.team.filter((member) => member.state === "failed").length;
+	const working = board.team.some((member) => isActive(member.state));
+	const pill = (dot: string, text: string, qa: string) => (
+		<span
+			className="bg-muted flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs"
+			data-qa-id="swarm-board-status"
+			data-status={qa}
+		>
+			<span aria-hidden className={cn("size-1.5 rounded-full", dot)} />
+			{text}
+		</span>
+	);
+	if (needsYou > 0) return pill("bg-foreground", `${needsYou} needs you`, "needs-you");
+	if (failed > 0 && !working) return pill("bg-destructive", `${failed} failed`, "failed");
+	if (working)
+		return (
+			<span
+				className="text-success flex shrink-0 items-center gap-1.5 text-xs"
+				data-qa-id="swarm-board-status"
+				data-status="live"
+			>
+				<span aria-hidden className="size-1.5 rounded-full bg-current" />
+				Live
+			</span>
+		);
+	return (
+		<span
+			className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs"
+			data-qa-id="swarm-board-status"
+			data-status="done"
+		>
+			<CheckIcon aria-hidden className="size-3" />
+			Done{finishedAt ? ` ${clockTime(finishedAt)}` : ""}
+		</span>
+	);
+}
+
+/** File links and `#n` chips in posts. */
+function usePostExtensions(
+	rootChatId: string,
+	workSessionId: string,
+	numbers: ReadonlyMap<string, number>,
+) {
+	const workspaceFolders =
+		useDomainObjectState(
+			Chats,
+			(state: DomainObjectState<typeof Chats>) => state.chats[rootChatId]?.workspaceFolders,
+		) ?? NO_FOLDERS;
+	const files = useChatMarkdownExtensions({ workSessionId, workspaceFolders });
+	const refs = postRefsExtension(new Set(numbers.values()));
+	return refs ? [...files, refs] : files;
+}
+
+/** Watches a working agent: says when it's writing to the board. */
+function WorkerWatch({
+	member,
+	services,
+	name,
+}: {
+	member: TeamMember;
+	services: ChatMirrorServices;
+	name: string;
+}) {
+	const chat = useDomainObjectState(
+		Chats,
+		(state: DomainObjectState<typeof Chats>) => state.chats[member.chatId],
+	);
+	const activity = useAgentActivity(services, member.chatId, {
+		...(chat?.directory ? { directory: chat.directory } : {}),
+		...(chat ? { updatedAt: chat.updatedAt } : {}),
+	});
+	return activity?.writingToBoard ? <WritingIndicator name={name} /> : null;
+}
+
+/** A failed worker's card, with the files its edits touched. */
+function FailedWorker({
+	member,
+	services,
+	onOpen,
+	canOpen,
+}: {
+	member: TeamMember;
+	services: ChatMirrorServices;
+	onOpen: () => void;
+	canOpen: boolean;
+}) {
+	const chat = useDomainObjectState(
+		Chats,
+		(state: DomainObjectState<typeof Chats>) => state.chats[member.chatId],
+	);
+	const activity = useAgentActivity(services, member.chatId, {
+		...(chat?.directory ? { directory: chat.directory } : {}),
+		...(chat ? { updatedAt: chat.updatedAt } : {}),
+	});
+	return (
+		<FailedAgentCard
+			member={member}
+			editedFiles={activity?.editedFiles ?? []}
+			onOpen={onOpen}
+			canOpen={canOpen}
+		/>
+	);
+}
+
+/** Each worker's own cost, read from Kilo while the Members tab shows. */
+function useMemberCosts(team: readonly TeamMember[], enabled: boolean) {
+	const swarm = useDomainObject(Swarm);
+	const ids = team.filter((member) => !member.main).map((member) => member.chatId);
+	const query = useQuery({
+		queryKey: ["kilo.chat", "swarm-member-costs", ids.join(",")],
+		enabled: enabled && !!swarm?.methods.usage && ids.length > 0,
+		staleTime: 15_000,
+		queryFn: async () =>
+			new Map(
+				await Promise.all(
+					ids.map(
+						async (chatId) =>
+							[
+								chatId,
+								await swarm!.methods
+									.usage({ chatId })
+									.then((usage) => usage?.ownCost ?? usage?.cost)
+									.catch(() => undefined),
+							] as const,
+					),
+				),
+			),
+	});
+	return (chatId: string) => query.data?.get(chatId);
+}
+
 function SwarmBoard({
 	rootChatId,
 	workSessionId,
 	visible,
 	services,
+	conversation,
 }: {
 	readonly rootChatId: string;
 	readonly workSessionId: string;
 	readonly visible: boolean;
 	readonly services: ChatMirrorServices;
+	readonly conversation: readonly [string, string] | null;
 }) {
 	const board = useSwarmBoard(rootChatId);
 	const openSubagent = useOpenSubagentPane();
 	const track = useTrack();
 	const copyText = useShellCopyText();
 	const now = useNow();
-	const extensions = useBoardMarkdownExtensions(rootChatId, workSessionId);
-	const filter = useBoardFilter(rootChatId);
-	const setFilter = useSwarmBoardStore((state) => state.setFilter);
+	const panes = useDomainObject(Panes);
+	const interactions = usePendingInteractions();
+	const storedFilter = useBoardFilter(rootChatId);
+	const setStoredFilter = useSwarmBoardStore((state) => state.setFilter);
 	const markSeen = useSwarmBoardStore((state) => state.markSeen);
-	/** How far the person had read when the board opened: the "New" divider stays put meanwhile. */
+	const clearFocus = useSwarmBoardStore((state) => state.clearFocus);
+	const chats = useDomainObjectState(
+		Chats,
+		(state: DomainObjectState<typeof Chats>) => state.chats,
+	);
+	/** How far the person had read when the board opened: the divider stays put meanwhile. */
 	const [seenAtOpen] = useState(() => useSwarmBoardStore.getState().seen[rootChatId]);
 	const [confirmReset, setConfirmReset] = useState<number | null>(null);
-	const [view, setView] = useState("activity");
-	const [showTeam, setShowTeam] = useState<boolean | null>(null);
-	const [wide, setWide] = useState(false);
-	const teamToggleRef = useRef<HTMLButtonElement>(null);
-	const teamCloseRef = useRef<HTMLButtonElement>(null);
-	const teamVisible = showTeam ?? wide;
+	const [confirmStopAll, setConfirmStopAll] = useState(false);
+	const [view, setView] = useState("board");
 	const [copiedBoard, setCopiedBoard] = useState(false);
 	/** Posts the person folded or unfolded, overriding the default (long ones fold). */
 	const [folded, setFolded] = useState<ReadonlyMap<string, boolean>>(new Map());
-	/** Threads the person folded; threads start open. */
-	const [closedThreads, setClosedThreads] = useState<ReadonlySet<string>>(new Set());
-	const [pendingJump, setPendingJump] = useState<string | null>(null);
+	const [pendingReveal, setPendingReveal] = useState<string | null>(() =>
+		revealFor(useSwarmBoardStore.getState().focus[rootChatId]),
+	);
 	const listRef = useRef<HTMLDivElement>(null);
 	const following = useRef(true);
 	const previousPosts = useRef<readonly BoardMessage[]>([]);
 	const readingAnchor = useRef<{ element: HTMLElement; top: number } | null>(null);
 	const [arrivals, setArrivals] = useState<readonly string[]>([]);
 	const viewedPosts = useRef(new Set<string>());
+	const filter: BoardFilter = conversation
+		? { ...EMPTY_FILTER, agents: new Set(conversation), direction: "between" }
+		: storedFilter;
+	const setFilter = (next: BoardFilter) => setStoredFilter(rootChatId, next);
+
+	const messages = board.feed.messages;
+	const numbers = postNumbers(board.feed);
+	const extensions = usePostExtensions(rootChatId, workSessionId, numbers);
+	const colorOf = (id: string) => board.colors.get(id) ?? MAIN_AGENT_COLOR;
+	const nameOf = (id: string, label?: string) => participantName(id, label, board.team);
+	const memberOf = (id: string) =>
+		board.team.find((member) => (id === MAIN ? member.main : member.chatId === id));
+	const boardId = (member: TeamMember) => (member.main ? MAIN : member.chatId);
+	const filtering = isFiltering(filter);
+	const shown = filterMessages(messages, filter, { mainChatId: rootChatId, nameOf, numbers });
+	const newest = messages.at(-1);
+	const workers = board.team.filter((member) => !member.main);
+	const working = board.team.filter((member) => isActive(member.state));
+	const failed = workers.filter((member) => member.state === "failed");
+	const settled = workers.length > 0 && working.length === 0;
+	const finishedAt = settled
+		? Math.max(0, ...workers.map((member) => member.completedAt ?? 0)) || undefined
+		: undefined;
+	const startedAt = Math.min(...workers.map((member) => member.startedAt ?? Infinity));
+	const questions = interactions.questions.filter((question) => !isPlanFollowupRequest(question));
+	const waiting = [
+		...interactions.permissions.map((request) => ({
+			kind: "permission" as const,
+			chatId: request.sessionId,
+			askedAt: request.askedAt,
+			request,
+		})),
+		...questions.map((request) => ({
+			kind: "question" as const,
+			chatId: request.sessionID,
+			askedAt: request.askedAt,
+			request,
+		})),
+	].toSorted((a, b) => a.askedAt - b.askedAt);
+	const chipCounts = {
+		"needs-you": waiting.length,
+		blocking: messages.filter(isBlocking).length,
+		mentions: messages.filter((message) => message.to === "user").length,
+	};
+
 	const rememberPosition = () => {
 		const list = listRef.current;
 		if (!list || list.clientHeight === 0) return;
 		const anchor = [...list.querySelectorAll<HTMLElement>("[data-message-id]")].find(
-			(element) =>
-				(element.firstElementChild ?? element).getBoundingClientRect().bottom >=
-				list.getBoundingClientRect().top,
+			(element) => element.getBoundingClientRect().bottom >= list.getBoundingClientRect().top,
 		);
 		readingAnchor.current = anchor
 			? {
@@ -234,67 +446,6 @@ function SwarmBoard({
 				}
 			: null;
 	};
-	const observeWidth = (element: HTMLDivElement | null) => {
-		if (!element) return;
-		const observer = new ResizeObserver(() => setWide(element.clientWidth >= 704));
-		observer.observe(element);
-		return () => observer.disconnect();
-	};
-	const closeTeam = () => {
-		setShowTeam(false);
-		teamToggleRef.current?.focus();
-	};
-	useEffect(() => {
-		if (showTeam && !wide) teamCloseRef.current?.focus();
-	}, [showTeam, wide]);
-	const panes = useDomainObject(Panes);
-	const chat = useDomainObjectState(
-		Chats,
-		(state: DomainObjectState<typeof Chats>) => state.chats[rootChatId],
-	);
-	const objective = useQuery(
-		{
-			queryKey: ["kilo.chat", "swarm-objective", rootChatId, chat?.directory],
-			staleTime: Infinity,
-			queryFn: async ({ signal }) => {
-				const { data } = await services.chat.globalClient.session.messages(
-					{
-						sessionID: rootChatId,
-						...(chat?.directory ? { directory: chat.directory } : {}),
-					},
-					{ throwOnError: true, signal },
-				);
-				const first = data
-					?.filter((message) => message.info.role === "user")
-					.toSorted((a, b) => a.info.time.created - b.info.time.created)[0];
-				return (
-					first?.parts
-						.flatMap((part) =>
-							part.type === "text" && !part.synthetic && !part.ignored ? [part.text] : [],
-						)
-						.join(" ")
-						.trim() ?? ""
-				);
-			},
-		},
-		services.queries,
-	);
-
-	const messages = board.feed.messages;
-	const colorOf = (id: string) => board.colors.get(id) ?? MAIN_AGENT_COLOR;
-	const nameOf = (id: string, label?: string) => participantName(id, label, board.team);
-	const open = openQuestions(messages);
-	const counts = typeCounts(messages);
-	const results = latestResults(messages);
-	const filtering = isFiltering(filter);
-	const shown = filterMessages(messages, filter, rootChatId);
-	const threads = threadsOf(messages);
-	const runs = view === "timeline" ? teamRuns(board.team, messages, now, rootChatId) : [];
-	const newest = messages.at(-1);
-	const lastPostBy = new Map<string, string>();
-	for (const message of messages) {
-		lastPostBy.set(message.from === "main" ? rootChatId : message.from, message.body);
-	}
 
 	const openMain = () => {
 		if (!panes) return;
@@ -313,42 +464,111 @@ function SwarmBoard({
 					})
 		).catch(() => toast.error("Could not open the chat"));
 	};
-	const openAgent = (chatId: string) => {
-		if (chatId === "main" || chatId === rootChatId) {
+	/** Opens an agent's transcript beside the board, which narrows to that agent's posts. */
+	const openAgent = (id: string) => {
+		if (id === MAIN || id === rootChatId) {
 			openMain();
 			return;
 		}
-		const member = board.team.find((candidate) => candidate.chatId === chatId);
+		const member = memberOf(id);
 		if (!member || !openSubagent) return;
 		track(CHAT_TELEMETRY_EVENTS.swarmAgentOpened);
 		openSubagent(member.chatId, member.title, member.parentChatId);
+		if (!conversation) setFilter({ ...EMPTY_FILTER, agents: new Set([id]) });
+	};
+	const canOpen = (id: string) =>
+		id === MAIN || id === rootChatId ? !!panes : !!openSubagent && !!memberOf(id);
+	const openConversation = (a: string, b: string) => {
+		if (!panes) return;
+		void panes.methods
+			.open({
+				workSessionId,
+				kind: SWARM_PANE_KIND,
+				paneId: swarmConversationPaneId(rootChatId, a, b),
+				title: `${nameOf(a)} ↔ ${nameOf(b)}`,
+				object: chatPaneObject(rootChatId),
+				metadata: swarmConversationMetadata(a, b),
+				placement: "tab",
+			})
+			.catch(() => toast.error("Could not open the conversation"));
+	};
+	const stop = (member: TeamMember) => {
+		if (!member.jobId) return;
+		track(CHAT_TELEMETRY_EVENTS.swarmJobCancelled);
+		void board.cancelJob(member.jobId).catch((error: unknown) =>
+			toast.error(`Could not stop ${member.title}`, {
+				description: error instanceof Error ? error.message : undefined,
+			}),
+		);
+	};
+	const stopAll = () => {
+		setConfirmStopAll(false);
+		for (const member of workers) if (member.jobId) stop(member);
+	};
+
+	/** Shows a post: unfolds it, drops a filter hiding it, then scrolls to it. */
+	const jumpTo = (messageId: string) => {
+		setView("board");
+		if (filtering && !conversation && !shown.some((message) => message.id === messageId)) {
+			setFilter(EMPTY_FILTER);
+		}
+		setFolded((current) => new Map(current).set(messageId, false));
+		setPendingReveal(postSelector(messageId));
+		setArrivals((current) => current.filter((id) => id !== messageId));
+	};
+	const jumpToNumber = (number: number) => {
+		const id = [...numbers].find(([, n]) => n === number)?.[0];
+		if (id) jumpTo(id);
 	};
 
 	const context: PostContext = {
 		nameOf,
 		colorOf,
 		now,
+		numbers,
 		query: filter.query,
 		extensions,
+		memberOf,
 		onOpenSender: openAgent,
-		canOpenSender: (id) =>
-			id === "main" || id === rootChatId
-				? !!panes
-				: !!openSubagent && board.team.some((member) => member.chatId === id),
-		onCopy: copyText,
+		canOpenSender: canOpen,
+		onStop: stop,
+		onJump: jumpTo,
 	};
 
+	/** Shows what another surface asked for (the composer's Answer, an agent pane's post). */
+	const applyFocus = useEffectEvent((focus: BoardFocus) => {
+		if (focus.kind === "post") {
+			jumpTo(focus.messageId);
+			return;
+		}
+		setView("board");
+		if (focus.kind === "agent") {
+			setFilter({ ...EMPTY_FILTER, agents: new Set([focus.chatId]) });
+			return;
+		}
+		if (filter.chip !== "all" || filter.query) setFilter(EMPTY_FILTER);
+		setPendingReveal(questionSelector(focus.chatId));
+	});
+	useEffect(() => {
+		// A request made before the board opened was taken up when its state started.
+		clearFocus(rootChatId);
+		return useSwarmBoardStore.subscribe((state) => {
+			const focus = state.focus[rootChatId];
+			if (!focus) return;
+			clearFocus(rootChatId);
+			applyFocus(focus);
+		});
+	}, [clearFocus, rootChatId]);
+
+	useEffect(() => {
+		if (!pendingReveal) return;
+		if (reveal(listRef.current, pendingReveal)) setPendingReveal(null);
+	});
+
+	// Read marks: posts at least half seen, in order, move the "seen" mark on.
 	useEffect(() => {
 		const list = listRef.current;
-		if (
-			!list ||
-			!visible ||
-			filtering ||
-			view !== "activity" ||
-			confirmReset !== null ||
-			(teamVisible && !wide)
-		)
-			return;
+		if (!list || !visible || filtering || view !== "board" || confirmReset !== null) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) {
@@ -376,15 +596,16 @@ function SwarmBoard({
 				observer.observe(element);
 		};
 		observeAll();
-		// Folding a post or a thread renders read targets anew; watch those too.
+		// Unfolding a post renders its read target anew; watch those too.
 		const mutations = new MutationObserver(observeAll);
 		mutations.observe(list, { childList: true, subtree: true });
 		return () => {
 			mutations.disconnect();
 			observer.disconnect();
 		};
-	}, [visible, filtering, view, confirmReset, messages, markSeen, rootChatId, teamVisible, wide]);
+	}, [visible, filtering, view, confirmReset, messages, markSeen, rootChatId]);
 
+	// New posts: follow the bottom when there, else keep the reading position and offer a jump.
 	useLayoutEffect(() => {
 		const list = listRef.current;
 		if (!list || board.loading) return;
@@ -395,7 +616,7 @@ function SwarmBoard({
 			return remaining.length === current.length ? current : remaining;
 		});
 		if (previous.length === 0) {
-			if (visible && !filtering && view === "activity") list.scrollTop = list.scrollHeight;
+			if (visible && !filtering && view === "board") list.scrollTop = list.scrollHeight;
 			rememberPosition();
 			return;
 		}
@@ -403,18 +624,11 @@ function SwarmBoard({
 		const incoming = messages.filter(
 			(message) => !ids.has(message.id) && message.timestamp >= (previous.at(-1)?.timestamp ?? 0),
 		);
-		if (
-			incoming.length > 0 &&
-			visible &&
-			following.current &&
-			!filtering &&
-			view === "activity" &&
-			!incoming.some((message) => message.replyTo)
-		) {
+		if (incoming.length > 0 && visible && following.current && !filtering && view === "board") {
 			list.scrollTop = list.scrollHeight;
 		} else {
 			const anchor = readingAnchor.current;
-			if (anchor?.element.isConnected && previous !== messages && view === "activity")
+			if (anchor?.element.isConnected && previous !== messages && view === "board")
 				list.scrollTop +=
 					anchor.element.getBoundingClientRect().top -
 					list.getBoundingClientRect().top -
@@ -426,38 +640,11 @@ function SwarmBoard({
 		}
 		rememberPosition();
 	}, [messages, board.loading, filtering, rememberPosition, view, visible]);
+
 	const loadOlder = () => {
 		rememberPosition();
 		following.current = false;
 		void board.loadOlder();
-	};
-
-	useEffect(() => {
-		if (!pendingJump) return;
-		if (revealPost(listRef.current, pendingJump)) setPendingJump(null);
-	});
-
-	/** Shows a post: unfolds it and its thread, drops a filter hiding it, then scrolls to it. */
-	const jumpTo = (messageId: string) => {
-		setView("activity");
-		const thread = threads.find(
-			(candidate) =>
-				candidate.root.id === messageId ||
-				candidate.replies.some((reply) => reply.id === messageId),
-		);
-		if (filtering && !shown.some((message) => message.id === messageId)) {
-			setFilter(rootChatId, EMPTY_FILTER);
-		}
-		if (thread) {
-			setClosedThreads((current) => {
-				const next = new Set(current);
-				next.delete(thread.root.id);
-				return next;
-			});
-		}
-		setFolded((current) => new Map(current).set(messageId, false));
-		setPendingJump(messageId);
-		setArrivals((current) => current.filter((id) => id !== messageId));
 	};
 
 	const reset = async () => {
@@ -468,22 +655,13 @@ function SwarmBoard({
 		track(CHAT_TELEMETRY_EVENTS.swarmBoardReset, { outcome });
 		if (outcome === "changed") {
 			toast.info("The board changed", {
-				description: "New messages arrived. Review them before clearing the board.",
+				description: "New posts arrived. Review them before clearing the board.",
 			});
 		}
 	};
 
-	const cancel = (jobId: string) => {
-		track(CHAT_TELEMETRY_EVENTS.swarmJobCancelled);
-		void board.cancelJob(jobId).catch((error: unknown) =>
-			toast.error("Could not stop the agent", {
-				description: error instanceof Error ? error.message : undefined,
-			}),
-		);
-	};
-
 	const copyBoard = () => {
-		void copyText(boardMarkdown(shown, nameOf)).then(
+		void copyText(boardMarkdown(shown, nameOf, numbers)).then(
 			() => {
 				setCopiedBoard(true);
 				setTimeout(() => setCopiedBoard(false), 2_000);
@@ -491,6 +669,8 @@ function SwarmBoard({
 			() => toast.error("Could not copy the board"),
 		);
 	};
+
+	const memberCosts = useMemberCosts(board.team, view === "members");
 
 	if (board.loading) {
 		return (
@@ -504,175 +684,340 @@ function SwarmBoard({
 		folded.get(message.id) ?? (message.id !== newest?.id && isLong(message.body));
 	const toggle = (message: BoardMessage) =>
 		setFolded((current) => new Map(current).set(message.id, !isFolded(message)));
-	const foldAll = (fold: boolean) =>
-		setFolded(new Map(messages.map((message) => [message.id, fold] as const)));
-	const anyOpen = shown.some((message) => !isFolded(message));
 	const isNew = (message: BoardMessage) =>
 		seenAtOpen !== undefined && message.timestamp > seenAtOpen && message.from !== "user";
+	const newAtOpen = shown.filter(isNew).length;
 
-	const post = (message: BoardMessage, options: { quoteReply: boolean }) => (
-		<AgentPost
-			key={message.id}
-			message={message}
-			context={context}
-			open={open.has(message.id)}
-			folded={isFolded(message)}
-			onToggle={() => toggle(message)}
-			replyTo={
-				options.quoteReply && message.replyTo
-					? messages.find((candidate) => candidate.id === message.replyTo)?.body
-					: undefined
-			}
-		/>
-	);
-
-	const agents: FilterAgent[] = board.team.map((member) => ({
-		id: member.main ? "main" : member.chatId,
-		name: member.main ? "Main agent" : member.title,
-		color: colorOf(member.chatId),
-	}));
-
-	const flatList = () => {
-		let dividerShown = false;
-		return shown.flatMap((message) => {
-			const divider = !dividerShown && isNew(message);
-			if (divider) dividerShown = true;
-			return [
-				...(divider ? [<NewMessagesDivider key="new-divider" />] : []),
-				post(message, { quoteReply: true }),
-			];
-		});
-	};
-
-	const threadedList = () => {
-		let dividerShown = false;
-		return threads.flatMap((thread) => {
-			const divider = !dividerShown && isNew(thread.root);
-			if (divider) dividerShown = true;
-			const threadOpen = !closedThreads.has(thread.root.id);
-			const newReplies = thread.replies.filter(isNew).length;
-			return [
-				...(divider ? [<NewMessagesDivider key="new-divider" />] : []),
-				<AgentPost
-					key={thread.root.id}
-					message={thread.root}
-					context={context}
-					open={open.has(thread.root.id)}
-					folded={isFolded(thread.root)}
-					onToggle={() => toggle(thread.root)}
-					replyTo={thread.orphan ? "an earlier message, no longer loaded" : undefined}
-				>
-					{thread.replies.length > 0 ? (
-						<ThreadReplies
-							count={thread.replies.length}
-							newCount={divider ? 0 : newReplies}
-							open={threadOpen}
-							onToggle={() =>
-								setClosedThreads((current) => {
-									const next = new Set(current);
-									if (threadOpen) next.add(thread.root.id);
-									else next.delete(thread.root.id);
-									return next;
-								})
-							}
+	const waitingItems =
+		(filter.chip === "all" || filter.chip === "needs-you") && !conversation
+			? waiting.map((item) => {
+					const member = memberOf(item.chatId === rootChatId ? MAIN : item.chatId);
+					const name = member && !member.main ? member.title : "Main agent";
+					return (
+						<div
+							key={`${item.kind}:${item.request.id}`}
+							data-needs-you-chat={item.chatId}
+							tabIndex={-1}
 						>
-							{thread.replies.map((reply) => post(reply, { quoteReply: false }))}
-						</ThreadReplies>
-					) : null}
-				</AgentPost>,
+							<NeedsYouItem
+								member={member ?? { title: name, main: true }}
+								color={colorOf(member ? boardId(member) : MAIN)}
+							>
+								{item.kind === "question" ? (
+									<OpenCodeQuestionQuestionnaire
+										request={item.request}
+										submitLabel={`Send to ${name}`}
+									/>
+								) : (
+									<OpenCodePermissionCard request={item.request} acceptOnEnter={false} />
+								)}
+							</NeedsYouItem>
+						</div>
+					);
+				})
+			: [];
+
+	const feed = (): ReactNode[] => {
+		let dividerShown = false;
+		const items: ReactNode[] = shown.flatMap((message) => {
+			const divider = !dividerShown && !filtering && isNew(message);
+			if (divider) dividerShown = true;
+			return [
+				...(divider ? [<NewPostsDivider key="new-divider" count={newAtOpen} />] : []),
+				<BoardPost
+					key={message.id}
+					message={message}
+					context={context}
+					folded={isFolded(message)}
+					foldable={isLong(message.body)}
+					onToggle={() => toggle(message)}
+					isNew={isNew(message)}
+				/>,
 			];
 		});
+		if (!filtering) {
+			for (const member of failed)
+				items.push(
+					<FailedWorker
+						key={`failed:${member.chatId}`}
+						member={member}
+						services={services}
+						onOpen={() => openAgent(member.chatId)}
+						canOpen={canOpen(member.chatId)}
+					/>,
+				);
+		}
+		items.push(...waitingItems);
+		if (!filtering) {
+			for (const member of working)
+				if (!member.main)
+					items.push(
+						<WorkerWatch
+							key={`watch:${member.chatId}`}
+							member={member}
+							services={services}
+							name={member.title}
+						/>,
+					);
+			if (settled && waiting.length === 0)
+				items.push(
+					<SwarmDoneMarker
+						key="done"
+						finishedAt={finishedAt}
+						agents={workers.length}
+						took={finishedAt && Number.isFinite(startedAt) ? finishedAt - startedAt : undefined}
+					/>,
+				);
+		}
+		return items;
 	};
 
 	const unavailable = board.error !== null && board.feed.revision === null;
-	const attention = board.team.filter((member) => member.needsYou);
-	const working = board.team.filter(
-		(member) => !member.needsYou && (member.state === "working" || member.state === "retrying"),
-	);
-	const failed = board.team.filter((member) => member.state === "failed");
-	const finished = board.team.filter(
-		(member) => !member.needsYou && ["done", "cancelled", "stopped"].includes(member.state),
-	);
-	/** Workers that all stopped without anyone posting: the board stays empty for good. */
-	const workers = board.team.filter((member) => !member.main);
-	const settledWithoutPosts =
-		workers.length > 0 && working.length === 0 && attention.length === 0
-			? finished.filter((member) => !member.main).length +
-				failed.filter((member) => !member.main).length
-			: 0;
-	const attentionLabel = (member: (typeof board.team)[number]) =>
-		member.attention?.includes("permission")
-			? "Permission required"
-			: member.attention?.includes("question")
-				? "Question waiting"
-				: "Needs your attention";
-	const teamRow = (member: (typeof board.team)[number]) => (
-		<TeamRow
-			key={member.chatId}
-			member={member}
-			color={colorOf(member.chatId)}
-			canOpen={member.main ? !!panes : !!openSubagent}
-			onOpen={() => openAgent(member.chatId)}
-			onStop={member.jobId ? () => cancel(member.jobId!) : undefined}
-			lastPost={lastPostBy.get(member.chatId)}
-		/>
-	);
+	const title = conversation
+		? `${nameOf(conversation[0])} ↔ ${nameOf(conversation[1])}`
+		: chats?.[rootChatId]?.title || "Delegated work";
+	const filteredAgent = !conversation && filter.agents.size === 1 ? [...filter.agents][0]! : null;
+	const searchable = !conversation && messages.length >= SEARCH_FROM_POSTS;
 
-	return (
-		<div
-			ref={observeWidth}
-			className="bg-pane @container/swarm flex h-full min-h-0 flex-col overflow-hidden"
-			data-qa-id="swarm-board"
-		>
-			<header className="shrink-0 px-4 pt-3 pb-2">
-				<div className="mb-2 flex items-center justify-between gap-2">
-					<span className="text-muted-foreground flex items-center gap-2 text-xs">
-						<MessagesSquareIcon aria-hidden className="size-3.5" /> Swarm board
-					</span>
-					<div className="flex items-center gap-1">
+	const emptyBoard = () => {
+		if (working.length > 0) {
+			return (
+				<Empty className="py-10" data-qa-id="swarm-board-empty">
+					<EmptyHeader>
+						<EmptyMedia>
+							<span className="flex -space-x-1.5">
+								{workers.slice(0, 5).map((member) => (
+									<AgentAvatar
+										key={member.chatId}
+										name={member.title}
+										color={colorOf(member.chatId)}
+									/>
+								))}
+							</span>
+						</EmptyMedia>
+						<EmptyTitle>
+							{working.length === 1
+								? "1 agent is working quietly"
+								: `${working.length} agents are working quietly`}
+						</EmptyTitle>
+						<EmptyDescription>
+							Posts appear here when they coordinate or need you. See what each one is doing in
+							Members.
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
 						<Button
-							variant="ghost"
+							variant="outline"
+							size="sm"
+							onClick={() => setView("members")}
+							data-qa-id="swarm-board-empty-members"
+						>
+							Open Members
+						</Button>
+					</EmptyContent>
+				</Empty>
+			);
+		}
+		if (settled) {
+			return (
+				<Empty className="py-10" data-qa-id="swarm-board-empty">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<MessageSquareIcon />
+						</EmptyMedia>
+						<EmptyTitle>No posts on this board</EmptyTitle>
+						<EmptyDescription>
+							{workers.length === 1
+								? "The subagent finished without posting."
+								: `${workers.length} subagents finished without posting.`}{" "}
+							Their reports went to the main agent, in the chat.
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button
+							variant="outline"
 							size="sm"
 							disabled={!panes}
 							onClick={openMain}
-							data-qa-id="swarm-board-open-chat"
+							data-qa-id="swarm-board-empty-open-chat"
 						>
-							Open chat <ArrowUpRightIcon />
+							Go to main chat <ArrowUpRightIcon />
 						</Button>
-						<DropdownMenu>
-							<DropdownMenuTrigger
-								render={
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										aria-label="Board actions"
-										data-qa-id="swarm-board-actions"
-									/>
-								}
+					</EmptyContent>
+				</Empty>
+			);
+		}
+		return (
+			<Empty className="py-10" data-qa-id="swarm-board-empty">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<MessageSquareIcon />
+					</EmptyMedia>
+					<EmptyTitle>Nothing on the board yet</EmptyTitle>
+					<EmptyDescription>Agents post findings and questions here as they work.</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		);
+	};
+
+	const boardList = (
+		<div className="flex min-h-0 flex-1 flex-col">
+			{searchable ? (
+				<BoardSearch filter={filter} onChange={setFilter} counts={chipCounts} active={visible} />
+			) : null}
+			{filteredAgent ? (
+				<div
+					className="flex shrink-0 items-center gap-2 pt-3 text-xs"
+					data-qa-id="swarm-board-agent-filter"
+				>
+					<span className="text-muted-foreground">Showing posts with</span>
+					<span className="bg-muted flex items-center gap-1 rounded-full py-0.5 ps-2 pe-1">
+						{nameOf(filteredAgent)}
+						<button
+							type="button"
+							className="hover:bg-accent rounded-full p-0.5"
+							aria-label="Show every post"
+							onClick={() => setFilter(EMPTY_FILTER)}
+							data-qa-id="swarm-board-agent-filter-clear"
+						>
+							<XIcon aria-hidden className="size-3" />
+						</button>
+					</span>
+				</div>
+			) : null}
+			<div
+				ref={listRef}
+				className="min-h-0 flex-1 overflow-y-auto py-3 pe-1 [overflow-anchor:none]"
+				data-qa-id="swarm-board-messages"
+				onScroll={(event) => {
+					const list = event.currentTarget;
+					following.current = list.scrollHeight - list.scrollTop - list.clientHeight < 32;
+					rememberPosition();
+				}}
+				onClick={(event) => {
+					const ref = (event.target as HTMLElement).closest<HTMLElement>("[data-post-ref]");
+					if (ref) jumpToNumber(Number(ref.dataset.postRef));
+				}}
+				onKeyDown={(event) => {
+					const ref = (event.target as HTMLElement).closest<HTMLElement>("[data-post-ref]");
+					if (ref && (event.key === "Enter" || event.key === " ")) {
+						event.preventDefault();
+						jumpToNumber(Number(ref.dataset.postRef));
+					}
+				}}
+			>
+				{board.feed.hasMore ? (
+					<div className="mb-3 flex justify-center">
+						<Button
+							size="sm"
+							variant="ghost"
+							disabled={board.loadingOlder}
+							onClick={loadOlder}
+							data-qa-id="swarm-board-older"
+						>
+							{board.loadingOlder ? <Spinner /> : null}
+							Show older posts
+						</Button>
+					</div>
+				) : null}
+				{unavailable ? null : messages.length === 0 &&
+				  waiting.length === 0 &&
+				  failed.length === 0 ? (
+					emptyBoard()
+				) : filtering && shown.length === 0 && filter.chip !== "needs-you" ? (
+					<p
+						className="text-muted-foreground py-8 text-center text-sm"
+						data-qa-id="swarm-board-no-match"
+					>
+						No matches in loaded posts.
+						{board.feed.hasMore ? " Show older posts to search more." : ""}
+					</p>
+				) : (
+					<ol className="flex flex-col gap-5">{feed()}</ol>
+				)}
+			</div>
+			{arrivals.length > 0 ? (
+				<div className="flex shrink-0 justify-center pt-2">
+					<Button
+						size="sm"
+						className="rounded-full"
+						data-qa-id="swarm-board-new-messages"
+						onClick={() => jumpTo(arrivals[0]!)}
+					>
+						<ArrowDownIcon />
+						{arrivals.length} more new {arrivals.length === 1 ? "post" : "posts"}
+					</Button>
+				</div>
+			) : null}
+		</div>
+	);
+
+	const graphMembers: GraphMember[] = board.team.map((member) => ({
+		id: boardId(member),
+		name: member.main ? "Main agent" : member.title,
+		color: colorOf(member.chatId),
+		done: !member.main && !isActive(member.state),
+	}));
+	const graphPosts: GraphPost[] = messages.map((message) => ({
+		id: message.id,
+		seq: numbers.get(message.id) ?? 0,
+		from: message.from === rootChatId ? MAIN : message.from,
+		to: message.to === rootChatId ? MAIN : message.to,
+		type: message.type,
+		timestamp: message.timestamp,
+	}));
+
+	return (
+		<div className="bg-pane flex h-full min-h-0 flex-col overflow-hidden" data-qa-id="swarm-board">
+			<header className="flex shrink-0 items-center gap-2 px-4 pt-3 pb-1">
+				<h2 className="min-w-0 truncate text-base font-semibold" data-qa-id="swarm-board-title">
+					{title}
+				</h2>
+				<span className="ms-auto" />
+				<StatusPill board={board} finishedAt={finishedAt} />
+				<DropdownMenu>
+					<DropdownMenuTrigger
+						render={
+							<Button
+								variant="ghost"
+								size="icon-sm"
+								aria-label="Board actions"
+								data-qa-id="swarm-board-actions"
+							/>
+						}
+					>
+						<EllipsisIcon />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						<DropdownMenuGroup>
+							<DropdownMenuItem
+								disabled={!panes}
+								onClick={openMain}
+								data-qa-id="swarm-board-open-chat"
 							>
-								<EllipsisIcon />
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
+								<ArrowUpRightIcon />
+								Go to main chat
+							</DropdownMenuItem>
+							<DropdownMenuItem
+								data-qa-id="swarm-board-copy"
+								disabled={shown.length === 0}
+								onClick={copyBoard}
+							>
+								{copiedBoard ? <CheckIcon /> : <ClipboardCopyIcon />}
+								{filtering ? "Copy shown posts as Markdown" : "Copy board as Markdown"}
+							</DropdownMenuItem>
+						</DropdownMenuGroup>
+						{conversation ? null : (
+							<>
+								<DropdownMenuSeparator />
 								<DropdownMenuGroup>
 									<DropdownMenuItem
-										data-qa-id="swarm-board-copy"
-										disabled={shown.length === 0}
-										onClick={copyBoard}
+										disabled={!workers.some((member) => member.jobId)}
+										onClick={() => setConfirmStopAll(true)}
+										data-qa-id="swarm-board-stop-all"
 									>
-										{copiedBoard ? <CheckIcon /> : <ClipboardCopyIcon />}
-										{filtering ? "Copy shown messages" : "Copy loaded messages"}
-									</DropdownMenuItem>
-									<DropdownMenuItem
-										data-qa-id="swarm-board-fold-all"
-										disabled={messages.length === 0}
-										onClick={() => foldAll(anyOpen)}
-									>
-										{anyOpen ? <ChevronsDownUpIcon /> : <ChevronsUpDownIcon />}
-										{anyOpen ? "Collapse all messages" : "Expand all messages"}
-									</DropdownMenuItem>
-									<DropdownMenuItem data-qa-id="swarm-board-refresh" onClick={board.refresh}>
-										<RefreshCwIcon />
-										Refresh snapshot
+										<SquareIcon />
+										Stop all agents
 									</DropdownMenuItem>
 								</DropdownMenuGroup>
 								<DropdownMenuSeparator />
@@ -684,307 +1029,108 @@ function SwarmBoard({
 										onClick={() => setConfirmReset(board.feed.revision)}
 									>
 										<Trash2Icon />
-										Clear shared board...
+										Clear board…
 									</DropdownMenuItem>
 								</DropdownMenuGroup>
-							</DropdownMenuContent>
-						</DropdownMenu>
-					</div>
-				</div>
-				<h2
-					className="line-clamp-2 text-lg font-semibold tracking-tight"
-					data-qa-id="swarm-board-title"
-				>
-					{chat?.title || "Delegated work"}
-				</h2>
-				<p
-					className="text-muted-foreground mt-1 line-clamp-2 text-xs"
-					data-qa-id="swarm-board-objective"
-					title={objective.data || undefined}
-				>
-					{objective.data || "Follow the team's findings and review requests in their transcripts."}
-				</p>
-				{attention.length > 0 ? (
-					<Alert
-						className="border-warning/25 bg-warning-surface mt-3"
-						data-qa-id="swarm-board-attention"
-					>
-						<CircleAlertIcon />
-						<div className="col-start-2 flex min-w-0 items-center justify-between gap-3">
-							<div className="min-w-0">
-								<AlertTitle>
-									{attention.length === 1
-										? attentionLabel(attention[0]!)
-										: `${attention.length} agents need your input`}
-								</AlertTitle>
-								<AlertDescription>
-									{attention[0]!.main ? "Main agent" : attention[0]!.title} is waiting for you.
-								</AlertDescription>
-							</div>
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={attention[0]!.main ? !panes : !openSubagent}
-								onClick={() => openAgent(attention[0]!.chatId)}
-								data-qa-id="swarm-board-review"
-							>
-								Review <ArrowUpRightIcon />
-							</Button>
-						</div>
-					</Alert>
-				) : null}
-				<div
-					className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-b pb-2 text-xs"
-					data-qa-id="swarm-team-summary"
-				>
-					<span>
-						<strong className="text-foreground font-medium">{working.length}</strong> working
-					</span>
-					{attention.length > 0 ? <span>{attention.length} needs input</span> : null}
-					{failed.length > 0 ? (
-						<span className="text-destructive">{failed.length} failed</span>
-					) : null}
-					<span>{finished.length} finished</span>
-					<Button
-						ref={teamToggleRef}
-						variant="ghost"
-						size="sm"
-						className="ms-auto"
-						aria-label="Toggle team"
-						aria-expanded={teamVisible}
-						data-qa-id="swarm-team-toggle"
-						onClick={() => setShowTeam(!teamVisible)}
-					>
-						<UsersIcon />
-						Team
-					</Button>
-				</div>
+							</>
+						)}
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</header>
-			<div className="relative flex min-h-0 flex-1 gap-4 px-4 pb-3">
-				<Tabs
-					value={view}
-					onValueChange={(value) => setView(String(value))}
-					className={cn("min-h-0 min-w-0 flex-1 flex-col", teamVisible && !wide && "hidden")}
-				>
-					<TabsList variant="line" aria-label="Board views" className="shrink-0">
-						<TabsTrigger value="activity" data-qa-id="swarm-activity-tab">
-							Activity
-						</TabsTrigger>
-						<TabsTrigger value="results" data-qa-id="swarm-results-tab">
-							Results <Badge variant="secondary">{results.length}</Badge>
-						</TabsTrigger>
-						<TabsTrigger value="timeline" data-qa-id="swarm-timeline-toggle">
-							Timeline
-						</TabsTrigger>
-					</TabsList>
-					{unavailable ? (
-						<Empty className="shrink-0 py-4" data-qa-id="swarm-board-unavailable">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									<MessagesSquareIcon />
-								</EmptyMedia>
-								<EmptyTitle>The board isn't available for this chat</EmptyTitle>
-								<EmptyDescription>
-									The board could not be loaded. Refresh to retry; this chat may not support Kilo
-									Swarm.
-								</EmptyDescription>
-								<p className="text-muted-foreground/70 mt-1 text-xs">{board.error}</p>
-							</EmptyHeader>
-						</Empty>
-					) : board.error ? (
-						<Alert variant="destructive" className="shrink-0" data-qa-id="swarm-board-error">
-							<CircleAlertIcon />
-							<AlertTitle>Board update incomplete</AlertTitle>
-							<AlertDescription>{board.error}</AlertDescription>
-						</Alert>
-					) : null}
-					<TabsContent
-						value="activity"
-						keepMounted
-						className="flex min-h-0 flex-col data-[hidden]:hidden"
-					>
-						{messages.length > 0 ? (
-							<BoardFilterBar
-								filter={filter}
-								onChange={(next) => setFilter(rootChatId, next)}
-								agents={agents}
-								counts={counts}
-								openCount={open.size}
-								shown={shown.length}
-								total={messages.length}
-								hasMore={board.feed.hasMore}
-							/>
-						) : null}
-						<div
-							ref={listRef}
-							className="min-h-0 flex-1 overflow-y-auto py-3 pe-1 [overflow-anchor:none]"
-							data-qa-id="swarm-board-messages"
-							onScroll={(event) => {
-								const list = event.currentTarget;
-								following.current = list.scrollHeight - list.scrollTop - list.clientHeight < 32;
-								rememberPosition();
-							}}
-						>
-							{board.feed.hasMore ? (
-								<div className="mb-3 flex justify-center">
-									<Button
-										size="sm"
-										variant="ghost"
-										disabled={board.loadingOlder}
-										onClick={loadOlder}
-										data-qa-id="swarm-board-older"
-									>
-										{board.loadingOlder ? <Spinner /> : null}
-										Show older messages
-									</Button>
-								</div>
-							) : null}
-							{unavailable ? null : messages.length === 0 ? (
-								<Empty className="py-10" data-qa-id="swarm-board-empty">
-									<EmptyHeader>
-										<EmptyMedia variant="icon">
-											<BotIcon />
-										</EmptyMedia>
-										{settledWithoutPosts ? (
-											<>
-												<EmptyTitle>No posts on this board</EmptyTitle>
-												<EmptyDescription>
-													{settledWithoutPosts === 1
-														? "The subagent finished without posting."
-														: `${settledWithoutPosts} subagents finished without posting.`}{" "}
-													Their reports went to the main agent, in the chat.
-												</EmptyDescription>
-											</>
-										) : (
-											<>
-												<EmptyTitle>Nothing on the board yet</EmptyTitle>
-												<EmptyDescription>
-													Subagents post findings and questions here as they work.
-												</EmptyDescription>
-											</>
-										)}
-									</EmptyHeader>
-									{settledWithoutPosts ? (
-										<EmptyContent>
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={!panes}
-												onClick={openMain}
-												data-qa-id="swarm-board-empty-open-chat"
-											>
-												Open chat <ArrowUpRightIcon />
-											</Button>
-										</EmptyContent>
-									) : null}
-								</Empty>
-							) : (
-								<>
-									{filtering && shown.length === 0 ? (
-										<p
-											className="text-muted-foreground py-8 text-center text-sm"
-											data-qa-id="swarm-board-no-match"
-										>
-											No matches in loaded history.
-											{board.feed.hasMore ? " Load earlier messages to search more." : ""}
-										</p>
-									) : (
-										<ol className="flex flex-col gap-5">
-											{filtering ? flatList() : threadedList()}
-										</ol>
-									)}
-								</>
-							)}
-						</div>
-						{arrivals.length > 0 ? (
-							<div className="flex shrink-0 items-center justify-between gap-2 border-t pt-2">
-								<span className="text-muted-foreground text-xs">
-									Your reading position is preserved
-								</span>
-								<Button
-									variant="outline"
-									size="sm"
-									data-qa-id="swarm-board-new-messages"
-									onClick={() => jumpTo(arrivals[0]!)}
-								>
-									{arrivals.length} new {arrivals.length === 1 ? "message" : "messages"}
-									<ArrowDownIcon />
-								</Button>
-							</div>
-						) : null}
-					</TabsContent>
-					<TabsContent value="results" className="min-h-0 overflow-y-auto px-1 py-3">
-						<ResultsDigest
-							results={results}
-							context={context}
-							onJump={jumpTo}
-							hasMore={board.feed.hasMore}
-							loadedCount={messages.length}
-						/>
-					</TabsContent>
-					<TabsContent value="timeline" className="min-h-0 overflow-y-auto py-3">
-						<div className="mb-4 flex items-start justify-between gap-2">
-							<div className="flex min-w-0 flex-col gap-1">
-								<h3 className="text-sm font-medium">Coordination over time</h3>
-								<p className="text-muted-foreground text-xs">
-									Inspect a post, then open its source in Activity.
-								</p>
-							</div>
-							<TimelineKeyButton more={board.feed.hasMore} />
-						</div>
-						<TeamRuns
-							runs={runs}
-							messages={messages}
-							mainChatId={rootChatId}
-							colorOf={colorOf}
-							nameOf={nameOf}
-							onJump={jumpTo}
-						/>
-					</TabsContent>
-				</Tabs>
-				<aside
-					aria-label="Team"
-					data-qa-id="swarm-team"
-					onKeyDown={(event) => {
-						if (event.key === "Escape") {
-							event.stopPropagation();
-							closeTeam();
-						}
-					}}
-					className={cn(
-						"bg-pane min-h-0 w-full overflow-y-auto py-3 @min-[44rem]/swarm:w-64 @min-[44rem]/swarm:shrink-0 @min-[44rem]/swarm:border-s @min-[44rem]/swarm:ps-4",
-						teamVisible ? "block" : "hidden",
-					)}
-				>
-					<div className="mb-2 flex items-center justify-between">
-						<h3 className="text-muted-foreground text-xs font-medium">Team</h3>
-						<Button
-							ref={teamCloseRef}
-							size="icon-sm"
-							variant="ghost"
-							aria-label="Close team"
-							onClick={closeTeam}
-						>
-							<XIcon />
+			{unavailable ? (
+				<Empty className="shrink-0 py-4" data-qa-id="swarm-board-unavailable">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<MessagesSquareIcon />
+						</EmptyMedia>
+						<EmptyTitle>The board isn't available for this chat</EmptyTitle>
+						<EmptyDescription>
+							The board could not be loaded; this chat may not support Kilo Swarm.
+						</EmptyDescription>
+						<p className="text-muted-foreground/70 mt-1 text-xs">{board.error}</p>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button size="sm" variant="outline" onClick={board.refresh}>
+							Try again
 						</Button>
-					</div>
-					{board.team
-						.filter((member) => !finished.includes(member))
-						.toSorted(
-							(a, b) =>
-								Number(b.needsYou) - Number(a.needsYou) ||
-								Number(b.state === "failed") - Number(a.state === "failed"),
-						)
-						.map(teamRow)}
-					{finished.length > 0 ? (
-						<details className="mt-3">
-							<summary className="text-muted-foreground cursor-pointer py-2 text-xs">
-								Finished · {finished.length}
-							</summary>
-							{finished.map(teamRow)}
-						</details>
-					) : null}
-				</aside>
+					</EmptyContent>
+				</Empty>
+			) : board.error ? (
+				<Alert
+					variant="destructive"
+					className="mx-4 w-auto shrink-0"
+					data-qa-id="swarm-board-error"
+				>
+					<CircleAlertIcon />
+					<AlertTitle>Board update incomplete</AlertTitle>
+					<AlertDescription>{board.error}</AlertDescription>
+				</Alert>
+			) : null}
+			<div className="flex min-h-0 flex-1 flex-col px-4 pb-3">
+				{conversation ? (
+					boardList
+				) : (
+					<Tabs
+						value={view}
+						onValueChange={(value) => setView(String(value))}
+						className="min-h-0 min-w-0 flex-1 flex-col"
+					>
+						<TabsList variant="line" aria-label="Board views" className="shrink-0">
+							<TabsTrigger value="board" data-qa-id="swarm-board-tab">
+								Board <span className="text-muted-foreground tabular-nums">{messages.length}</span>
+							</TabsTrigger>
+							<TabsTrigger value="members" data-qa-id="swarm-members-tab">
+								Members <span className="text-muted-foreground tabular-nums">{workers.length}</span>
+							</TabsTrigger>
+							<TabsTrigger value="graph" data-qa-id="swarm-graph-tab">
+								Graph
+							</TabsTrigger>
+						</TabsList>
+						<TabsContent
+							value="board"
+							keepMounted
+							className="flex min-h-0 flex-col data-[hidden]:hidden"
+						>
+							{boardList}
+						</TabsContent>
+						<TabsContent value="members" className="min-h-0 overflow-y-auto py-3">
+							<MembersView
+								team={board.team}
+								rootChatId={rootChatId}
+								services={services}
+								colorOf={colorOf}
+								messages={messages}
+								numbers={numbers}
+								directoryOf={(chatId) => chats?.[chatId]?.directory ?? undefined}
+								updatedAtOf={(chatId) => chats?.[chatId]?.updatedAt}
+								costOf={memberCosts}
+								onOpen={openAgent}
+								canOpen={canOpen}
+								onShowPosts={(chatId) => {
+									setFilter({ ...EMPTY_FILTER, agents: new Set([chatId]) });
+									setView("board");
+								}}
+								onOpenConversation={openConversation}
+								onShowQuestion={(chatId) => {
+									setView("board");
+									setPendingReveal(questionSelector(chatId));
+								}}
+								onStop={stop}
+							/>
+						</TabsContent>
+						<TabsContent value="graph" className="min-h-0 overflow-y-auto py-3">
+							<SwarmGraph
+								members={graphMembers}
+								posts={graphPosts}
+								onFilter={(id) => {
+									setFilter({ ...EMPTY_FILTER, agents: new Set([id]) });
+									setView("board");
+								}}
+								onOpen={openAgent}
+							/>
+						</TabsContent>
+					</Tabs>
+				)}
 			</div>
 			<AlertDialog
 				open={confirmReset !== null}
@@ -996,7 +1142,7 @@ function SwarmBoard({
 					<AlertDialogHeader>
 						<AlertDialogTitle>Clear the board?</AlertDialogTitle>
 						<AlertDialogDescription>
-							Removes the board's messages for every agent. Conversations and running work are not
+							Removes the board's posts for every agent. Conversations and running work are not
 							affected. New arrivals require another review before clearing.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
@@ -1008,6 +1154,27 @@ function SwarmBoard({
 							onClick={() => void reset()}
 						>
 							Clear board
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+			<AlertDialog open={confirmStopAll} onOpenChange={setConfirmStopAll}>
+				<AlertDialogContent data-qa-id="swarm-board-stop-all-dialog">
+					<AlertDialogHeader>
+						<AlertDialogTitle>Stop all agents?</AlertDialogTitle>
+						<AlertDialogDescription>
+							Every running subagent stops now. Work they already saved stays; the main agent is
+							told they were stopped.
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<AlertDialogCancel>Cancel</AlertDialogCancel>
+						<AlertDialogAction
+							variant="destructive"
+							data-qa-id="swarm-board-stop-all-confirm"
+							onClick={stopAll}
+						>
+							Stop all
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>

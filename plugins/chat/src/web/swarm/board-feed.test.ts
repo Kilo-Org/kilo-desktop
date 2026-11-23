@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BoardMessage, SwarmBoard } from "@kilo-desktop/plugin-core/contracts";
 
-import { EMPTY_FEED, mergeNewest, mergeOlder, type BoardFeed } from "./board-feed";
+import { EMPTY_FEED, mergeNewest, mergeOlder, postNumbers, type BoardFeed } from "./board-feed";
 
 const message = (id: string): BoardMessage => ({
 	id,
@@ -57,5 +57,33 @@ describe("board feed", () => {
 		feed = mergeOlder(feed, page(["m3", "m4"], { hasMore: true, cursor: "m3" }));
 		expect(ids(feed)).toEqual(["m3", "m4", "m5", "m6"]);
 		expect(feed).toMatchObject({ hasMore: true, cursor: "m3" });
+	});
+});
+
+describe("postNumbers", () => {
+	it("counts back from the revision, across pages and after a reset", () => {
+		const page = (ids: string[], revision: number) => ({
+			ownerChatId: "ses_root",
+			revision,
+			messages: ids.map((id, index) => ({
+				id,
+				timestamp: index,
+				from: "main",
+				to: "ALL",
+				type: "INFO" as const,
+				body: id,
+			})),
+			hasMore: false,
+		});
+		const feed = mergeNewest(EMPTY_FEED, page(["c", "d"], 9));
+		const older = mergeOlder(feed, page(["a", "b"], 9));
+
+		expect([...postNumbers(older)]).toEqual([
+			["a", 6],
+			["b", 7],
+			["c", 8],
+			["d", 9],
+		]);
+		expect(postNumbers(EMPTY_FEED).size).toBe(0);
 	});
 });

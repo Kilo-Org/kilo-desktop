@@ -19,10 +19,12 @@
 		"kilo.work-sessions/window": "optional",
 		"kilo.work-sessions/pane-kind": "optional",
 		"kilo.work-sessions/work-session-action": "optional",
+		"kilo.work-sessions/work-session-decoration": "optional",
 		"kilo.work-sessions/work-session-starter": "optional",
 		"kilo.work-sessions/opener": "optional",
 		"kilo.work-sessions/permission-auto-answer": "optional",
 		"kilo.shell/navigation": "optional",
+		"kilo.shell/settings-section": "optional",
 		"kilo.shell/notifications": "optional",
 		"kilo.shell/theme": "optional",
 		"kilo.core/swarm": "optional"
@@ -178,6 +180,12 @@
 					"priority": 10
 				}
 			],
+			"kilo.work-sessions/work-session-decoration": [
+				{
+					"id": "swarm",
+					"slot": "row"
+				}
+			],
 			"kilo.work-sessions/opener": [
 				{
 					"id": "chat",
@@ -197,6 +205,15 @@
 			"kilo.work-sessions/permission-auto-answer": [
 				{
 					"id": "auto-approve"
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "swarm-board",
+					"title": "Swarm Board",
+					"description": "How delegated agents coordinate on a shared board you can watch.",
+					"category": "kilo.shell/ai",
+					"priority": 85
 				}
 			],
 			"kernel/command": [
@@ -398,6 +415,15 @@
 					"tools": ["plan_exit"],
 					"standalone": true,
 					"category": "planning"
+				},
+				{
+					"id": "board-post",
+					"tools": ["board_post"],
+					"standalone": true
+				},
+				{
+					"id": "board-read",
+					"tools": ["board_read"]
 				}
 			]
 		}

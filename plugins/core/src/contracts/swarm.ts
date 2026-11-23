@@ -109,6 +109,17 @@ export const swarmTeamSchema = z.object({
 });
 export type SwarmTeam = z.output<typeof swarmTeamSchema>;
 
+/** What a chat tree has spent, from Kilo's model usage. */
+export const swarmUsageSchema = z.object({
+	/** The whole tree's cost (USD): its top-level root chat and every subagent. */
+	cost: z.number(),
+	/** The cost of the asked chat's own subtree, when Kilo says. */
+	ownCost: z.number().optional(),
+	/** The whole tree's tokens; `input` leaves out cache reads and writes. */
+	tokens: z.object({ input: z.number(), output: z.number() }),
+});
+export type SwarmUsage = z.output<typeof swarmUsageSchema>;
+
 /** The most messages one `board` call returns. */
 export const SWARM_BOARD_PAGE_LIMIT = 50;
 
@@ -126,6 +137,12 @@ export const Swarm = defineDomainObject({
 		boardEvents: z.boolean(),
 		/** The running Kilo server has the team roster (`swarm.team`); `team` returns null without it. */
 		team: z.boolean(),
+		/**
+		 * Delegated agents get a shared board: Kilo's `shared_agent_board` in the
+		 * user's global config, on unless it is `false`. Null until it is read
+		 * (when the server connects).
+		 */
+		enabled: z.boolean().nullable(),
 	}),
 	methods: {
 		/** A page of the board, newest page first; `before` pages back. */
@@ -151,6 +168,17 @@ export const Swarm = defineDomainObject({
 		jobs: method(chatIdInput, z.array(backgroundJobSchema)),
 		/** Cancels one background job and its chat tree. */
 		cancelJob: method(chatIdInput.extend({ jobId: z.string().min(1) }), z.undefined()),
+		/**
+		 * Turns the shared board on or off for every chat by writing
+		 * `shared_agent_board` into the user's global Kilo config, shared with the
+		 * Kilo CLI and VS Code. Only kilo.core, kilo.chat and the main kernel may.
+		 */
+		setEnabled: method(z.object({ enabled: z.boolean() }), z.undefined()),
+		/**
+		 * What the chat's tree has spent (the whole tree, and the chat's own
+		 * subtree); null on Kilo CLIs without model usage.
+		 */
+		usage: method(chatIdInput, swarmUsageSchema.nullable()),
 	},
 	events: {
 		/** A root chat's board changed: a post, or a reset (`cleared` reaches `revision`). */

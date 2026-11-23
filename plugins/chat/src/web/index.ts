@@ -5,6 +5,7 @@ import { Chats, KiloServer } from "@kilo-desktop/plugin-core/contracts";
 import {
 	PaneKind,
 	WorkSessionAction,
+	WorkSessionDecoration,
 	WorkSessionStarter,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -22,6 +23,8 @@ import { ChatServices } from "./runtime/chat-services";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
 import { createSubagentPane, SubagentIcon } from "./subagents/SubagentPane";
 import { createSwarmBoardPane, SwarmIcon } from "./swarm/SwarmBoardPane";
+import { SwarmSessionDecoration } from "./swarm/SwarmSessionDecoration";
+import { implementSwarmSettings } from "./swarm/SwarmSettings";
 import { BUILTIN_TOOL_RENDERERS } from "./tools/builtin-renderers";
 
 /** Commands the composer handles itself, while focused; registered so their shortcuts are listed. */
@@ -33,7 +36,9 @@ const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as 
  * window's composer domain object, its own composer actions and transcript
  * renderers, the composer's commands (`compact`, placed in the `/` menu by its
  * manifest), and which permission requests Auto approve answers
- * (`kilo.work-sessions/permission-auto-answer`). One `ChatServices` (the live
+ * (`kilo.work-sessions/permission-auto-answer`), and the session list's swarm
+ * glyph (`kilo.work-sessions/work-session-decoration`), and Settings → Swarm Board
+ * (`kilo.shell/settings-section`). One `ChatServices` (the live
  * connection to the Kilo server and its event stream) and one query cache are
  * shared by every pane in the window.
  */
@@ -73,6 +78,7 @@ export const chatWebEntry = definePlugin({
 			icon: SwarmIcon,
 		});
 		sdk.extensions.implement(WorkSessionAction, "agents", AgentsMenu);
+		sdk.extensions.implement(WorkSessionDecoration, "swarm", SwarmSessionDecoration);
 		sdk.extensions.implement(
 			WorkSessionStarter,
 			"composer",
@@ -90,6 +96,7 @@ export const chatWebEntry = definePlugin({
 			sdk.extensions.implement(KernelCommand, id, () => undefined);
 		}
 		implementPermissionAutoAnswer(sdk);
+		implementSwarmSettings(sdk);
 		handOverLegacyChoices(sdk);
 	},
 });

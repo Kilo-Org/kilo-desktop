@@ -4,6 +4,7 @@ import {
 	type KiloBackgroundJob,
 	type KiloBoard,
 	type KiloLastTurn,
+	type KiloModelUsage,
 	type KiloTeam,
 } from "../../main/agent/conversations/kilo-chat-client";
 import type {
@@ -273,6 +274,28 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 	async capabilities() {
 		return this.capabilityFlags;
+	}
+	/** The user's global Kilo config, as `global.config.get` answers it. */
+	globalConfigValues: Record<string, unknown> = {};
+	/** Every patch written to the user's global config. */
+	readonly globalConfigUpdates: Record<string, unknown>[] = [];
+	/** While set, the next global config write fails with it (once). */
+	failNextGlobalConfigUpdate: Error | undefined;
+	async globalConfig() {
+		return { ...this.globalConfigValues };
+	}
+	async updateGlobalConfig(patch: Readonly<Record<string, unknown>>) {
+		const failure = this.failNextGlobalConfigUpdate;
+		this.failNextGlobalConfigUpdate = undefined;
+		if (failure) throw failure;
+		this.globalConfigUpdates.push({ ...patch });
+		this.globalConfigValues = { ...this.globalConfigValues, ...patch };
+	}
+	/** Kilo's model usage by chat; a chat not here answers 404. */
+	usages: Record<string, KiloModelUsage> = {};
+	async usage(directory: string, id: string) {
+		this.reads.push(`usage ${id} ${directory}`);
+		return this.usages[id] ?? null;
 	}
 	async cancelBackgroundJob(directory: string, jobId: string) {
 		this.writes.push({ call: "cancelBackgroundJob", directory, args: [jobId] });

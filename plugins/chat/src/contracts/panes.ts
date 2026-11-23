@@ -90,3 +90,25 @@ export const swarmPaneId = (rootChatId: string): string => `swarm:${rootChatId}`
 /** The root chat a Swarm Board pane shows (its `object`). */
 export const swarmPaneRootChatId = (pane: Pick<Pane, "metadata" | "object">): string | null =>
 	paneChatId(pane);
+
+/**
+ * Metadata naming the two agents a Swarm Board conversation pane shows (board
+ * ids: `main` or a chat id), joined by `~`. Without it the pane is the whole board.
+ */
+export const SWARM_CONVERSATION_METADATA_KEY = "kilo.chat/conversation";
+
+/** A conversation pane's id: one per pair of agents, either way round. */
+export const swarmConversationPaneId = (rootChatId: string, a: string, b: string): string =>
+	`swarm:${rootChatId}:${[a, b].toSorted().join("~")}`;
+
+export const swarmConversationMetadata = (a: string, b: string): Record<string, string> => ({
+	[SWARM_CONVERSATION_METADATA_KEY]: `${a}~${b}`,
+});
+
+/** The two agents a conversation pane shows, or null for a whole board. */
+export function swarmPaneConversation(
+	pane: Pick<Pane, "metadata">,
+): readonly [string, string] | null {
+	const [a, b] = (pane.metadata[SWARM_CONVERSATION_METADATA_KEY] ?? "").split("~");
+	return a && b ? [a, b] : null;
+}

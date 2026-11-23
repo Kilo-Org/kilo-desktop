@@ -15,6 +15,7 @@ import {
 import { agentPane, chatSummary } from "../../test/chat-host";
 import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
+import { useSwarmBoardStore } from "./swarm-board-store";
 import { WORKER_COLORS } from "./swarm-colors";
 import { toolPart } from "../../test/transcript";
 
@@ -104,34 +105,38 @@ const postText = (text: string) =>
 	pane().getByTestId("swarm-board-message").getByText(text, { exact: true });
 
 describe("the Swarm Board pane", () => {
-	it("shows the team and the board's posts, named by the team's titles", async () => {
-		await showBoard();
-		await pane().getByTestId("swarm-team-toggle").click();
+	it("shows the board's posts, named by the team's titles, and the team in Members", async () => {
+		await showBoard({
+			boards: {
+				ses_a: board(
+					[
+						message("m1"),
+						message("m2", { type: "ASK", from: "main", to: "ses_c1", replyTo: "m1" }),
+					],
+					{ revision: 2 },
+				),
+			},
+		});
 
-		await expect
-			.element(pane().getByTestId("swarm-team").getByText("Main agent"), WAIT)
-			.toBeVisible();
-		await expect
-			.element(pane().getByTestId("swarm-team-member").filter({ hasText: "Map bridge RPC" }))
-			.toHaveTextContent("Map bridge RPC");
-		await pane().getByRole("button", { name: "Close team", exact: true }).click();
-		const posts = pane().getByTestId("swarm-board-message");
 		const senders = pane().getByTestId("swarm-board-message-sender");
-		await expect.element(posts.nth(0)).toHaveAttribute("data-type", "RESULT");
-		await expect.element(senders.nth(0).getByText("Map bridge RPC")).toBeVisible();
+		await expect.element(senders.nth(0), WAIT).toHaveTextContent("Map bridge RPC");
+		await expect.element(senders.nth(1)).toHaveTextContent("Main agent");
 		await expect.element(postText("Finding m1")).toBeVisible();
-		// The ASK replies to m1, so it sits in m1's thread.
-		const reply = pane().getByTestId("swarm-board-thread").getByTestId("swarm-board-message");
-		await expect.element(reply).toHaveAttribute("data-type", "ASK");
-		await expect.element(senders.nth(1).getByText("Main agent")).toBeVisible();
-		await expect.element(postText("Finding m2")).toBeVisible();
+		await expect
+			.element(pane().getByTestId("swarm-board-message-reply"))
+			.toHaveTextContent("Reply to #1");
+		await pane().getByTestId("swarm-members-tab").click();
+		const members = pane().getByTestId("swarm-member");
+		await expect.element(members.nth(0)).toHaveAttribute("data-chat-id", "ses_a");
+		await expect.element(members.nth(1)).toHaveAttribute("data-chat-id", "ses_c1");
 	});
-
-	it("opens an agent's transcript from the team", async () => {
+	it("opens an agent's transcript from Members", async () => {
 		const host = await showBoard();
-		await pane().getByTestId("swarm-team-toggle").click();
+		await pane().getByTestId("swarm-members-tab").click({ timeout: WAIT.timeout });
+		const member = pane().getByTestId("swarm-member").nth(1);
+		await member.getByTestId("swarm-member-toggle").click();
 
-		await pane().getByTestId("swarm-team-member").filter({ hasText: "Map bridge RPC" }).click();
+		await member.getByTestId("swarm-member-open").click();
 
 		expect(host.sessions.calls.open).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -141,7 +146,6 @@ describe("the Swarm Board pane", () => {
 			}),
 		);
 	});
-
 	it("pages back to older messages", async () => {
 		const messages = Array.from({ length: 60 }, (_, index) => message(`m${index + 1}`));
 		await showBoard({ boards: { ses_a: board(messages) } });
@@ -222,7 +226,7 @@ describe("the Swarm Board pane", () => {
 		await expect.element(page.getByText("The board changed")).toBeVisible();
 	});
 
-	it("stops a running background agent", async () => {
+	it("stops a running background agent from Members", async () => {
 		const fake = delegatingServer();
 		const host = await showBoard({
 			server: fake,
@@ -242,24 +246,18 @@ describe("the Swarm Board pane", () => {
 		});
 
 		fake.emit("session.status", { sessionID: "ses_c1", status: { type: "busy" } });
-		await pane().getByTestId("swarm-team-toggle").click();
-		await pane()
-			.getByTestId("swarm-team-row")
-			.filter({ hasText: "Map bridge RPC" })
-			.getByTestId("swarm-team-member-details-toggle")
-			.click();
-		await expect.element(pane().getByText("explore"), WAIT).toBeVisible();
-		await expect.element(pane().getByTestId("swarm-team-member-model")).toBeVisible();
+		await pane().getByTestId("swarm-members-tab").click({ timeout: WAIT.timeout });
+		const member = pane().getByTestId("swarm-member").nth(1);
 		await expect
-			.element(pane().getByTestId("swarm-team-member-state").nth(1), WAIT)
+			.element(member.getByTestId("swarm-member-status"), WAIT)
 			.toHaveTextContent("Working");
-		await pane().getByTestId("swarm-job-cancel").click();
+		await member.getByTestId("swarm-member-toggle").click();
+		await member.getByTestId("swarm-member-stop").click();
 
 		await vi.waitFor(() =>
 			expect(host.core.calls.cancelJob).toHaveBeenCalledWith({ chatId: "ses_a", jobId: "job_1" }),
 		);
 	});
-
 	it("reads the board when Kilo announces a change, without polling", async () => {
 		const host = await showBoard({ boardEvents: true });
 		await expect.element(postText("Finding m2"), WAIT).toBeVisible();
@@ -275,7 +273,7 @@ describe("the Swarm Board pane", () => {
 		expect(host.core.calls.boardReads.mock.calls.length).toBe(reads + 1);
 	});
 
-	it("shows Kilo's roster when the server has one: agent, model and who needs you", async () => {
+	it("shows Kilo's roster when the server has one: who needs you, and a way to stop it", async () => {
 		await showBoard({
 			teams: {
 				ses_a: {
@@ -299,22 +297,15 @@ describe("the Swarm Board pane", () => {
 			},
 		});
 
-		await pane().getByTestId("swarm-team-toggle").click();
-		await pane()
-			.getByTestId("swarm-team-row")
-			.filter({ hasText: "Map bridge RPC" })
-			.getByTestId("swarm-team-member-details-toggle")
-			.click();
-		await expect.element(pane().getByText("explore"), WAIT).toBeVisible();
-		await expect.element(pane().getByTestId("swarm-team-member-model")).toBeVisible();
-		await expect.element(pane().getByTestId("swarm-team-member-needs-you")).toBeVisible();
+		await pane().getByTestId("swarm-members-tab").click({ timeout: WAIT.timeout });
+		const member = pane().getByTestId("swarm-member").nth(1);
 		await expect
-			.element(pane().getByTestId("swarm-team-row").filter({ hasText: "Map bridge RPC" }))
-			.toHaveAttribute("data-state", "working");
-		await expect.element(pane().getByTestId("swarm-job-cancel")).toBeVisible();
+			.element(member.getByTestId("swarm-member-status"), WAIT)
+			.toHaveTextContent("Needs you");
+		await member.getByTestId("swarm-member-toggle").click();
+		await expect.element(member.getByTestId("swarm-member-stop")).toBeVisible();
 	});
-
-	it("folds long posts but the newest, and folds or unfolds any post or all of them", async () => {
+	it("folds long posts but the newest, and folds or unfolds any post", async () => {
 		const long = `LONG REPORT\n${"detail line\n".repeat(12)}`;
 		await showBoard({
 			boards: { ses_a: board([message("m1", { body: long }), message("m2", { body: long })]) },
@@ -332,12 +323,9 @@ describe("the Swarm Board pane", () => {
 		await expect
 			.element(posts.nth(0).getByTestId("swarm-board-message-preview"))
 			.not.toBeInTheDocument();
-
-		await boardAction("swarm-board-fold-all");
+		await posts.nth(1).getByTestId("swarm-board-message-toggle").click();
 		await expect.element(posts.nth(1).getByTestId("swarm-board-message-preview")).toBeVisible();
-		await expect.element(posts.nth(0).getByTestId("swarm-board-message-preview")).toBeVisible();
 	});
-
 	it("says when the board isn't available for a chat", async () => {
 		await showBoard({ boards: {} });
 
@@ -347,48 +335,6 @@ describe("the Swarm Board pane", () => {
 			.element(unavailable.getByText("The board isn't available for this chat"))
 			.toBeVisible();
 		await expect.element(pane().getByTestId("swarm-board-empty")).not.toBeInTheDocument();
-	});
-
-	it("expands a team member to its run, and shows a failed worker's error", async () => {
-		await showBoard({
-			chats: [
-				TEAM[0]!,
-				chatSummary("ses_c1", {
-					parentId: "ses_a",
-					title: "Map bridge RPC",
-					agent: "explore",
-					createdAt: Date.UTC(2026, 10, 11, 10, 0),
-				}),
-			],
-			jobs: {
-				ses_a: [
-					{
-						id: "job_1",
-						type: "task",
-						status: "error",
-						chatId: "ses_c1",
-						model: "kilo/anthropic/claude-haiku-4.5",
-						startedAt: Date.UTC(2026, 10, 11, 10, 0),
-						completedAt: Date.UTC(2026, 10, 11, 10, 3, 5),
-						error: "Rate limited by the provider",
-					},
-				],
-			},
-		});
-
-		const row = pane().getByTestId("swarm-team-row").filter({ hasText: "Map bridge RPC" });
-		await pane().getByTestId("swarm-team-toggle").click();
-		await expect.element(row, WAIT).toHaveAttribute("data-state", "failed");
-		await expect
-			.element(row.getByTestId("swarm-team-member-error"))
-			.toHaveTextContent("Rate limited by the provider");
-
-		await row.getByTestId("swarm-team-member-details-toggle").click();
-		await expect.element(row.getByTestId("swarm-team-member-agent")).toHaveTextContent("explore");
-		const details = row.getByTestId("swarm-team-member-details");
-		await expect.element(details.getByText("took 3m 05s", { exact: false })).toBeVisible();
-		await expect.element(details.getByText("In the background")).toBeVisible();
-		await expect.element(details.getByText("kilo/anthropic/claude-haiku-4.5")).toBeVisible();
 	});
 
 	it("is empty before any agent posts", async () => {
@@ -404,10 +350,13 @@ describe("the Swarm Board pane", () => {
 
 describe("the composer's subagent strip", () => {
 	it("opens the chat's Swarm Board once it has delegated", async () => {
+		// With everyone finished, the swarm shelf stays while a post is unread.
+		useSwarmBoardStore.setState({ seen: {} });
 		const host = await renderChat({
 			server: delegatingServer(),
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: TEAM,
+			boards: { ses_a: board([message("m1")]) },
 		});
 
 		await page.getByTestId("kilo-composer-swarm-board").click({ timeout: WAIT.timeout });

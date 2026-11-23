@@ -10,7 +10,9 @@ import {
 	type BackgroundJob,
 	type BoardMessage,
 	type SwarmBoard,
+	type SwarmUsage,
 } from "../../../contracts";
+import { onlyCallers } from "../callers";
 import type { ConversationsService } from "../conversations";
 import {
 	BoardConflictError,
@@ -18,6 +20,7 @@ import {
 	type KiloBoard,
 	type KiloChatClient,
 	type KiloLastTurn,
+	type KiloModelUsage,
 	type KiloTeam,
 } from "../conversations/kilo-chat-client";
 import type { ChatInfo } from "../conversations/activity";
@@ -46,6 +49,27 @@ function modelOf(value: unknown): string | undefined {
 	const { providerID, modelID, id } = value as Record<string, unknown>;
 	const model = text(modelID) ?? text(id);
 	return text(providerID) && model ? `${providerID as string}/${model}` : undefined;
+}
+
+/** Kilo's own switch for the shared board, in the user's global config. */
+const BOARD_CONFIG_KEY = "shared_agent_board";
+
+/** Kilo turns the board off only for an explicit `false` (its `BoardEnabled.resolve`). */
+const boardEnabled = (config: Readonly<Record<string, unknown>>) =>
+	config[BOARD_CONFIG_KEY] !== false;
+
+/** It changes the user's own config, shared with the Kilo CLI and VS Code. */
+const assertSettingCaller = onlyCallers(
+	["kilo.chat"],
+	"Only kilo.core and kilo.chat turn the shared agent board on or off.",
+);
+
+function toUsage(usage: KiloModelUsage): SwarmUsage {
+	return {
+		cost: usage.totals.cost,
+		...(usage.sessionCost !== undefined ? { ownCost: usage.sessionCost } : {}),
+		tokens: { input: usage.totals.tokens.input, output: usage.totals.tokens.output },
+	};
 }
 
 const isMemberState = (state: string): state is TeamMember["state"] =>
@@ -130,6 +154,18 @@ function toJob(job: KiloBackgroundJob): BackgroundJob[] {
  * `board.updated` as `board-updated` and says whether the server sends it
  * (`swarm.boardEvents` capability), so a board view polls only on older Kilo CLIs.
  * The team comes from Kilo's roster when the server has one (`swarm.team`).
+ * `usage` relays Kilo's model usage of the chat's tree.
+ *
+ * Whether agents get a board at all is Kilo's own `shared_agent_board` in the
+ * user's global config (`enabled`), read whenever a server (re)connects and
+ * after every write. `setEnabled` writes it through the running server (the
+ * one `kilo.core/server` connects), one write at a time, and only for
+ * kilo.core, kilo.chat and the main kernel: the config is shared with the
+ * Kilo CLI and VS Code. Unlike kilo.core/work-style it doesn't dispose the
+ * server's instances afterwards: Kilo's `global.config.update` already
+ * disposes them all when the file changed, so they reload the config and the
+ * next agent turn sees the new value; a second dispose would only tear them
+ * down twice.
  */
 export function provideSwarm(sdk: PluginSdk, conversations: ConversationsService): void {
 	/** Mirrors `swarm.state.team`, read before the domain object exists. */
@@ -152,8 +188,10 @@ export function provideSwarm(sdk: PluginSdk, conversations: ConversationsService
 		}
 	}
 
+	let writingSetting: Promise<unknown> = Promise.resolve();
+
 	const swarm = sdk.domainObjects.provide(Swarm, {
-		initialState: { boardEvents: false, team: false },
+		initialState: { boardEvents: false, team: false, enabled: null },
 		methods: {
 			board: ({ chatId, before, limit }) =>
 				call(chatId, "read the board", async (client, directory) =>
@@ -178,8 +216,44 @@ export function provideSwarm(sdk: PluginSdk, conversations: ConversationsService
 				call(chatId, "cancel the background job", (client, directory) =>
 					client.cancelBackgroundJob(directory, jobId),
 				),
+			usage: ({ chatId }) =>
+				call(chatId, "read the usage", async (client, directory) => {
+					const usage = await client.usage(directory, chatId);
+					return usage ? toUsage(usage) : null;
+				}),
+			setEnabled: ({ enabled }, caller) => {
+				assertSettingCaller(caller);
+				const run = writingSetting.then(async () => {
+					const { client } = await conversations.connected();
+					await client.updateGlobalConfig({ [BOARD_CONFIG_KEY]: enabled }).catch(explainFailure);
+					await readEnabled();
+				});
+				writingSetting = run.catch(() => undefined);
+				return run;
+			},
 		},
 	});
+
+	/** Kilo's own message (a read-only config, say) is what the person needs to fix it. */
+	function explainFailure(error: unknown): never {
+		sdk.logger.warn("Could not save the shared agent board setting", error);
+		if (error instanceof KernelError) throw error;
+		const message = error instanceof Error && error.message ? error.message : undefined;
+		throw new KernelError("BUSINESS", message ?? "Could not save the shared agent board setting.", {
+			cause: error,
+		});
+	}
+
+	/** Reads `shared_agent_board` from the user's global config; failures leave `enabled` as it was. */
+	async function readEnabled(): Promise<void> {
+		try {
+			const { client } = await conversations.connected();
+			const enabled = boardEnabled(await client.globalConfig());
+			if (enabled !== swarm.state.enabled) swarm.setState({ ...swarm.state, enabled });
+		} catch (error) {
+			sdk.logger.warn("Could not read the shared agent board setting", error);
+		}
+	}
 
 	/**
 	 * Workers' newest turns, kept while their chat is unchanged. A completed
@@ -285,6 +359,7 @@ export function provideSwarm(sdk: PluginSdk, conversations: ConversationsService
 	const stop = conversations.onEvent((event) => {
 		if (event.type === "server.connected") {
 			void readCapabilities();
+			void readEnabled();
 			return;
 		}
 		if (event.type !== "board.updated") return;

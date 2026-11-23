@@ -103,6 +103,31 @@ export interface KiloLastTurn {
 	readonly model?: { readonly providerID: string; readonly modelID: string };
 }
 
+interface KiloUsageTotals {
+	readonly steps: number;
+	readonly cost: number;
+	readonly tokens: {
+		readonly input: number;
+		readonly output: number;
+		readonly reasoning: number;
+		readonly cache: { readonly read: number; readonly write: number };
+	};
+}
+
+/** Kilo's token usage and cost of a chat tree (`GET /session/{id}/model-usage`). */
+export interface KiloModelUsage {
+	/** Every chat of the tree, from its top-level root down. */
+	readonly sessionIDs: readonly string[];
+	/** The cost of the asked chat's own subtree. */
+	readonly sessionCost?: number;
+	/** The whole tree: the top-level root and every subagent. */
+	readonly totals: KiloUsageTotals;
+	readonly models: readonly (KiloUsageTotals & {
+		readonly providerID: string;
+		readonly modelID: string;
+	})[];
+}
+
 /** The board changed since the revision a reset named. */
 export class BoardConflictError extends Error {}
 
@@ -208,9 +233,27 @@ export interface KiloChatClient {
 	team(directory: string, id: string): Promise<KiloTeam | null>;
 	/** The server's experimental capabilities (`swarm.boardEvents`…); `{}` when it can't say. */
 	capabilities(): Promise<Readonly<Record<string, unknown>>>;
+	/**
+	 * The user's own global Kilo config (`~/.config/kilo/`), shared with the
+	 * Kilo CLI and VS Code; not Desktop's app-owned config directory.
+	 */
+	globalConfig(): Promise<Readonly<Record<string, unknown>>>;
+	/**
+	 * Deep-merges `patch` into the user's global Kilo config. Kilo disposes
+	 * its instances itself when the file changed, so they reload it.
+	 */
+	updateGlobalConfig(patch: Readonly<Record<string, unknown>>): Promise<void>;
+	/** The chat tree's token usage and cost; null when the server doesn't have it (404). */
+	usage(directory: string, id: string): Promise<KiloModelUsage | null>;
 }
 
 const at = (directory: string | undefined) => (directory ? { directory } : {});
+
+type GlobalConfigUpdate = NonNullable<
+	NonNullable<
+		Parameters<ReturnType<typeof createKiloClient>["global"]["config"]["update"]>[0]
+	>["config"]
+>;
 
 /**
  * A fork replays its whole copied transcript twice on `/global/event`: as the
@@ -233,6 +276,12 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		Authorization: `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`,
 	};
 	const client = createKiloClient({ baseUrl: connection.baseUrl, headers: authorization });
+	// The global config isn't a project's: its requests carry the server's global directory, as kilo.core/work-style's do.
+	const globalClient = createKiloClient({
+		baseUrl: connection.baseUrl,
+		headers: authorization,
+		directory: connection.globalDirectory,
+	});
 	const options = { throwOnError: true } as const;
 	const toInfo = (value: unknown) => {
 		const info = readChatInfo(value);
@@ -518,6 +567,22 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		async capabilities() {
 			const { data } = await client.experimental.capabilities.get(undefined, options);
 			return (data ?? {}) as Readonly<Record<string, unknown>>;
+		},
+		async globalConfig() {
+			const { data } = await globalClient.global.config.get(options);
+			return (data ?? {}) as Readonly<Record<string, unknown>>;
+		},
+		async updateGlobalConfig(patch) {
+			await globalClient.global.config.update({ config: patch as GlobalConfigUpdate }, options);
+		},
+		async usage(directory, sessionID) {
+			const { data, error, response } = await client.kilocode.sessionModelUsage({
+				sessionID,
+				directory,
+			});
+			if (response?.status === 404) return null;
+			if (error || !data) throw new Error(errorMessage(error) ?? "Could not read the usage.");
+			return data as KiloModelUsage;
 		},
 	};
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { KernelError } from "@kilo-desktop/kernel";
+import { testPlugin } from "@kilo-desktop/kernel/testing";
 
 import { Chats, Swarm } from "../../../contracts";
 import { bootAgent, cleanUpAgents, eventually } from "../../../test/agent/boot";
@@ -369,5 +370,138 @@ describe("kilo.core/swarm team", () => {
 			state: "completed",
 			completedAt: 300_000,
 		});
+	});
+});
+
+describe("kilo.core/swarm shared agent board setting", () => {
+	async function bootWithCallers(chats: FakeKiloChats) {
+		const agent = await bootAgent({
+			chats,
+			waitForServer: true,
+			plugins: [testPlugin("kilo.chat"), testPlugin("acme.other")],
+		});
+		const as = (pluginId: string) => agent.kernel.sdkFor(pluginId).domainObjects.get(Swarm)!;
+		return {
+			...agent,
+			swarm: agent.kernel.kernelSdk.domainObjects.get(Swarm)!,
+			asChat: as("kilo.chat"),
+			asOther: as("acme.other"),
+		};
+	}
+
+	it("is on, read when the server connects, while the user's config doesn't turn it off", async () => {
+		const chats = rooted();
+		const { swarm } = await boot(chats);
+
+		await eventually(() => expect(swarm.getState().enabled).toBe(true));
+	});
+
+	it("follows the user's config each time the server connects again", async () => {
+		const chats = rooted();
+		const { swarm } = await boot(chats);
+		await eventually(() => expect(swarm.getState().enabled).toBe(true));
+
+		chats.globalConfigValues = { shared_agent_board: false };
+		chats.push({ type: "server.connected", properties: {} });
+
+		await eventually(() => expect(swarm.getState().enabled).toBe(false));
+	});
+
+	it("is off when the user's global config sets shared_agent_board to false", async () => {
+		const chats = rooted();
+		chats.globalConfigValues = { shared_agent_board: false };
+		const { swarm } = await boot(chats);
+
+		await eventually(() => expect(swarm.getState().enabled).toBe(false));
+	});
+
+	it("writes shared_agent_board into the user's global config and reads it back", async () => {
+		const chats = rooted();
+		chats.globalConfigValues = { model: "kilo/auto" };
+		const { asChat, swarm } = await bootWithCallers(chats);
+
+		await asChat.methods.setEnabled({ enabled: false });
+
+		expect(chats.globalConfigUpdates).toEqual([{ shared_agent_board: false }]);
+		expect(chats.globalConfigValues).toEqual({ model: "kilo/auto", shared_agent_board: false });
+		expect(swarm.getState().enabled).toBe(false);
+
+		await asChat.methods.setEnabled({ enabled: true });
+		expect(swarm.getState().enabled).toBe(true);
+	});
+
+	it("explains a refused write with Kilo's own message", async () => {
+		const chats = rooted();
+		chats.failNextGlobalConfigUpdate = new Error("The config file is read-only.");
+		const { asChat, swarm } = await bootWithCallers(chats);
+
+		await expect(asChat.methods.setEnabled({ enabled: false })).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: "The config file is read-only.",
+		} satisfies Partial<KernelError>);
+		expect(swarm.getState().enabled).not.toBe(false);
+	});
+
+	it("is changed only by kilo.core, kilo.chat and the main kernel", async () => {
+		const chats = rooted();
+		const { asOther, kernel } = await bootWithCallers(chats);
+
+		await expect(asOther.methods.setEnabled({ enabled: false })).rejects.toMatchObject({
+			code: "PERMISSION_DENIED",
+		});
+		expect(chats.globalConfigUpdates).toEqual([]);
+
+		await kernel.kernelSdk.domainObjects.get(Swarm)!.methods.setEnabled({ enabled: false });
+		expect(chats.globalConfigUpdates).toEqual([{ shared_agent_board: false }]);
+	});
+});
+
+describe("kilo.core/swarm usage", () => {
+	it("reads the cost of the chat's whole tree and of its own subtree, in its directory", async () => {
+		const chats = rooted();
+		chats.usages.ses_root = {
+			sessionIDs: ["ses_root", "ses_child"],
+			sessionCost: 0.25,
+			totals: {
+				steps: 7,
+				cost: 1.5,
+				tokens: { input: 1200, output: 340, reasoning: 50, cache: { read: 900, write: 10 } },
+			},
+			models: [],
+		};
+		const { swarm } = await boot(chats);
+
+		expect(await swarm.methods.usage({ chatId: "ses_root" })).toEqual({
+			cost: 1.5,
+			ownCost: 0.25,
+			tokens: { input: 1200, output: 340 },
+		});
+		expect(chats.reads).toContain("usage ses_root /repo");
+	});
+
+	it("leaves out the subtree's cost when Kilo doesn't say it", async () => {
+		const chats = rooted();
+		chats.usages.ses_root = {
+			sessionIDs: ["ses_root"],
+			totals: {
+				steps: 1,
+				cost: 0,
+				tokens: { input: 1, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
+			},
+			models: [],
+		};
+		const { swarm } = await boot(chats);
+
+		expect(await swarm.methods.usage({ chatId: "ses_root" })).toEqual({
+			cost: 0,
+			tokens: { input: 1, output: 2 },
+		});
+	});
+
+	it("is null when the server has no usage for the chat", async () => {
+		const chats = rooted();
+		const { swarm } = await boot(chats);
+
+		expect(await swarm.methods.usage({ chatId: "ses_root" })).toBeNull();
 	});
 });

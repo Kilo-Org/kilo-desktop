@@ -57,3 +57,19 @@ export function mergeOlder(feed: BoardFeed, board: SwarmBoard): BoardFeed {
 		...(board.cursor ? { cursor: board.cursor } : {}),
 	};
 }
+
+/**
+ * Each loaded post's number on the board (`#n`). Kilo numbers posts with no
+ * gaps and only a reset removes any, so the newest post's number is the
+ * board's revision, and the feed — always the newest posts back without a
+ * hole — counts down from it.
+ */
+export function postNumbers(feed: BoardFeed): ReadonlyMap<string, number> {
+	const numbers = new Map<string, number>();
+	if (feed.revision === null) return numbers;
+	const newest = feed.messages.length - 1;
+	feed.messages.forEach((message, index) => {
+		numbers.set(message.id, feed.revision! - (newest - index));
+	});
+	return numbers;
+}

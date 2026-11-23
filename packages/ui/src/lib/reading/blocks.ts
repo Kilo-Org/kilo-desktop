@@ -74,18 +74,23 @@ export function blockBox(block: ReadingBlock): BlockBox {
 
 /**
  * The block at viewport height `y`: the one spanning it, else the nearest
- * (gaps between blocks belong to the closer one). -1 when there are none.
+ * (a gap between blocks belongs to the closer one, the earlier on a tie). -1
+ * when there are none. Blocks are in reading order, stacked down the page, so
+ * this binary-searches: O(log n) layout reads, not one per block, as it runs
+ * on every scroll frame.
  */
 export function blockIndexAt(blocks: readonly ReadingBlock[], y: number): number {
-	let nearest = -1;
-	let nearestDistance = Number.POSITIVE_INFINITY;
-	blocks.forEach((block, index) => {
-		const { top, bottom } = blockBox(block);
-		const distance = y < top ? top - y : y > bottom ? y - bottom : 0;
-		if (distance < nearestDistance) {
-			nearest = index;
-			nearestDistance = distance;
-		}
-	});
-	return nearest;
+	if (blocks.length === 0) return -1;
+	let low = 0;
+	let high = blocks.length;
+	while (low < high) {
+		const middle = (low + high) >> 1;
+		if (blockBox(blocks[middle]!).bottom < y) low = middle + 1;
+		else high = middle;
+	}
+	if (low === blocks.length) return blocks.length - 1;
+	const after = blockBox(blocks[low]!);
+	if (low === 0 || after.top <= y) return low;
+	const before = blockBox(blocks[low - 1]!);
+	return y - before.bottom <= after.top - y ? low - 1 : low;
 }

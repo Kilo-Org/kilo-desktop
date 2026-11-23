@@ -51,8 +51,12 @@ export const SavedItems = defineDomainObject({
 	state: savedItemsStateSchema,
 	lookup: (state, key) => state.items.find((item) => item.id === key),
 	methods: {
-		/** Adds an item; an exact duplicate (same source, object and anchor) answers the existing one. */
-		add: method(addSavedItemSchema, savedItemSchema),
+		/**
+		 * Adds an item; an exact duplicate (same source, object and anchor)
+		 * answers the existing one with `created: false`, so callers don't offer
+		 * Undo for (and so delete) what was already saved.
+		 */
+		add: method(addSavedItemSchema, z.object({ item: savedItemSchema, created: z.boolean() })),
 		remove: method(z.object({ id: z.string() }), z.object({ removed: savedItemSchema.nullable() })),
 		/** Puts a removed item back as it was (Undo), keeping its id and time. */
 		restore: method(z.object({ item: savedItemSchema }), savedItemSchema),

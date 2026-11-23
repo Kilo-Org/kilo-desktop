@@ -12,8 +12,10 @@ export type FocusMovesWith = (typeof FOCUS_MOVES_WITH)[number];
 export const TEXT_SIZE_STEP_RANGE = { min: -2, max: 6 } as const;
 
 /** Four line spacings, tightest to loosest; each surface maps them to line heights. */
-export const LINE_SPACING_COUNT = 4;
-export type LineSpacing = 0 | 1 | 2 | 3;
+/** The line spacing steps, tightest first: the type, the count and schemas derive from it. */
+export const LINE_SPACINGS = [0, 1, 2, 3] as const;
+export const LINE_SPACING_COUNT = LINE_SPACINGS.length;
+export type LineSpacing = (typeof LINE_SPACINGS)[number];
 export const LINE_SPACING_LABELS = ["Tightest", "Tight", "Loose", "Loosest"] as const;
 
 export type ReadingThemeId = (typeof APP_THEMES)[number]["id"];

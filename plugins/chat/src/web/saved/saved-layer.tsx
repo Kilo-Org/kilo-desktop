@@ -12,7 +12,14 @@ import { SavedToast } from "@kilo-desktop/ui/components/reading/saved-toast";
 import { SelectionMenu } from "@kilo-desktop/ui/components/reading/selection-menu";
 import { rememberExcerpt } from "@kilo-desktop/ui/lib/reading/excerpts";
 import { createSavedPainter } from "@kilo-desktop/ui/lib/reading/saved-highlights";
-import { locateQuote, quoteOf } from "@kilo-desktop/ui/lib/reading/text-anchor";
+import {
+	buildTextIndex,
+	findQuote,
+	locateQuote,
+	quoteOf,
+	rangeOf,
+	type TextQuote,
+} from "@kilo-desktop/ui/lib/reading/text-anchor";
 
 import type { ChatSaved, SavedSurface } from "./chat-saved";
 import { kindOf } from "./chat-saved";
@@ -95,35 +102,50 @@ export const SavedLayer: FC<{
 		if (!value || !selection || selection.mode !== "save") return;
 		const { messageId, quote, rect } = selection;
 		clearSelection();
-		const item = await value.saved.saveText(
+		const added = await value.saved.saveText(
 			{ workSessionId, chatId: value.chatId },
 			messageId,
 			quote,
 			surface,
 		);
 		value.saved.reading.track("selection-menu-used", { action: "save", surface });
-		if (item === "too-long" || !item) {
+		if (added === "too-long" || !added) {
 			selection.dismiss();
 			showToast({
 				message:
-					item === "too-long"
+					added === "too-long"
 						? "Too long to save. Select a shorter passage."
 						: "Couldn't save this text",
 			});
 			return;
 		}
+		const { item } = added;
 		showRemove(item, rect);
+		// It was saved before: no Undo, which would take out the earlier save.
+		if (!added.created) {
+			showToast({ message: "Already in Saved", onView: viewSaved });
+			return;
+		}
 		showToast({
 			message: "Added to Saved",
-			onView: () => {
-				value.saved.reading.track("saved-toast-action", { action: "view", kind: "text" });
-				void value.saved.viewSaved((command, args) => kernel.commands.execute(command, args));
-			},
+			onView: viewSaved,
 			onUndo: () => {
 				value.saved.reading.track("saved-toast-action", { action: "undo", kind: "text" });
-				void value.saved.remove(item, "undo");
+				void undoSave(item);
 			},
 		});
+	};
+
+	const viewSaved = () => {
+		if (!value) return;
+		value.saved.reading.track("saved-toast-action", { action: "view", kind: "text" });
+		void value.saved.viewSaved((command, args) => kernel.commands.execute(command, args));
+	};
+
+	const undoSave = async (item: SavedItem) => {
+		if ((await value?.saved.remove(item, "undo")) === "failed") {
+			showToast({ message: "Couldn't remove this from Saved" });
+		}
 	};
 
 	const remove = async () => {
@@ -132,12 +154,18 @@ export const SavedLayer: FC<{
 		clearSelection();
 		value.saved.reading.track("selection-menu-used", { action: "remove", surface });
 		const removed = await value.saved.remove(item, "highlight-menu");
+		if (removed === "failed") {
+			showToast({ message: "Couldn't remove this from Saved" });
+			return;
+		}
 		if (!removed) return;
 		showToast({
 			message: "Removed from Saved",
 			onUndo: () => {
 				value.saved.reading.track("saved-toast-action", { action: "undo", kind: kindOf(item) });
-				void value.saved.restore(removed);
+				void value.saved.restore(removed).then((restored) => {
+					if (!restored) showToast({ message: "Couldn't put this back in Saved" });
+				});
 			},
 		});
 	};
@@ -185,38 +213,83 @@ function clearSelection(): void {
 }
 
 /** Paints the chat's saved text wherever its replies are shown under `root`, again after every re-render. */
+/** The least time between two repaints while a reply keeps streaming. */
+const REPAINT_INTERVAL_MS = 150;
+
+/**
+ * Paints the chat's saved passages. Each message is indexed once for all its
+ * anchors, and after a change only the messages that changed are located
+ * again (a streaming reply touches one); repaints are spaced out while text
+ * keeps arriving.
+ */
 function useSavedPainter(root: HTMLElement | null, items: readonly SavedItem[]): void {
 	useEffect(() => {
 		if (!root) return;
 		const painter = createSavedPainter();
-		const texts = items
-			.filter((item) => item.source === CHAT_TEXT_SOURCE)
-			.map((item) => parseTextAnchor(item.anchor))
-			.filter((anchor) => anchor !== null);
-		let frame = 0;
-		const paint = () => {
-			frame = 0;
-			const ranges: Range[] = [];
-			for (const anchor of texts) {
-				const message = root.querySelector(
-					`${MESSAGE}[data-message-id="${CSS.escape(anchor.messageId)}"]`,
-				);
-				const surfaces = message ? replySurfaces(message) : [];
-				if (surfaces.length === 0) continue;
-				const range = locateQuote(surfaces, anchor.selector);
-				if (range) ranges.push(range);
-			}
-			painter.paint(ranges);
+		const byMessage = new Map<string, TextQuote[]>();
+		for (const item of items) {
+			if (item.source !== CHAT_TEXT_SOURCE) continue;
+			const anchor = parseTextAnchor(item.anchor);
+			if (!anchor) continue;
+			byMessage.set(anchor.messageId, [
+				...(byMessage.get(anchor.messageId) ?? []),
+				anchor.selector,
+			]);
+		}
+		const located = new Map<string, Range[]>();
+		const locate = (messageId: string, quotes: readonly TextQuote[]) => {
+			const message = root.querySelector(`${MESSAGE}[data-message-id="${CSS.escape(messageId)}"]`);
+			const surfaces = message ? replySurfaces(message) : [];
+			if (surfaces.length === 0) return void located.delete(messageId);
+			const index = buildTextIndex(surfaces);
+			const ranges = quotes.flatMap((quote) => {
+				const found = findQuote(index.text, quote);
+				const range = found ? rangeOf(index, found.start, found.end) : null;
+				return range ? [range] : [];
+			});
+			located.set(messageId, ranges);
 		};
+		const paint = () => painter.paint([...located.values()].flat());
+		for (const [messageId, quotes] of byMessage) locate(messageId, quotes);
 		paint();
-		if (texts.length === 0) return () => painter.dispose();
-		const observer = new MutationObserver(() => {
-			if (!frame) frame = requestAnimationFrame(paint);
+		if (byMessage.size === 0) return () => painter.dispose();
+
+		// Messages changed since the last repaint; null means "can't tell, all of them".
+		let changed: Set<string> | null = new Set();
+		let frame = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let lastPaint = performance.now();
+		const repaint = () => {
+			frame = 0;
+			timer = undefined;
+			lastPaint = performance.now();
+			const ids = changed ?? new Set(byMessage.keys());
+			changed = new Set();
+			for (const messageId of ids) {
+				const quotes = byMessage.get(messageId);
+				if (quotes) locate(messageId, quotes);
+			}
+			paint();
+		};
+		const observer = new MutationObserver((records) => {
+			for (const record of records) {
+				const target =
+					record.target instanceof Element ? record.target : record.target.parentElement;
+				const messageId = target?.closest<HTMLElement>(MESSAGE)?.dataset.messageId;
+				// A change above the messages (one added or removed) may move any of them.
+				if (!messageId) changed = null;
+				else changed?.add(messageId);
+			}
+			if (frame || timer) return;
+			const wait = REPAINT_INTERVAL_MS - (performance.now() - lastPaint);
+			if (wait <= 0) frame = requestAnimationFrame(repaint);
+			else timer = setTimeout(() => (frame = requestAnimationFrame(repaint)), wait);
 		});
 		observer.observe(root, { childList: true, subtree: true, characterData: true });
 		return () => {
 			observer.disconnect();
 			if (frame) cancelAnimationFrame(frame);
+			if (timer) clearTimeout(timer);
 			painter.dispose();
 		};
 	}, [items, root]);

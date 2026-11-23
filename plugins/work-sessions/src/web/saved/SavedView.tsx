@@ -185,36 +185,40 @@ export const SavedView: FC = () => {
 
 	const remove = async (item: SavedItem) => {
 		const kind = kindOf(item, sourceOf(item)?.metadata.presentation);
+		let removed: SavedItem | null;
 		try {
-			const { removed } = (await saved?.methods.remove({ id: item.id })) ?? { removed: null };
-			track("saved-item-removed", {
-				kind,
-				via: "saved-page",
-				ageBucket: ageOf(item),
-			});
-			if (!removed) return;
-			// The same toast Save shows in the chat, so both read alike; it times
-			// itself out, so the stack keeps it until it closes.
-			toast.custom(
-				(id) => (
-					<SavedToast
-						message="Removed from Saved"
-						onUndo={() => {
-							void saved?.methods.restore({ item: removed }).catch(() => {
-								track("saved-action-failed", { action: "restore", kind });
-							});
-						}}
-						onClose={() => toast.dismiss(id)}
-						dismissible
-						className="ml-auto w-fit"
-						qaId="saved-page-toast"
-					/>
-				),
-				{ duration: Number.POSITIVE_INFINITY },
-			);
+			({ removed } = (await saved?.methods.remove({ id: item.id })) ?? { removed: null });
 		} catch {
 			track("saved-action-failed", { action: "remove", kind });
+			toast.error("Couldn't remove this from Saved");
+			return;
 		}
+		track("saved-item-removed", { kind, via: "saved-page", ageBucket: ageOf(item) });
+		if (!removed) return;
+		const undo = async (restored: SavedItem) => {
+			track("saved-toast-action", { action: "undo", kind });
+			try {
+				await saved?.methods.restore({ item: restored });
+			} catch {
+				track("saved-action-failed", { action: "restore", kind });
+				toast.error("Couldn't put this back in Saved");
+			}
+		};
+		// The same toast Save shows in the chat, so both read alike; it times
+		// itself out, so the stack keeps it until it closes.
+		toast.custom(
+			(id) => (
+				<SavedToast
+					message="Removed from Saved"
+					onUndo={() => void undo(removed)}
+					onClose={() => toast.dismiss(id)}
+					dismissible
+					className="ml-auto w-fit"
+					qaId="saved-page-toast"
+				/>
+			),
+			{ duration: Number.POSITIVE_INFINITY },
+		);
 	};
 
 	return (

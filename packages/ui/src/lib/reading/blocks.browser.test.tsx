@@ -71,4 +71,26 @@ describe("reading blocks", () => {
 		expect(blockIndexAt(blocks, top + 900)).toBe(1);
 		expect(blockIndexAt([], 0)).toBe(-1);
 	});
+
+	it("finds the block at a height among many, as a scan of every block would", () => {
+		const root = mount(`
+			<div class="aui-md" style="font-size:16px;line-height:20px">
+				${Array.from({ length: 41 }, (_, index) => `<p style="margin:0 0 ${index % 7}px">P${index}</p>`).join("")}
+			</div>`);
+		const blocks = readingBlocks(root);
+		const boxes = [...root.querySelectorAll("p")].map((p) => p.getBoundingClientRect());
+		const nearest = (y: number) => {
+			let best = -1;
+			let bestDistance = Number.POSITIVE_INFINITY;
+			boxes.forEach((box, index) => {
+				const distance = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+				if (distance < bestDistance) [best, bestDistance] = [index, distance];
+			});
+			return best;
+		};
+		const top = boxes[0]!.top - 30;
+		const bottom = boxes.at(-1)!.bottom + 30;
+
+		for (let y = top; y <= bottom; y += 1.5) expect(blockIndexAt(blocks, y)).toBe(nearest(y));
+	});
 });

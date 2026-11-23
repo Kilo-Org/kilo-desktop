@@ -84,6 +84,8 @@ export interface ReadingPresetsControl {
 	readonly rename: (id: string, name: string) => Promise<unknown>;
 	readonly remove: (id: string) => Promise<unknown>;
 	readonly setDefault: (id: string | null) => Promise<unknown>;
+	/** Tells the person an action from the menu failed (dialogs show their own error). */
+	readonly reportFailure: () => void;
 }
 
 export type ReadingPresetsDialog = "save" | "manage" | null;
@@ -108,11 +110,13 @@ export function readingPresetsControl({
 	methods,
 	live,
 	onSaved,
+	onFailed,
 }: {
 	state: ReadingPresetsState;
 	methods: ReadingPresetsMethods;
 	live: ReadingSettings;
 	onSaved?: (preset: ReadingPreset, isDefault: boolean) => void;
+	onFailed?: () => void;
 }): ReadingPresetsControl {
 	return {
 		state,
@@ -127,6 +131,7 @@ export function readingPresetsControl({
 		rename: (id, name) => methods.rename({ id, name }),
 		remove: (id) => methods.remove({ id }),
 		setDefault: (id) => methods.setDefault({ id }),
+		reportFailure: () => onFailed?.(),
 	};
 }
 
@@ -230,7 +235,7 @@ export function ReadingPresetsHeader({
 							aria-label="Apply App appearance"
 							aria-description="Settings → Appearance: the app's theme, mode and text size"
 							aria-current={matchesAppearance ? "true" : undefined}
-							onClick={() => void presets.apply(null).catch(() => {})}
+							onClick={() => void presets.apply(null).catch(presets.reportFailure)}
 						>
 							<span className="flex size-3.5 shrink-0 items-center justify-center">
 								{matchesAppearance ? <CheckIcon aria-hidden="true" className="size-3.5" /> : null}
@@ -254,7 +259,7 @@ export function ReadingPresetsHeader({
 									data-qa-id={`${qaId}-preset-apply-${preset.id}`}
 									aria-label={`Apply ${preset.name}`}
 									aria-current={isActive ? "true" : undefined}
-									onClick={() => void presets.apply(preset.id).catch(() => {})}
+									onClick={() => void presets.apply(preset.id).catch(presets.reportFailure)}
 								>
 									<span className="flex size-3.5 shrink-0 items-center justify-center">
 										{isActive ? <CheckIcon aria-hidden="true" className="size-3.5" /> : null}
@@ -288,7 +293,7 @@ export function ReadingPresetsHeader({
 			{active && unsaved ? (
 				<button
 					type="button"
-					onClick={() => void presets.update(active.id).catch(() => {})}
+					onClick={() => void presets.update(active.id).catch(presets.reportFailure)}
 					aria-label={`Update “${active.name}”`}
 					data-qa-id={`${qaId}-preset-update`}
 					className={HEADER_LINK}

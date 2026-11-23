@@ -300,13 +300,39 @@ describe("reading presets (main)", () => {
 		expect(restarted.presets.getState()).toEqual({ presets: [], activeId: null, defaultId: null });
 		expect(restarted.reading.getState().textSizeStep).toBe(4);
 	});
+
+	it("starts without writing: stored values it can't use stay on disk, and a write failure can't stop it", async () => {
+		const storage = createMemoryStorage("/data/kilo.shell");
+		const first = await boot({ storage });
+		await first.reading.methods.update(LATE_NIGHT);
+		await first.presets.methods.save({ name: "Late night", makeDefault: true });
+		await first.reading.methods.update({ textSizeStep: 5 });
+		await first.host.dispose();
+		hosts.splice(0);
+		const presets = (storage.saved.get("reading") as { presets: { presets: unknown[] } }).presets;
+		presets.presets.push({ id: "from-a-newer-version", name: 7 });
+		const stored = structuredClone(storage.saved.get("reading"));
+		const kv = storage.kv.bind(storage);
+		storage.kv = (options) => ({
+			...kv(options),
+			set: () => {
+				throw new Error("disk full");
+			},
+		});
+
+		const restarted = await boot({ storage });
+
+		expect(restarted.reading.getState()).toEqual(LATE_NIGHT);
+		expect(restarted.presets.getState().activeId).toBe("preset-1");
+		expect(storage.saved.get("reading")).toEqual(stored);
+	});
 });
 
 describe("reading usage (main)", () => {
 	it("falls back field by field when stored usage is damaged", async () => {
 		const storage = createMemoryStorage("/data/kilo.shell");
 		storage.saved.set("reading", {
-			usage: { focusVisits: "3", lastFocusEnteredAt: 2_000, lastFocusExit: { at: 1 } },
+			usage: { focusVisits: "3", lastFocusEnteredAt: 2_000, lastFocusExit: { at: "yesterday" } },
 		});
 
 		const { usage } = await boot({ storage });
@@ -347,14 +373,14 @@ describe("reading usage (main)", () => {
 			lastFocusExit: null,
 		});
 		now = 5_000;
-		await usage.methods.recordFocusExited({ workSessionId: "ws1" });
+		await usage.methods.recordFocusExited(undefined);
 		now = 9_000;
 		const before = await usage.methods.recordFocusEntered(undefined);
 
 		expect(before).toEqual({
 			focusVisits: 1,
 			lastFocusEnteredAt: 1_000,
-			lastFocusExit: { at: 5_000, workSessionId: "ws1" },
+			lastFocusExit: { at: 5_000 },
 		});
 		expect(usage.getState().focusVisits).toBe(2);
 		expect(usage.getState().lastFocusEnteredAt).toBe(9_000);

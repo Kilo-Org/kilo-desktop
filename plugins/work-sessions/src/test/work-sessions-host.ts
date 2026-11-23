@@ -457,7 +457,7 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 						};
 						write([item, ...provider.state.items], provider.state.addedTotal + 1);
 						provider.emit("added", { item });
-						return item;
+						return { item, created: true };
 					},
 					remove: ({ id }) => {
 						const item = provider.state.items.find((candidate) => candidate.id === id) ?? null;

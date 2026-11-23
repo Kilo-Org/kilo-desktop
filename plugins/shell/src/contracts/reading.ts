@@ -10,6 +10,7 @@ import {
 } from "@kilo-desktop/ui/lib/reading/presets";
 import {
 	FOCUS_MOVES_WITH,
+	LINE_SPACINGS,
 	READING_MODES,
 	TEXT_SIZE_STEP_RANGE,
 	type ReadingSettings,
@@ -18,6 +19,7 @@ import { APP_THEMES } from "@kilo-desktop/ui/themes/app-themes";
 
 const nothing = z.undefined();
 const themeIds = APP_THEMES.map(({ id }) => id) as [string, ...string[]];
+const lineSpacingSchema = z.union(LINE_SPACINGS.map((step) => z.literal(step)));
 
 const readingFocusSchema = z.object({
 	movesWith: z.enum(FOCUS_MOVES_WITH),
@@ -29,7 +31,7 @@ export const readingStateSchema = z.object({
 	themeId: z.enum(themeIds).nullable(),
 	mode: z.enum(READING_MODES),
 	textSizeStep: z.number().int().min(TEXT_SIZE_STEP_RANGE.min).max(TEXT_SIZE_STEP_RANGE.max),
-	lineSpacing: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+	lineSpacing: lineSpacingSchema,
 	focus: readingFocusSchema,
 }) as unknown as z.ZodType<ReadingSettings>;
 
@@ -42,7 +44,7 @@ export const readingPatchSchema = z.object({
 		.min(TEXT_SIZE_STEP_RANGE.min)
 		.max(TEXT_SIZE_STEP_RANGE.max)
 		.optional(),
-	lineSpacing: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).optional(),
+	lineSpacing: lineSpacingSchema.optional(),
 	focus: readingFocusSchema.partial().optional(),
 });
 export type ReadingPatch = z.output<typeof readingPatchSchema>;
@@ -115,7 +117,7 @@ export const ReadingPresets = defineDomainObject({
 export const readingUsageStateSchema = z.object({
 	focusVisits: z.number().int().min(0),
 	lastFocusEnteredAt: z.number().nullable(),
-	lastFocusExit: z.object({ at: z.number(), workSessionId: z.string() }).nullable(),
+	lastFocusExit: z.object({ at: z.number() }).nullable(),
 });
 export type ReadingUsageState = z.output<typeof readingUsageStateSchema>;
 
@@ -132,7 +134,7 @@ export const ReadingUsage = defineDomainObject({
 	methods: {
 		/** Counts a visit; answers the state from before it. */
 		recordFocusEntered: method(nothing, readingUsageStateSchema),
-		recordFocusExited: method(z.object({ workSessionId: z.string() }), nothing),
+		recordFocusExited: method(z.undefined(), nothing),
 	},
 });
 

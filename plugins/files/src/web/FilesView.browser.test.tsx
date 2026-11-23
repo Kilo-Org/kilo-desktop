@@ -1482,6 +1482,48 @@ describe("FilesView", () => {
 		await expect.element(page.getByTestId("files-reading-size")).toHaveTextContent("13px");
 	});
 
+	it("reads rendered Markdown in Focus, entered with ⌘⇧F or from the rail, and reports it", async () => {
+		const view = await renderView(
+			{
+				...handlers(),
+				read: async () => ({
+					kind: "text",
+					contents: "# Read me\n\nFirst paragraph.\n\nSecond paragraph.",
+					byteLength: 48,
+					truncated: false,
+					revision: "a".repeat(64),
+				}),
+			},
+			filePane("docs/readme.md"),
+		);
+		fireEvent.click(await page.getByTestId("files-markdown-toggle").element());
+		await expect.poll(() => view.renderer.contextKeys.get("kilo.files/focusAvailable")).toBe(true);
+		const inFocus = page.getByTestId("files-focus-content");
+
+		await view.renderer.commands.execute("kilo.files/toggle-focus");
+
+		await expect.element(page.getByTestId("shell-takeover")).toBeVisible();
+		await expect.element(inFocus.getByText("Second paragraph.")).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByTestId("shell-takeover")).not.toBeInTheDocument();
+		await expect
+			.poll(() => view.tracked.map(({ event }) => event).filter((name) => name.startsWith("Focus")))
+			.toEqual(["Focus Entered", "Focus Exited"]);
+		expect(view.tracked.find(({ event }) => event === "Focus Entered")?.data).toMatchObject({
+			source: "shortcut",
+			surface: "file",
+		});
+
+		await page.getByText("First paragraph.").hover();
+		await page.getByRole("button", { name: "Focus from here" }).click();
+
+		await expect.element(page.getByTestId("shell-takeover")).toBeVisible();
+		await expect.element(inFocus.getByText("First paragraph.")).toBeVisible();
+		await expect
+			.poll(() => view.tracked.filter(({ event }) => event === "Focus Entered").at(-1)?.data)
+			.toMatchObject({ source: "rail" });
+	});
+
 	it("renders relative Markdown links as file chips that open a new pane", async () => {
 		const markdownHandlers: DocumentMethods = {
 			...handlers(),

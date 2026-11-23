@@ -4,6 +4,7 @@ import {
 	Panes,
 	SAVED_ANCHOR_MAX,
 	SAVED_TEXT_MAX,
+	SHOW_SAVED_COMMAND,
 	SavedItems,
 	SavedSource,
 	WorkSessionsWindow,
@@ -26,14 +27,18 @@ import {
 	type ChatTextAnchor,
 } from "./saved-anchor";
 
-const SHOW_SAVED_COMMAND = "kilo.work-sessions/show-saved";
-
 export interface ChatRef {
 	readonly workSessionId: string;
 	readonly chatId: string;
 }
 
 export type SavedKind = "text" | "chat";
+
+/** An add's outcome: `created` is false when the same passage was already saved. */
+export interface SavedAdd {
+	readonly item: SavedItem;
+	readonly created: boolean;
+}
 export type SavedSurface = "chat" | "focus";
 
 /**
@@ -72,7 +77,7 @@ export class ChatSaved {
 		messageId: string,
 		selector: TextQuote,
 		surface: SavedSurface,
-	): Promise<SavedItem | "too-long" | null> {
+	): Promise<SavedAdd | "too-long" | null> {
 		const anchor = JSON.stringify({ v: 1, messageId, selector } satisfies ChatTextAnchor);
 		if (selector.exact.length > SAVED_TEXT_MAX || anchor.length > SAVED_ANCHOR_MAX) {
 			this.reading.track("saved-action-failed", { action: "add", kind: "text" });
@@ -85,7 +90,15 @@ export class ChatSaved {
 		const existing = this.bookmarkOf(chat.chatId);
 		if (existing) await this.remove(existing, "bookmark-button");
 		const anchor: ChatBookmarkAnchor = { v: 1 };
-		return this.#add(chat, CHAT_BOOKMARK_SOURCE, "", JSON.stringify(anchor), "chat", "chat");
+		const added = await this.#add(
+			chat,
+			CHAT_BOOKMARK_SOURCE,
+			"",
+			JSON.stringify(anchor),
+			"chat",
+			"chat",
+		);
+		return added?.item ?? null;
 	}
 
 	bookmarkOf(chatId: string): SavedItem | undefined {
@@ -99,12 +112,12 @@ export class ChatSaved {
 		anchor: string,
 		kind: SavedKind,
 		surface: SavedSurface,
-	): Promise<SavedItem | null> {
+	): Promise<SavedAdd | null> {
 		const saved = this.sdk.domainObjects.get(SavedItems);
 		if (!saved) return null;
 		const before = saved.getState().addedTotal;
 		try {
-			const item = await saved.methods.add({
+			const added = await saved.methods.add({
 				source,
 				workSessionId: chat.workSessionId,
 				ref: chatPaneObject(chat.chatId),
@@ -112,6 +125,8 @@ export class ChatSaved {
 				text,
 				anchor,
 			});
+			// Saving what was already saved adds nothing: nothing to count or report.
+			if (!added.created) return added;
 			this.reading.noteSaved();
 			this.reading.track("saved-item-added", {
 				kind,
@@ -122,17 +137,18 @@ export class ChatSaved {
 				isFirstTime: before === 0,
 				lifetimeCount: countBucket(before + 1),
 			});
-			return item;
+			return added;
 		} catch {
 			this.reading.track("saved-action-failed", { action: "add", kind });
 			return null;
 		}
 	}
 
+	/** The removed item; null when it was already gone, "failed" when the write failed. */
 	async remove(
 		item: SavedItem,
 		via: "highlight-menu" | "bookmark-button" | "undo",
-	): Promise<SavedItem | null> {
+	): Promise<SavedItem | "failed" | null> {
 		const kind = kindOf(item);
 		try {
 			const result = await this.sdk.domainObjects.get(SavedItems)?.methods.remove({ id: item.id });
@@ -144,15 +160,18 @@ export class ChatSaved {
 			return result?.removed ?? null;
 		} catch {
 			this.reading.track("saved-action-failed", { action: "remove", kind });
-			return null;
+			return "failed";
 		}
 	}
 
-	async restore(item: SavedItem): Promise<void> {
+	/** False when putting it back failed. */
+	async restore(item: SavedItem): Promise<boolean> {
 		try {
 			await this.sdk.domainObjects.get(SavedItems)?.methods.restore({ item });
+			return true;
 		} catch {
 			this.reading.track("saved-action-failed", { action: "restore", kind: kindOf(item) });
+			return false;
 		}
 	}
 

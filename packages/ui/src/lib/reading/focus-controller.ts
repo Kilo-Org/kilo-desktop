@@ -4,7 +4,8 @@ export interface FocusTargetBase {
 	readonly block: number;
 }
 
-export type FocusEntrySource = "rail" | "shortcut" | "reading-control" | "palette";
+/** How Focus was entered; "shortcut" is the toggle-focus command, from its keybinding or the palette. */
+export type FocusEntrySource = "rail" | "shortcut" | "reading-control";
 
 export type FocusExitReason =
 	| "escape"
@@ -13,7 +14,6 @@ export type FocusExitReason =
 	| "reading-control"
 	| "session-switched"
 	| "pane-closed"
-	| "content-gone"
 	| "window-closed"
 	| "other";
 

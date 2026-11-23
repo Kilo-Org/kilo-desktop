@@ -164,6 +164,31 @@ describe("FocusReader", () => {
 		expect(summaries[0]).toMatchObject({ blockCount: 5, movesByKeys: 1, blocksVisited: 2 });
 	});
 
+	it("restyles only what changed when streamed content arrives", async () => {
+		render(<Reader initialBlock={1} />);
+		await expect.poll(() => opacity("Paragraph 2.").style.opacity).toBe("");
+		const restyled = new Set<string>();
+		const watcher = new MutationObserver((records) => {
+			for (const record of records) restyled.add((record.target as Element).textContent ?? "");
+		});
+		const column = page.getByText("Paragraph 1.").element().parentElement!;
+		watcher.observe(column, {
+			subtree: true,
+			attributes: true,
+			attributeFilter: ["style", "data-focus-distance"],
+		});
+
+		page.getByText("Paragraph 3.").element().append(" more");
+		const added = document.createElement("p");
+		added.textContent = "Paragraph 9.";
+		column.append(added);
+		await expect.poll(() => added.dataset.focusDistance).toBe("7");
+
+		watcher.disconnect();
+		expect([...restyled]).toEqual(["Paragraph 9."]);
+		expect(opacity("Paragraph 3. more").style.opacity).toBe("0.3");
+	});
+
 	it("follows the pointer in pointer mode, and the column's middle while scrolling", async () => {
 		const view = render(<Reader initialBlock={0} movesWith="pointer" />);
 		await expect.poll(() => opacity("Paragraph 1.").style.opacity).toBe("");
@@ -277,6 +302,7 @@ describe("FocusReader", () => {
 								rename: done,
 								remove: done,
 								setDefault: done,
+								reportFailure: () => {},
 							}}
 						/>
 					}
@@ -402,11 +428,11 @@ describe("FocusReader", () => {
 						onExit={() => copies.push("exit")}
 						onCopy={(text) => copies.push(text)}
 						onVisitEnd={(summary) => summaries.push(summary)}
-						overlay={<Layer />}
 					>
 						<div className="aui-md">
 							<p>Copy me.</p>
 						</div>
+						<Layer />
 					</FocusReader>
 				</div>
 			);

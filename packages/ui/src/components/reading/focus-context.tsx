@@ -26,8 +26,3 @@ export function useFocusLayer(open: boolean): void {
 		return context.openLayer();
 	}, [context, open]);
 }
-
-/** Whether this renders inside the Focus reader. */
-export function useInFocusReader(): boolean {
-	return use(FocusReaderContext) !== null;
-}

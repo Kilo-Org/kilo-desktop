@@ -359,10 +359,10 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 							item.ref.id === input.ref.id &&
 							item.anchor === input.anchor,
 					);
-					if (same) return same;
+					if (same) return { item: same, created: false };
 					const item: SavedItem = { ...input, id: `saved_${nextId++}`, createdAt: Date.now() };
 					write([item, ...saved.state.items], saved.state.addedTotal + 1);
-					return item;
+					return { item, created: true };
 				},
 				remove: ({ id }) => {
 					const item = saved.state.items.find((candidate) => candidate.id === id) ?? null;

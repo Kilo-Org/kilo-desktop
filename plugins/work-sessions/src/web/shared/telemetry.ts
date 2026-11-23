@@ -18,6 +18,7 @@ export type WorkSessionsEvent =
 	| "saved-page-opened"
 	| "saved-item-opened"
 	| "saved-item-removed"
+	| "saved-toast-action"
 	| "saved-page-searched"
 	| "saved-page-filtered"
 	| "saved-action-failed";

@@ -38,19 +38,26 @@ export const BookmarkButton: FC = () => {
 	const toggle = async () => {
 		if (bookmark) {
 			const removed = await saved.remove(bookmark, "bookmark-button");
-			if (removed) {
+			if (removed === "failed") {
+				showToast({ message: "Couldn't remove this bookmark" });
+			} else if (removed) {
 				showToast({
 					message: "Removed from Saved",
 					onUndo: () => {
 						saved.reading.track("saved-toast-action", { action: "undo", kind: "chat" });
-						void saved.restore(removed);
+						void saved.restore(removed).then((restored) => {
+							if (!restored) showToast({ message: "Couldn't put this back in Saved" });
+						});
 					},
 				});
 			}
 			return;
 		}
 		const item = await saved.bookmark({ workSessionId: layer.workSessionId, chatId: layer.chatId });
-		if (!item) return;
+		if (!item) {
+			showToast({ message: "Couldn't bookmark this chat" });
+			return;
+		}
 		showToast({
 			message: "Added to Saved",
 			onView: () => {
@@ -59,7 +66,9 @@ export const BookmarkButton: FC = () => {
 			},
 			onUndo: () => {
 				saved.reading.track("saved-toast-action", { action: "undo", kind: "chat" });
-				void saved.remove(item, "undo");
+				void saved.remove(item, "undo").then((removed) => {
+					if (removed === "failed") showToast({ message: "Couldn't remove this bookmark" });
+				});
 			},
 		});
 	};

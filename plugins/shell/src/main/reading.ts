@@ -68,8 +68,10 @@ export function provideReading(
 		namespace: "reading",
 	});
 
+	// Read only: the default preset applies in memory for this launch, and a
+	// stored value it can't use stays on disk untouched, so starting never
+	// writes (nor fails on a full or read-only disk).
 	const launch = launchState(store.get("preferences"), store.get("presets"));
-	store.set(launch);
 
 	const reading: DomainObjectProvider<typeof Reading> = sdk.domainObjects.provide(Reading, {
 		initialState: launch.preferences,
@@ -100,8 +102,8 @@ export function provideReading(
 				saveUsage({ ...before, focusVisits: before.focusVisits + 1, lastFocusEnteredAt: now() });
 				return before;
 			},
-			recordFocusExited: ({ workSessionId }) => {
-				saveUsage({ ...usage.state, lastFocusExit: { at: now(), workSessionId } });
+			recordFocusExited: () => {
+				saveUsage({ ...usage.state, lastFocusExit: { at: now() } });
 			},
 		},
 	});
@@ -176,10 +178,7 @@ function normalizeUsage(value: unknown): ReadingUsageState {
 	return {
 		focusVisits: Number.isInteger(visits) && (visits as number) >= 0 ? (visits as number) : 0,
 		lastFocusEnteredAt: Number.isFinite(entered) ? (entered as number) : null,
-		lastFocusExit:
-			exit && Number.isFinite(exit.at) && typeof exit.workSessionId === "string"
-				? { at: exit.at as number, workSessionId: exit.workSessionId }
-				: null,
+		lastFocusExit: exit && Number.isFinite(exit.at) ? { at: exit.at as number } : null,
 	};
 }
 

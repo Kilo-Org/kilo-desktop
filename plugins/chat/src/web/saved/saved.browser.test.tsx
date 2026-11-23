@@ -152,6 +152,45 @@ describe("Save in the chat", () => {
 		await expect.element(page.getByTestId("chat-selection-menu")).not.toBeInTheDocument();
 	});
 
+	it("says a passage saved before is already in Saved, with no Undo to take the earlier save out", async () => {
+		const host = await showReply();
+		await selectText("keep the return URL", "We should keep the return URL in the session.");
+		await page.getByTestId("chat-selection-menu-save").click();
+		await expect.poll(() => host.workSessions.saved().state.items).toHaveLength(1);
+		const [first] = host.workSessions.saved().state.items;
+
+		await selectText("keep the return URL", "We should keep the return URL in the session.");
+		await page.getByTestId("chat-selection-menu-save").click();
+
+		const toast = page.getByRole("status");
+		await expect.element(toast.getByText("Already in Saved")).toBeVisible();
+		await expect.element(toast.getByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+		expect(host.workSessions.saved().state.items).toEqual([first]);
+		expect(host.workSessions.saved().state.addedTotal).toBe(1);
+	});
+
+	it("finds saved passages again only in the reply whose text changed", async () => {
+		const host = await showReply({ earlierTurn: true });
+		await selectText("session cookie", EARLIER_ANSWER);
+		await page.getByTestId("chat-selection-menu-save").click();
+		await selectText("return URL", "We should keep the return URL in the session.");
+		await page.getByTestId("chat-selection-menu-save").click();
+		await expect.poll(() => paintedSavedRanges()).toHaveLength(2);
+		expect(host.workSessions.saved().state.items).toHaveLength(2);
+		const rangeOf = (text: string) => paintedSavedRanges().find((range) => `${range}` === text)!;
+		const earlier = rangeOf("session cookie");
+		const later = rangeOf("return URL");
+
+		page
+			.getByText("We should keep the return URL in the session.")
+			.first()
+			.element()
+			.append(" Then redirect.");
+
+		await expect.poll(() => rangeOf("return URL")).not.toBe(later);
+		expect(rangeOf("session cookie")).toBe(earlier);
+	});
+
 	it("turns Save into Remove once saved, which takes the text straight back out", async () => {
 		const host = await showReply();
 		await selectText("keep the return URL", "We should keep the return URL in the session.");

@@ -172,7 +172,7 @@ export class FilesReading {
 		});
 		void this.sdk.domainObjects
 			.get(ReadingUsage)
-			?.methods.recordFocusExited({ workSessionId: session.workSessionId })
+			?.methods.recordFocusExited(undefined)
 			.catch(() => {});
 	}
 
@@ -318,18 +318,24 @@ export function useFilesReadingPreferences(reading: FilesReading | undefined) {
 	const presetsHandle = useDomainObject(ReadingPresets);
 	const presetsState = useDomainObjectState(ReadingPresets, selectPresets);
 	const notifications = useDomainObject(Notifications);
+	const notifyFailed = () =>
+		void notifications?.methods
+			.toast({ level: "error", title: "Couldn't save the reading setting" })
+			.catch(() => {});
 	const update = (
 		patch: ReadingSettingsPatch,
 		setting: ReadingSettingName,
 		surface: "file" | "focus",
 	) => {
-		void handle?.methods.update(patch as ReadingPatch).catch(() => {});
-		reading?.noteSettingChanged();
-		reading?.track("reading-setting-changed", {
-			setting,
-			value: settingValue(patch, setting),
-			surface,
-		});
+		// Reported once it's saved: a failed write changes nothing, and says so.
+		void handle?.methods.update(patch as ReadingPatch).then(() => {
+			reading?.noteSettingChanged();
+			reading?.track("reading-setting-changed", {
+				setting,
+				value: settingValue(patch, setting),
+				surface,
+			});
+		}, notifyFailed);
 	};
 	const reset = (surface: "file" | "focus") => {
 		const preset = resetsToPreset(presetsState);
@@ -337,9 +343,10 @@ export function useFilesReadingPreferences(reading: FilesReading | undefined) {
 			preset && presetsHandle
 				? presetsHandle.methods.apply({ id: preset })
 				: handle?.methods.reset(undefined);
-		void done?.catch(() => {});
-		reading?.noteSettingChanged();
-		reading?.track("reading-setting-changed", { setting: "reset", value: null, surface });
+		void done?.then(() => {
+			reading?.noteSettingChanged();
+			reading?.track("reading-setting-changed", { setting: "reset", value: null, surface });
+		}, notifyFailed);
 	};
 	const presets =
 		presetsHandle && presetsState
@@ -351,6 +358,7 @@ export function useFilesReadingPreferences(reading: FilesReading | undefined) {
 						void notifications?.methods
 							.toast({ level: "success", title: readingPresetSavedTitle(preset, isDefault) })
 							.catch(() => {}),
+					onFailed: notifyFailed,
 				})
 			: undefined;
 	return {

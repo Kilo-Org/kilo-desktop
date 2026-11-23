@@ -193,10 +193,10 @@ function ReadingMarkdownPreview({ hasText, children }: { hasText: boolean; child
 				ref={setScroller}
 				className="relative min-h-0 flex-1 overflow-auto px-6 py-5"
 				data-qa-id="files-markdown-preview"
-				data-reading-surface="file"
 				style={surfaceStyle}
 			>
-				{children}
+				{/* The surface sits inside the scroller: the rail looks for surfaces within its host. */}
+				<div data-reading-surface="file">{children}</div>
 				{reading && !secondary && hasText ? (
 					<FocusRail
 						host={scroller}

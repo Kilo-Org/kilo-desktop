@@ -10,8 +10,10 @@ import {
 import {
 	SavedItems,
 	WorkSessions,
+	savedItemSchema,
 	type AddSavedItemInput,
 	type SavedItem,
+	type SavedItemsState,
 } from "../../contracts/model";
 
 export interface SavedOptions {
@@ -47,11 +49,11 @@ export function activateSaved(sdk: PluginSdk, options: SavedOptions = {}): void 
 	});
 
 	const saved: DomainObjectProvider<typeof SavedItems> = sdk.domainObjects.provide(SavedItems, {
-		initialState: { items: store.get("items"), addedTotal: store.get("addedTotal") },
+		initialState: readStored(store.get("items"), store.get("addedTotal")),
 		methods: {
 			add: (input) => {
 				const existing = saved.state.items.find((item) => sameItem(item, input));
-				if (existing) return existing;
+				if (existing) return { item: existing, created: false };
 				if (
 					!sdk.domainObjects
 						.get(WorkSessions)
@@ -63,7 +65,7 @@ export function activateSaved(sdk: PluginSdk, options: SavedOptions = {}): void 
 				const item: SavedItem = { ...input, id: createId(), createdAt: now() };
 				write([item, ...saved.state.items], saved.state.addedTotal + 1);
 				saved.emit("added", { item });
-				return item;
+				return { item, created: true };
 			},
 			remove: ({ id }) => {
 				const item = saved.state.items.find((candidate) => candidate.id === id) ?? null;
@@ -93,4 +95,23 @@ export function activateSaved(sdk: PluginSdk, options: SavedOptions = {}): void 
 		if (kept.length !== saved.state.items.length) write(kept);
 	});
 	sdk.onDispose(() => stopDeleted?.());
+}
+
+/**
+ * What the kv store holds, checked item by item: a damaged entry is dropped
+ * and a damaged list or count falls back, so Saved never fails to start (or
+ * throws on every later change) over a bad value on disk.
+ */
+export function readStored(items: unknown, addedTotal: unknown): SavedItemsState {
+	const kept = Array.isArray(items)
+		? items.flatMap((item) => {
+				const parsed = savedItemSchema.safeParse(item);
+				return parsed.success ? [parsed.data] : [];
+			})
+		: [];
+	const total =
+		typeof addedTotal === "number" && Number.isInteger(addedTotal) && addedTotal >= kept.length
+			? addedTotal
+			: kept.length;
+	return { items: kept, addedTotal: total };
 }

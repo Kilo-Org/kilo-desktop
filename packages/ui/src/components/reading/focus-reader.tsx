@@ -74,8 +74,6 @@ export interface FocusReaderProps {
 	 * while the slot holds anything.
 	 */
 	readonly toastSlot?: (slot: HTMLElement | null) => void;
-	/** Extra layers over the content (a selection menu). */
-	readonly overlay?: ReactNode;
 	readonly children: ReactNode;
 	readonly className?: string;
 }
@@ -89,6 +87,18 @@ const isEditable = (target: EventTarget | null) =>
 
 const prefersReducedMotion = () =>
 	globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+
+/** Whether two block lists are the same elements, in the same order. */
+function sameBlocks(a: readonly ReadingBlock[], b: readonly ReadingBlock[]): boolean {
+	return (
+		a.length === b.length &&
+		a.every(
+			(block, index) =>
+				block.elements.length === b[index]!.elements.length &&
+				block.elements.every((element, at) => element === b[index]!.elements[at]),
+		)
+	);
+}
 
 /**
  * The Focus take-over's reader: the reading theme over the whole window, the
@@ -115,7 +125,6 @@ export function FocusReader({
 	onVisitEnd,
 	control,
 	toastSlot,
-	overlay,
 	children,
 	className,
 }: FocusReaderProps) {
@@ -189,7 +198,11 @@ export function FocusReader({
 		});
 	});
 
-	// Read blocks now and after every content change, keeping focus on the same block.
+	// Read blocks now and after every content change (at most once a frame),
+	// keeping focus on the same block. A streaming reply changes text on every
+	// frame; a read finding the same blocks changes nothing, so it re-renders
+	// and restyles nothing. Reads aren't spaced out further: a new paragraph
+	// would show undimmed until the next one.
 	useLayoutEffect(() => {
 		const element = content.current;
 		if (!element) return;
@@ -198,6 +211,7 @@ export function FocusReader({
 		const read = () => {
 			frame = 0;
 			const next = readingBlocks(element);
+			if (!first && sameBlocks(next, blocksRef.current)) return;
 			blocksRef.current = next;
 			setBlocks(next);
 			if (first) {
@@ -229,13 +243,16 @@ export function FocusReader({
 		};
 	}, [centre, focusBlock, latest]);
 
-	// Dim by distance: text opacity on each block's elements.
+	// Dim by distance: text opacity on each block's elements, written only where it changes.
 	useLayoutEffect(() => {
 		blocks.forEach((block, index) => {
-			const opacity = focused < 0 ? 1 : blockOpacity(Math.abs(index - focused), dimming, scheme);
+			const distance = focused < 0 ? 0 : Math.abs(index - focused);
+			const opacity = focused < 0 ? 1 : blockOpacity(distance, dimming, scheme);
+			const value = opacity === 1 ? "" : String(opacity);
 			for (const element of block.elements) {
-				element.style.opacity = opacity === 1 ? "" : String(opacity);
-				element.dataset.focusDistance = String(focused < 0 ? 0 : Math.abs(index - focused));
+				if (element.style.opacity !== value) element.style.opacity = value;
+				if (element.dataset.focusDistance !== String(distance))
+					element.dataset.focusDistance = String(distance);
 			}
 		});
 	}, [blocks, dimming, focused, scheme]);
@@ -392,7 +409,6 @@ export function FocusReader({
 						{children}
 					</div>
 				</div>
-				{overlay}
 				<button
 					type="button"
 					onClick={() => latest.current.onExit("exit-button")}

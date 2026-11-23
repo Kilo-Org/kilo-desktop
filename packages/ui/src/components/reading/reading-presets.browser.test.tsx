@@ -72,6 +72,7 @@ function Harness({
 				...state,
 				presets: state.presets.map((preset) => (preset.id === id ? { ...preset, name } : preset)),
 			}),
+		reportFailure: () => {},
 		remove: async (id) =>
 			setState({
 				presets: state.presets.filter((preset) => preset.id !== id),

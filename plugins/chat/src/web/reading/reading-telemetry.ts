@@ -101,18 +101,20 @@ export function readingTelemetry(sdk: PluginSdk): TrackReading {
 	};
 }
 
-/** Every event id, for the manifest check. */
-export const READING_EVENT_IDS: readonly (keyof ReadingEvents)[] = [
-	"focus-entered",
-	"focus-exited",
-	"focus-entry-failed",
-	"reading-control-opened",
-	"reading-setting-changed",
-	"focus-round-trip",
-	"focus-excerpt-used-in-prompt",
-	"saved-item-added",
-	"saved-item-removed",
-	"saved-toast-action",
-	"selection-menu-used",
-	"saved-action-failed",
-];
+/** Every event, keyed so the compiler requires each one: for the manifest and doc checks. */
+const READING_EVENTS = {
+	"focus-entered": true,
+	"focus-exited": true,
+	"focus-entry-failed": true,
+	"reading-control-opened": true,
+	"reading-setting-changed": true,
+	"focus-round-trip": true,
+	"focus-excerpt-used-in-prompt": true,
+	"saved-item-added": true,
+	"saved-item-removed": true,
+	"saved-toast-action": true,
+	"selection-menu-used": true,
+	"saved-action-failed": true,
+} satisfies Record<keyof ReadingEvents, true>;
+
+export const READING_EVENT_IDS = Object.keys(READING_EVENTS) as (keyof ReadingEvents)[];

@@ -51,13 +51,35 @@ describe("Saved (main)", () => {
 		const again = await saved.methods.add(text("Same", "anchor-1"));
 		await saved.methods.add(text("Same", "anchor-2"));
 
-		expect(again.id).toBe(first.id);
+		expect(first.created).toBe(true);
+		expect(again).toEqual({ item: first.item, created: false });
 		expect(saved.getState().items).toHaveLength(2);
+		expect(saved.getState().addedTotal).toBe(2);
+	});
+
+	it("starts from what it can read when the stored list is damaged", async () => {
+		const first = await boot();
+		const { item } = await first.saved.methods.add(first.text("Kept"));
+		const storage = first.storage;
+		const raw = storage.saved.get("saved") as Record<string, unknown> | undefined;
+		storage.saved.set("saved", {
+			...raw,
+			items: [item, { id: 7 }, null, "junk"],
+			addedTotal: "lots",
+		});
+
+		const restarted = await bootWorkSessions({ storage });
+		const saved = restarted.get.get(SavedItems)!;
+
+		expect(saved.getState()).toEqual({ items: [item], addedTotal: 1 });
+		storage.saved.set("saved", { items: null, addedTotal: 3 });
+		const again = (await bootWorkSessions({ storage })).get.get(SavedItems)!;
+		expect(again.getState()).toEqual({ items: [], addedTotal: 3 });
 	});
 
 	it("removes an item and restores it with its id and place on Undo", async () => {
 		const { saved, text } = await boot();
-		const older = await saved.methods.add(text("Older"));
+		const { item: older } = await saved.methods.add(text("Older"));
 		await saved.methods.add(text("Newer"));
 		const events: string[] = [];
 		saved.on("removed", ({ item }) => events.push(`removed ${item.text}`));
@@ -93,7 +115,7 @@ describe("Saved (main)", () => {
 
 	it("looks items up by id", async () => {
 		const { saved, text } = await boot();
-		const item = await saved.methods.add(text("Find me"));
+		const { item } = await saved.methods.add(text("Find me"));
 
 		expect(SavedItems.lookup?.(saved.getState(), item.id)).toMatchObject({ text: "Find me" });
 	});

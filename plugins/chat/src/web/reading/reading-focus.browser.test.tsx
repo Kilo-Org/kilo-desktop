@@ -162,6 +162,28 @@ describe("Focus in the chat", () => {
 		await expect.element(page.getByTestId("shell-takeover")).not.toBeInTheDocument();
 	});
 
+	it("says so when a reading setting can't be saved, and reports it only once saved", async () => {
+		const envelopes: TelemetryEnvelope[] = [];
+		const host = await showReply(envelopes);
+		const changed = () => envelopes.filter(({ name }) => name === "Reading Setting Changed");
+		await page.getByTestId("chat-reading-chat-trigger").click();
+
+		await page.getByTestId("chat-reading-chat-theme-nord").click();
+		await expect.poll(() => changed()).toHaveLength(1);
+
+		const stored = host.host.storage.saved;
+		stored.set = () => {
+			throw new Error("disk full");
+		};
+		await page.getByTestId("chat-reading-chat-theme-gruvbox").click();
+
+		await expect.element(page.getByText("Couldn't save the reading setting").first()).toBeVisible();
+		expect(changed()).toHaveLength(1);
+		expect(host.host.renderer.kernelSdk.domainObjects.get(Reading)!.getState().themeId).toBe(
+			"nord",
+		);
+	});
+
 	it("shows the reader, in the chosen reading theme, when the window renders under StrictMode", async () => {
 		const host = await showReply([], { strictMode: true });
 		await host.host.renderer.kernelSdk.domainObjects

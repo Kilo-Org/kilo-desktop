@@ -73,14 +73,16 @@ describe("SwarmGraph", () => {
 		await expect
 			.element(page.getByRole("button", { name: "Filter the board to Researcher" }))
 			.toBeVisible();
-		await expect.element(page.getByText("6 posts between 4 agents")).toBeVisible();
+		await expect
+			.poll(() => page.getByTestId("swarm-graph-summary").element().textContent)
+			.toBe("6 posts between 4 agents");
 
 		const edges = page.getByTestId("swarm-graph-edge");
 		await expect.poll(() => edges.all().length).toBe(2);
 		const busy = edges
 			.all()
 			.find((edge) => edge.element().getAttribute("data-edge") === "main:ses_a");
-		expect(busy?.element().textContent).toBe("#1 #2 #3 +2");
+		expect(busy?.element().textContent).toBe("#1 · #2 · #3 +2");
 		expect(busy?.element().getAttribute("data-blocking")).toBe("false");
 		const held = edges
 			.all()

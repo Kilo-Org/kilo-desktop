@@ -54,7 +54,7 @@ export function SwarmCard() {
 	return (
 		<button
 			type="button"
-			className="border-border-subtle hover:bg-muted/45 focus-visible:ring-ring/50 mt-1 mb-1.5 flex w-full max-w-md items-center gap-3 rounded-lg border px-3 py-2 text-start text-xs transition-colors outline-none focus-visible:ring-2"
+			className="border-border-subtle hover:bg-muted/45 focus-visible:ring-ring/50 my-3 flex w-full max-w-lg items-center gap-3 rounded-xl border px-3.5 py-3 text-start text-xs transition-colors outline-none focus-visible:ring-2"
 			aria-label="Open Swarm Board"
 			onClick={() => {
 				void telemetry?.methods
@@ -67,8 +67,8 @@ export function SwarmCard() {
 			}}
 			data-qa-id="kilo-swarm-card"
 		>
-			<SwarmFaces team={summary.team} colors={summary.colors} />
-			<span className="flex min-w-0 flex-1 flex-col">
+			<SwarmFaces team={summary.team} colors={summary.colors} size="md" />
+			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="text-foreground truncate text-sm font-medium">
 					Swarm Board · {plural(agents, "agent")}
 				</span>

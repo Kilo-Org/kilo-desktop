@@ -1,3 +1,4 @@
+import { CheckIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -5,6 +6,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	graphEdges,
+	graphHub,
 	graphLayout,
 	type GraphEdge,
 	type GraphMember,
@@ -12,14 +14,14 @@ import {
 } from "./swarm-graph";
 import { AgentAvatar } from "./swarm-parts";
 
-const GRAPH_HEIGHT = 260;
-/** Half the node badge (AgentAvatar's `md` size). */
-const NODE_R = 12;
-/** The window handles' resolution: each step is 0.5% of the posts' time span. */
+const GRAPH_HEIGHT = 320;
+/** The window handles' resolution: each step is 0.5% of the axis. */
 const SLIDER_MAX = 200;
-/** Half the window handle's thumb; the track's ends sit this far in. */
-const THUMB_R = 8;
-const TICKS = 5;
+/** Half the window handle; the track's ends sit this far in. */
+const THUMB_R = 4;
+/** Tick spacings to choose from, in minutes: the smallest giving at most six ticks. */
+const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240];
+const MINUTE = 60_000;
 /** A done agent's color. */
 const DONE_COLOR = "var(--muted-foreground)";
 /** Board numbers shown on an edge before the rest fold into `+n`. */
@@ -49,25 +51,53 @@ function blockingNote(edge: GraphEdge): string | null {
 	return null;
 }
 
-/** A gentle curve from `a` to `b`, with the point halfway along it. */
-function curve(a: { x: number; y: number }, b: { x: number; y: number }) {
-	const dx = b.x - a.x;
-	const dy = b.y - a.y;
-	const length = Math.hypot(dx, dy) || 1;
-	const bend = length * 0.12;
-	const cx = (a.x + b.x) / 2 - (dy / length) * bend;
-	const cy = (a.y + b.y) / 2 + (dx / length) * bend;
+/**
+ * A line from `a` to `b`: straight through the middle of the graph, bowing
+ * outward round its rim (as an ellipse's edge does), with its midpoint.
+ */
+function curve(
+	a: { x: number; y: number },
+	b: { x: number; y: number },
+	centre: { x: number; y: number },
+) {
+	const mx = (a.x + b.x) / 2;
+	const my = (a.y + b.y) / 2;
+	const ox = mx - centre.x;
+	const oy = my - centre.y;
+	const away = Math.hypot(ox, oy);
+	const length = Math.hypot(b.x - a.x, b.y - a.y);
+	if (away < 24 || length === 0)
+		return { d: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, mid: { x: mx, y: my } };
+	const bend = length * 0.22;
+	const cx = mx + (ox / away) * bend;
+	const cy = my + (oy / away) * bend;
 	return {
 		d: `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`,
 		mid: { x: (a.x + 2 * cx + b.x) / 4, y: (a.y + 2 * cy + b.y) / 4 },
 	};
 }
 
+/** The axis: whole minutes round the posts, ticked every 1, 2, 5… minutes. */
+function timeAxis(first: number, last: number) {
+	if (!Number.isFinite(first) || !Number.isFinite(last))
+		return { start: 0, end: MINUTE, ticks: [] };
+	let start = Math.floor(first / MINUTE) * MINUTE;
+	let end = Math.ceil(last / MINUTE) * MINUTE;
+	if (end <= start) end = start + MINUTE;
+	const minutes = (end - start) / MINUTE;
+	const step = (TICK_STEPS.find((candidate) => minutes / candidate <= 5) ?? 480) * MINUTE;
+	start = Math.floor(start / step) * step;
+	end = Math.ceil(end / step) * step;
+	const ticks: number[] = [];
+	for (let at = start; at <= end; at += step) ticks.push(at);
+	return { start, end, ticks };
+}
+
 /**
  * Who talked to whom on the board: a node per agent (click filters the board
  * to it, double-click opens it) and a line per pair that exchanged posts,
  * heavier with more posts and bright when it carries a HOLD or VETO. The
- * Timing strip narrows the time window; posts and lines outside it dim.
+ * Timing strip narrows the time window; lines outside it turn dashed.
  */
 export function SwarmGraph({
 	members,
@@ -85,17 +115,19 @@ export function SwarmGraph({
 
 	const drawnIds = graphEdges(members, posts).inWindow;
 	const drawn = posts.filter((post) => drawnIds.has(post.id));
-	const first = Math.min(...drawn.map((post) => post.timestamp));
-	const last = Math.max(...drawn.map((post) => post.timestamp));
-	const start = first;
-	const end = last > first ? last : first + 60_000;
+	const axis = timeAxis(
+		Math.min(...drawn.map((post) => post.timestamp)),
+		Math.max(...drawn.map((post) => post.timestamp)),
+	);
+	const { start, end } = axis;
 	const fractionOf = (timestamp: number) => (timestamp - start) / (end - start);
 	const timeAt = (value: number) => start + (value / SLIDER_MAX) * (end - start);
 	const timeWindow = { from: timeAt(range[0]), to: timeAt(range[1]) };
 	const full = range[0] === 0 && range[1] === SLIDER_MAX;
 
 	const { edges, inWindow } = graphEdges(members, posts, drawn.length > 0 ? timeWindow : undefined);
-	const layout = graphLayout(members, width, GRAPH_HEIGHT);
+	const layout = graphLayout(members, width, GRAPH_HEIGHT, graphHub(members, edges));
+	const centre = { x: width / 2, y: GRAPH_HEIGHT / 2 };
 	const memberById = new Map(members.map((member) => [member.id, member]));
 	const nameOf = (id: string) => memberById.get(id)?.name ?? id;
 	const colorOf = (id: string) => {
@@ -103,21 +135,23 @@ export function SwarmGraph({
 		return !member || member.done ? DONE_COLOR : member.color;
 	};
 
-	const ticks = Array.from({ length: TICKS }, (_, index) => {
-		const fraction = index / (TICKS - 1);
-		return { fraction, label: clock(start + fraction * (end - start)) };
-	}).filter((tick, index, all) => index === 0 || tick.label !== all[index - 1]!.label);
-
 	return (
 		<div className="flex min-w-0 flex-col gap-3" data-qa-id="swarm-graph">
 			<div className="text-muted-foreground flex flex-wrap justify-between gap-2 text-xs">
-				<span>
-					{count(drawn.length, "post", "posts")} between {count(members.length, "agent", "agents")}
+				<span data-qa-id="swarm-graph-summary">
+					<span className="text-foreground font-medium">
+						{count(drawn.length, "post", "posts")}
+					</span>{" "}
+					between {count(members.length, "agent", "agents")}
 				</span>
 				<span>Click an agent to filter the board</span>
 			</div>
 
-			<div ref={ref} className="relative w-full overflow-hidden" style={{ height: GRAPH_HEIGHT }}>
+			<div
+				ref={ref}
+				className="bg-muted/40 relative w-full overflow-hidden rounded-xl"
+				style={{ height: GRAPH_HEIGHT }}
+			>
 				{width > 0 ? (
 					<svg
 						width={width}
@@ -130,7 +164,7 @@ export function SwarmGraph({
 							const a = layout.get(edge.a);
 							const b = layout.get(edge.b);
 							if (!a || !b) return null;
-							const { d, mid } = curve(a, b);
+							const { d, mid } = curve(a, b, centre);
 							const dimmed = !edge.posts.some((post) => inWindow.has(post.id));
 							const shown = edge.posts.slice(0, LABEL_POSTS);
 							const more = edge.posts.length - shown.length;
@@ -153,31 +187,39 @@ export function SwarmGraph({
 									<path
 										d={d}
 										fill="none"
-										className={edge.blocking ? "stroke-foreground" : "stroke-muted-foreground/50"}
-										strokeWidth={Math.min(4, edge.posts.length)}
+										className={edge.blocking ? "stroke-foreground" : "stroke-muted-foreground/60"}
+										strokeWidth={Math.min(4, edge.posts.length) + (edge.blocking ? 1 : 0)}
+										strokeDasharray={dimmed ? "3 4" : undefined}
 										strokeLinecap="round"
 									/>
-									<text
-										x={mid.x}
-										y={mid.y}
-										textAnchor="middle"
-										dominantBaseline="middle"
-										style={{ whiteSpace: "pre" }}
-										className={cn(
-											"stroke-pane text-[10px] tabular-nums [paint-order:stroke]",
-											edge.blocking ? "fill-foreground" : "fill-muted-foreground",
-										)}
-										strokeWidth={3}
-										data-qa-id="swarm-graph-edge-label"
+									<foreignObject
+										x={mid.x - 90}
+										y={mid.y - 10}
+										width={180}
+										height={20}
+										className="pointer-events-none overflow-visible"
 									>
-										{shown.map((post, index) => (
-											<tspan key={post.id} opacity={inWindow.has(post.id) ? 1 : 0.4}>
-												{`${index > 0 ? " " : ""}#${post.seq}`}
-											</tspan>
-										))}
-										{more > 0 ? ` +${more}` : null}
-										{note ? ` · ${note}` : null}
-									</text>
+										<div className="flex h-full items-center justify-center">
+											<span
+												className={cn(
+													"bg-pane border-border inline-block rounded-full border px-1.5 text-[10px] leading-4 whitespace-pre tabular-nums",
+													edge.blocking ? "text-foreground" : "text-muted-foreground",
+												)}
+												data-qa-id="swarm-graph-edge-label"
+											>
+												{shown.map((post, index) => (
+													<span
+														key={post.id}
+														className={inWindow.has(post.id) ? undefined : "opacity-40"}
+													>
+														{`${index > 0 ? " · " : ""}#${post.seq}`}
+													</span>
+												))}
+												{more > 0 ? ` +${more}` : null}
+												{note ? ` · ${note}` : null}
+											</span>
+										</div>
+									</foreignObject>
 								</g>
 							);
 						})}
@@ -188,8 +230,6 @@ export function SwarmGraph({
 					? members.map((member) => {
 							const point = layout.get(member.id);
 							if (!point) return null;
-							const leftward = point.x < width / 2 - 1;
-							const room = (leftward ? point.x : width - point.x) - NODE_R - 10;
 							return (
 								<button
 									key={member.id}
@@ -197,34 +237,21 @@ export function SwarmGraph({
 									aria-label={`Filter the board to ${member.name}`}
 									title={member.name}
 									className={cn(
-										"focus-visible:ring-ring absolute flex cursor-pointer items-center gap-1.5 rounded-full outline-none focus-visible:ring-2",
-										leftward && "flex-row-reverse",
+										"bg-muted hover:bg-accent focus-visible:ring-ring absolute flex max-w-44 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center gap-2 rounded-full py-1 ps-1 pe-3 text-sm outline-none focus-visible:ring-2",
+										member.done ? "text-muted-foreground" : "text-foreground",
 									)}
-									style={{
-										top: point.y - NODE_R,
-										...(leftward
-											? { right: width - point.x - NODE_R }
-											: { left: point.x - NODE_R }),
-									}}
+									style={{ left: point.x, top: point.y }}
 									onClick={() => onFilter(member.id)}
 									onDoubleClick={() => onOpen(member.id)}
 									data-qa-id="swarm-graph-node"
 									data-member-id={member.id}
 									data-done={member.done}
 								>
-									{/* An opaque backing, so lines don't show through the badge's tint. */}
-									<span className="bg-pane rounded-full">
+									<span className={cn("flex", member.done && "opacity-70 grayscale")}>
 										<AgentAvatar name={member.name} color={colorOf(member.id)} />
 									</span>
-									<span
-										className={cn(
-											"truncate pe-1 text-xs",
-											member.done ? "text-muted-foreground" : "text-foreground",
-										)}
-										style={{ maxWidth: Math.max(40, room) }}
-									>
-										{member.name}
-									</span>
+									<span className="truncate">{member.name}</span>
+									{member.done ? <CheckIcon aria-label="done" className="size-3 shrink-0" /> : null}
 								</button>
 							);
 						})
@@ -235,7 +262,7 @@ export function SwarmGraph({
 				<p className="text-muted-foreground text-sm">No posts yet — lines appear as agents talk.</p>
 			) : (
 				<section
-					className="flex min-w-0 flex-col gap-2"
+					className="bg-muted/40 flex min-w-0 flex-col gap-3 rounded-xl px-4 py-3"
 					aria-label="Timing"
 					data-qa-id="swarm-graph-timing"
 				>
@@ -252,6 +279,7 @@ export function SwarmGraph({
 						<Button
 							variant="ghost"
 							size="xs"
+							className="text-muted-foreground"
 							disabled={full}
 							onClick={() => setRange([0, SLIDER_MAX])}
 							data-qa-id="swarm-graph-reset"
@@ -259,10 +287,10 @@ export function SwarmGraph({
 							Reset
 						</Button>
 					</div>
-					<div className="relative h-6">
+					<div className="relative h-7">
 						<div
 							aria-hidden
-							className="bg-muted absolute top-1/2 h-1 -translate-y-1/2 rounded-full"
+							className="bg-border absolute top-1/2 h-px -translate-y-1/2"
 							style={{ left: THUMB_R, right: THUMB_R }}
 						/>
 						<div
@@ -271,23 +299,22 @@ export function SwarmGraph({
 							style={{ left: THUMB_R, right: THUMB_R }}
 						>
 							<div
-								className="bg-muted-foreground/40 absolute top-1/2 h-1 -translate-y-1/2 rounded-full"
+								className="border-border bg-foreground/5 absolute inset-y-0 rounded-md border"
 								style={{
 									left: `${(range[0] / SLIDER_MAX) * 100}%`,
 									width: `${((range[1] - range[0]) / SLIDER_MAX) * 100}%`,
 								}}
+								data-qa-id="swarm-graph-window-box"
 							/>
 							{drawn.map((post) => (
 								<span
 									key={post.id}
 									className={cn(
-										"ring-pane absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-1 transition-opacity motion-reduce:transition-none",
-										!inWindow.has(post.id) && "opacity-25",
+										"absolute top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors motion-reduce:transition-none",
+										inWindow.has(post.id) ? "bg-foreground/80" : "bg-muted-foreground/50",
 									)}
-									style={{
-										left: `${fractionOf(post.timestamp) * 100}%`,
-										backgroundColor: colorOf(post.from),
-									}}
+									style={{ left: `${fractionOf(post.timestamp) * 100}%` }}
+									title={`#${post.seq} · ${nameOf(post.from)} · ${clock(post.timestamp)}`}
 									data-qa-id="swarm-graph-dot"
 									data-in-window={inWindow.has(post.id)}
 								/>
@@ -310,29 +337,37 @@ export function SwarmGraph({
 					</div>
 					<div
 						aria-hidden
-						className="text-muted-foreground relative h-4 text-xs tabular-nums"
+						className="text-muted-foreground relative h-4 text-[11px] tabular-nums"
 						style={{ marginInline: THUMB_R }}
 					>
-						{ticks.map((tick) => (
-							<span
-								key={tick.fraction}
-								className="absolute top-0 whitespace-nowrap"
-								style={{
-									left: `${tick.fraction * 100}%`,
-									transform: `translateX(-${tick.fraction * 100}%)`,
-								}}
-							>
-								{tick.label}
-							</span>
-						))}
+						{axis.ticks.map((tick) => {
+							const fraction = fractionOf(tick);
+							return (
+								<span
+									key={tick}
+									className="absolute top-0 whitespace-nowrap"
+									style={{
+										left: `${fraction * 100}%`,
+										transform: `translateX(-${fraction * 100}%)`,
+									}}
+								>
+									{clock(tick)}
+								</span>
+							);
+						})}
 					</div>
 				</section>
 			)}
 
-			<p className="text-muted-foreground text-xs">
-				Line weight = number of posts · Bright line = blocking (hold / veto) · Dimmed = outside the
-				time window · Colour = working · grey = done
-			</p>
+			<ul
+				className="text-muted-foreground flex flex-wrap gap-x-5 gap-y-1 text-xs"
+				aria-label="Legend"
+			>
+				<li>Line weight = number of posts</li>
+				<li>Bright line = blocking (hold / veto)</li>
+				<li>Dashed = outside the time window</li>
+				<li>Colour = working · grey + ✓ = done</li>
+			</ul>
 		</div>
 	);
 }
@@ -368,9 +403,9 @@ function WindowHandle({
 			onChange={(event) => onChange(Number(event.target.value))}
 			className={cn(
 				"pointer-events-none absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none bg-transparent outline-none",
-				"[&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:ring-pane [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:ring-2",
-				"[&::-moz-range-thumb]:bg-foreground [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0",
-				"focus-visible:[&::-webkit-slider-thumb]:ring-ring focus-visible:[&::-moz-range-thumb]:ring-ring focus-visible:[&::-moz-range-thumb]:ring-2",
+				"[&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-sm",
+				"[&::-moz-range-thumb]:bg-foreground [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-2 [&::-moz-range-thumb]:cursor-ew-resize [&::-moz-range-thumb]:rounded-sm [&::-moz-range-thumb]:border-0",
+				"focus-visible:[&::-webkit-slider-thumb]:ring-ring focus-visible:[&::-webkit-slider-thumb]:ring-2 focus-visible:[&::-moz-range-thumb]:ring-ring focus-visible:[&::-moz-range-thumb]:ring-2",
 				raised && "z-10",
 			)}
 		/>

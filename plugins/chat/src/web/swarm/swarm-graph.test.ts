@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { graphEdges, graphLayout, type GraphMember, type GraphPost } from "./swarm-graph";
+import { graphEdges, graphHub, graphLayout, type GraphMember, type GraphPost } from "./swarm-graph";
 
 const member = (id: string): GraphMember => ({ id, name: id, color: "#000", done: false });
 
@@ -79,8 +79,27 @@ describe("graphEdges", () => {
 	});
 });
 
+describe("graphHub", () => {
+	it("centres the worker most others talk to, in a team of four or more", () => {
+		const team = [member("main"), member("a"), member("b"), member("c"), member("d")];
+		const edge = (a: string, b: string) => ({ a, b, posts: [], blocking: false });
+		const edges = [
+			edge("main", "b"),
+			edge("a", "b"),
+			edge("b", "c"),
+			edge("b", "d"),
+			edge("c", "d"),
+		];
+		expect(graphHub(team, edges)).toBe("b");
+		expect(graphHub(team.slice(0, 4), edges)).toBeUndefined();
+		const layout = graphLayout(team, 400, 300, "b");
+		expect(layout.get("b")).toEqual({ x: 200, y: 150 });
+		expect(layout.get("main")!.x).toBe(200);
+	});
+});
+
 describe("graphLayout", () => {
-	it("puts the main agent at the top centre and the others on an arc below", () => {
+	it("puts the main agent at the top centre and the others round the ellipse below", () => {
 		const layout = graphLayout(members, 400, 260);
 		const main = layout.get("main")!;
 		expect(main.x).toBe(200);

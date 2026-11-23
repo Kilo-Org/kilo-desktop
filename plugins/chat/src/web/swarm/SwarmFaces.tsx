@@ -25,7 +25,10 @@ export function SwarmFaces({
 	colors,
 	onOpen,
 	faceQaId,
+	size = "sm",
 }: {
+	/** `md` where the faces lead a card, `sm` in tight rows like the composer shelf. */
+	readonly size?: "sm" | "md";
 	readonly team: readonly TeamMember[];
 	readonly colors: ReadonlyMap<string, string>;
 	readonly onOpen?: (member: TeamMember) => void;
@@ -51,11 +54,11 @@ export function SwarmFaces({
 						)}
 						data-state={member.needsYou ? "needs-you" : member.state}
 					>
-						<AgentAvatar name={name} color={color} size="sm" />
+						<AgentAvatar name={name} color={color} size={size} />
 					</span>
 				);
 				const title = `${name}: ${faceState(member)}`;
-				const overlap = "relative -ms-1.5 first:ms-0";
+				const overlap = cn("relative first:ms-0", size === "md" ? "-ms-2" : "-ms-1.5");
 				if (onOpen && !member.main) {
 					return (
 						<button

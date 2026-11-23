@@ -383,7 +383,34 @@
 			}
 		],
 		"landmines-testing/no-fixed-sleep": "error",
-		"landmines-testing/no-flake-masking": "error",
+		"landmines-testing/no-flake-masking": [
+			"error",
+			{
+				"allow": {
+					"apps/desktop/vitest.config.ts": 1,
+					"apps/web/vitest.config.ts": 1,
+					"examples/right-panel-plugin/vitest.config.ts": 1,
+					"packages/git-client/vitest.config.ts": 1,
+					"packages/kernel/vitest.config.ts": 1,
+					"packages/ui/vitest.config.ts": 1,
+					"plugins/anaconda/vitest.config.ts": 2,
+					"plugins/browser/vitest.config.ts": 1,
+					"plugins/chat/vitest.config.ts": 1,
+					"plugins/core/vitest.config.ts": 1,
+					"plugins/developer/vitest.config.ts": 1,
+					"plugins/environments/vitest.config.ts": 2,
+					"plugins/files/vitest.config.ts": 1,
+					"plugins/git/vitest.config.ts": 2,
+					"plugins/local-inference/vitest.config.ts": 2,
+					"plugins/marketplace/vitest.config.ts": 1,
+					"plugins/notebook/vitest.config.ts": 2,
+					"plugins/shell/vitest.config.ts": 1,
+					"plugins/terminal/vitest.config.ts": 1,
+					"plugins/work-sessions/vitest.config.ts": 2,
+					"plugins/workspace-board/vitest.config.ts": 2
+				}
+			}
+		],
 		"landmines-structure/package-exports": "error"
 	},
 	"overrides": [

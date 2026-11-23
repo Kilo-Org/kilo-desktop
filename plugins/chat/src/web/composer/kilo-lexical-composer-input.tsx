@@ -56,6 +56,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	style,
 }) => {
 	const editorGeneration = useEditorGeneration();
+	const slowToOpen = useSlowToOpen();
 	// Cached on `ref`, so a re-render doesn't detach and re-attach it (and set the label again).
 	const attachInput = (node: HTMLDivElement | null) => {
 		if (typeof ref === "function") ref(node);
@@ -68,10 +69,11 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			ref={attachInput}
 			formatter={formatter}
 			directiveChip={KiloDirectiveChip}
-			placeholder={placeholder}
+			placeholder={slowToOpen ? "Loading chat…" : placeholder}
 			cancelOnEscape={cancelOnEscape}
 			submitMode={submitMode}
 			aria-label="Message input"
+			aria-busy={slowToOpen || undefined}
 			onKeyDown={onKeyDown}
 			className={cn(
 				"aui-composer-input caret-foreground max-h-32 w-full bg-transparent px-1 pt-0 pb-1 text-sm",
@@ -139,6 +141,24 @@ function LexicalInputAria({ label }: { label: string }) {
  * with `userControls` that use-chat-runtime passes react-opencode.
  */
 const showsPlaceholderThread = (s: AssistantState) => s.thread.extras === undefined;
+
+const SLOW_TO_OPEN_DELAY_MS = 400;
+
+/**
+ * Whether the placeholder thread has been shown long enough to say so. Most
+ * chats replace it within a frame, where a "Loading chat…" would only flash.
+ */
+function useSlowToOpen(): boolean {
+	const opening = useAuiState(showsPlaceholderThread);
+	const [slow, setSlow] = useState(false);
+	if (!opening && slow) setSlow(false);
+	useEffect(() => {
+		if (!opening || slow) return;
+		const timeoutId = window.setTimeout(() => setSlow(true), SLOW_TO_OPEN_DELAY_MS);
+		return () => window.clearTimeout(timeoutId);
+	}, [opening, slow]);
+	return opening && slow;
+}
 
 /**
  * Keeps the editor read-only while the runtime shows assistant-ui's empty

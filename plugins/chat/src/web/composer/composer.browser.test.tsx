@@ -1,6 +1,6 @@
 import { FileTextIcon, GitBranchIcon, SparklesIcon } from "lucide-react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { KernelCommand, type CommandHandler, type PluginEntry } from "@kilo-desktop/kernel";
@@ -796,6 +796,7 @@ describe("the composer of a chat still opening", () => {
 			if (document.body.textContent?.includes("Loading chat…")) flashed = true;
 		});
 		watcher.observe(document.body, { childList: true, subtree: true, characterData: true });
+		onTestFinished(() => watcher.disconnect());
 		const server = new FakeKiloServer();
 		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
 		await renderChat({

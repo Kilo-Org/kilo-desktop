@@ -14,6 +14,7 @@ export type ModelSelectionState = {
 	name: string | undefined;
 	effort: string | undefined;
 	efforts: readonly ModelSelectorEffortOption[] | undefined;
+	effortByModel: Readonly<Record<string, string>>;
 	dirty: boolean;
 };
 
@@ -50,8 +51,8 @@ export function useSelectionRecords<T>(records: SelectionRecords<T>): Records<T>
  * kept in a pane's own state were lost on every switch; the chat then showed
  * (and sent with) the global "remembered for new chats" choice, which a draft
  * in another session may just have changed. Kept here, beside the window's
- * other chat services, a chat's selection - including an unsent change -
- * survives its pane.
+ * other chat services, a chat's selection (including per-model effort and
+ * unsent changes) survives its pane.
  *
  * Only chats live here. A draft's selection stays in its pane: two drafts
  * (an agent pane and the New Session page) must not share one, and a draft's

@@ -18,28 +18,34 @@ import type { SiftLoadState, SiftTableSource } from "./sift-runtime.js";
 const sift = vi.hoisted(() => ({
 	disposed: [] as string[],
 	gate: null as Promise<void> | null,
+	held: null as Promise<unknown> | null,
 	options: [] as unknown[],
 }));
 
 vi.mock("@nteract/sift", async (importOriginal) => {
 	const actual = await importOriginal<typeof SiftModule>();
+	async function load(gate: Promise<void> | null, args: Parameters<typeof actual.loadTableFile>) {
+		if (gate) await gate;
+		const data = await actual.loadTableFile(...args);
+		const label = `${String(data.rowCount)}:${String(args[0].byteLength)}`;
+		const dispose = data.dispose?.bind(data);
+		data.dispose = () => {
+			sift.disposed.push(label);
+			dispose?.();
+		};
+		return data;
+	}
 	return {
 		...actual,
-		loadTableFile: async (...args: Parameters<typeof actual.loadTableFile>) => {
+		loadTableFile: (...args: Parameters<typeof actual.loadTableFile>) => {
 			sift.options.push(args[1]);
 			// The gate holds exactly one load (the first after it is set) so a
 			// replacement source can finish while the superseded one is pending.
 			const gate = sift.gate;
 			sift.gate = null;
-			if (gate) await gate;
-			const data = await actual.loadTableFile(...args);
-			const label = `${String(data.rowCount)}:${String(args[0].byteLength)}`;
-			const dispose = data.dispose?.bind(data);
-			data.dispose = () => {
-				sift.disposed.push(label);
-				dispose?.();
-			};
-			return data;
+			const pending = load(gate, args);
+			if (gate) sift.held = pending;
+			return pending;
 		},
 	};
 });
@@ -70,6 +76,7 @@ function harness(initial: SiftTableSource) {
 beforeEach(() => {
 	sift.disposed.length = 0;
 	sift.gate = null;
+	sift.held = null;
 	sift.options.length = 0;
 });
 
@@ -209,9 +216,12 @@ describe("Sift adapter (real @nteract/sift)", () => {
 
 		rerender({ kind: "csv", text: "fresh\nvalue\n", delimiter: "," });
 		await vi.waitFor(() => expect(states).toContain("complete"), { timeout: 10_000 });
+		// The adapter handles the superseded rejection in microtasks after it
+		// lands, and the outermost async act resolves only after a later task,
+		// so its error report (if any) has run by the time act returns.
 		await act(async () => {
 			release();
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			await expect(sift.held).rejects.toBeDefined();
 		});
 
 		expect(errors).toEqual([]);

@@ -267,7 +267,7 @@ function CheckFailedStep({
 				</DialogDescription>
 			</DialogHeader>
 			<FieldError data-qa-id="environments-install-link-error">
-				{friendlyEnvironmentsError(error, "Could not check your conda channels.")}
+				{friendlyEnvironmentsError(error, "Could not check your conda channels.").message}
 			</FieldError>
 			<DialogFooter>
 				<CancelButton onClick={onCancel} />
@@ -318,7 +318,7 @@ function ChannelStep({
 			</Alert>
 			{addError ? (
 				<FieldError data-qa-id="environments-install-link-add-error">
-					{friendlyEnvironmentsError(addError, "Could not add the channel.")}
+					{friendlyEnvironmentsError(addError, "Could not add the channel.").message}
 				</FieldError>
 			) : null}
 			<DialogFooter>
@@ -448,7 +448,7 @@ function TargetStep({
 				) : envs.isError ? (
 					<li className="px-3 py-2.5">
 						<FieldError data-qa-id="environments-install-link-envs-error">
-							{friendlyEnvironmentsError(envs.error, "Could not load environments.")}
+							{friendlyEnvironmentsError(envs.error, "Could not load environments.").message}
 						</FieldError>
 					</li>
 				) : query.trim() && visible.length === 0 ? (

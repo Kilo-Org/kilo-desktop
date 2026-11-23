@@ -52,10 +52,13 @@ import type {
 	CondaPackagesPreviewResult,
 } from "../../../contracts/providers/conda";
 import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda";
-import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
 import { environmentDisplayName, validateEnvironmentName } from "./environment-display";
-import { friendlyEnvironmentsError } from "./environments-error-message";
-import { backupEnvironmentJob, jobToastOptions, updatePackagesJob } from "./environments-toasts";
+import { useTrackPolicyFailure } from "./use-track-policy-failure";
+import {
+	friendlyEnvironmentsError,
+	type FriendlyEnvironmentsError,
+} from "./environments-error-message";
+import { backupEnvironmentJob, updatePackagesJob, useJobToasts } from "./environments-toasts";
 import {
 	ChangeFilterMenu,
 	DependencyChangeList,
@@ -158,6 +161,8 @@ export function UpdateConfirmationDialog({
 	onUpdatingChange,
 }: UpdateConfirmationDialogProps) {
 	const conda = useConda();
+	const trackPolicyFailure = useTrackPolicyFailure();
+	const { jobToastOptions } = useJobToasts();
 	const queryClient = useQueryClient();
 	const existingEnvNames = useExistingEnvironmentNames(conda);
 	const cloneMutation = useCondaMutation(conda, "cloneEnvironment", {
@@ -181,9 +186,7 @@ export function UpdateConfirmationDialog({
 	// Preview state
 	const [preview, setPreview] = useState<CondaPackagesPreviewResult | null>(null);
 	const [previewLoading, setPreviewLoading] = useState(false);
-	const [previewError, setPreviewError] = useState<{ message: string; detail?: string } | null>(
-		null,
-	);
+	const [previewError, setPreviewError] = useState<FriendlyEnvironmentsError | null>(null);
 	const [previewStale, setPreviewStale] = useState(false);
 
 	const [pkgSearch, setPkgSearch] = useState("");
@@ -245,12 +248,8 @@ export function UpdateConfirmationDialog({
 			})
 			.catch((reason) => {
 				if (gen !== previewGenRef.current) return;
-				const raw =
-					reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
-				const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
-				const message = friendlyEnvironmentsError(reason, "Could not preview the update.");
-				const detail = parsed?.detail;
-				setPreviewError(detail ? { message, detail } : { message });
+				setPreviewError(friendlyEnvironmentsError(reason, "Could not preview the update."));
+				trackPolicyFailure(reason);
 				setPreview(null);
 				previewRef.current = null;
 			})
@@ -647,8 +646,7 @@ export function UpdateConfirmationDialog({
 
 								{previewError ? (
 									<SolverErrorCard
-										message={previewError.message}
-										{...(previewError.detail ? { detail: previewError.detail } : {})}
+										error={previewError}
 										qaId="environments-conda-update-confirm-error"
 										onRetry={runPreview}
 									/>

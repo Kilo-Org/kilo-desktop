@@ -887,8 +887,9 @@ export function parseLayoutJson(value: unknown): PaneLayout | null {
 
 	const sizes: Record<string, number> = {};
 	if (record.sizes && typeof record.sizes === "object" && !Array.isArray(record.sizes)) {
+		const knownGroupIds = new Set(groupIds);
 		for (const [id, width] of Object.entries(record.sizes as Record<string, unknown>)) {
-			if (groupIds.includes(id) && isFiniteNumber(width)) sizes[id] = width;
+			if (knownGroupIds.has(id) && isFiniteNumber(width)) sizes[id] = width;
 		}
 	}
 	return {

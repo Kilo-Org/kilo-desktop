@@ -43,7 +43,13 @@ export type Provider = z.infer<typeof providerSchema>;
  * unchanged, and {@link parseEnvironmentsErrorMessage} recovers the code
  * and detail on the renderer side from the same shape.
  *
- * All codes are uppercase, colon-space separated, single-line.
+ * All codes are uppercase and colon-space separated. A message may carry one
+ * extra final line, the {@link POLICY_NOTICE_LINE_PREFIX policy notice}.
+ *
+ * `POLICY_BLOCKED` is an organization's package policy blocking a requested
+ * package. `NOT_SIGNED_IN` and `CHANNEL_ACCESS_DENIED` always mean the
+ * **Anaconda** account (repo.anaconda.cloud refused a channel because no API
+ * key is stored, or refused the key), never the Kilo account.
  */
 export const environmentsErrorCodeSchema = z.enum([
 	"PREFIX_NOT_STAGED",
@@ -61,8 +67,52 @@ export const environmentsErrorCodeSchema = z.enum([
 	"INVALID_MATCHSPEC",
 	"INVALID_CHANNEL",
 	"PROVIDER_NOT_READY",
+	"POLICY_BLOCKED",
+	"NOT_SIGNED_IN",
+	"CHANNEL_ACCESS_DENIED",
 ]);
 export type EnvironmentsErrorCode = z.infer<typeof environmentsErrorCodeSchema>;
+
+/**
+ * A requested package an organization's package policy removed from a
+ * channel, as the bridge reports it (`details.blocked[]`, a stable bridge
+ * contract). `reason` is the platform's explanation, shown verbatim.
+ */
+export const policyBlockedPackageSchema = z.object({
+	package: z.string().min(1),
+	version: z.string().nullable(),
+	channel: z.string().nullable(),
+	org: z.string().nullable(),
+	policy: z.string().nullable(),
+	/** A UUID; the only policy field telemetry may carry. */
+	policyId: z.string().nullable(),
+	reason: z.string().nullable(),
+});
+export type PolicyBlockedPackage = z.infer<typeof policyBlockedPackageSchema>;
+
+/**
+ * Package-policy and Anaconda sign-in context of a failure:
+ *
+ * - `blocked`: the requested packages a policy removed (`POLICY_BLOCKED`);
+ * - `policyNote`: the solve failed on a policy channel and no requested
+ *   package was blocked, so a dependency may have been;
+ * - `refused`: the org and channel repo.anaconda.cloud refused
+ *   (`NOT_SIGNED_IN` / `CHANNEL_ACCESS_DENIED`), each null when unknown.
+ */
+export const policyNoticeSchema = z.object({
+	blocked: z.array(policyBlockedPackageSchema).optional(),
+	policyNote: z.boolean().optional(),
+	refused: z.object({ org: z.string().nullable(), channel: z.string().nullable() }).optional(),
+});
+export type PolicyNotice = z.infer<typeof policyNoticeSchema>;
+
+/**
+ * Prefix of the final message line that carries a {@link PolicyNotice} as
+ * JSON. `KernelError` crosses processes as a code and a message only, so
+ * the structured context rides on its own line: the agent reads it as is,
+ * and {@link parseEnvironmentsErrorMessage} strips it from `detail`.
+ */
+export const POLICY_NOTICE_LINE_PREFIX = "[policy] ";
 
 /**
  * Regex used by {@link parseEnvironmentsErrorMessage} to peel a granular
@@ -93,10 +143,14 @@ const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
  * and UI surfaces render the detail inside `whitespace-pre-wrap` blocks.
  * Multi-line details stay parseable because
  * {@link ENVIRONMENTS_ERROR_MESSAGE_PATTERN} matches across lines.
+ *
+ * A non-empty `policy` is appended as one final
+ * {@link POLICY_NOTICE_LINE_PREFIX} line.
  */
 export function formatEnvironmentsErrorMessage(
 	code: EnvironmentsErrorCode,
 	detail?: string,
+	policy?: PolicyNotice,
 ): string {
 	const trimmed = detail
 		?.replace(ANSI_ESCAPE_PATTERN, "")
@@ -105,24 +159,51 @@ export function formatEnvironmentsErrorMessage(
 		.map((line) => line.trimEnd())
 		.join("\n")
 		.trim();
-	return trimmed ? `${code}: ${trimmed}` : code;
+	const message = trimmed ? `${code}: ${trimmed}` : code;
+	const hasNotice = policy !== undefined && Object.keys(policy).length > 0;
+	return hasNotice ? `${message}\n${POLICY_NOTICE_LINE_PREFIX}${JSON.stringify(policy)}` : message;
+}
+
+export interface ParsedEnvironmentsError {
+	code: EnvironmentsErrorCode;
+	detail?: string;
+	policy?: PolicyNotice;
 }
 
 /**
  * Extract the granular reason encoded in a KernelError message
- * (`"CODE: detail"` — the shape {@link formatEnvironmentsErrorMessage}
- * produces). Returns `null` for messages that do not follow the convention
- * (they may still be legitimate KernelErrors — e.g. a kernel-level
- * VALIDATION from the router — just not ones this plugin authored).
+ * (`"CODE: detail"` plus an optional policy-notice line — the shape
+ * {@link formatEnvironmentsErrorMessage} produces). Returns `null` for
+ * messages that do not follow the convention (they may still be legitimate
+ * KernelErrors — e.g. a kernel-level VALIDATION from the router — just not
+ * ones this plugin authored). A malformed notice line stays in `detail`.
  */
-export function parseEnvironmentsErrorMessage(
-	message: string,
-): { code: EnvironmentsErrorCode; detail?: string } | null {
-	const match = ENVIRONMENTS_ERROR_MESSAGE_PATTERN.exec(message);
+export function parseEnvironmentsErrorMessage(message: string): ParsedEnvironmentsError | null {
+	const { body, policy } = splitPolicyNotice(message);
+	const match = ENVIRONMENTS_ERROR_MESSAGE_PATTERN.exec(body);
 	if (!match) return null;
 	const parsed = environmentsErrorCodeSchema.safeParse(match[1]);
 	if (!parsed.success) return null;
-	return match[2] ? { code: parsed.data, detail: match[2] } : { code: parsed.data };
+	return {
+		code: parsed.data,
+		...(match[2] ? { detail: match[2] } : {}),
+		...(policy ? { policy } : {}),
+	};
+}
+
+function splitPolicyNotice(message: string): { body: string; policy?: PolicyNotice } {
+	const lineStart = message.lastIndexOf("\n") + 1;
+	const lastLine = message.slice(lineStart);
+	if (lineStart === 0 || !lastLine.startsWith(POLICY_NOTICE_LINE_PREFIX)) return { body: message };
+	let json: unknown;
+	try {
+		json = JSON.parse(lastLine.slice(POLICY_NOTICE_LINE_PREFIX.length));
+	} catch {
+		return { body: message };
+	}
+	const policy = policyNoticeSchema.safeParse(json);
+	if (!policy.success) return { body: message };
+	return { body: message.slice(0, lineStart - 1), policy: policy.data };
 }
 
 /**
@@ -149,6 +230,9 @@ const kernelErrorCodeByEnvironmentsErrorCode: Record<
 	INVALID_MATCHSPEC: "VALIDATION",
 	INVALID_CHANNEL: "VALIDATION",
 	PROVIDER_NOT_READY: "BUSINESS",
+	POLICY_BLOCKED: "BUSINESS",
+	NOT_SIGNED_IN: "BUSINESS",
+	CHANNEL_ACCESS_DENIED: "BUSINESS",
 };
 
 /**
@@ -206,11 +290,13 @@ export type JobKind = z.infer<typeof jobKindSchema>;
  * Structured error payload attached to terminal `failed` progress events.
  * `code` is one of the granular {@link environmentsErrorCodeSchema} values
  * (enforced at parse time); `message` is a human-readable detail suitable
- * for UI display.
+ * for UI display. `policy` is the failure's {@link PolicyNotice}, when it
+ * carried one.
  */
 export const jobErrorSchema = z.object({
 	code: environmentsErrorCodeSchema,
 	message: z.string().min(1),
+	policy: policyNoticeSchema.optional(),
 });
 export type JobError = z.infer<typeof jobErrorSchema>;
 

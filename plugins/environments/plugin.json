@@ -10,6 +10,7 @@
 		"kilo.core/tool": "optional",
 		"kilo.core/chat-config": "optional",
 		"kilo.core/account": "optional",
+		"kilo.anaconda/account": "optional",
 		"kilo.local-inference/llama-runtime": "optional",
 		"kilo.chat/permission-renderer": "optional",
 		"kilo.shell/navigation": "optional",
@@ -279,6 +280,10 @@
 				{
 					"id": "package-install-link-rejected",
 					"name": "Package Install Link Rejected"
+				},
+				{
+					"id": "environment-policy-blocked",
+					"name": "Environment Policy Blocked"
 				}
 			]
 		}

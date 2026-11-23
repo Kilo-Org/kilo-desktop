@@ -8,12 +8,17 @@
  * conda.create: KeyError`. This helper recovers the granular
  * {@link EnvironmentsErrorCode} and returns a short, actionable sentence
  * instead, falling back to a generic message when the error does not follow
- * the plugin's convention.
+ * the plugin's convention. The parsed detail and {@link PolicyNotice} come
+ * along, so surfaces can show the raw solver output and the policy details
+ * (`PolicyErrorDetails`).
  */
 
 import {
 	parseEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
+	type ParsedEnvironmentsError,
+	type PolicyBlockedPackage,
+	type PolicyNotice,
 } from "../../../contracts/common";
 
 /** Friendly, action-oriented copy per granular error code. */
@@ -40,6 +45,11 @@ const FRIENDLY_MESSAGE: Record<EnvironmentsErrorCode, string> = {
 	JOB_NOT_FOUND: "That operation is no longer running.",
 	JOB_CANCELLED: "The operation was cancelled.",
 	PROVIDER_NOT_READY: "The conda backend is not ready. Please try again in a moment.",
+	POLICY_BLOCKED:
+		"One or more selected packages are blocked by your organization's package policy. Choose a different version or package, or ask your organization's administrator.",
+	NOT_SIGNED_IN: "This channel needs an Anaconda account. Sign in to Anaconda, then try again.",
+	CHANNEL_ACCESS_DENIED:
+		"Anaconda refused access to this channel. Your sign-in may have expired, or your account may not have access to it. Sign in to Anaconda again, or ask your organization's administrator.",
 };
 
 /**
@@ -74,35 +84,118 @@ function existingPrefixMessage(prefix: string): string {
 	return `An environment already exists at ${prefix}. It may have been created by an earlier or concurrent request — check the environments list, or choose a different name or location.`;
 }
 
+/** A caught failure as the UI shows it. */
+export interface FriendlyEnvironmentsError {
+	/** The granular code; null when the error does not follow the plugin's convention. */
+	code: EnvironmentsErrorCode | null;
+	/** Friendly, user-facing sentence(s). */
+	message: string;
+	/** Raw bridge or solver text for an expandable details block, when there is any. */
+	detail?: string;
+	/** Blocked packages, policy note and refused channel (`PolicyErrorDetails` shows them). */
+	policy?: PolicyNotice;
+}
+
 /**
- * Convert a caught error (or any value) into a friendly, user-facing message.
- * Recognised environments error codes map to curated copy; anything else
- * falls back to `fallback`.
+ * Convert a caught error (or any value) into what the UI shows. Recognised
+ * environments error codes map to curated copy; anything else falls back to
+ * `fallback`.
  *
  * For `PROVIDER_NOT_READY` errors that contain a bridge detail string, the
  * detail is appended so the user sees something actionable (e.g. a YAML
  * parse error in `.condarc`) rather than just "backend not ready". Opaque
  * plumbing details (see {@link isOpaqueBridgeDetail}) are suppressed.
+ *
+ * `POLICY_BLOCKED` is the exception to curated copy: the bridge's summary
+ * (the lines before the first blank line: package, policy and the platform's
+ * reason, verbatim) is the message, and only the solver text after it stays
+ * as detail. Anaconda sign-in refusals name the refused channel when known.
  */
-export function friendlyEnvironmentsError(reason: unknown, fallback: string): string {
+export function friendlyEnvironmentsError(
+	reason: unknown,
+	fallback: string,
+): FriendlyEnvironmentsError {
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
 	const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
-	if (!parsed) return fallback;
+	if (!parsed) return { code: null, message: fallback };
+	const policy = parsed.policy ? { policy: parsed.policy } : {};
 
-	if (parsed.code === "ENV_EXISTS" && parsed.detail && isAbsolutePath(parsed.detail)) {
-		return existingPrefixMessage(parsed.detail);
+	if (parsed.code === "POLICY_BLOCKED") {
+		const { summary, rest } = splitPolicyBlockedDetail(parsed.detail);
+		return {
+			code: parsed.code,
+			message: summary ?? FRIENDLY_MESSAGE.POLICY_BLOCKED,
+			...(rest ? { detail: rest } : {}),
+			...policy,
+		};
+	}
+	return {
+		code: parsed.code,
+		message: friendlyMessage(parsed),
+		...(parsed.detail ? { detail: parsed.detail } : {}),
+		...policy,
+	};
+}
+
+function friendlyMessage({ code, detail, policy }: ParsedEnvironmentsError): string {
+	if (code === "ENV_EXISTS" && detail && isAbsolutePath(detail)) {
+		return existingPrefixMessage(detail);
+	}
+	const channel = policy?.refused?.channel;
+	if (code === "NOT_SIGNED_IN" && channel) {
+		return `${channel} needs an Anaconda account. Sign in to Anaconda, then try again.`;
+	}
+	if (code === "CHANNEL_ACCESS_DENIED" && channel) {
+		return FRIENDLY_MESSAGE.CHANNEL_ACCESS_DENIED.replace("this channel", channel);
 	}
 
-	const friendly = FRIENDLY_MESSAGE[parsed.code];
+	const friendly = FRIENDLY_MESSAGE[code];
 	// For opaque "not ready" errors, surface the bridge detail when it
 	// carries real information (avoids hiding fixable config issues).
-	if (parsed.code === "PROVIDER_NOT_READY" && parsed.detail) {
-		const detail = parsed.detail.replace(/^anaconda-bridge-sidecar error:\s*/i, "").trim();
-		if (detail && !isOpaqueBridgeDetail(detail)) {
-			return `${friendly} (${detail})`;
+	if (code === "PROVIDER_NOT_READY" && detail) {
+		const bridgeDetail = detail.replace(/^anaconda-bridge-sidecar error:\s*/i, "").trim();
+		if (bridgeDetail && !isOpaqueBridgeDetail(bridgeDetail)) {
+			return `${friendly} (${bridgeDetail})`;
 		}
 	}
 	return friendly;
+}
+
+/** The bridge's `blocked_by_policy` message: a line per blocked package, a blank line, then the solver text. */
+function splitPolicyBlockedDetail(detail: string | undefined): { summary?: string; rest?: string } {
+	if (!detail) return {};
+	const [summary = "", ...rest] = detail.split(/\n\s*\n/);
+	const solverText = rest.join("\n\n").trim();
+	return {
+		...(summary.trim() ? { summary: summary.trim() } : {}),
+		...(solverText ? { rest: solverText } : {}),
+	};
+}
+
+/**
+ * The title of an error card (the Add packages and Update previews). A solve
+ * failure is a "Dependency conflict"; other failures are not called one.
+ */
+export function errorCardTitle(error: Pick<FriendlyEnvironmentsError, "code" | "policy">): string {
+	switch (error.code) {
+		case "POLICY_BLOCKED":
+			return "Blocked by your organization's policy";
+		case "NOT_SIGNED_IN":
+		case "CHANNEL_ACCESS_DENIED":
+			return "Sign in to Anaconda";
+		case "SOLVE_FAILED":
+			return error.policy?.policyNote
+				? "Dependency conflict under your organization's policy"
+				: "Dependency conflict";
+		case "PACKAGE_NOT_FOUND":
+			return "Package not found";
+		case "CHANNEL_NOT_FOUND":
+			return "Channel not found";
+		case "NO_CHANNELS_CONFIGURED":
+			return "No channels configured";
+		default:
+			return "Couldn't complete the change";
+	}
 }
 
 /**
@@ -118,4 +211,33 @@ export function isProviderNotReadyError(reason: unknown): boolean {
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
 	if (!raw) return false;
 	return parseEnvironmentsErrorMessage(raw)?.code === "PROVIDER_NOT_READY";
+}
+
+export interface KeyedBlockedPackage {
+	/** Stable across reorders: built from the entry's content, not its position. */
+	readonly key: string;
+	readonly entry: PolicyBlockedPackage;
+}
+
+/**
+ * The blocked packages as list rows: each keyed by its content, with exact
+ * duplicates dropped, since they would only repeat a row.
+ */
+export function keyedBlockedPackages(
+	blocked: readonly PolicyBlockedPackage[],
+): KeyedBlockedPackage[] {
+	const rows = new Map<string, PolicyBlockedPackage>();
+	for (const entry of blocked) {
+		const key = JSON.stringify([
+			entry.package,
+			entry.version,
+			entry.channel,
+			entry.org,
+			entry.policy,
+			entry.policyId,
+			entry.reason,
+		]);
+		if (!rows.has(key)) rows.set(key, entry);
+	}
+	return [...rows].map(([key, entry]) => ({ key, entry }));
 }

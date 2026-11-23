@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { KernelLogger } from "@kilo-desktop/kernel";
 import { KernelError } from "@kilo-desktop/kernel";
 
+import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda";
 import { SidecarCondaBackend } from "./SidecarCondaBackend";
 
@@ -1678,6 +1679,312 @@ describe("SidecarCondaBackend", () => {
 			await expect(backend.list()).rejects.toThrow(
 				"Detailed: environment 'foo' not found at /path",
 			);
+		});
+	});
+
+	describe("failed transactions with a bridge reason", () => {
+		const BLOCKED_MESSAGE =
+			"pillow 8.4.0 is blocked by your organization's policy 'No critical CVEs': CVE-2022-22817 (critical)\n\nCould not solve for environment specs";
+		const WIRE_BLOCKED_ENTRY = {
+			package: "pillow",
+			version: "8.4.0",
+			channel: "https://repo.anaconda.cloud/repo/acme/main",
+			org: "acme",
+			policy: "No critical CVEs",
+			policy_id: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+			reason: "CVE-2022-22817 (critical)",
+		};
+		const BLOCKED_ENTRY = {
+			package: "pillow",
+			version: "8.4.0",
+			channel: "https://repo.anaconda.cloud/repo/acme/main",
+			org: "acme",
+			policy: "No critical CVEs",
+			policyId: "0b7c3c1e-2f4e-4a5b-9a51-3f6c9e1d2a10",
+			reason: "CVE-2022-22817 (critical)",
+		};
+		const target = { name: "demo" };
+		const failurePaths: ReadonlyArray<
+			[label: string, bridgeMethod: string, run: (backend: SidecarCondaBackend) => Promise<unknown>]
+		> = [
+			["create", "conda.create", (b) => b.create({ name: "demo", packages: ["pillow=8.4.0"] })],
+			["createFromFile", "conda.create_from_file", (b) => b.createFromFile({ file: "/tmp/e.yml" })],
+			["install", "conda.install", (b) => b.install({ ...target, packages: ["pillow=8.4.0"] })],
+			["update", "conda.update", (b) => b.update({ ...target, packages: ["pillow"] })],
+			["uninstall", "conda.remove", (b) => b.uninstall({ ...target, packages: ["pillow"] })],
+			["remove", "conda.remove", (b) => b.remove(target)],
+			[
+				"previewInstall",
+				"conda.install",
+				(b) => b.previewInstall({ ...target, packages: ["pillow=8.4.0"] }),
+			],
+			[
+				"previewUpdate",
+				"conda.update",
+				(b) => b.previewUpdate({ ...target, packages: ["pillow"] }),
+			],
+		];
+
+		function respondWith(bridgeMethod: string, result: unknown): void {
+			mockConnection.sendRequest.mockImplementation((method: string) =>
+				Promise.resolve(method === bridgeMethod ? result : {}),
+			);
+		}
+
+		async function rejectionOf(promise: Promise<unknown>): Promise<KernelError> {
+			const error = await promise.then(
+				() => {
+					throw new Error("expected the call to reject");
+				},
+				(reason: unknown) => reason,
+			);
+			expect(error).toBeInstanceOf(KernelError);
+			return error as KernelError;
+		}
+
+		function failed(reason: string | undefined, details?: Record<string, unknown>) {
+			return {
+				prefix: "/envs/demo",
+				success: false,
+				message: reason === "blocked_by_policy" ? BLOCKED_MESSAGE : `failed: ${reason}`,
+				...(reason === undefined ? {} : { reason }),
+				...(details ? { details } : {}),
+			};
+		}
+
+		it.each(failurePaths)(
+			"%s maps blocked_by_policy to POLICY_BLOCKED with the blocked packages",
+			async (_label, bridgeMethod, run) => {
+				respondWith(
+					bridgeMethod,
+					failed("blocked_by_policy", {
+						blocked: [WIRE_BLOCKED_ENTRY],
+						original_reason: "package_not_found",
+						credential: "api_key",
+						repodata_filtered: true,
+					}),
+				);
+
+				const error = await rejectionOf(run(createBackend()));
+
+				expect(error.code).toBe("BUSINESS");
+				expect(parseEnvironmentsErrorMessage(error.message)).toEqual({
+					code: "POLICY_BLOCKED",
+					detail: BLOCKED_MESSAGE,
+					policy: { blocked: [BLOCKED_ENTRY] },
+				});
+			},
+		);
+
+		it.each(failurePaths)(
+			"%s maps not_signed_in to NOT_SIGNED_IN, naming the refused channel and org",
+			async (_label, bridgeMethod, run) => {
+				respondWith(
+					bridgeMethod,
+					failed("not_signed_in", { status: 401, org: "acme", channel: "acme/main" }),
+				);
+
+				const error = await rejectionOf(run(createBackend()));
+
+				expect(parseEnvironmentsErrorMessage(error.message)).toEqual({
+					code: "NOT_SIGNED_IN",
+					detail: "failed: not_signed_in",
+					policy: { refused: { org: "acme", channel: "acme/main" } },
+				});
+			},
+		);
+
+		it.each(failurePaths)(
+			"%s maps access_denied to CHANNEL_ACCESS_DENIED",
+			async (_label, bridgeMethod, run) => {
+				respondWith(bridgeMethod, failed("access_denied", { status: 403, channel: "acme/main" }));
+
+				const error = await rejectionOf(run(createBackend()));
+
+				expect(parseEnvironmentsErrorMessage(error.message)).toEqual({
+					code: "CHANNEL_ACCESS_DENIED",
+					detail: "failed: access_denied",
+					policy: { refused: { org: null, channel: "acme/main" } },
+				});
+			},
+		);
+
+		it.each([
+			["no_channels_configured", "NO_CHANNELS_CONFIGURED"],
+			["package_not_found", "PACKAGE_NOT_FOUND"],
+			["channel_not_found", "CHANNEL_NOT_FOUND"],
+			["solve_failed", "SOLVE_FAILED"],
+			["execution_failed", "SOLVE_FAILED"],
+			["internal_error", "SOLVE_FAILED"],
+			["a_reason_from_a_newer_bridge", "SOLVE_FAILED"],
+		])("maps %s to %s on every path", async (reason, code) => {
+			for (const [, bridgeMethod, run] of failurePaths) {
+				respondWith(bridgeMethod, failed(reason));
+				const error = await rejectionOf(run(createBackend()));
+				expect(parseEnvironmentsErrorMessage(error.message)).toEqual({
+					code,
+					detail: `failed: ${reason}`,
+				});
+			}
+		});
+
+		it("keeps SOLVE_FAILED for an older bridge's result without a reason", async () => {
+			for (const [, bridgeMethod, run] of failurePaths) {
+				respondWith(bridgeMethod, failed(undefined));
+				const error = await rejectionOf(run(createBackend()));
+				expect(parseEnvironmentsErrorMessage(error.message)).toEqual({
+					code: "SOLVE_FAILED",
+					detail: "failed: undefined",
+				});
+			}
+		});
+
+		it("carries a policy note on a failed solve, a removal and a blocked result", async () => {
+			respondWith("conda.install", failed("solve_failed", { policy_note: true }));
+			const solve = await rejectionOf(
+				createBackend().install({ ...target, packages: ["holoviews"] }),
+			);
+			expect(parseEnvironmentsErrorMessage(solve.message)).toMatchObject({
+				code: "SOLVE_FAILED",
+				policy: { policyNote: true },
+			});
+
+			respondWith("conda.remove", failed("solve_failed", { policy_note: true }));
+			const removal = await rejectionOf(
+				createBackend().uninstall({ ...target, packages: ["holoviews"] }),
+			);
+			expect(parseEnvironmentsErrorMessage(removal.message)?.policy).toEqual({ policyNote: true });
+
+			respondWith(
+				"conda.install",
+				failed("blocked_by_policy", { blocked: [WIRE_BLOCKED_ENTRY], policy_note: true }),
+			);
+			const blocked = await rejectionOf(
+				createBackend().install({ ...target, packages: ["pillow=8.4.0"] }),
+			);
+			expect(parseEnvironmentsErrorMessage(blocked.message)?.policy).toEqual({
+				blocked: [BLOCKED_ENTRY],
+				policyNote: true,
+			});
+		});
+
+		it("drops blocked entries without a package and tolerates missing nullable fields", async () => {
+			respondWith(
+				"conda.install",
+				failed("blocked_by_policy", {
+					blocked: [
+						{ version: "1.0", channel: "acme/main", org: "acme" },
+						"not an object",
+						{ package: "pillow", channel: "acme/main", org: "acme" },
+					],
+				}),
+			);
+
+			const error = await rejectionOf(createBackend().install({ ...target, packages: ["pillow"] }));
+
+			expect(parseEnvironmentsErrorMessage(error.message)?.policy).toEqual({
+				blocked: [
+					{
+						package: "pillow",
+						version: null,
+						channel: "acme/main",
+						org: "acme",
+						policy: null,
+						policyId: null,
+						reason: null,
+					},
+				],
+			});
+		});
+
+		it("adds no policy line for a refusal that names neither org nor channel", async () => {
+			respondWith("conda.install", failed("not_signed_in", { status: 401 }));
+
+			const error = await rejectionOf(createBackend().install({ ...target, packages: ["pillow"] }));
+
+			expect(error.message).toBe("NOT_SIGNED_IN: failed: not_signed_in");
+		});
+
+		it("leaves a failed clone as SOLVE_FAILED: the bridge never sets a reason on clones", async () => {
+			respondWith("conda.clone", {
+				success: false,
+				message: "clone failed",
+				reason: "not_signed_in",
+			});
+
+			const error = await rejectionOf(
+				createBackend().clone({ sourceName: "demo", name: "demo-copy" }),
+			);
+
+			expect(error.message).toBe("SOLVE_FAILED: clone failed");
+		});
+	});
+
+	describe("Anaconda sign-in failures raised by a call", () => {
+		async function rejectionOf(promise: Promise<unknown>): Promise<KernelError> {
+			const error = await promise.then(
+				() => {
+					throw new Error("expected the call to reject");
+				},
+				(reason: unknown) => reason,
+			);
+			expect(error).toBeInstanceOf(KernelError);
+			return error as KernelError;
+		}
+
+		it.each([
+			["auth:not-signed-in", "NOT_SIGNED_IN"],
+			["auth:access-denied", "CHANNEL_ACCESS_DENIED"],
+		])("maps %s to %s with the refused channel and org", async (domainCode, code) => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				throw new ResponseError(-32000, "refused", {
+					code: domainCode,
+					message: "repo.anaconda.cloud refused acme/main",
+					details: { status: 401, org: "acme", channel: "acme/main" },
+				});
+			});
+
+			const error = await rejectionOf(
+				createBackend().findRepodata({ names: ["pillow"], channels: ["acme/main"] }),
+			);
+
+			expect(error.code).toBe("BUSINESS");
+			expect(parseEnvironmentsErrorMessage(error.message)).toEqual({
+				code,
+				detail: "repo.anaconda.cloud refused acme/main",
+				policy: { refused: { org: "acme", channel: "acme/main" } },
+			});
+		});
+
+		it("names only what the bridge knows: a shared channel has no org", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				throw new ResponseError(-32000, "refused", {
+					code: "auth:not-signed-in",
+					message: "Sign in to Anaconda",
+					details: { status: 401, channel: "main" },
+				});
+			});
+
+			const error = await rejectionOf(createBackend().findRepodata({ names: ["pillow"] }));
+
+			expect(parseEnvironmentsErrorMessage(error.message)?.policy).toEqual({
+				refused: { org: null, channel: "main" },
+			});
+		});
+
+		it("keeps other domain codes free of a policy line", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				throw new ResponseError(-32000, "missing", {
+					code: "conda:environment:not-found",
+					message: "no env",
+					details: { channel: "acme/main", org: "acme" },
+				});
+			});
+
+			await expect(createBackend().list()).rejects.toThrow(/^ENV_NOT_FOUND: no env$/);
 		});
 	});
 

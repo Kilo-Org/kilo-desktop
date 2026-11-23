@@ -2,13 +2,13 @@
 
 ## Document metadata
 
-| Field            | Value                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code |
-| Document version | 1.4                                                                                        |
-| Document owner   | Kilo engineering                                                                           |
-| Codebase version | General review: 0195dc5b (2026-11-10); notebook helper update: 2026-11-13                  |
-| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes          |
+| Field            | Value                                                                                                           |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code                      |
+| Document version | 1.5                                                                                                             |
+| Document owner   | Kilo engineering                                                                                                |
+| Codebase version | General review: 0195dc5b (2026-11-10); notebook helper update: 2026-11-13; conda credentials update: 2026-11-19 |
+| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes                               |
 
 ## Version history
 
@@ -19,6 +19,7 @@
 | 1.2     | 2026-11-09 | Targeted update: frames in application windows have no peer-to-peer (WebRTC) networking or application bridge, and agent-generated pages stay in the frame they were delivered to. |
 | 1.3     | 2026-11-10 | Feature flags: a signed-in Anaconda account's identifier and email join feature-flag evaluation as a linked account.                                                               |
 | 1.4     | 2026-11-13 | Clarified notebook daemon identity verification while moving the embedded runtime to its stable release channel.                                                                   |
+| 1.5     | 2026-11-19 | Conda credentials: the bundled conda bridge authenticates to Anaconda's governed package repository with the signed-in user's Anaconda API key, and never with repository tokens.  |
 
 ## Maintainer agent update prompt
 
@@ -183,7 +184,7 @@ flowchart TB
 | Local helper processes              | Requests, credentials, and event streams between the application and its helpers           | Loopback listeners by default, authenticated with credentials generated at launch; standard I/O where no listener is needed; helper processes verified when the application starts or attaches to them over a shared local socket                                                                                                                                                                                                                                                                                                                                                                                     |
 | Agent and tools                     | Agent actions, application tool calls, MCP tool calls                                      | Application tools come from main-process plugin code and validate their inputs; in Kilo chats, tools declare an approval policy, and tools that change Python environments ask per action unless the user turns on auto-approve; other agent actions follow the user's Kilo permission configuration; external apps the user pairs reach only the tools offered to them, each with its own revocable credential; MCP and tool output treated as untrusted                                                                                                                                                             |
 | Workspace files and developer tools | File browsing and editing, git operations, editor launches, terminals                      | File browsing, editing, and git operations authorized against the folders the user registers as workspaces, except cloning a repository into a new folder the user chooses for a new workspace; git, the GitHub CLI, and editors run with the user's privileges from the user's environment                                                                                                                                                                                                                                                                                                                           |
-| Credentials                         | Kilo account, model-provider, and Anaconda credentials; helper credentials                 | Kilo sign-in performed by the CLI, with no Kilo token material used by desktop code; Anaconda credentials released only to permitted main-process callers; helper credentials generated per launch; application logging conventions exclude credentials                                                                                                                                                                                                                                                                                                                                                               |
+| Credentials                         | Kilo account, model-provider, and Anaconda credentials; helper credentials                 | Kilo sign-in performed by the CLI, with no Kilo token material used by desktop code; Anaconda credentials released only to permitted main-process callers, and read from the shared Anaconda credential store by the bundled conda bridge to authenticate package requests to Anaconda's governed repository; helper credentials generated per launch; application logging conventions exclude credentials                                                                                                                                                                                                            |
 | Network egress                      | Outbound traffic to external services                                                      | TLS through the platform network stack for application requests, honoring system proxy settings and using the platform's standard certificate validation                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Update and release                  | Update metadata and packages; build artifacts                                              | Update feed fixed at build time and served over HTTPS; platform code signing, with packages checked before installation; frozen dependency lockfile and pinned, integrity-checked helper artifacts; publishing refuses unsigned macOS and Windows builds                                                                                                                                                                                                                                                                                                                                                              |
 
@@ -211,12 +212,12 @@ Local helper channels are authenticated rather than trusted by address. The appl
 
 ### 5.4 Credential storage
 
-| Credential                        | Holder                                                                                                                                                                                                       |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Kilo account credentials          | Held by the Kilo CLI in its own credential store, shared with other Kilo clients                                                                                                                             |
-| Model-provider API keys           | Stored through the Kilo CLI; the provider settings page lets the user view or replace a stored key                                                                                                           |
-| Anaconda API key                  | Stored in the Anaconda credential store shared with the Anaconda CLI and conda, in a file or the operating-system keychain according to the shared Anaconda configuration (`Production validation required`) |
-| Helper and agent-tool credentials | Generated per launch; tokens for paired external apps are stored as hashes until the user revokes them                                                                                                       |
+| Credential                        | Holder                                                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kilo account credentials          | Held by the Kilo CLI in its own credential store, shared with other Kilo clients                                                                                                                                                                                                                                                                                    |
+| Model-provider API keys           | Stored through the Kilo CLI; the provider settings page lets the user view or replace a stored key                                                                                                                                                                                                                                                                  |
+| Anaconda API key                  | Stored in the Anaconda credential store shared with the Anaconda CLI and conda, in a file or the operating-system keychain according to the shared Anaconda configuration (`Production validation required`); the bundled conda bridge reads it there to authenticate to Anaconda's governed package repository, and the application does not pass it to the bridge |
+| Helper and agent-tool credentials | Generated per launch; tokens for paired external apps are stored as hashes until the user revokes them                                                                                                                                                                                                                                                              |
 
 Credentials at rest rely on operating-system account protections, and application logging conventions exclude credentials.
 
@@ -254,7 +255,7 @@ The main categories of outbound traffic are:
 
 - **AI traffic.** Prompts, workspace context, and tool results sent by the CLI to the Kilo gateway or the providers the user selects; traffic to MCP servers the user configures; web access by the agent's tools.
 - **Account traffic.** Kilo and Anaconda sign-in and account information.
-- **Packages and models.** Package downloads from conda channels and package indexes, marketplace items, and local models from the Anaconda catalog.
+- **Packages and models.** Package downloads from conda channels and package indexes, marketplace items, and local models from the Anaconda catalog. Requests to Anaconda's governed package repository carry the signed-in user's Anaconda API key, and nothing identifying when the user is signed out of Anaconda (`Production validation required`).
 - **Web content.** Pages opened in the browser pane, with a site-icon lookup that sends each visited site's host name to a third-party icon service, and public CDN resources used by agent-generated pages and embedded interfaces.
 - **Developer tooling.** Git and pull-request traffic performed by the user's own git and GitHub CLI.
 - **Operations.** Update checks and downloads; consent-gated product analytics and crash reports; feature-flag evaluation, which carries the signed-in account's email and organization, and the identifier and email of a signed-in Anaconda account (section 10.1).
@@ -413,22 +414,22 @@ flowchart LR
 
 ### 9.2 Integration inventory
 
-| Provider or service                | Status                                         | Security-relevant role                                                                             |
-| ---------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Kilo account service and gateway   | Platform dependency                            | Sign-in, account and organization data, default model gateway used by the CLI, marketplace catalog |
-| Model providers                    | Customer-configured or runtime-selected        | Process prompts, workspace context, and tool data per the user's configuration                     |
-| Anaconda services                  | Feature-dependent                              | Account sign-in, API key issuance, and the local model catalog                                     |
-| Conda channels and package indexes | Feature-dependent or customer-configured       | Package downloads for environments, notebooks, and the local model runtime                         |
-| Public script CDNs                 | Feature-dependent                              | Allowlisted resources for agent-generated pages and embedded interfaces                            |
-| PostHog                            | Feature-dependent                              | Product analytics for declared events; consent-gated                                               |
-| Sentry                             | Feature-dependent                              | Crash and error reporting; consent-gated and scrubbed                                              |
-| LaunchDarkly                       | Feature-dependent (enabled in official builds) | Feature-flag evaluation; receives account identity once signed in                                  |
-| Google site-icon service           | Feature-dependent                              | Receives the host names of sites opened in the browser pane                                        |
-| Update distribution                | Production validation required                 | Hosts update metadata, packages, and release notes                                                 |
-| Build-time package sources         | Platform dependency (build time)               | Supply the pinned CLI and helper artifacts, verified by integrity hashes or digests                |
-| MCP servers and marketplace items  | Customer-configured                            | Extend agent capabilities with the user's privileges; output treated as untrusted                  |
-| Websites                           | Customer-configured                            | Remote content in the isolated browser pane                                                        |
-| git, GitHub CLI, and editors       | Customer-configured                            | Run with the user's privileges and their own sign-in; no GitHub token stored by the application    |
+| Provider or service                | Status                                         | Security-relevant role                                                                                                                 |
+| ---------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Kilo account service and gateway   | Platform dependency                            | Sign-in, account and organization data, default model gateway used by the CLI, marketplace catalog                                     |
+| Model providers                    | Customer-configured or runtime-selected        | Process prompts, workspace context, and tool data per the user's configuration                                                         |
+| Anaconda services                  | Feature-dependent                              | Account sign-in, API key issuance, the local model catalog, and the governed package repository with its organization package policies |
+| Conda channels and package indexes | Feature-dependent or customer-configured       | Package downloads for environments, notebooks, and the local model runtime                                                             |
+| Public script CDNs                 | Feature-dependent                              | Allowlisted resources for agent-generated pages and embedded interfaces                                                                |
+| PostHog                            | Feature-dependent                              | Product analytics for declared events; consent-gated                                                                                   |
+| Sentry                             | Feature-dependent                              | Crash and error reporting; consent-gated and scrubbed                                                                                  |
+| LaunchDarkly                       | Feature-dependent (enabled in official builds) | Feature-flag evaluation; receives account identity once signed in                                                                      |
+| Google site-icon service           | Feature-dependent                              | Receives the host names of sites opened in the browser pane                                                                            |
+| Update distribution                | Production validation required                 | Hosts update metadata, packages, and release notes                                                                                     |
+| Build-time package sources         | Platform dependency (build time)               | Supply the pinned CLI and helper artifacts, verified by integrity hashes or digests                                                    |
+| MCP servers and marketplace items  | Customer-configured                            | Extend agent capabilities with the user's privileges; output treated as untrusted                                                      |
+| Websites                           | Customer-configured                            | Remote content in the isolated browser pane                                                                                            |
+| git, GitHub CLI, and editors       | Customer-configured                            | Run with the user's privileges and their own sign-in; no GitHub token stored by the application                                        |
 
 Builds without analytics, crash-reporting, or feature-flag project configuration send nothing to those services and use built-in flag defaults.
 
@@ -474,4 +475,5 @@ Before external publication or use as contractual evidence, validate the followi
 5. Live Anaconda service configuration, including the model catalog and the OAuth client.
 6. Default conda channel and package index configuration, and any organization-specific overrides.
 7. Behavior of bundled third-party components that this repository configures but does not implement — the Kilo CLI, conda bridge, notebook daemon, and local model runtime — including credential storage, permission handling, process environment handling, network behavior, and content isolation.
-8. Current DPA, subprocessor list, and vendor assurance documentation for the services in section 9.
+8. The conda bridge's credential handling for Anaconda's governed package repository: that it presents only the signed-in user's Anaconda API key, sends no credential when the user is signed out, never sends repository tokens, and that its packaged conda configuration is in effect. A system-wide conda configuration or an inherited conda root setting can bypass that configuration, in which case the Anaconda authentication plugin's own behavior applies.
+9. Current DPA, subprocessor list, and vendor assurance documentation for the services in section 9.

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { defineTool, type ToolImplementation } from "@kilo-desktop/plugin-core/contracts";
+import {
+	defineTool,
+	type ToolCallContext,
+	type ToolImplementation,
+} from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	AGENT_CHANNEL_REFUSAL_MESSAGE,
@@ -16,7 +20,9 @@ import {
 	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
 	ENVIRONMENTS_PLUGIN_ID,
+	ENVIRONMENTS_TELEMETRY_EVENTS,
 } from "../contracts/index";
+import { policyBlockedTelemetry } from "../shared/policy-telemetry";
 import type { CondaMethods } from "./conda-service";
 
 /**
@@ -44,23 +50,79 @@ const AGENT_CHANNEL_REFUSAL = {
 const ANACONDA_CHANNEL_PREFERENCE =
 	"When the user is signed in, prefer Anaconda's channels (`defaults` or the " +
 	"user's organization-governed channels); use `conda-forge` only when a " +
-	"package is unavailable there. ";
+	"package is unavailable there. A package blocked by an organization's " +
+	"package policy is not unavailable: never fall back to `conda-forge` for it. ";
 
 /**
  * The bridge never injects a default channel: when nothing configures
  * `channels` — no condarc `channels:` and no `channels` argument — conda has
  * nothing to solve against and create/install/update fail with
- * `no_channels_configured`. Rather than let the model silently reach for
+ * `NO_CHANNELS_CONFIGURED`. Rather than let the model silently reach for
  * conda-forge, instruct it to check first and ask before defaulting.
  */
 const NO_CHANNELS_GUIDANCE =
 	"If the user did not name a channel, call conda.channels.list first. When it " +
 	"returns no channels (the tool would otherwise fail with " +
-	"`no_channels_configured`), do not pick or propose a channel yourself: ask one " +
+	"`NO_CHANNELS_CONFIGURED`), do not pick or propose a channel yourself: ask one " +
 	"yes/no question, e.g. \"No conda channels are configured. I recommend Anaconda's " +
 	"`defaults` channel — Anaconda's secure & governed package repository. Shall I " +
 	'use `defaults`?" Do not offer or name any other channel. Retry with ' +
 	'`channels: ["defaults"]` only if the user agrees. ';
+
+/**
+ * An organization's package policy is a governance decision, not a missing
+ * package: the agent explains it and leaves the decision with the org, and
+ * never works around it — in particular not through the conda-forge fallback
+ * {@link ANACONDA_CHANNEL_PREFERENCE} allows for unavailable packages. The
+ * Anaconda sign-in these errors ask for is not the Kilo sign-in the tools'
+ * `requiresSignIn` gate checks; Kilo never handles the API key itself.
+ */
+const POLICY_GUIDANCE =
+	"Fails with POLICY_BLOCKED when the user's organization's package policy blocks a " +
+	"requested package. The error names each blocked package, and its final `[policy]` " +
+	"line carries the same as JSON (`blocked`: package, version, channel, org, policy, " +
+	"reason). Then tell the user which package and version is blocked, by which policy, " +
+	"in which org, and why, quoting the policy and the reason verbatim; do not retry from " +
+	"another channel, pip or a URL, or otherwise try to get around the policy (a blocked " +
+	"package is not unavailable); suggest asking the organization's administrator. A " +
+	"SOLVE_FAILED whose `[policy]` line has `policyNote: true` means the policy may have " +
+	"removed a dependency; say so. NOT_SIGNED_IN or CHANNEL_ACCESS_DENIED mean Anaconda " +
+	"refused a channel (the `[policy]` line's `refused` names it when known): the user is " +
+	"not signed in to Anaconda, or their Anaconda account has no access. Ask the user to " +
+	"sign in to Anaconda (not Kilo) in Kilo Desktop, or to ask their administrator for " +
+	"access, then try again; do not retry from another channel. Never ask the user for a " +
+	"token or API key in the chat. ";
+
+/**
+ * Clone's counterpart to {@link POLICY_GUIDANCE}: the backend reports every
+ * failed clone as SOLVE_FAILED, with no policy reason and no `[policy]` line.
+ */
+const CLONE_POLICY_GUIDANCE =
+	"A clone that the organization's package policy prevents usually fails as a generic " +
+	"SOLVE_FAILED clone error that does not say so; report the error as given. " +
+	"NOT_SIGNED_IN or CHANNEL_ACCESS_DENIED mean Anaconda refused a channel: ask the user " +
+	"to sign in to Anaconda (not Kilo) in Kilo Desktop, or to ask their administrator for " +
+	"access, then try again. Either way, do not recreate the environment from another " +
+	"channel, pip or a URL to get around it, and never ask the user for a token or API key " +
+	"in the chat. ";
+
+/**
+ * `run` as a tool's run: the tool call's input and context pass through
+ * unchanged, and a failure (thrown or rejected) goes to `report`, then is
+ * rethrown unchanged.
+ */
+export function withPolicyFailureReporting(
+	run: (input: unknown, context: ToolCallContext) => unknown,
+	report: (error: unknown) => void,
+): (input: unknown, context: ToolCallContext) => Promise<unknown> {
+	return (input, context) =>
+		Promise.resolve()
+			.then(() => run(input, context))
+			.catch((error: unknown) => {
+				report(error);
+				throw error;
+			});
+}
 
 /**
  * Refuse a non-named channel supplied as a single `channel` field (the
@@ -98,6 +160,8 @@ export interface CondaToolsOptions {
 	readonly conda: () => CondaMethods;
 	/** Opens Conda Environments settings in a window. */
 	readonly openSettings: () => void | Promise<void>;
+	/** Sends a declared telemetry event; must never throw. */
+	readonly track?: (event: string, data: Record<string, unknown>) => void;
 }
 
 /**
@@ -108,21 +172,29 @@ export interface CondaToolsOptions {
  * or local channels (C1 gate 2); the window's own calls accept the full,
  * permissive schemas. `conda.envs.createFromFile` is not a tool: its handle
  * comes from a reviewed preview in the window, so an agent cannot drive an
- * import. Approval, sign-in and annotations are in the manifest.
+ * import. Approval, sign-in and annotations are in the manifest. A failure
+ * that is a package-policy block or an Anaconda sign-in refusal is reported
+ * as `environment-policy-blocked`, then rethrown unchanged: its message, with
+ * the `[policy]` line, is what the agent reads.
  */
 export function condaTools(options: CondaToolsOptions): Record<string, ToolImplementation> {
 	const { conda } = options;
 	const tools: Record<string, ToolImplementation> = {};
+	const reportPolicyFailure = (error: unknown) => {
+		const data = policyBlockedTelemetry(error, "agent_tool");
+		if (data) options.track?.(ENVIRONMENTS_TELEMETRY_EVENTS.environmentPolicyBlocked, data);
+	};
 	const register = (definition: {
 		readonly name: string;
 		readonly description: string;
 		readonly input: z.ZodType;
-		readonly run: (input: never) => unknown;
+		readonly run: (input: never, context: ToolCallContext) => unknown;
 	}): void => {
+		const run = definition.run as (input: unknown, context: ToolCallContext) => unknown;
 		tools[definition.name] = defineTool({
 			description: definition.description,
 			input: definition.input,
-			run: definition.run as (input: unknown) => unknown,
+			run: withPolicyFailureReporting(run, reportPolicyFailure),
 		});
 	};
 
@@ -165,6 +237,7 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 			"`conda-forge`, …); URL or local-path channels are refused. " +
 			ANACONDA_CHANNEL_PREFERENCE +
 			NO_CHANNELS_GUIDANCE +
+			POLICY_GUIDANCE +
 			"Fails with ENV_EXISTS if the name is already in use.",
 		input: mcpCreateSchema,
 		run: (input: never) => conda().createEnvironment(input, CALLER),
@@ -191,7 +264,8 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 		name: "conda.envs.clone",
 		description:
 			"Clone an existing conda environment into a new named environment. " +
-			"The new environment receives an exact copy of all packages from the source.",
+			"The new environment receives an exact copy of all packages from the source. " +
+			CLONE_POLICY_GUIDANCE,
 		input: condaEnvsCloneInputSchema,
 		run: (input: never) => conda().cloneEnvironment(input, CALLER),
 	});
@@ -226,6 +300,7 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 			"URL or local-path channels are refused. " +
 			ANACONDA_CHANNEL_PREFERENCE +
 			NO_CHANNELS_GUIDANCE +
+			POLICY_GUIDANCE +
 			"Adds state (not destructive); fails with " +
 			"SOLVE_FAILED when " +
 			"the requested specs cannot be satisfied. Call conda.repodata.find " +
@@ -268,6 +343,7 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 			"`conda-forge`, …) — URL or local-path channels are refused. " +
 			ANACONDA_CHANNEL_PREFERENCE +
 			NO_CHANNELS_GUIDANCE +
+			POLICY_GUIDANCE +
 			"WARNING: updating can " +
 			"BREAK the environment — it REPLACES installed package versions and the " +
 			"solver may relink or downgrade other packages and their dependencies to " +
@@ -350,7 +426,10 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 			"build number, and `versions` lists every version with its size. " +
 			"Results are capped at `limit` (default 100) and `truncated` is true " +
 			"when more existed. Use this to check whether a package (or a specific " +
-			"version of it) is installable before calling conda.packages.install.",
+			"version of it) is installable before calling conda.packages.install. A version " +
+			"missing from a policy channel may have been filtered out by the organization's " +
+			"package policy; never look for it on another channel to get around the policy. " +
+			POLICY_GUIDANCE,
 		input: mcpRepodataFindSchema,
 		run: (input: never) => conda().findRepodata(input, CALLER),
 	});

@@ -117,6 +117,12 @@ export const ENVIRONMENTS_TELEMETRY_EVENTS = {
 	environmentRemoved: "environment-removed",
 	packageInstallLinkReceived: "package-install-link-received",
 	packageInstallLinkRejected: "package-install-link-rejected",
+	/**
+	 * A package-policy block or an Anaconda sign-in refusal was shown: `surface`
+	 * (`ui` | `agent_tool` | `notebook`), `errorCode`, `blockedCount`,
+	 * `policyNote` and up to 5 `policyIds` (UUIDs). Never names.
+	 */
+	environmentPolicyBlocked: "environment-policy-blocked",
 } as const;
 
 /**

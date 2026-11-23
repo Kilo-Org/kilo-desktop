@@ -71,7 +71,7 @@ export function RemovePackageConfirmation({
 							role="alert"
 							data-qa-id="environments-conda-remove-pkg-error"
 						>
-							{friendlyEnvironmentsError(remove.error, "Could not remove the package.")}
+							{friendlyEnvironmentsError(remove.error, "Could not remove the package.").message}
 						</p>
 					)}
 				</AlertDialogHeader>

@@ -33,12 +33,7 @@ import type { CondaEnv, CondaRepodataFindResult } from "../../../contracts/provi
 import { ChannelChooserPopover } from "./ChannelChooserPopover";
 import { useChannelSelection } from "./use-channel-selection";
 import { validateEnvironmentName } from "./environment-display";
-import {
-	createEnvironmentJob,
-	jobToastOptions,
-	showJobError,
-	showJobSuccess,
-} from "./environments-toasts";
+import { createEnvironmentJob, showJobSuccess, useJobToasts } from "./environments-toasts";
 import {
 	PackageResultsTable,
 	PackageSearchInput,
@@ -114,6 +109,7 @@ export function CreateEnvironmentDialog({
 }: CreateEnvironmentDialogProps) {
 	const conda = useConda();
 	const track = useTrack();
+	const { jobToastOptions, showJobError } = useJobToasts();
 	const [name, setName] = useState(initialName ?? "");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);

@@ -1,7 +1,6 @@
 /**
- * The title Kilo's server gives a fork of a chat titled `title`. Mirrors
- * `getForkedTitle` in kilocode's `packages/opencode/src/session/session.ts`;
- * only used to recognize a fork whose request failed after the server made it.
+ * The title Kilo v2 gives a fork of a chat titled `title` (checked by
+ * `chat-fork.integration.test.ts`); only used to recognize a fork whose request failed after the server made it.
  */
 export function forkedTitle(title: string): string {
 	const match = /^(.+) \(fork #(\d+)\)$/.exec(title);

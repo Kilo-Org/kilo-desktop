@@ -352,19 +352,19 @@ export function provideConversations(
 			replyPermission: async ({ chatId, permissionId, reply, message, interactive }, caller) => {
 				promptAnswerersOnly(caller);
 				await write(chatId, "answer the permission request", (client, directory) =>
-					client.replyPermission(directory, permissionId, reply, message, interactive),
+					client.replyPermission(directory, chatId, permissionId, reply, message, interactive),
 				);
 			},
 			replyQuestion: async ({ chatId, questionId, answers }, caller) => {
 				promptAnswerersOnly(caller);
 				await write(chatId, "answer the question", (client, directory) =>
-					client.replyQuestion(directory, questionId, answers),
+					client.replyQuestion(directory, chatId, questionId, answers),
 				);
 			},
 			rejectQuestion: async ({ chatId, questionId }, caller) => {
 				promptAnswerersOnly(caller);
 				await write(chatId, "dismiss the question", (client, directory) =>
-					client.rejectQuestion(directory, questionId),
+					client.rejectQuestion(directory, chatId, questionId),
 				);
 			},
 			declineSignInTools: ({ pluginId }) => {

@@ -742,9 +742,9 @@ describe("acting on chats", () => {
 			["update", "/projects/a", ["ses_a", { title: "Renamed" }]],
 			["abort", "/projects/a", ["ses_a"]],
 			["update", "/projects/a", ["ses_a", { archived: null }]],
-			["replyPermission", "/projects/a", ["per_1", "always", undefined, true]],
-			["replyQuestion", "/projects/a", ["que_1", [["Yes"]]]],
-			["rejectQuestion", "/projects/a", ["que_2"]],
+			["replyPermission", "/projects/a", ["ses_a", "per_1", "always", undefined, true]],
+			["replyQuestion", "/projects/a", ["ses_a", "que_1", [["Yes"]]]],
+			["rejectQuestion", "/projects/a", ["ses_a", "que_2"]],
 			["delete", "/projects/a", ["ses_a"]],
 			["delete", "/home", ["ses_unknown"]],
 		]);
@@ -783,7 +783,7 @@ describe("acting on chats", () => {
 		});
 
 		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
-			["replyPermission", ["per_1", "once", undefined, undefined]],
+			["replyPermission", ["ses_a", "per_1", "once", undefined, undefined]],
 		]);
 	});
 

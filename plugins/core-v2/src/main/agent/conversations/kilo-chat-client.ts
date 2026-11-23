@@ -1,10 +1,13 @@
-import { createKiloClient } from "@kilocode/sdk/v2/client";
+import type { SessionInfo } from "@kilocode/client";
+import { Definition as SessionDrain } from "@opencode/schema/kilocode/session-drain";
 
 import type { PermissionRequest, ServerConnection, PermissionRule } from "../../../contracts";
 import { readChatInfo, type ChatInfo, type KiloEvent } from "./activity";
 import { forkHandoffText } from "./fork-handoff";
-import { listAllSessionPages } from "./session-list-pages";
+import { callRpc, createServerClient, type KiloV2Client } from "../../server-client";
+import { normalizeV2Action, type V2PermissionRule } from "../kilo-v2-config-entries";
 import type { PendingRequest } from "./store";
+import { toV1Session, translateEvent } from "./v2-chat-events";
 
 export interface CreateChatParams {
 	readonly title?: string;
@@ -45,13 +48,6 @@ export interface ChatCommandParams {
 	readonly model?: { readonly providerID: string; readonly modelID: string } | undefined;
 	readonly variant?: string | undefined;
 }
-
-/**
- * Sent with every prompt and command so a slow snapshot waits silently
- * instead of asking "Snapshot is slow — disable snapshots?": every chat shares
- * one server and queues on a per-worktree snapshot lock (the chat pane's policy).
- */
-const SNAPSHOT_INITIALIZATION = "wait" as const;
 
 /**
  * The Kilo server's chats, as kilo.core reads and changes them. Calls that
@@ -116,239 +112,279 @@ export interface KiloChatClient {
 	drainChat(directory: string, id: string, token: string, signal: AbortSignal): Promise<void>;
 	replyPermission(
 		directory: string,
+		chatId: string,
 		requestId: string,
 		reply: "once" | "always" | "reject",
 		message?: string,
 		interactive?: boolean,
 	): Promise<void>;
-	replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void>;
-	rejectQuestion(directory: string, requestId: string): Promise<void>;
+	replyQuestion(
+		directory: string,
+		chatId: string,
+		requestId: string,
+		answers: string[][],
+	): Promise<void>;
+	rejectQuestion(directory: string, chatId: string, requestId: string): Promise<void>;
 }
 
-const at = (directory: string | undefined) => (directory ? { directory } : {});
+/** Page size of the session list; a shorter page (or no next cursor) is the last one. */
+const LIST_PAGE_SIZE = 100;
+
+function isNotFound(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as { _tag?: unknown })._tag === "SessionNotFoundError"
+	);
+}
+
+/** Prompt parts as v2 takes them: one text, and files by URI. */
+function promptInput(parts: ChatPromptParams["parts"]) {
+	const text = parts
+		.filter((part) => part.type === "text" && typeof part.text === "string")
+		.map((part) => part.text as string)
+		.join("\n");
+	const files = parts.flatMap((part) =>
+		part.type === "file" && typeof part.url === "string"
+			? [
+					{
+						uri: part.url,
+						...(typeof part.filename === "string" ? { name: part.filename } : {}),
+					},
+				]
+			: [],
+	);
+	return { text, ...(files.length > 0 ? { files } : {}) };
+}
+
+/** Per-turn system text has no v2 field; it goes in as a note the next turn reads, starting no reply. */
+function systemNote(system: string): string {
+	return `<system-reminder>\n${system}\n</system-reminder>`;
+}
+
+/** A chat permission rule (v1 shape, as the contracts hold it) as a v2 rule. */
+function toV2Rule(rule: PermissionRule): V2PermissionRule {
+	return {
+		action: normalizeV2Action(rule.permission),
+		resource: rule.pattern,
+		effect: rule.action,
+	};
+}
+
+function toV1Rule(rule: V2PermissionRule): PermissionRule {
+	return { permission: rule.action, pattern: rule.resource, action: rule.effect };
+}
+
+const sameRule = (left: V2PermissionRule, right: V2PermissionRule) =>
+	left.action === right.action && left.resource === right.resource && left.effect === right.effect;
 
 /**
- * A fork replays its whole copied transcript twice on `/global/event`: as the
- * usual events and as durable `sync` copies, which nothing here reads. VS Code
- * and JetBrains send the same header.
+ * A `KiloChatClient` over Desktop's Kilo v2 server (`@kilocode/client`).
+ * Sessions are global (ids), writes need no directory; per-location reads
+ * (pending permissions and forms, the drain RPC) use the chat's directory or
+ * the server's global one. v2 has no per-prompt agent, model or system text:
+ * the agent and model are switched on the session first, and system text is
+ * a synthetic note. Branch names and structured answers move to v2 in step 11.
  */
-const SKIP_FORK_SYNC_HEADERS = { "x-kilo-sse-skip-fork-sync": "1" } as const;
-
-/** A `KiloChatClient` over the Kilo SDK. The client carries no directory: with one, listing is scoped to that project. */
-export function createKiloChatClient(connection: ServerConnection): KiloChatClient {
-	const client = createKiloClient({
-		baseUrl: connection.baseUrl,
-		headers: {
-			Authorization: `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`,
-		},
+export function createKiloChatClient(
+	connection: ServerConnection,
+	fetch: typeof globalThis.fetch = globalThis.fetch,
+): KiloChatClient {
+	const client: KiloV2Client = createServerClient(connection, fetch);
+	const drain = client.rpc(SessionDrain);
+	const location = (directory: string | undefined) => ({
+		location: { directory: directory ?? connection.globalDirectory },
 	});
-	const options = { throwOnError: true } as const;
-	const toInfo = (value: unknown) => {
-		const info = readChatInfo(value);
+
+	async function readSession(sessionID: string): Promise<SessionInfo | undefined> {
+		try {
+			return await client.session.get({ sessionID });
+		} catch (error) {
+			if (isNotFound(error)) return undefined;
+			throw error;
+		}
+	}
+
+	async function switchTo(
+		sessionID: string,
+		params: {
+			agent?: string | undefined;
+			model?: ChatPromptParams["model"];
+			variant?: string | undefined;
+		},
+	) {
+		if (params.agent) await client.session.switchAgent({ sessionID, agent: params.agent });
+		if (params.model) {
+			await client.session.switchModel({
+				sessionID,
+				model: {
+					providerID: params.model.providerID,
+					id: params.model.modelID,
+					...(params.variant ? { variant: params.variant } : {}),
+				},
+			});
+		}
+	}
+
+	const toInfo = (session: SessionInfo) => {
+		const info = readChatInfo(toV1Session(session));
 		if (!info) throw new Error("The Kilo server returned an unreadable chat.");
 		return info;
 	};
+
 	return {
 		async listChats() {
-			const rows = await listAllSessionPages(async (query) => {
-				const { data } = await client.experimental.session.list(query, options);
-				return (data ?? []) as unknown as { id: string; time: { updated: number } }[];
-			});
-			return rows.flatMap((row) => readChatInfo(row) ?? []);
+			const rows = new Map<string, SessionInfo>();
+			let cursor: string | undefined;
+			do {
+				const page = await client.session.list({
+					parentID: null,
+					limit: LIST_PAGE_SIZE,
+					...(cursor ? { cursor } : {}),
+				});
+				for (const row of page.data) rows.set(row.id, row);
+				cursor = page.data.length === LIST_PAGE_SIZE ? (page.cursor.next ?? undefined) : undefined;
+			} while (cursor);
+			return [...rows.values()].flatMap((row) => readChatInfo(toV1Session(row)) ?? []);
 		},
 		async getChat(sessionID) {
-			const { data } = await client.session.get({ sessionID }, options);
-			return readChatInfo(data);
+			const session = await readSession(sessionID);
+			return session ? readChatInfo(toV1Session(session)) : undefined;
 		},
 		async statuses(directory) {
-			const { data } = await client.session.status(at(directory), options);
-			return (data ?? {}) as Record<string, { type: string }>;
+			// v2 lists running sessions once for the whole server.
+			if (directory) return {};
+			const active = await client.session.active();
+			return Object.fromEntries(Object.keys(active).map((id) => [id, { type: "busy" }]));
 		},
 		async pendingPermissions(directory) {
-			const { data } = await client.permission.list(at(directory), options);
-			return (data ?? []).map(({ id, sessionID }) => ({ id, sessionID }));
+			const { data } = await client.permission.request.list(location(directory));
+			return data.map(({ id, sessionID }) => ({ id, sessionID }));
 		},
 		async permissionRequests(directory) {
-			const { data } = await client.permission.list(at(directory), options);
-			return (data ?? []).map(({ id, sessionID, permission, patterns, metadata }) => ({
+			const { data } = await client.permission.request.list(location(directory));
+			return data.map(({ id, sessionID, action, resources, metadata }) => ({
 				id,
 				chatId: sessionID,
-				permission,
-				patterns: [...(patterns ?? [])],
+				permission: action,
+				patterns: [...resources],
 				metadata: { ...metadata },
 			}));
 		},
 		async pendingQuestions(directory) {
-			const { data } = await client.question.list(at(directory), options);
-			return (data ?? []).map(({ id, sessionID }) => ({ id, sessionID }));
+			const { data } = await client.form.list(location(directory));
+			return data.map(({ id, sessionID }) => ({ id, sessionID }));
 		},
 		async *events(signal) {
 			// The provider owns reconnect hydration and drain-token rotation.
-			const subscription = await client.global.event({
-				signal,
-				sseMaxRetryAttempts: 1,
-				headers: SKIP_FORK_SYNC_HEADERS,
-			});
-			const stream = subscription.stream as AsyncIterable<{
-				directory?: string;
-				payload?: { type?: unknown; properties?: Record<string, unknown> };
-			}>;
-			for await (const event of stream) {
+			for await (const event of client.event.subscribe({ signal })) {
 				if (signal.aborted) return;
-				const type = event.payload?.type;
-				if (typeof type !== "string") continue;
-				yield { type, properties: event.payload?.properties ?? {}, directory: event.directory };
+				for (const translated of await translateEvent(event, readSession)) yield translated;
 			}
 		},
 		async createChat(directory, params) {
-			const { data } = await client.session.create(
-				{
-					directory,
-					...(params.title ? { title: params.title } : {}),
-					...(params.agent ? { agent: params.agent } : {}),
-					...(params.model
-						? {
-								model: {
-									providerID: params.model.providerID,
-									id: params.model.id,
-									...(params.model.variant ? { variant: params.model.variant } : {}),
-								},
-							}
-						: {}),
-					...(params.metadata ? { metadata: { ...params.metadata } } : {}),
-					...(params.permission ? { permission: [...params.permission] } : {}),
-				},
-				options,
-			);
-			return toInfo(data);
+			const session = await client.session.create({
+				location: { directory },
+				...(params.title ? { title: params.title } : {}),
+				...(params.agent ? { agent: params.agent } : {}),
+				...(params.model
+					? {
+							model: {
+								providerID: params.model.providerID,
+								id: params.model.id,
+								...(params.model.variant ? { variant: params.model.variant } : {}),
+							},
+						}
+					: {}),
+				...(params.metadata ? { metadata: { ...params.metadata } as never } : {}),
+				...(params.permission ? { permissions: params.permission.map(toV2Rule) } : {}),
+			});
+			return toInfo(session);
 		},
-		async updateChat(directory, sessionID, patch) {
-			await client.session.update(
-				{
-					sessionID,
-					directory,
-					...(patch.title !== undefined ? { title: patch.title } : {}),
-					// Kilo clears the archive time with null, which its SDK types don't say.
-					...(patch.archived !== undefined ? { time: { archived: patch.archived as number } } : {}),
-					...(patch.metadata !== undefined ? { metadata: { ...patch.metadata } } : {}),
-					...(patch.permission !== undefined ? { permission: [...patch.permission] } : {}),
-				},
-				options,
-			);
+		async updateChat(_directory, sessionID, patch) {
+			// v2 replaces the rules; v1 appended them. A rule already there is not repeated.
+			let permissions: V2PermissionRule[] | undefined;
+			if (patch.permission !== undefined) {
+				const current = (await client.session.get({ sessionID })).permissions ?? [];
+				const added = patch.permission
+					.map(toV2Rule)
+					.filter((rule) => !current.some((existing) => sameRule(existing, rule)));
+				permissions = [...current, ...added];
+			}
+			await client.session.update({
+				sessionID,
+				...(patch.title !== undefined ? { title: patch.title } : {}),
+				...(patch.archived !== undefined ? { archived: patch.archived !== null } : {}),
+				...(patch.metadata !== undefined ? { metadata: { ...patch.metadata } as never } : {}),
+				...(permissions ? { permissions } : {}),
+			});
 		},
-		async forkChat(directory, sessionID, messageID) {
-			const { data } = await client.session.fork({ sessionID, directory, messageID }, options);
-			return toInfo(data);
+		async forkChat(_directory, sessionID, messageID) {
+			return toInfo(await client.session.fork({ sessionID, before: messageID }));
 		},
 		async recordForkHandoff(directory, sessionID) {
-			await client.session.promptAsync(
-				{
+			await client.session.synthetic({
+				sessionID,
+				text: forkHandoffText(directory),
+				resume: false,
+			});
+		},
+		async getChatPermission(_directory, sessionID) {
+			return ((await client.session.get({ sessionID })).permissions ?? []).map(toV1Rule);
+		},
+		async generateBranchName() {
+			throw new Error("Branch names aren't on Kilo v2 yet.");
+		},
+		async deleteChat(_directory, sessionID) {
+			await client.session.remove({ sessionID });
+		},
+		async promptStructured() {
+			throw new Error("Structured answers aren't on Kilo v2 yet.");
+		},
+		async prompt(_directory, sessionID, params) {
+			await switchTo(sessionID, params);
+			if (params.system) {
+				await client.session.synthetic({
 					sessionID,
-					directory,
-					noReply: true,
-					parts: [{ type: "text", text: forkHandoffText(directory), synthetic: true }],
-				},
-				options,
-			);
+					text: systemNote(params.system),
+					resume: false,
+				});
+			}
+			await client.session.prompt({ sessionID, ...promptInput(params.parts) });
 		},
-		async getChatPermission(directory, sessionID) {
-			const { data } = await client.session.get({ sessionID, directory }, options);
-			return data?.permission ?? [];
+		async command(_directory, sessionID, params) {
+			await switchTo(sessionID, params);
+			await client.session.command({ sessionID, name: params.command, text: params.arguments });
 		},
-		async generateBranchName(directory, sessionID, params) {
-			const { data } = await client.branchName.generate(
-				{
-					sessionID,
-					directory,
-					prompt: params.prompt,
-					...(params.providerID ? { providerID: params.providerID } : {}),
-					...(params.modelID ? { modelID: params.modelID } : {}),
-				},
-				options,
-			);
-			return data?.branch ?? null;
-		},
-		async deleteChat(directory, sessionID) {
-			await client.session.delete({ sessionID, directory }, options);
-		},
-		async promptStructured(directory, sessionID, params) {
-			const { data } = await client.session.prompt(
-				{
-					sessionID,
-					directory,
-					...(params.model
-						? { model: { providerID: params.model.providerID, modelID: params.model.modelID } }
-						: {}),
-					...(params.model?.variant ? { variant: params.model.variant } : {}),
-					// A hidden chat: a snapshot question here would block unseen.
-					snapshotInitialization: "wait",
-					format: { type: "json_schema", schema: { ...params.schema } },
-					system: params.system,
-					parts: [{ type: "text", text: params.text }],
-				},
-				options,
-			);
-			return (data?.info as { structured?: unknown } | undefined)?.structured;
-		},
-		async prompt(directory, sessionID, params) {
-			await client.session.promptAsync(
-				{
-					sessionID,
-					directory,
-					parts: params.parts.map((part) => ({ ...part })) as never,
-					...(params.agent ? { agent: params.agent } : {}),
-					...(params.model ? { model: { ...params.model } } : {}),
-					...(params.variant ? { variant: params.variant } : {}),
-					...(params.system ? { system: params.system } : {}),
-					snapshotInitialization: SNAPSHOT_INITIALIZATION,
-				},
-				options,
-			);
-		},
-		async command(directory, sessionID, params) {
-			// The command call answers only once the command has run; the turn is
-			// followed on the event stream like any other.
-			void client.session
-				.command(
-					{
-						sessionID,
-						directory,
-						command: params.command,
-						arguments: params.arguments,
-						...(params.agent ? { agent: params.agent } : {}),
-						...(params.model
-							? { model: `${params.model.providerID}/${params.model.modelID}` }
-							: {}),
-						...(params.variant ? { variant: params.variant } : {}),
-						snapshotInitialization: SNAPSHOT_INITIALIZATION,
-					},
-					options,
-				)
-				.catch(() => undefined);
-		},
-		async abortChat(directory, sessionID) {
-			await client.session.abort({ sessionID, directory }, options);
+		async abortChat(_directory, sessionID) {
+			await client.session.interrupt({ sessionID });
 		},
 		async drainChat(directory, sessionID, token, signal) {
-			await client.kilocode.drainSession({ sessionID, directory, token }, { ...options, signal });
-		},
-		async replyPermission(directory, requestID, reply, message, interactive) {
-			await client.permission.reply(
-				{
-					requestID,
-					directory,
-					reply,
-					...(message !== undefined ? { message } : {}),
-					...(interactive && reply !== "reject" ? { interactive: true } : {}),
-				},
-				options,
+			await callRpc(client, directory, (options) =>
+				drain.drain({ sessionID, token }, { ...options, signal }),
 			);
 		},
-		async replyQuestion(directory, requestID, answers) {
-			await client.question.reply({ requestID, directory, answers }, options);
+		async replyPermission(_directory, sessionID, requestID, reply, message) {
+			// v2 takes no `interactive`: only a request's own `metadata.interactive` says a person must answer.
+			await client.permission.reply({
+				sessionID,
+				requestID,
+				decision: reply,
+				...(message !== undefined ? { message } : {}),
+			});
 		},
-		async rejectQuestion(directory, requestID) {
-			await client.question.reject({ requestID, directory }, options);
+		async replyQuestion(_directory, sessionID, formID, answers) {
+			const form = await client.session.form.get({ sessionID, formID });
+			const answer = Object.fromEntries(
+				form.fields.map((field, index) => {
+					const chosen = answers[index] ?? [];
+					return [field.key, field.type === "multiselect" ? chosen : (chosen[0] ?? "")];
+				}),
+			);
+			await client.session.form.reply({ sessionID, formID, answer });
+		},
+		async rejectQuestion(_directory, sessionID, formID) {
+			await client.session.form.cancel({ sessionID, formID });
 		},
 	};
 }

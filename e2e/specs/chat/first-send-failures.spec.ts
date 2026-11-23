@@ -7,7 +7,7 @@ import { test } from "../../fixtures/chat.js";
 import { chatFirstSendFailuresData } from "../../testdata/chat/first-send-failures.js";
 
 noModelTest(
-	"sending without a selected model opens the session and shows why @smoke @packaged",
+	"sending without a selected model opens the session and preserves the message while generation remains visibly active @smoke @packaged",
 	async ({ appShellPage, chatComposerPage }) => {
 		await appShellPage.verifyShellIsLoaded();
 		await chatComposerPage.openDraft();

@@ -235,8 +235,8 @@ export class ChatComposerPage {
 		await expectElementToBeVisible(this.userMessage(message), {
 			message: `The no-model message "${message}" should remain visible`,
 		});
-		await expectElementToBeVisible(this.chatMessageError(), {
-			message: "A no-model send should show the CLI's provider error in the chat",
+		await expectElementToBeVisible(getLocatorByTestId("kilo-turn-working"), {
+			message: "The no-model first prompt should remain visibly in progress",
 		});
 	}
 

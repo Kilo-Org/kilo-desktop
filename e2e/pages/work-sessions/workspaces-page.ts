@@ -13,21 +13,22 @@ import { runFromCommandPalette } from "../shell/command-palette.js";
  * reached through their commands in the command palette.
  */
 export class WorkspacesPage {
-	private readonly formDialog = () => getLocatorByTestId("workspace-form-dialog");
+	private readonly createDialog = () => getLocatorByTestId("workspace-create-dialog");
 	private readonly manager = () => getLocatorByTestId("workspace-manager-dialog");
 
-	/** Adds a workspace from the folder the (stubbed) native picker returns. */
+	/** Adds a workspace (Local folder source) from the folder the (stubbed) native picker returns. */
 	async addWorkspaceFromPicker(folderName: string): Promise<void> {
 		await runFromCommandPalette("kilo.work-sessions/add-workspace");
-		await expectElementToBeVisible(this.formDialog(), "Add workspace should open the form");
+		await expectElementToBeVisible(this.createDialog(), "Add workspace should open New workspace");
+		await click(getLocatorByTestId("workspace-source-kilo.work-sessions/local-folder"));
 		await click(getLocatorByTestId("workspace-folder-dropzone"));
 		await expectElementToBeVisible(
-			this.formDialog().getByText(folderName, { exact: true }),
+			this.createDialog().getByText(folderName, { exact: true }),
 			"The picked folder should be listed",
 		);
-		await click(this.formDialog().getByRole("button", { name: "Create workspace" }));
-		await expectElementToBeHidden(this.formDialog(), {
-			message: "The form should close once the workspace is created",
+		await click(this.createDialog().getByRole("button", { name: "Create workspace" }));
+		await expectElementToBeHidden(this.createDialog(), {
+			message: "New workspace should close once the workspace is created",
 		});
 	}
 

@@ -99,7 +99,8 @@ export async function unavailableFolderIds(workspaces: readonly Workspace[]): Pr
 	return folders.filter((folder) => unavailable.has(folder.id)).map((folder) => folder.id);
 }
 
-async function isAvailableDirectory(folderPath: string): Promise<boolean> {
+/** Whether `folderPath` resolves to a directory, answered false after a short timeout (an unreachable mount). */
+export async function isAvailableDirectory(folderPath: string): Promise<boolean> {
 	const probe = (async () => {
 		const resolved = await realpath(folderPath);
 		return (await stat(resolved)).isDirectory();

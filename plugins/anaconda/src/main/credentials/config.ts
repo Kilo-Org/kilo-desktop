@@ -7,44 +7,37 @@ import { z } from "zod";
 
 import { ConfigParseError, ConfigValidationError } from "./errors";
 
-export const anacondaAuthSiteSchema = z
-	.object({
-		preferred_token_storage: z
-			.union([z.literal("system"), z.literal("anaconda-keyring")])
-			.optional(),
-		domain: z.string().optional(),
-		auth_domain_override: z.string().nullish(),
-		api_key: z.string().nullish(),
-		keyring: z.record(z.string(), z.record(z.string(), z.string())).nullish(),
-		keyring_path: z.string().optional(),
-		ssl_verify: z.union([z.boolean(), z.string()]).optional(),
-		client_id: z.string().optional(),
-		redirect_uri: z.string().optional(),
-		openid_config_path: z.string().optional(),
-		login_success_path: z.string().optional(),
-		login_error_path: z.string().optional(),
-		use_unified_repo_api_key: z.boolean().optional(),
-		hash_hostname: z.boolean().optional(),
-		use_device_flow: z.boolean().optional(),
-		client_cert: z.string().nullish(),
-		client_cert_key: z.string().nullish(),
-		proxy_servers: z.record(z.string(), z.string()).nullish(),
-		extra_headers: z.union([z.record(z.string(), z.string()), z.string()]).nullish(),
-	})
-	.passthrough();
+export const anacondaAuthSiteSchema = z.looseObject({
+	preferred_token_storage: z.union([z.literal("system"), z.literal("anaconda-keyring")]).optional(),
+	domain: z.string().optional(),
+	auth_domain_override: z.string().nullish(),
+	api_key: z.string().nullish(),
+	keyring: z.record(z.string(), z.record(z.string(), z.string())).nullish(),
+	keyring_path: z.string().optional(),
+	ssl_verify: z.union([z.boolean(), z.string()]).optional(),
+	client_id: z.string().optional(),
+	redirect_uri: z.string().optional(),
+	openid_config_path: z.string().optional(),
+	login_success_path: z.string().optional(),
+	login_error_path: z.string().optional(),
+	use_unified_repo_api_key: z.boolean().optional(),
+	hash_hostname: z.boolean().optional(),
+	use_device_flow: z.boolean().optional(),
+	client_cert: z.string().nullish(),
+	client_cert_key: z.string().nullish(),
+	proxy_servers: z.record(z.string(), z.string()).nullish(),
+	extra_headers: z.union([z.record(z.string(), z.string()), z.string()]).nullish(),
+});
 
-export const anacondaConfigSchema = z
-	.object({
-		default_site: z.string().optional(),
-		plugin: z
-			.object({
-				auth: anacondaAuthSiteSchema.optional(),
-			})
-			.passthrough()
-			.optional(),
-		sites: z.record(z.string(), anacondaAuthSiteSchema).optional(),
-	})
-	.passthrough();
+export const anacondaConfigSchema = z.looseObject({
+	default_site: z.string().optional(),
+	plugin: z
+		.looseObject({
+			auth: anacondaAuthSiteSchema.optional(),
+		})
+		.optional(),
+	sites: z.record(z.string(), anacondaAuthSiteSchema).optional(),
+});
 
 export type AnacondaAuthSite = z.infer<typeof anacondaAuthSiteSchema>;
 export type AnacondaConfigData = z.infer<typeof anacondaConfigSchema>;

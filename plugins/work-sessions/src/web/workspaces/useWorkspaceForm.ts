@@ -41,7 +41,7 @@ export function useWorkspaceForm(options: {
 	const [name, setName] = useState(workspace?.name ?? "");
 	const [color, setColor] = useState(workspace?.color ?? DEFAULT_WORKSPACE_IDENTITY_COLOR);
 	const [folders, setFolders] = useState<WorkspaceFolderInput[]>(
-		workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? [],
+		() => workspace?.folders.map(({ path, isPrimary }) => ({ path, isPrimary })) ?? [],
 	);
 	const [error, setError] = useState<string | null>(null);
 	const [isDragging, setIsDragging] = useState(false);

@@ -37,6 +37,7 @@ export interface DesktopUpdateState {
 		| "up-to-date"
 		| "error";
 	readonly track: ReleaseTrack;
+	readonly installedTrack: ReleaseTrack;
 	readonly currentVersion: string;
 	readonly availableVersion: string | null;
 	readonly downloadedVersion: string | null;
@@ -69,6 +70,8 @@ interface DesktopUpdaterServiceOptions {
 	readonly platform: NodeJS.Platform;
 	readonly arch: string;
 	readonly track: ReleaseTrack;
+	/** The track this build was published on; the selected `track` may differ. */
+	readonly installedTrack: ReleaseTrack;
 	readonly currentVersion: string;
 	readonly publishUrls: UpdatePublishUrls;
 	readonly fetch: typeof globalThis.fetch;
@@ -145,6 +148,7 @@ export class DesktopUpdaterService {
 			enabled: disabledReason === null,
 			status: disabledReason === null ? "idle" : "disabled",
 			track: options.track,
+			installedTrack: options.installedTrack,
 			currentVersion: options.currentVersion,
 			availableVersion: null,
 			downloadedVersion: null,

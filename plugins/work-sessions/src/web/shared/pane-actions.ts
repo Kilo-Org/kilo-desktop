@@ -112,6 +112,45 @@ export async function closePane(
 	return closed;
 }
 
+/** Which of a pane's group's tabs a bulk close takes, as VS Code's tab menu does. */
+export type CloseScope = "others" | "right" | "all";
+
+/** The tabs of `paneId`'s group that `scope` closes, in tab order. */
+export function panesToClose(layout: PaneLayout, paneId: string, scope: CloseScope): string[] {
+	return tabsToClose(findPaneGroup(layout, paneId)?.tabs.map((tab) => tab.id) ?? [], paneId, scope);
+}
+
+/** Of a group's `tabs` (in order, holding `paneId`), the ones `scope` closes. */
+export function tabsToClose(tabs: readonly string[], paneId: string, scope: CloseScope): string[] {
+	if (scope === "all") return [...tabs];
+	if (scope === "others") return tabs.filter((id) => id !== paneId);
+	return tabs.slice(tabs.indexOf(paneId) + 1);
+}
+
+/**
+ * Closes panes one at a time, so kinds that ask first (unsaved changes) ask
+ * one after another. A pane kept open is skipped; a close that fails doesn't
+ * stop the rest. Resolves to how many failed.
+ */
+export async function closePanes(
+	panes: PanesHandle,
+	workSessionId: string,
+	paneIds: readonly string[],
+	implementationOf: (kind: string) => PaneImplementation | undefined,
+): Promise<number> {
+	let failed = 0;
+	for (const paneId of paneIds) {
+		try {
+			// In turn: a kind's close guard may ask the person, and concurrent closes would stack those prompts.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
+			await closePane(panes, workSessionId, paneId, implementationOf);
+		} catch {
+			failed += 1;
+		}
+	}
+	return failed;
+}
+
 /** Changes a work session's arrangement as a person asked, reporting it. */
 export async function setArrangement(
 	panes: PanesHandle,

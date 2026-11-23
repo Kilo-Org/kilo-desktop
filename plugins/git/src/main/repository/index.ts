@@ -15,7 +15,8 @@ import {
 import { GIT_PROTOCOL_SCHEME, Repository } from "../../contracts";
 import type { PullRequestSource } from "../shared/pull-request-source";
 import { createGitProtocolHandler } from "./git-protocol";
-import { GitService, type GitClientSlice, type WorkspaceAccess } from "./git-service";
+import type { GitClientSlice } from "../shared/git-client";
+import { GitService, type WorkspaceAccess } from "./git-service";
 import { isManagedBranch } from "./worktree-manager";
 
 export interface RepositoryOptions {

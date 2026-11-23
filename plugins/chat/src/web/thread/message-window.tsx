@@ -262,6 +262,8 @@ const WindowedMessage = memo(function WindowedMessage({
 	const [animatesEntrance, setAnimatesEntrance] = useState(extendsTranscript);
 	if (!mounted && animatesEntrance) setAnimatesEntrance(false);
 
+	// `store.observe` returns its own unobserve, which this effect returns as its cleanup.
+	// react-doctor-disable-next-line react-doctor/effect-needs-cleanup
 	useLayoutEffect(() => {
 		const element = ref.current;
 		if (!store || !element) return;

@@ -10,7 +10,7 @@ import {
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { NotebookIcon } from "lucide-react";
 
-import { NOTEBOOK_PANE_KIND } from "../contracts/index.js";
+import { NOTEBOOK_PANE_KIND, notebookFileOf } from "../contracts/index.js";
 import { CloseGuards, CloseGuardsContext } from "./close-guards.js";
 import { notebookExecuteInteractions } from "./notebook-interactions.js";
 import { NotebookPane } from "./NotebookPane.js";
@@ -41,6 +41,7 @@ export const notebookWebEntry = definePlugin({
 			component: withCloseGuards(guards, NotebookPane),
 			icon: NotebookIcon,
 			canClose: guards.canClose,
+			path: notebookFileOf,
 		});
 		sdk.extensions.implement(KernelCommand, "open", () =>
 			sdk.domainObjects.get(WorkSessionsWindow)?.methods.openPane({ kind: NOTEBOOK_PANE_KIND }),

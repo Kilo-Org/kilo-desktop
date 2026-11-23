@@ -6,11 +6,13 @@ import {
 	expectElementToBeHidden,
 	expectElementToBeVisible,
 	expectElementToContainText,
+	expectElementToHaveAttribute,
 	expectElementToHaveCount,
 	fill,
 	getLocator,
 	getLocatorByRole,
 	getLocatorByTestId,
+	pressLocatorKeyboard,
 	pressSequentially,
 	uploadFiles,
 } from "@anaconda/playwright-utils";
@@ -35,6 +37,7 @@ const SESSION_TITLED_TIMEOUT_MS = 30_000;
  */
 export class ChatComposerPage {
 	private readonly agentPane = () => getLocatorByTestId("kilo-agent-pane");
+	private readonly starter = () => getLocatorByTestId("kilo-session-starter");
 	// Exactly one shows at a time: the launcher and an open session's canvas
 	// never share the window, and hidden ones are filtered out.
 	private readonly composerRoot = () =>
@@ -130,6 +133,44 @@ export class ChatComposerPage {
 	async send(text: string): Promise<void> {
 		await this.typeMessage(text);
 		await click(this.sendButton());
+	}
+
+	async pressKey(key: string): Promise<void> {
+		await pressLocatorKeyboard(this.messageInput(), key);
+	}
+
+	async verifyComposerHoldsText(text: string): Promise<void> {
+		await expectElementToContainText(this.messageInput(), text, {
+			message: `The composer should still hold "${text}" unsent`,
+		});
+	}
+
+	/** The first send opened the session, and its transcript holds each of `lines` as a sent line. */
+	async verifySessionStartedWithLines(lines: readonly string[]): Promise<void> {
+		await waitForSessionStartedBySend();
+		for (const line of lines) {
+			await expectElementToContainText(this.thread().locator('[data-role="user"]'), line, {
+				message: `The sent message should show "${line}" in the transcript`,
+			});
+		}
+	}
+
+	/**
+	 * The welcome composer is still the draft and the launcher idle. A send
+	 * marks the launcher busy (inert, aria-busy) as soon as it begins, so call
+	 * this only after a later keystroke has landed in the composer: keys are
+	 * processed in order, so a send that Enter started can't be read as idle.
+	 */
+	async verifyStillOnDraft(): Promise<void> {
+		await expectElementToBeVisible(this.starter(), {
+			message: "The New Session page's starter should still be showing",
+		});
+		await expectElementToHaveAttribute(getLocatorByTestId("launcher-body"), "aria-busy", "false", {
+			message: "The launcher should be idle, not starting a session",
+		});
+		await expectElementToBeHidden(this.agentPane(), {
+			message: "No session should have started",
+		});
 	}
 
 	/**

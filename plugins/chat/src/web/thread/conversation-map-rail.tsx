@@ -233,6 +233,7 @@ export function ConversationMapRail({
 			// The turn being read may have started above the viewport.
 			let current = low > 0 ? headOf(elements[low - 1]!) : undefined;
 			const onScreen: string[] = [];
+			const seen = new Set<string>();
 			for (let index = low; index < elements.length; index += 1) {
 				const element = elements[index]!;
 				const box = element.getBoundingClientRect();
@@ -242,7 +243,10 @@ export function ConversationMapRail({
 				if (head === undefined) continue;
 
 				if (box.top <= line) current = head;
-				if (!onScreen.includes(head)) onScreen.push(head);
+				if (!seen.has(head)) {
+					seen.add(head);
+					onScreen.push(head);
+				}
 			}
 
 			setActiveId(current ?? owners.values().next().value);

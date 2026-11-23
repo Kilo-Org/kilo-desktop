@@ -7,12 +7,17 @@ import {
 	type PluginDefinitions,
 } from "@kilo-desktop/kernel";
 
+import { workspaceSchema } from "@kilo-desktop/plugin-work-sessions/contracts";
+
 import {
+	cloneSourceSchema,
 	gitBranchesResultSchema,
 	gitRepositoryTypeSchema,
 	gitStatusSchema,
 	gitWorktreeEntrySchema,
 	githubCliStatusSchema,
+	githubRepositoryListingSchema,
+	githubRepositorySchema,
 	MAX_BATCHED_DIRECTORIES,
 	pullRequestSchema,
 	pullRequestSnapshotSchema,
@@ -161,6 +166,62 @@ export const Repository = defineDomainObject({
 	},
 });
 
+/**
+ * Cloning a repository into a new workspace. Unlike `kilo.git/repository`,
+ * its directory is outside every workspace: it makes the workspace. Absent
+ * where git can't run (the browser).
+ */
+export const Clone = defineDomainObject({
+	id: "kilo.git/clone",
+	home: "main",
+	description: "Cloning a repository into a new workspace.",
+	state: z.object({}),
+	methods: {
+		/**
+		 * Clones `source` into a new folder `<parentPath>/<name>` (which must not
+		 * exist yet) and creates a workspace of it, named `name`, through
+		 * kilo.work-sessions. The clone is removed again when the workspace
+		 * can't be created. BUSINESS while workspaces are absent.
+		 */
+		cloneWorkspace: method(
+			z.object({
+				source: cloneSourceSchema,
+				name: z.string().trim().min(1).max(255),
+				color: z.string().optional(),
+				parentPath: path,
+			}),
+			workspaceSchema,
+		),
+	},
+});
+
+/**
+ * Every repository the signed-in GitHub CLI user owns, collaborates on or
+ * reaches through an organization, for cloning into a new workspace. The
+ * last list is kept across launches and answered at once, refreshed in the
+ * background once it is a few minutes old (`refreshed` follows). Absent
+ * where git can't run (the browser).
+ */
+export const GithubRepositories = defineDomainObject({
+	id: "kilo.git/github-repositories",
+	home: "main",
+	description: "Repositories the signed-in GitHub CLI user can reach, for cloning.",
+	state: z.object({}),
+	methods: {
+		/** `refresh` waits for a fresh fetch instead of answering from the last one. */
+		list: method(z.object({ refresh: z.boolean().optional() }), githubRepositoryListingSchema),
+		/** One repository by `owner/name` or URL; NOT_FOUND when missing or out of reach. */
+		resolve: method(
+			z.object({ repository: z.string().trim().min(1).max(2048) }),
+			githubRepositorySchema,
+		),
+	},
+	events: {
+		/** A background refresh settled: read `list` again. */
+		refreshed: z.object({}),
+	},
+});
+
 /** The pull request of one directory, resolved by `kilo.git/pull-requests`; keyed by the directory. */
 export const PullRequestObjectType = defineObjectType({
 	id: "kilo.git/pull-request",
@@ -222,6 +283,6 @@ export const PullRequests = defineDomainObject({
 });
 
 export const GIT_DEFINITIONS: PluginDefinitions = {
-	domainObjects: [Repository, PullRequests],
+	domainObjects: [Repository, PullRequests, Clone, GithubRepositories],
 	objectTypes: [PullRequestObjectType],
 };

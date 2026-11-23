@@ -7,16 +7,46 @@ description: >
 inputs:
   pnpm-cache:
     description: >
-      Restore the pnpm store from the Actions cache. Release builds pass
-      "false" so they install every package fresh from the registry.
+      Restore the pnpm store and pnpm CLI from the Actions cache. Release
+      builds pass "false" so they install pnpm and every package fresh.
     required: false
     default: "true"
+  save-pnpm-store:
+    description: >
+      Allow saving the pnpm store (and, with install, node_modules) when no
+      cache matches exactly. Pass "false" in all but one job per runner type in
+      a run: after a lockfile change every job misses, each compresses a
+      0.5-0.9 GB archive, and only the first save is kept. Even when allowed, a
+      pull request saves only if it changes the cache key's inputs, and the
+      merge queue never saves (see the "Decide whether to save" steps).
+    required: false
+    default: "true"
+  install:
+    description: >
+      Also run `pnpm install --frozen-lockfile`, restoring node_modules from
+      the Actions cache when one matches exactly (see "Key node_modules").
+    required: false
+    default: "false"
+  cache-node-modules:
+    description: >
+      With install: restore node_modules from the Actions cache. Jobs that run
+      `pnpm deploy` (plugin isolation, packaging the app) pass "false": deploy
+      copies packages from the store, so they restore the store regardless,
+      and extracting node_modules as well only adds time.
+    required: false
+    default: "true"
+  install-filters-file:
+    description: >
+      With install: a file listing one workspace package per line; installs
+      only those packages and their dependencies (`--filter=<name>...`). It
+      restores the full store on a node_modules miss but never saves it, so a
+      smaller store never lands under the full store's key.
+    required: false
+    default: ""
 
 runs:
   using: composite
   steps:
-    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-
     - name: Install Node
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
@@ -24,11 +54,179 @@ runs:
         registry-url: https://npm.pkg.github.com
         scope: "@anaconda"
 
-    - name: Locate the pnpm store
+    # pnpm comes from its GitHub release (sha256-verified against the digest
+    # GitHub records for the asset) and is cached per version, instead of
+    # pnpm/action-setup: that action wipes its install on every run and fetches
+    # pnpm from registry.npmjs.org twice (bootstrap, then self-update to the
+    # packageManager version), which took minutes per job whenever the
+    # registry was slow from the runners.
+    - name: Resolve the pnpm version
+      id: pnpm-cli
+      shell: bash
+      run: |
+        version=$(node -p 'require("./package.json").packageManager.match(/^pnpm@([^+]+)/)[1]')
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) asset=pnpm-linux-x64.tar.gz ;;
+          Linux-ARM64) asset=pnpm-linux-arm64.tar.gz ;;
+          macOS-X64) asset=pnpm-darwin-x64.tar.gz ;;
+          macOS-ARM64) asset=pnpm-darwin-arm64.tar.gz ;;
+          Windows-X64) asset=pnpm-win32-x64.zip ;;
+          Windows-ARM64) asset=pnpm-win32-arm64.zip ;;
+          *) echo "::error::No pnpm release asset for $RUNNER_OS-$RUNNER_ARCH"; exit 1 ;;
+        esac
+        {
+          echo "version=$version"
+          echo "asset=$asset"
+          echo "dir=$RUNNER_TOOL_CACHE/pnpm-cli/$version"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Cache the pnpm CLI
       if: inputs.pnpm-cache == 'true'
+      id: pnpm-cli-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-cli.outputs.dir }}
+        key: pnpm-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.pnpm-cli.outputs.version }}
+
+    - name: Download pnpm ${{ steps.pnpm-cli.outputs.version }}
+      if: steps.pnpm-cli-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ steps.pnpm-cli.outputs.version }}
+        ASSET: ${{ steps.pnpm-cli.outputs.asset }}
+        DEST: ${{ steps.pnpm-cli.outputs.dir }}
+      run: |
+        download="$RUNNER_TEMP/pnpm-cli-download"
+        rm -rf "$download" "$DEST"
+        mkdir -p "$download" "$DEST"
+
+        expected=$(gh api "repos/pnpm/pnpm/releases/tags/v$VERSION" \
+          --jq ".assets[] | select(.name == \"$ASSET\") | .digest")
+        [[ "$expected" == sha256:* ]] || { echo "::error::No sha256 digest for $ASSET in pnpm v$VERSION"; exit 1; }
+
+        # A stalled stream (under 100 KB/s for 30 s) aborts and retries rather
+        # than holding the job, as the slow registry downloads did.
+        archive="$download/$ASSET"
+        curl --fail --location --silent --show-error \
+          --connect-timeout 15 --speed-limit 102400 --speed-time 30 --max-time 300 \
+          --retry 3 --retry-all-errors --retry-delay 5 \
+          --output "$archive" \
+          "https://github.com/pnpm/pnpm/releases/download/v$VERSION/$ASSET"
+        # Hash stdin: given a path with backslashes (Windows), sha256sum
+        # escapes the line and prefixes the hash with "\".
+        if command -v sha256sum > /dev/null; then
+          actual=$(sha256sum < "$archive" | cut -d' ' -f1)
+        else
+          actual=$(shasum -a 256 < "$archive" | cut -d' ' -f1)
+        fi
+        [[ "sha256:$actual" == "$expected" ]] || { echo "::error::$ASSET digest mismatch: got sha256:$actual, want $expected"; exit 1; }
+
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          ARCHIVE_WIN=$(cygpath -w "$archive") DEST_WIN=$(cygpath -w "$DEST") \
+            pwsh -NoProfile -Command 'Expand-Archive -LiteralPath $env:ARCHIVE_WIN -DestinationPath $env:DEST_WIN'
+        else
+          tar -xzf "$archive" -C "$DEST"
+        fi
+        rm -rf "$download"
+
+    - name: Add pnpm to PATH
+      shell: bash
+      env:
+        DIR: ${{ steps.pnpm-cli.outputs.dir }}
+        VERSION: ${{ steps.pnpm-cli.outputs.version }}
+      run: |
+        echo "$DIR" >> "$GITHUB_PATH"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then DIR=$(cygpath -u "$DIR"); fi
+        PATH="$DIR:$PATH"
+        installed=$(pnpm --version)
+        [[ "$installed" == "$VERSION" ]] || { echo "::error::pnpm --version is $installed, want $VERSION"; exit 1; }
+
+    # node_modules is cached whole, keyed on everything that decides its
+    # contents: the lockfile, workspace settings (catalog, overrides,
+    # allowBuilds), the root manifest's lifecycle scripts, the Node ABI native
+    # addons were built for, the filter list and this action. Extracting it
+    # beats extracting the store and linking it: the hoisted tree is about half
+    # the store's size (no index files, no packages a filtered install leaves
+    # out). Only an exact match restores; anything else falls back to the store.
+    - name: Key node_modules
+      if: inputs.install == 'true' && inputs.cache-node-modules == 'true' && inputs.pnpm-cache == 'true'
+      id: node-modules-key
+      shell: bash
+      env:
+        INPUTS_HASH: ${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', '.nvmrc', 'package.json', '.github/actions/setup-node-pnpm/action.yml') }}
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+      run: |
+        scope=full
+        if [[ -n "$FILTERS_FILE" ]]; then
+          scope=filtered-$(git hash-object "$FILTERS_FILE")
+        fi
+        abi=$(node -p process.versions.modules)
+        {
+          echo "key=node-modules-$scope-$RUNNER_OS-$RUNNER_ARCH-abi$abi-$INPUTS_HASH"
+          echo "paths<<EOF"
+          echo "node_modules"
+          echo "apps/*/node_modules"
+          echo "packages/*/node_modules"
+          echo "plugins/*/node_modules"
+          echo "plugins/chat/opencode-sdk-compat/node_modules"
+          echo "examples/*/node_modules"
+          echo "e2e/node_modules"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Restore node_modules
+      if: inputs.install == 'true' && inputs.cache-node-modules == 'true' && inputs.pnpm-cache == 'true'
+      id: node-modules
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.node-modules-key.outputs.paths }}
+        key: ${{ steps.node-modules-key.outputs.key }}
+
+    - name: Locate the pnpm store
+      if: inputs.pnpm-cache == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       id: pnpm-store
       shell: bash
-      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      env:
+        LOCK_HASH: ${{ hashFiles('pnpm-lock.yaml') }}
+      run: |
+        {
+          echo "path=$(pnpm store path --silent)"
+          echo "key=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-$LOCK_HASH"
+          echo "prefix=pnpm-store-full-$RUNNER_OS-$RUNNER_ARCH-"
+        } >> "$GITHUB_OUTPUT"
+
+    # A pull request that leaves pnpm-lock.yaml alone gets its exact store from
+    # main once warm-caches.yml finishes; a run that starts first (right after
+    # a lockfile change merges) restores an older store, and saving its own
+    # copy would only spend ~35 s uploading what main is about to hold. A merge
+    # queue save is readable only by that queue run's temporary branch.
+    # A pull_request run checks out the merge commit, whose first parent is the
+    # current base. github.event.pull_request.base.sha is not: it can be the
+    # older commit the branch started from, so a branch behind a lockfile change
+    # on main would look like it changed the lockfile itself.
+    # A filtered install never saves: its store lacks the packages it left out.
+    # Fails toward saving if the parent can't be fetched.
+    - name: Decide whether to save the pnpm store
+      if: inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && steps.node-modules.outputs.cache-hit != 'true'
+      id: save-store
+      shell: bash
+      env:
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+      run: |
+        save=true
+        if [[ -n "$FILTERS_FILE" ]]; then save=false; fi
+        case "$GITHUB_EVENT_NAME" in
+          merge_group) save=false ;;
+          pull_request)
+            if git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" &&
+              git diff --quiet HEAD^1 HEAD -- pnpm-lock.yaml; then
+              save=false
+            fi
+            ;;
+        esac
+        echo "Save the pnpm store on a miss: $save"
+        echo "save=$save" >> "$GITHUB_OUTPUT"
 
     # Our own cache rather than setup-node's: setup-node only restores an exact
     # lockfile match, so after any dependency change every PR downloaded all
@@ -36,10 +234,74 @@ runs:
     # pnpm fetches only what changed. Caches saved on a PR branch are invisible
     # to other PRs; .github/workflows/warm-caches.yml saves them on main.
     - name: Cache the pnpm store
-      if: inputs.pnpm-cache == 'true'
+      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save == 'true' && steps.node-modules.outputs.cache-hit != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.pnpm-store.outputs.path }}
-        key: pnpm-store-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+        key: ${{ steps.pnpm-store.outputs.key }}
         restore-keys: |
-          pnpm-store-${{ runner.os }}-${{ runner.arch }}-
+          ${{ steps.pnpm-store.outputs.prefix }}
+
+    - name: Restore the pnpm store
+      if: inputs.pnpm-cache == 'true' && steps.save-store.outputs.save != 'true' && steps.node-modules.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ steps.pnpm-store.outputs.key }}
+        restore-keys: |
+          ${{ steps.pnpm-store.outputs.prefix }}
+
+    # On a node_modules hit of the full workspace, the install confirms the
+    # tree matches the lockfile in well under a second. A filtered install has
+    # no such fast path: pnpm downloads every package into the (unrestored)
+    # store again, ~8 s, only to add nothing, so a filtered hit relies on the
+    # exact key instead.
+    - name: Install dependencies
+      if: inputs.install == 'true' && !(steps.node-modules.outputs.cache-hit == 'true' && inputs.install-filters-file != '')
+      shell: bash
+      env:
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+      run: |
+        args=(--frozen-lockfile)
+        if [[ -n "$FILTERS_FILE" ]]; then
+          while IFS= read -r package || [[ -n "$package" ]]; do
+            package=${package%$'\r'}
+            [[ -z "$package" || "$package" == \#* ]] && continue
+            args+=("--filter=$package...")
+          done < "$FILTERS_FILE"
+        fi
+        pnpm install "${args[@]}"
+
+    # The same policy as the store: main (warm-caches.yml) saves for every PR,
+    # a pull request saves only if it changes the key's inputs, and the merge
+    # queue never saves.
+    - name: Decide whether to save node_modules
+      if: inputs.install == 'true' && inputs.cache-node-modules == 'true' && inputs.pnpm-cache == 'true' && inputs.save-pnpm-store == 'true' && steps.node-modules.outputs.cache-hit != 'true'
+      id: save-node-modules
+      shell: bash
+      env:
+        FILTERS_FILE: ${{ inputs.install-filters-file }}
+      run: |
+        save=true
+        inputs=(pnpm-lock.yaml pnpm-workspace.yaml .npmrc .nvmrc package.json .github/actions/setup-node-pnpm/action.yml)
+        if [[ -n "$FILTERS_FILE" ]]; then inputs+=("$FILTERS_FILE"); fi
+        case "$GITHUB_EVENT_NAME" in
+          merge_group) save=false ;;
+          pull_request)
+            if git fetch --quiet --no-tags --depth=2 origin "$GITHUB_SHA" &&
+              git diff --quiet HEAD^1 HEAD -- "${inputs[@]}"; then
+              save=false
+            fi
+            ;;
+        esac
+        echo "Save node_modules: $save"
+        echo "save=$save" >> "$GITHUB_OUTPUT"
+
+    # Saved straight after the install, before later steps add build output,
+    # tsbuildinfo, Vitest caches or downloaded runtimes under node_modules.
+    - name: Save node_modules
+      if: steps.save-node-modules.outputs.save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.node-modules-key.outputs.paths }}
+        key: ${{ steps.node-modules-key.outputs.key }}

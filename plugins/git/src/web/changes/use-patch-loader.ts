@@ -266,6 +266,8 @@ export function usePatchLoader({
 		viewer.updateItem(item);
 	});
 
+	// The Throttler's AbortSignal cancels each run's fetch on dispose (see below).
+	// react-doctor-disable-next-line react-doctor/no-fetch-in-effect
 	useEffect(() => {
 		// Per effect run: dispose aborts the in-flight load and drops the
 		// queued one, so folder switches and unmounts never leak a load.

@@ -71,9 +71,11 @@ export async function invalidateConda(
 	queryClient: QueryClient,
 	methods: readonly CondaMethod[],
 ): Promise<void> {
-	for (const method of methods) {
-		await queryClient.invalidateQueries({ queryKey: [CONDA_QUERY_ROOT, method] });
-	}
+	await Promise.all(
+		methods.map((method) =>
+			queryClient.invalidateQueries({ queryKey: [CONDA_QUERY_ROOT, method] }),
+		),
+	);
 }
 
 /** Calls a conda write with TanStack Query, refreshing `invalidates` on success. */

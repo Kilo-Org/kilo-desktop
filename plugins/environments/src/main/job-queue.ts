@@ -325,6 +325,8 @@ export class JobQueue {
 				status: "running",
 			});
 
+			// The guard below checks a cancel() that can only land while run() is awaited.
+			// react-doctor-disable-next-line react-doctor/async-defer-await
 			const value = await run({
 				signal: record.controller.signal,
 				onProgress: (message) => {

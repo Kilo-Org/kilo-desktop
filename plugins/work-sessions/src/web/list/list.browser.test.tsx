@@ -273,8 +273,8 @@ describe("session list", () => {
 		await expect
 			.element(
 				page
-					.getByTestId("workspace-form-dialog")
-					.getByRole("heading", { name: "Create workspace" }),
+					.getByTestId("workspace-create-dialog")
+					.getByRole("heading", { name: "New workspace", exact: true }),
 			)
 			.toBeVisible();
 	});

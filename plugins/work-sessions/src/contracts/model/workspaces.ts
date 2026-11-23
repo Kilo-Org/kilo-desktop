@@ -47,12 +47,18 @@ export const createWorkspaceInputSchema = z.object({
 	folders: z.array(workspaceFolderInputSchema).min(1),
 	/** Where it was created, for analytics (e.g. `dialog`, `onboarding`). */
 	source: z.string().optional(),
+	/**
+	 * Paths from `folders` that don't exist yet: each is made empty before the
+	 * workspace is saved (and removed again if saving fails), and the parent
+	 * of the first is remembered as the next `newFolderLocation`.
+	 */
+	createFolders: z.array(z.string().min(1)).optional(),
 });
 export type CreateWorkspaceInput = z.input<typeof createWorkspaceInputSchema>;
 
-export const updateWorkspaceInputSchema = createWorkspaceInputSchema.extend({
-	id: z.string().min(1),
-});
+export const updateWorkspaceInputSchema = createWorkspaceInputSchema
+	.omit({ createFolders: true })
+	.extend({ id: z.string().min(1) });
 export type UpdateWorkspaceInput = z.input<typeof updateWorkspaceInputSchema>;
 
 const workspaceChangeSchema = z.object({
@@ -118,6 +124,23 @@ export const Workspaces = defineDomainObject({
 		),
 		/** Re-checks which folders are available now. */
 		checkFolders: method(z.undefined(), z.undefined()),
+		/**
+		 * Where a new workspace folder goes by default: the location last used
+		 * for one, else Documents, else the home folder; null when none exists.
+		 */
+		newFolderLocation: method(z.undefined(), z.object({ path: z.string().nullable() })),
+		/**
+		 * The folder `name` would be in `parentPath`, for a source that fills
+		 * it (a clone): the name must be one folder name, the parent an
+		 * existing folder (symlinks resolved), and nothing may be there yet —
+		 * VALIDATION otherwise. Nothing is created.
+		 */
+		newFolderPath: method(
+			z.object({ parentPath: z.string().min(1), name: z.string().min(1) }),
+			z.object({ path: z.string() }),
+		),
+		/** Offers `path` as the next `newFolderLocation`, after a source made a folder in it. */
+		rememberNewFolderLocation: method(z.object({ path: z.string().min(1) }), z.undefined()),
 	},
 	events: {
 		created: workspaceChangeSchema,

@@ -136,6 +136,8 @@ export function ComposerSelectionProvider({
 		void modelsHandle?.methods.recordRecent(toModelRef(model)).catch(() => undefined);
 
 	const chats = useChatSelections();
+	// Captures whether the pane started as a draft, once: it must not follow `draft` later.
+	// react-doctor-disable-next-line react-doctor/no-derived-useState
 	const [startedAsDraft] = useState(draft);
 	const agentSelection = useAgentSelection(agentCatalog.data, chatId, chats);
 	const configuredAgent = findCatalogAgent(agentCatalog.data, agentSelection.agent);
@@ -176,11 +178,14 @@ export function ComposerSelectionProvider({
 		validatedModel ? modelRefToId(validatedModel) : undefined,
 		effort,
 	);
-	onSelection({
-		agent: agentSelection.agent,
-		model: validatedModel,
-		variant: activeEffort,
-	});
+	const selectedAgent = agentSelection.agent;
+	// A layout effect so the selection lands before the parent's passive
+	// effects (the first-prompt handover) and any event can send with it.
+	// The parent stores the selection in a ref, so reporting it re-renders nothing.
+	useLayoutEffect(() => {
+		// react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+		onSelection({ agent: selectedAgent, model: validatedModel, variant: activeEffort });
+	}, [onSelection, selectedAgent, validatedModel, activeEffort]);
 
 	const agentValue = {
 		agent: agentSelection.agent,

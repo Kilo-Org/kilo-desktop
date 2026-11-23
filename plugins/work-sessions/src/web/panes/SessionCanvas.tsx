@@ -13,12 +13,14 @@ import {
 
 import { Panes, type WorkSession, type WorkSessionPanes } from "../../contracts";
 import { PaneCanvas } from "../canvas/PaneCanvas";
+import { paneMoves } from "../canvas/pane-moves";
 import { closePane, launchPane, panesInOrder, saveLayout } from "../shared/pane-actions";
 import { implementationOf, usePaneKinds, type CanvasPaneKind } from "../shared/pane-kinds";
 import { reportFailure } from "../shared/report-failure";
 import { sessionLayout } from "../shared/session-layout";
 import { useShortcutHints } from "../shared/shortcut-hints";
 import { useWorkSessionDirectory } from "../shared/use-active-work-session";
+import { PaneTabMenuItems } from "./PaneTabMenuItems";
 import { PaneView } from "./PaneView";
 import { popOut, usePoppedOutPanes } from "./pop-outs";
 import { useWorkSessionPanes } from "./use-work-session-panes";
@@ -132,6 +134,7 @@ export function SessionCanvas({ workSession }: { readonly workSession: WorkSessi
 	const layoutSave = useCoalescedLayoutSave(workSession.id, state);
 	const paneOrder = panesInOrder(layout);
 	const shortcutHints = useShortcutHints("pane", paneOrder);
+	const moveRequests = paneMoves.forWorkSession(workSession.id);
 
 	const changeLayout = (next: PaneLayout) => {
 		if (!panes || serializeLayout(next) === serializeLayout(layout)) return;
@@ -219,6 +222,10 @@ export function SessionCanvas({ workSession }: { readonly workSession: WorkSessi
 							},
 						}
 					: {})}
+				moveRequests={moveRequests}
+				tabMenu={(tab) => (
+					<PaneTabMenuItems workSessionId={workSession.id} tab={tab} canPopOut={canPopOut} />
+				)}
 				iconForPane={(paneId) => {
 					const pane = paneOf(paneId);
 					const Icon = implementationOf(kinds.byKey.get(pane?.kind ?? ""))?.icon;

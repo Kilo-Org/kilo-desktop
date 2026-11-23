@@ -300,10 +300,12 @@ describe("keyboard dispatch", () => {
 			manifest: { contextKeys: [{ id: "focused", scope: "window" }] },
 			renderer: (sdk) => sdk.extensions.implement(KernelCommand, "clear", handler),
 		});
-		expect(renderer.keyboard.chords()).toEqual(["Meta+KeyK"]);
+		expect(renderer.keyboard.bindings()).toEqual([]);
 		await expect(renderer.keyboard.dispatch("Meta+KeyK")).resolves.toBe(false);
 
 		renderer.sdkFor("acme.cmd").context.set("focused", true);
+
+		expect(renderer.keyboard.bindings()).toEqual([{ chord: "Meta+KeyK", repeatable: false }]);
 
 		await expect(renderer.keyboard.dispatch("Meta+KeyK")).resolves.toBe(true);
 		await expect(renderer.keyboard.dispatch("Meta+KeyJ")).resolves.toBe(false);
@@ -322,7 +324,7 @@ describe("keyboard dispatch", () => {
 			.methods.setOverride({ command: "acme.cmd/save", chord: "Alt+KeyS" });
 		await main.flush();
 
-		expect(renderer.keyboard.chords()).toEqual(["Alt+KeyS"]);
+		expect(renderer.keyboard.bindings()).toEqual([{ chord: "Alt+KeyS", repeatable: false }]);
 	});
 });
 
@@ -391,10 +393,11 @@ describe("keyboard recording", () => {
 
 		renderer.keyboard.setRecording(true);
 
-		expect(renderer.keyboard.chords()).toEqual([]);
+		expect(renderer.keyboard.bindings()).toEqual([]);
+		expect(renderer.keyboard.isRecording()).toBe(true);
 		await expect(renderer.keyboard.dispatch("Meta+KeyS")).resolves.toBe(false);
 		expect(changes).toHaveBeenCalled();
 		renderer.keyboard.setRecording(false);
-		expect(renderer.keyboard.chords()).toEqual(["Meta+KeyS"]);
+		expect(renderer.keyboard.bindings()).toEqual([{ chord: "Meta+KeyS", repeatable: false }]);
 	});
 });

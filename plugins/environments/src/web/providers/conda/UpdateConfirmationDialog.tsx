@@ -224,6 +224,8 @@ export function UpdateConfirmationDialog({
 		const gen = ++previewGenRef.current;
 		setPreviewLoading(true);
 		setPreviewError(null);
+		// Part of starting a solver request (an external call), not a prop-derived adjustment.
+		// react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
 		setPreviewStale(false);
 		previewStaleRef.current = false;
 		conda
@@ -261,6 +263,8 @@ export function UpdateConfirmationDialog({
 	if (wasOpen !== open) {
 		setWasOpen(open);
 		if (open) {
+			// A useState setter from useCheckedPackages, in the adjust-state-on-prop-change pattern.
+			// react-doctor-disable-next-line react-doctor/no-prop-callback-in-render
 			setCheckedPkgs(new Set(updatableNames));
 			setSelectedVersions(
 				Object.fromEntries(

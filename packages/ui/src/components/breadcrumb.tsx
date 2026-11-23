@@ -54,6 +54,8 @@ function BreadcrumbPage({ className, ...props }: React.ComponentProps<"span">) {
 	return (
 		<span
 			data-slot="breadcrumb-page"
+			// The current page has no destination; an `<a>` without href exposes no link role, so this keeps the disabled-link semantics.
+			// react-doctor-disable-next-line react-doctor/prefer-tag-over-role
 			role="link"
 			aria-disabled="true"
 			aria-current="page"

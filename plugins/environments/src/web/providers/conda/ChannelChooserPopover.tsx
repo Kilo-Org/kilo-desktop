@@ -45,6 +45,8 @@ export function ChannelChooserPopover({
 	selectedChannels,
 	onToggle,
 }: ChannelChooserPopoverProps) {
+	const linkChannelSet = new Set(linkChannels);
+	const selectedChannelSet = new Set(selectedChannels);
 	return (
 		<DropdownMenu open={open} onOpenChange={onOpenChange}>
 			<DropdownMenuTrigger
@@ -67,9 +69,9 @@ export function ChannelChooserPopover({
 					<DropdownMenuLabel>Channels</DropdownMenuLabel>
 					{availableChannels.map((channel) => {
 						const presentation = getChannelPresentation(channel, {
-							fromLink: linkChannels?.includes(channel) ?? false,
+							fromLink: linkChannelSet.has(channel),
 						});
-						const selected = selectedChannels.includes(channel);
+						const selected = selectedChannelSet.has(channel);
 						return (
 							<DropdownMenuCheckboxItem
 								key={channel}

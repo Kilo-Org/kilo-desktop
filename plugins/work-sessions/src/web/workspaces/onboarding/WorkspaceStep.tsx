@@ -5,21 +5,10 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { DEFAULT_WORKSPACE_IDENTITY_COLOR } from "../../../contracts";
 import { KiloLogo } from "@kilo-desktop/ui/components/brand/kilo-logo";
-import { WorkspaceFormFields } from "../WorkspaceFormFields";
-import type { useWorkspaceForm } from "../useWorkspaceForm";
+import type { WorkspaceDraft } from "../new-folder-context";
 import { FLOW, workspaceFlow } from "./workspace-flow";
 
-type WorkspaceForm = ReturnType<typeof useWorkspaceForm>;
-
 const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
-
-export function WorkspaceStep({ form }: { form: WorkspaceForm }) {
-	return (
-		<div data-qa-id="onboarding-workspace-step">
-			<WorkspaceFormFields {...form} nameId="onboarding-workspace-name" appearance="filled" />
-		</div>
-	);
-}
 
 const tint = (color: string, percent: number) =>
 	`color-mix(in oklab, ${color} ${percent}%, transparent)`;
@@ -27,19 +16,13 @@ const tint = (color: string, percent: number) =>
 /**
  * The workspace as a concept rather than a UI copy: the chosen folders wire
  * into a tile in the workspace's identity colour, which wires into Kilo. Every
- * value is live from the form; with no folders the wiring is dashed and a
+ * value is live from the chosen source's form; with no folders the wiring is dashed and a
  * single "Add a folder" stand-in waits on the left.
  */
-export function WorkspacePreview({
-	form,
-}: {
-	form: Pick<WorkspaceForm, "name" | "color" | "folders">;
-}) {
-	const color = form.color || DEFAULT_WORKSPACE_IDENTITY_COLOR;
-	const folders = [...form.folders]
-		.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
-		.map((folder) => folderName(folder.path));
-	const name = form.name.trim() || folders[0] || "My workspace";
+export function WorkspacePreview({ draft }: { draft: WorkspaceDraft | null }) {
+	const color = draft?.color || DEFAULT_WORKSPACE_IDENTITY_COLOR;
+	const folders = (draft?.folders ?? []).map(folderName);
+	const name = draft?.name.trim() || folders[0] || "My workspace";
 	const { pills, pending } = workspaceFlow(folders);
 	const tileY = (FLOW.height - FLOW.tileHeight) / 2;
 
@@ -87,12 +70,12 @@ export function WorkspacePreview({
 						<motion.div
 							key={pill.key}
 							className={cn(
-								"bg-foreground/5 absolute left-0 flex items-center gap-2 rounded-full px-3.5 text-xs",
+								"bg-foreground/5 absolute top-0 left-0 flex items-center gap-2 rounded-full px-3.5 text-xs",
 								pill.placeholder ? "text-muted-foreground" : "text-foreground/80",
 							)}
 							style={{ width: FLOW.pillWidth, height: FLOW.pillHeight }}
-							initial={{ opacity: 0, x: -8, top: pill.y }}
-							animate={{ opacity: 1, x: 0, top: pill.y }}
+							initial={{ opacity: 0, x: -8, y: pill.y }}
+							animate={{ opacity: 1, x: 0, y: pill.y }}
 							exit={{ opacity: 0, x: -8 }}
 							transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
 						>

@@ -10,6 +10,8 @@ test.describe("Keyboard shortcuts @smoke", () => {
 
 		await keyboardShortcutsPage.openCheatSheet();
 		await keyboardShortcutsPage.verifyCheatSheetLists("kilo.shell/open-settings");
+		// kilo.work-sessions' App Navigation panel draws the tab numbers as one row.
+		await keyboardShortcutsPage.verifyCheatSheetLists("kilo.work-sessions/pane-1");
 		await keyboardShortcutsPage.closeCheatSheet();
 
 		await keyboardShortcutsPage.openCommandPalette();

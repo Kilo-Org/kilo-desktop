@@ -201,6 +201,40 @@ export const pullRequestSnapshotSchema = z.object({
 });
 export const MAX_BATCHED_DIRECTORIES = 200;
 
+/** A repository the signed-in GitHub CLI user can reach, as listed for cloning. */
+export const githubRepositorySchema = z.object({
+	/** `owner/name`, which `cloneWorkspace` accepts as a GitHub source. */
+	nameWithOwner: z.string(),
+	name: z.string(),
+	description: z.string().nullable(),
+	isPrivate: z.boolean(),
+	isArchived: z.boolean(),
+	url: z.string(),
+	/** ISO time of the last push; listings are sorted by it, newest first. */
+	pushedAt: z.string().nullable(),
+});
+
+/** The repository list and when it was fetched from GitHub. */
+export const githubRepositoryListingSchema = z.object({
+	repositories: z.array(githubRepositorySchema),
+	/** Epoch ms of the fetch that produced `repositories`. */
+	fetchedAt: z.number(),
+	/** A background refresh is running; `refreshed` follows when it settles. */
+	refreshing: z.boolean(),
+});
+
+/** Where `cloneWorkspace` clones from. */
+export const cloneSourceSchema = z.discriminatedUnion("kind", [
+	/** `owner/name` or a GitHub URL, cloned with the GitHub CLI and its sign-in. */
+	z.object({ kind: z.literal("github"), repository: z.string().trim().min(1).max(2048) }),
+	/** Any https, ssh, git or `user@host:path` remote, cloned with git and the person's own credentials. */
+	z.object({ kind: z.literal("url"), url: z.string().trim().min(1).max(2048) }),
+]);
+
+export type GithubRepository = z.infer<typeof githubRepositorySchema>;
+export type GithubRepositoryListing = z.infer<typeof githubRepositoryListingSchema>;
+export type CloneSource = z.infer<typeof cloneSourceSchema>;
+
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitBranchesResult = z.infer<typeof gitBranchesResultSchema>;

@@ -24,17 +24,26 @@ then launches Electron pointed at it via `KILO_WEB_DEV_SERVER_URL`. Do **not**
 run `electron-forge start` (or the desktop package's `start` script) directly —
 without the web dev server the renderer window loads empty.
 
+## Worktree setup
+
+New worktrees install dependencies in the background (`.husky/post-checkout` → `scripts/setup-worktree.mjs`). Before running anything that needs `node_modules`, check `.kilo/worktree-setup/`:
+
+- `running` names a live PID (`kill -0 "$(cat .kilo/worktree-setup/running)"` succeeds): wait for `done` or `failed`; do not run `pnpm install` yourself. If the PID is dead, setup was killed: rerun `node scripts/setup-worktree.mjs`.
+- `done`: setup finished. `failed`: read it for the error tail (full output in `log`), fix the cause, then rerun `node scripts/setup-worktree.mjs`.
+- No marker at all: setup never ran here; run `node scripts/setup-worktree.mjs`.
+
 ## Local Skills
 
 Project skills live under [`.agents/skills/`](./.agents/skills/).
 
-| Skill            | Path                                     | Use when                                                                                                     |
-| ---------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `design-feature` | `.agents/skills/design-feature/SKILL.md` | **Start of every feature**: decide its plugin, domain objects, extension points, commands, keys, services    |
-| `write-plugin`   | `.agents/skills/write-plugin/SKILL.md`   | Building or extending a kernel plugin: manifest, contracts, entries, extension points, domain objects, tests |
-| `write-vitest`   | `.agents/skills/write-vitest/SKILL.md`   | Choosing Vitest tiers and writing unit / integration / browser / app-level tests                             |
-| `write-e2e-test` | `.agents/skills/write-e2e-test/SKILL.md` | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                                   |
-| `tdd`            | `.agents/skills/tdd/SKILL.md`            | New features, logic-heavy bug fixes, and refactors (not minor UI/cosmetic changes)                           |
+| Skill            | Path                                     | Use when                                                                                                                                |
+| ---------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `design-feature` | `.agents/skills/design-feature/SKILL.md` | **Start of every feature**: decide its plugin, domain objects, extension points, commands, keys, services                               |
+| `write-plugin`   | `.agents/skills/write-plugin/SKILL.md`   | Building or extending a kernel plugin: manifest, contracts, entries, extension points, domain objects, tests                            |
+| `write-vitest`   | `.agents/skills/write-vitest/SKILL.md`   | Choosing Vitest tiers and writing unit / integration / browser / app-level tests                                                        |
+| `write-e2e-test` | `.agents/skills/write-e2e-test/SKILL.md` | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                                                              |
+| `tdd`            | `.agents/skills/tdd/SKILL.md`            | New features, logic-heavy bug fixes, and refactors (not minor UI/cosmetic changes)                                                      |
+| `react-doctor`   | `.agents/skills/react-doctor/SKILL.md`   | After React changes: `pnpm run react-doctor --verbose --scope changed` (keep 100; enforced by pre-commit and the React Doctor CI check) |
 
 ## Key rules for AI agents
 

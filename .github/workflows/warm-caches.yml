@@ -2,8 +2,9 @@ name: Warm caches
 
 # CI runs only on pull requests and the merge queue, and a cache saved there is
 # visible to that branch alone, so before this every PR started cold: all
-# ~1,250 packages from the registry, plus the notebook runtime and Kilo CLI
-# downloads, on every job. Caches saved on main are visible to every PR and
+# ~1,250 packages from the registry, plus the pnpm CLI, Electron, Playwright
+# browser, notebook runtime and Kilo CLI downloads, and the typecheck Turbo
+# cache, on every job. Caches saved on main are visible to every PR and
 # merge-queue run, so this saves them after each merge, on each runner type
 # CI uses (Linux 2/4 vCPU share a cache key).
 on:
@@ -34,14 +35,16 @@ jobs:
           - os: blacksmith-6vcpu-macos-latest
             native: true
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # 30: Linux also runs a full typecheck when the Turbo cache is cold.
+    timeout-minutes: 30
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
-      - run: pnpm install --frozen-lockfile
+        with:
+          install: "true"
       # The same caches run-e2e restores; they save when this job ends.
       - if: matrix.native
         uses: ./plugins/notebook/actions/setup-native
@@ -53,3 +56,43 @@ jobs:
         run: |
           pnpm --filter @kilo-desktop/plugin-core run prepare-assets
           pnpm --filter @kilo-desktop/plugin-notebook run prepare-assets
+      # The Electron download test-linux and run-e2e restore, and the
+      # browser cache test-linux restores.
+      - uses: ./.github/actions/install-test-runtime
+        with:
+          runtime: electron
+          package-name: "@kilo-desktop/desktop"
+          save-cache: "true"
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/install-test-runtime
+        with:
+          runtime: playwright
+          package-name: "@kilo-desktop/web"
+          save-cache: "true"
+      # The Turbo cache the typecheck job restores, so a PR's first push and the
+      # merge queue re-check only what changed since main. Each run restores the
+      # previous one's entry, so this re-checks only the merged change.
+      - if: runner.os == 'Linux'
+        uses: ./.github/actions/turbo-cache
+      - name: Typecheck
+        if: runner.os == 'Linux'
+        run: pnpm exec turbo run check --concurrency=4
+
+  # node_modules for ci.yml's Windows and macOS `test` legs, which install only
+  # the platform-tested packages. Their store comes from the full store above.
+  warm-platform-node-modules:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [blacksmith-8vcpu-windows-2025, blacksmith-6vcpu-macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          install: "true"
+          install-filters-file: .github/platform-test-packages.txt

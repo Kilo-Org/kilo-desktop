@@ -22,6 +22,7 @@
 		"kilo.work-sessions/work-session-facet": "optional",
 		"kilo.work-sessions/work-session-action": "optional",
 		"kilo.work-sessions/new-work-session-option": "optional",
+		"kilo.work-sessions/workspace-source": "optional",
 		"kilo.work-sessions/opener": "optional",
 		"kilo.chat/composer": "optional",
 		"kilo.chat/composer-action": "optional",
@@ -52,6 +53,16 @@
 			"home": "main",
 			"description": "The pull request of each work session's directory, looked up in the background.",
 			"objectType": "kilo.git/pull-request"
+		},
+		{
+			"id": "clone",
+			"home": "main",
+			"description": "Cloning a repository into a new workspace."
+		},
+		{
+			"id": "github-repositories",
+			"home": "main",
+			"description": "Repositories the signed-in GitHub CLI user can reach, for cloning."
 		}
 	],
 	"contributes": {
@@ -113,6 +124,26 @@
 				{
 					"id": "init",
 					"slot": "setup"
+				}
+			],
+			"kilo.work-sessions/workspace-source": [
+				{
+					"id": "github-repository",
+					"title": "GitHub repository",
+					"description": "Clone from GitHub.",
+					"priority": 200,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
+				},
+				{
+					"id": "git-url",
+					"title": "Git URL",
+					"description": "Clone from any host.",
+					"priority": 100,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
 				}
 			],
 			"kilo.chat/composer-action": [

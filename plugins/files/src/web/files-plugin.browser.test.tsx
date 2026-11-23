@@ -161,6 +161,19 @@ describe("the Files pane kind", () => {
 	});
 });
 
+describe("a Files pane's path (the tab menu's Copy path)", () => {
+	it("is the opened file's, else origin's folder and relative path; none for an explorer", async () => {
+		const host = await bootFilesHost({ documents: documents() });
+		const path = filesPaneKind(host).path!;
+
+		expect(path(openedFilePane("o", "/work/app/src/App.tsx"))).toBe("/work/app/src/App.tsx");
+		expect(
+			path(filesPane("f", { workspaceDirectory: "C:\\work\\app", relativePath: "src/App.tsx" })),
+		).toBe("C:\\work\\app\\src\\App.tsx");
+		expect(path(filesPane("e", { workspaceDirectory: "/work/app" }))).toBeUndefined();
+	});
+});
+
 describe("Open Files", () => {
 	it("shows the session's Files pane, or opens one, with ⌘⇧E", async () => {
 		const openPane = vi.fn((_input: { kind: string }) => undefined);

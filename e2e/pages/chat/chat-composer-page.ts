@@ -230,16 +230,6 @@ export class ChatComposerPage {
 		await click(this.attachmentRemoveButton());
 	}
 
-	/** Confirms a failed first-send did not discard the submitted message or error from the opened chat. */
-	async verifyNoModelMessageOutcome(message: string): Promise<void> {
-		await expectElementToBeVisible(this.userMessage(message), {
-			message: `The no-model message "${message}" should remain visible`,
-		});
-		await expectElementToBeVisible(getLocatorByTestId("kilo-turn-working"), {
-			message: "The no-model first prompt should remain visibly in progress",
-		});
-	}
-
 	async verifySendFailureVisible(expectedMessage: string): Promise<void> {
 		await expectElementToBeVisible(this.chatMessageError(), {
 			message: "The failed first prompt should show the chat error banner",

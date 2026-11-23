@@ -1,5 +1,4 @@
 export const chatFirstSendFailuresData = {
-	noModelPrompt: "FIRST-SEND-NO-MODEL-2de1 missing-model first message",
 	serverFailureMarker: "FIRST-SEND-HTTP-ERROR-83ab",
 	serverFailurePrompt: "FIRST-SEND-HTTP-ERROR-83ab rejected first message",
 	serverFailureMessage: "E2E first-prompt refusal 83ab",

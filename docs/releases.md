@@ -20,21 +20,24 @@ configuration.
 | `preview` | Continuously consumable prerelease | Early adopters / testers | Scheduled cadence or manual `Release` run |
 | `stable`  | Stable customer release            | Customers                | Manual `Release` run from `main`          |
 
-Development has an isolated identity. Preview and Stable intentionally share one durable
-packaged identity so the About settings update-track selector (gated by the `update-track-switcher`
-feature flag) can move the installed app between tracks:
+Development has an isolated identity. Preview and Stable are one app on two update tracks, so
+the About settings update-track selector (gated by the `update-track-switcher` feature flag) can
+move the installed app between them:
 
 | Environment       | Product name | Identity suffix |
 | ----------------- | ------------ | --------------- |
 | Local development | Kilo Dev     | `dev`           |
-| `preview`         | Kilo Preview | none            |
+| `preview`         | Kilo         | none            |
 | `stable`          | Kilo         | none            |
 
 The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
 Linux package and executable names, and Electron's application name. Preview and Stable share the
-same bundle ID, Squirrel identity, executable, and protocol registration, so on Windows and Linux
-installing one replaces the other (macOS names the app bundle after the product name, so both can be
-installed).
+same product name, bundle ID, Squirrel identity, executable, and protocol registration, so
+installing one replaces the other on every platform. Release files are named the same on both
+tracks and are kept apart by the track's prefix; the version (`X.Y.Z-preview-…`), the DMG volume
+title and the macOS icon show which track a build belongs to. Preview builds released before the
+shared name installed as `Kilo Preview.app`, which an update may leave in place next to `Kilo.app`;
+remove the old bundle once you have confirmed which copy you are running.
 
 They also share one user-data directory, `Kilo Desktop`, so workspaces, work sessions and
 preferences, including the selected update track, follow a track switch. Electron's single-instance
@@ -50,15 +53,16 @@ left in place. To keep Preview's data instead, quit Kilo, rename `Kilo Desktop` 
 workspace keep absolute folders inside it). On the next launch kilo.work-sessions imports any
 older-format data in that folder as usual.
 
-Track selection repoints the
-native update feed immediately and persists across restarts. Electron's native updater does not
-force downgrades, so a newer Preview installation returns to Stable only when the Stable channel
-publishes a version that sorts newer than the installed Preview.
+Track selection repoints the native update feed immediately and persists across restarts.
+Electron's native updater does not force downgrades, so a newer Preview installation returns to
+Stable only when the Stable channel publishes a version that sorts newer than the installed
+Preview.
 
 On first launch after the Kilo rename, Desktop atomically moves a matching pre-rename
 profile into the canonical `Kilo Desktop Dev` or `Kilo Desktop` directory when that target does
-not already exist. Existing canonical profiles are never overwritten or merged. Chat reads also recognize the pre-rename ownership key so existing
-sessions remain visible; newly created sessions write only `kilo-desktop` metadata.
+not already exist. Existing canonical profiles are never overwritten or merged. Chat reads also
+recognize the pre-rename ownership key so existing sessions remain visible; newly created sessions
+write only `kilo-desktop` metadata.
 
 ## Distribution matrix
 

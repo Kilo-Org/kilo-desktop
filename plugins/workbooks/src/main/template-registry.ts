@@ -67,7 +67,12 @@ export function provideTemplates(sdk: PluginSdk): {
 				name: template.name,
 				description: template.description,
 				...(template.icon ? { icon: template.icon } : {}),
-				fields: template.brief.fields,
+				fields: template.intake.map(({ fills, label, required, hint }) => ({
+					id: fills,
+					label,
+					required,
+					...(hint ? { hint } : {}),
+				})),
 				firstMove: template.firstMove,
 				source: contribution.key,
 			});

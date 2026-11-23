@@ -1,10 +1,10 @@
 import {
-	BRIEF_PAGE,
 	DEFAULT_PAGES_MCP_SERVER,
 	type Workbook,
 	type WorkbookSectionRef,
 	type WorkbookTemplate,
 } from "../contracts";
+import { sectionRef } from "./create-workbook";
 import type { PagesToolCaller } from "./pages-tools";
 
 /**
@@ -36,10 +36,9 @@ const DEFAULT_GUIDE_TITLE = "How to work here";
 /**
  * A workbook's guide and sections, found among its Project's pages by title:
  * the template's when it's known, otherwise any known template's (the first
- * to name a title wins). A page titled as the section is the section (older
- * workbooks gave every section a page); otherwise a section that lives under
- * a heading is found on its shared page, or, for a known template, in the
- * Brief. Pages that match nothing are left alone.
+ * to name a section wins). Each template page found brings its sections (the
+ * part under each section's heading, or the whole page); a known template's
+ * home sections are in the Brief. Pages that match nothing are left alone.
  */
 export function matchSections(
 	pages: readonly { page_id: string; title: string }[],
@@ -61,26 +60,14 @@ export function matchSections(
 	const sections: WorkbookSectionRef[] = [];
 	const taken = new Set<string>();
 	for (const source of sources) {
-		for (const section of source.sections) {
-			if (taken.has(section.id)) continue;
-			const ref = { id: section.id, title: section.title, itemType: section.itemType };
-			const own = pageByTitle.get(normalized(section.title));
-			if (own && !taken.has(own)) {
-				taken.add(section.id).add(own);
-				sections.push({ ...ref, pageId: own });
-				continue;
-			}
-			if (section.in === BRIEF_PAGE) {
-				if (!template) continue;
+		for (const page of source.pages) {
+			const pageId = page.home ? undefined : pageByTitle.get(normalized(page.title));
+			if (page.home ? !template : !pageId) continue;
+			for (const section of page.sections) {
+				if (taken.has(section.id)) continue;
 				taken.add(section.id);
-				sections.push({ ...ref, heading: section.title });
-				continue;
+				sections.push(sectionRef(section, pageId ? { pageId } : {}));
 			}
-			const shared = source.pages.find((page) => page.id === section.in);
-			const pageId = shared && pageByTitle.get(normalized(shared.title));
-			if (!pageId) continue;
-			taken.add(section.id);
-			sections.push({ ...ref, pageId, heading: section.title });
 		}
 	}
 	return { ...(guidePageId ? { guidePageId } : {}), sections };
@@ -114,37 +101,42 @@ export async function discoverWorkbooks(
 	deps: DiscoverDeps,
 ): Promise<DiscoveredWorkbook[]> {
 	const templates = deps.templates();
+	const byId = new Map(templates.map((template) => [template.id, template]));
+	const byName = new Map(templates.map((template) => [normalized(template.name), template]));
 	const projects = await listAll<ListedProject>(pages, "list_projects", "projects", {});
-	const found: DiscoveredWorkbook[] = [];
-	for (const project of projects) {
+	const marked = projects.flatMap((project) => {
 		const marker = parseMarker(project.description ?? "");
-		if (!marker) continue;
-		const template =
-			templates.find((candidate) => candidate.id === marker.templateId) ??
-			templates.find((candidate) => normalized(candidate.name) === normalized(marker.templateName));
-		const parts =
-			deps.known?.(project.project_id) ??
-			matchSections(
-				await listAll<{ page_id: string; title: string }>(pages, "list_pages", "pages", {
-					project_id: project.project_id,
-				}),
-				templates,
-				template,
-			);
-		found.push({
-			id: project.project_id,
-			projectId: project.project_id,
-			name: project.title,
-			templateId: template?.id ?? marker.templateId ?? slug(marker.templateName),
-			...(template ? {} : { templateName: marker.templateName }),
-			backend: { kind: "pages-mcp", server: DEFAULT_PAGES_MCP_SERVER },
-			...(project.url ? { url: project.url } : {}),
-			...(parts.guidePageId ? { guidePageId: parts.guidePageId } : {}),
-			sections: parts.sections,
-			createdAt: project.created_at ?? new Date(0).toISOString(),
-		});
-	}
-	return found;
+		return marker ? [{ project, marker }] : [];
+	});
+	// Each workbook's pages are listed at once, not one workbook after another.
+	return Promise.all(
+		marked.map(async ({ project, marker }): Promise<DiscoveredWorkbook> => {
+			const template =
+				(marker.templateId ? byId.get(marker.templateId) : undefined) ??
+				byName.get(normalized(marker.templateName));
+			const parts =
+				deps.known?.(project.project_id) ??
+				matchSections(
+					await listAll<{ page_id: string; title: string }>(pages, "list_pages", "pages", {
+						project_id: project.project_id,
+					}),
+					templates,
+					template,
+				);
+			return {
+				id: project.project_id,
+				projectId: project.project_id,
+				name: project.title,
+				templateId: template?.id ?? marker.templateId ?? slug(marker.templateName),
+				...(template ? {} : { templateName: marker.templateName }),
+				backend: { kind: "pages-mcp", server: DEFAULT_PAGES_MCP_SERVER },
+				...(project.url ? { url: project.url } : {}),
+				...(parts.guidePageId ? { guidePageId: parts.guidePageId } : {}),
+				sections: parts.sections,
+				createdAt: project.created_at ?? new Date(0).toISOString(),
+			};
+		}),
+	);
 }
 
 function slug(name: string): string {

@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { workbookTemplateSchema } from "../contracts";
 import { FakePages } from "../test/fake-pages";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
-import { createWorkbookContent, missingRequiredFields, renderBrief } from "./create-workbook";
+import { createWorkbookContent, missingRequiredFields, renderPage } from "./create-workbook";
 import { toolResultPayload } from "./pages-tools";
 
 const coding = workbookTemplateSchema.parse(BUILT_IN_TEMPLATES.coding());
 
 describe("createWorkbookContent", () => {
-	it("copies the template into a new Project: the Brief, the guide and its pages", async () => {
+	it("copies the template into a new Project: the home page, the guide and the other pages", async () => {
 		const pages = new FakePages();
 
 		const created = await createWorkbookContent(pages, {
@@ -26,49 +26,101 @@ describe("createWorkbookContent", () => {
 		});
 		expect(created.url).toBe(`https://pages.test/project/${created.projectId}`);
 		const brief = pages.markdown(project.documentId);
-		expect(brief).toContain("Fix the bug in the Kilo server");
-		expect(brief).not.toContain("Status");
-		expect(brief).toContain("## Context and links\n\n_Not given yet._");
-		expect(brief).toContain("## Open questions");
+		expect(brief).toMatch(
+			/^## Goal\n\n_What should be true[^\n]*_\n\nFix the bug in the Kilo server\n\n## Where we left off\n\n_The latest change only;[^\n]*_\n\n- Nothing yet\.\n\n## Open questions/,
+		);
+		expect(brief).toContain("## Context and links\n\n_Where things are:");
+		expect(brief).toContain("_Not given yet._");
 		expect(brief).not.toContain("Seeded");
 		expect(pages.pagesOf(created.projectId).map((page) => page.title)).toEqual([
 			"How to work here",
 			"Plan",
+			"Follow-ups",
 			"Decisions & findings",
 			"Change Log",
 		]);
 		expect(pages.markdown(created.guidePageId)).toContain("Extract, don't archive");
-		const [guide, plan, record, changeLog] = pages
+		const [guide, plan, followUps, record, changeLog] = pages
 			.pagesOf(created.projectId)
 			.map((page) => page.id);
 		expect(guide).toBe(created.guidePageId);
-		expect(created.sections).toEqual([
-			{ id: "plan", title: "Steps", itemType: "plan-step", pageId: plan, heading: "Steps" },
+		expect(
+			created.sections.map(({ id, type, role, pageId, heading }) => ({
+				id,
+				type,
+				role,
+				pageId,
+				heading,
+			})),
+		).toEqual([
+			{ id: "goal", type: "text", role: "goal", pageId: undefined, heading: "Goal" },
+			{
+				id: "handoff",
+				type: "journal",
+				role: "handoff",
+				pageId: undefined,
+				heading: "Where we left off",
+			},
+			{
+				id: "questions",
+				type: "questions",
+				role: undefined,
+				pageId: undefined,
+				heading: "Open questions",
+			},
+			{
+				id: "context",
+				type: "text",
+				role: undefined,
+				pageId: undefined,
+				heading: "Context and links",
+			},
+			{
+				id: "constraints",
+				type: "checklist",
+				role: undefined,
+				pageId: undefined,
+				heading: "Constraints and non-goals",
+			},
+			{
+				id: "criteria",
+				type: "checklist",
+				role: undefined,
+				pageId: undefined,
+				heading: "Acceptance criteria",
+			},
+			{ id: "plan", type: "steps", role: "plan", pageId: plan, heading: "Steps" },
 			{
 				id: "follow-ups",
-				title: "Follow-ups",
-				itemType: "task",
-				pageId: plan,
-				heading: "Follow-ups",
+				type: "checklist",
+				role: undefined,
+				pageId: followUps,
+				heading: undefined,
 			},
-			{
-				id: "decisions",
-				title: "Decisions",
-				itemType: "decision",
-				pageId: record,
-				heading: "Decisions",
-			},
-			{
-				id: "findings",
-				title: "Findings",
-				itemType: "finding",
-				pageId: record,
-				heading: "Findings",
-			},
-			{ id: "questions", title: "Open questions", itemType: "question", heading: "Open questions" },
-			{ id: "change-log", title: "Change Log", itemType: "log-entry", pageId: changeLog },
+			{ id: "decisions", type: "journal", role: undefined, pageId: record, heading: "Decisions" },
+			{ id: "findings", type: "journal", role: undefined, pageId: record, heading: "Findings" },
+			{ id: "change-log", type: "journal", role: undefined, pageId: changeLog, heading: undefined },
 		]);
-		expect(pages.markdown(plan!)).toContain("Refine the Brief");
+		expect(created.sections.find((section) => section.id === "plan")).toMatchObject({
+			requires: ["tasks-ticked", "link-or-reason"],
+			collects: expect.stringContaining("one commit"),
+		});
+		expect(created.sections.find((section) => section.id === "handoff")).toMatchObject({
+			history: "change-log",
+		});
+		expect(pages.markdown(plan!)).toBe(
+			[
+				"## Steps",
+				"",
+				"_The work, in order. Each step is sized for one chat and ends in one commit; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you)._",
+				"",
+				"- [ ] **1. Refine the Brief and draft this Plan**: the first agent's job.",
+				"  - [ ] Propose acceptance criteria and constraints in the Brief",
+				"  - [ ] Draft the steps, each with its tasks",
+				"  - [ ] Confirm the Plan (you)",
+			].join("\n"),
+		);
+		expect(pages.markdown(followUps!)).toMatch(/^_Out-of-scope work[^\n]*_$/);
 	});
 
 	it("refuses a Brief without its required fields, before touching Pages", async () => {
@@ -113,9 +165,12 @@ describe("createWorkbookContent", () => {
 	});
 });
 
-describe("renderBrief and missingRequiredFields", () => {
-	it("fills placeholders and lists missing required fields", () => {
-		expect(renderBrief(coding, { goal: " Ship it " })).toContain("## Goal\n\nShip it");
+describe("renderPage and missingRequiredFields", () => {
+	it("fills intake answers and lists missing required fields", () => {
+		const home = coding.pages.find((page) => page.home)!;
+		expect(renderPage(coding, home, { goal: " Ship it " })).toContain(
+			"_\n\nShip it\n\n## Where we left off",
+		);
 		expect(missingRequiredFields(coding, {})).toEqual(["Goal"]);
 		expect(missingRequiredFields(coding, { goal: "g" })).toEqual([]);
 	});

@@ -1,40 +1,24 @@
 import type { WorkbookProgress } from "../contracts";
+import { NOTE_LINE, QUESTION_LINE, stepParts } from "./items";
 
-const TASK_LINE = /^\s*- \[([ xX])\] (.*)$/;
-const STEP = /^\*\*(\d+)\.\s*(.*?)\*\*:?\s*(.*)$/;
-
-/** Plan steps from the Plan's markdown, with the status their suffix and checkbox say. */
+/** Plan steps from the plan section's markdown, with the status their suffix and checkbox say. */
 export function planSteps(markdown: string): WorkbookProgress["steps"] {
-	const steps: WorkbookProgress["steps"] = [];
-	for (const line of markdown.split("\n")) {
-		const task = TASK_LINE.exec(line);
-		const step = task ? STEP.exec(task[2]!) : null;
-		if (!task || !step) continue;
-		const rest = step[3] ?? "";
-		const status = /^[xX]$/.test(task[1]!)
-			? "done"
-			: / · blocked:/.test(rest)
-				? "blocked"
-				: / · in progress$/.test(rest)
-					? "in_progress"
-					: "todo";
-		steps.push({ number: Number(step[1]), title: step[2]!.trim(), status });
-	}
-	return steps;
+	return markdown.split("\n").flatMap((line) => {
+		const step = stepParts(line);
+		return step ? [{ number: step.number, title: step.title, status: step.status }] : [];
+	});
 }
 
-/** The bullets under the Brief's "Where I left off", without the placeholder. */
-export function whereILeftOff(brief: string): string[] {
-	const match = /## Where I left off\s*\n([\s\S]*?)(?=\n#{1,6} |$)/.exec(brief);
-	if (!match) return [];
-	return match[1]!
+/** The handoff section's entries (its markdown, without its note or the placeholder). */
+export function handoffEntries(markdown: string): string[] {
+	return markdown
 		.split("\n")
-		.filter((line) => /^\s*- /.test(line))
+		.filter((line) => /^\s*- /.test(line) && !NOTE_LINE.test(line.trim()))
 		.map((line) => line.replace(/^\s*- /, "").trim())
 		.filter((line) => line && line !== "Nothing yet.");
 }
 
-/** The tasks under the Plan's steps: its indented lines. */
+/** The tasks under the plan's steps: its indented lines. */
 export function stepTasks(plan: string): string {
 	return plan
 		.split("\n")
@@ -54,7 +38,7 @@ export function openReviewTasks(markdown: string): number {
 
 /** Open questions: bold-led bullets ending in "?". */
 export function openQuestions(markdown: string): number {
-	return markdown.split("\n").filter((line) => /^\s*- \*\*.*\?\*\*/.test(line)).length;
+	return markdown.split("\n").filter((line) => QUESTION_LINE.test(line.trim())).length;
 }
 
 /** What to suggest working on next: the step in progress, else the first not done. */

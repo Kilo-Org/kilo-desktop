@@ -43,7 +43,16 @@ const input = (overrides: Partial<AddWorkbookInput> = {}): AddWorkbookInput => (
 	backend: { kind: "pages-mcp", server: "pages" },
 	projectId: "prj_1",
 	guidePageId: "page-guide",
-	sections: [{ id: "plan", title: "Plan", itemType: "plan-step", pageId: "page-plan" }],
+	sections: [
+		{
+			id: "plan",
+			title: "Steps",
+			type: "steps",
+			role: "plan",
+			pageId: "page-plan",
+			heading: "Steps",
+		},
+	],
 	...overrides,
 });
 
@@ -157,7 +166,7 @@ describe("creating a workbook", () => {
 		});
 		expect(created.id).toBe(created.projectId);
 		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Coding (coding)");
-		expect(created.sections).toHaveLength(6);
+		expect(created.sections).toHaveLength(11);
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
 	});
 
@@ -236,7 +245,9 @@ describe("finding workbooks in Pages", () => {
 			templateId: "coding",
 			usedIn: [],
 		});
-		expect(state.workbooks[0]!.sections[0]).toMatchObject({ id: "plan", heading: "Steps" });
+		expect(state.workbooks[0]!.sections.find((section) => section.id === "plan")).toMatchObject({
+			heading: "Steps",
+		});
 		expect(state.workbooks[1]).toEqual(made);
 	});
 

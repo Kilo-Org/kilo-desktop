@@ -1,12 +1,19 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import { BRIEF_PAGE, type WorkbookSectionRef, type WorkbookTemplate } from "../contracts";
+import {
+	sectionType,
+	type TemplatePage,
+	type TemplateSection,
+	type WorkbookSectionRef,
+	type WorkbookTemplate,
+} from "../contracts";
+import { sectionNote, stepLine, taskLine } from "./items";
 import type { PagesToolCaller } from "./pages-tools";
 
 export interface NewWorkbookContent {
 	readonly template: WorkbookTemplate;
 	readonly name: string;
-	/** Brief field values by field id. */
+	/** Intake answers, by the section each fills. */
 	readonly values: Readonly<Record<string, string>>;
 	/** The Project's description: the workbook marker, which is how the app finds it again. */
 	readonly description: string;
@@ -22,34 +29,68 @@ export interface CreatedWorkbookContent {
 
 const NOT_GIVEN = "_Not given yet._";
 
-/** The Brief's markdown: `{{field}}` placeholders filled from `values`. */
-export function renderBrief(
-	template: WorkbookTemplate,
-	values: Readonly<Record<string, string>>,
-): string {
-	return template.brief.markdown.replace(
-		/\{\{([a-z][a-z0-9-]*)\}\}/g,
-		(_, id: string) => values[id]?.trim() || NOT_GIVEN,
-	);
-}
-
-/** Required Brief fields left empty, by label. */
+/** Required intake fields left empty, by label. */
 export function missingRequiredFields(
 	template: WorkbookTemplate,
 	values: Readonly<Record<string, string>>,
 ): string[] {
-	return template.brief.fields
-		.filter((field) => field.required && !values[field.id]?.trim())
+	return template.intake
+		.filter((field) => field.required && !values[field.fills]?.trim())
 		.map((field) => field.label);
+}
+
+/** A section as a workbook records it: its type resolved, its rules copied, where it is. */
+export function sectionRef(
+	section: TemplateSection,
+	where: { pageId?: string },
+): WorkbookSectionRef {
+	const { starter: _, type: __, ...rest } = section;
+	return {
+		...rest,
+		type: sectionType(section),
+		...(where.pageId ? { pageId: where.pageId } : {}),
+		...(section.title ? { heading: section.title } : {}),
+	};
+}
+
+/**
+ * A new page's markdown: its intro, then each section's heading (none for a
+ * whole-page section), the line saying what belongs there, and what it starts
+ * with: an intake answer, starter steps, or the handoff's placeholder.
+ */
+export function renderPage(
+	template: WorkbookTemplate,
+	page: TemplatePage,
+	values: Readonly<Record<string, string>>,
+): string {
+	const parts: string[] = page.intro?.trim() ? [page.intro.trim()] : [];
+	const filled = new Set(template.intake.map((field) => field.fills));
+	for (const section of page.sections) {
+		if (section.title) parts.push(`## ${section.title}`);
+		const note = sectionNote(section);
+		if (note) parts.push(note);
+		if (filled.has(section.id)) parts.push(values[section.id]?.trim() || NOT_GIVEN);
+		if (section.starter?.length) {
+			parts.push(
+				section.starter
+					.flatMap((step, index) => [
+						stepLine(index + 1, step.title, step.intent),
+						...step.tasks.map((task) => taskLine(task)),
+					])
+					.join("\n"),
+			);
+		}
+		if (section.role === "handoff") parts.push("- Nothing yet.");
+	}
+	return parts.join("\n\n");
 }
 
 /**
  * Copies a template into a new Pages Project, all at once: the Project, its
- * document replaced by the filled-in Brief, then the guide and the pages, in
- * section order: a section's own page, or the shared page it sits in (once).
- * Sections in the Brief or a shared page are found by their heading. A failure part-way leaves a partial Project in
- * Pages (reported to the caller); nothing is recorded until
- * the whole copy succeeds.
+ * document replaced by the home page, then the guide and the other pages, in
+ * template order. A failure part-way leaves a partial Project in Pages
+ * (reported to the caller); nothing is recorded until the whole copy
+ * succeeds.
  */
 export async function createWorkbookContent(
 	pages: PagesToolCaller,
@@ -70,8 +111,8 @@ export async function createWorkbookContent(
 	const projectId = project?.project_id;
 	if (!projectId) throw new KernelError("UNAVAILABLE", "Pages didn't return the new Project.");
 
-	await writeBrief(pages, projectId, renderBrief(template, values), nonce);
-
+	const home = template.pages.find((page) => page.home)!;
+	await writeHome(pages, projectId, renderPage(template, home, values), nonce);
 	const guide = await createPage(
 		pages,
 		projectId,
@@ -79,33 +120,26 @@ export async function createWorkbookContent(
 		template.guide.markdown,
 		nonce,
 	);
-	// Shared pages are made as their first section comes, so pages follow section order.
-	const sharedPageIds = new Map<string, string>();
-	const sections: WorkbookSectionRef[] = [];
-	for (const section of template.sections) {
-		const ref = { id: section.id, title: section.title, itemType: section.itemType };
-		if (section.in === BRIEF_PAGE) {
-			sections.push({ ...ref, heading: section.title });
-			continue;
-		}
-		if (section.in) {
-			let pageId = sharedPageIds.get(section.in);
-			if (!pageId) {
-				const page = template.pages.find((candidate) => candidate.id === section.in)!;
-				pageId = await createPage(pages, projectId, page.title, page.markdown, nonce);
-				sharedPageIds.set(section.in, pageId);
-			}
-			sections.push({ ...ref, pageId, heading: section.title });
-			continue;
-		}
-		const pageId = await createPage(pages, projectId, section.title, section.markdown ?? "", nonce);
-		sections.push({ ...ref, pageId });
+
+	const sections: WorkbookSectionRef[] = home.sections.map((section) => sectionRef(section, {}));
+	for (const page of template.pages) {
+		if (page.home) continue;
+		// One after another on purpose: Pages lists a Project's pages in the order they were made.
+		// react-doctor-disable-next-line react-doctor/async-await-in-loop
+		const pageId = await createPage(
+			pages,
+			projectId,
+			page.title,
+			renderPage(template, page, values),
+			nonce,
+		);
+		sections.push(...page.sections.map((section) => sectionRef(section, { pageId })));
 	}
 	return { projectId, ...(project.url ? { url: project.url } : {}), guidePageId: guide, sections };
 }
 
-/** Replaces the Project document's seeded content with the Brief. */
-async function writeBrief(
+/** Replaces the Project document's seeded content with the home page. */
+async function writeHome(
 	pages: PagesToolCaller,
 	projectId: string,
 	markdown: string,

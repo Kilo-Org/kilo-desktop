@@ -14,13 +14,13 @@ import { createWorkbookContent } from "./create-workbook";
 import { discoverWorkbooks, markerFor } from "./discover";
 import { workbookInstructions } from "./instructions";
 import {
+	handoffEntries,
 	nextStep,
 	openQuestions,
 	openReviewTasks,
 	openTasks,
 	planSteps,
 	stepTasks,
-	whereILeftOff,
 } from "./progress";
 import { sectionMarkdown } from "./section-scope";
 import type { PagesToolCaller } from "./pages-tools";
@@ -139,39 +139,42 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 			progress: async ({ workbookId }) => {
 				const workbook = find(workbookId);
 				const pages = deps.pages(workbook.backend);
-				const page = (itemType: string, id?: string) =>
-					workbook.sections.find((section) =>
-						id ? section.id === id : section.itemType === itemType,
-					);
-				const read = async (section: WorkbookSectionRef | undefined) => {
-					if (!section) return "";
-					const target = section.pageId
-						? { page_id: section.pageId }
-						: { project_id: workbook.projectId };
-					return sectionMarkdown((await readMarkdown(pages, target)) ?? "", section.heading);
+				// Each page once, however many sections share it; the Brief must be readable.
+				const pageReads = new Map<string, Promise<string>>();
+				const pageOf = (section: WorkbookSectionRef) => {
+					const key = section.pageId ?? "";
+					let read = pageReads.get(key);
+					if (!read) {
+						const target = section.pageId
+							? { page_id: section.pageId }
+							: { project_id: workbook.projectId };
+						read = readMarkdown(pages, target, { strict: !section.pageId }).then(
+							(text) => text ?? "",
+						);
+						pageReads.set(key, read);
+					}
+					return read;
 				};
-				const reviewSection = page("finding", "review");
-				const [brief, plan, tasks, questions, review] = await Promise.all([
-					readMarkdown(pages, { project_id: workbook.projectId }, { strict: true }).then(
-						(text) => text ?? "",
+				const read = async (section: WorkbookSectionRef | undefined) =>
+					section ? sectionMarkdown(await pageOf(section), section.heading) : "";
+				const withRole = (role: string) =>
+					workbook.sections.find((section) => section.role === role);
+				const [handoff, plan, questions] = await Promise.all([
+					read(withRole("handoff")),
+					read(withRole("plan")),
+					Promise.all(
+						workbook.sections.filter((section) => section.type === "questions").map(read),
 					),
-					read(page("plan-step")),
-					read(page("task", "tasks")),
-					read(page("question")),
-					read(reviewSection),
 				]);
 				const steps = planSteps(plan);
 				const next = nextStep(steps);
 				return {
-					whereILeftOff: whereILeftOff(brief),
+					whereWeLeftOff: handoffEntries(handoff),
 					steps,
 					...(next ? { next: { number: next.number, title: next.title } } : {}),
-					openTasks: openTasks(tasks) + openTasks(stepTasks(plan)),
-					openQuestions: openQuestions(questions),
-					// Older workbooks have Tasks and Review pages; now both are tasks under steps.
-					openReview: reviewSection
-						? openTasks(review)
-						: openReviewTasks(tasks) + openReviewTasks(stepTasks(plan)),
+					openTasks: openTasks(stepTasks(plan)),
+					openQuestions: questions.reduce((sum, markdown) => sum + openQuestions(markdown), 0),
+					openReview: openReviewTasks(stepTasks(plan)),
 				};
 			},
 		},

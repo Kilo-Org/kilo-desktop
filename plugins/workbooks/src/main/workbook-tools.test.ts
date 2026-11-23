@@ -5,8 +5,9 @@ import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts"
 
 import { SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
 import { bootWorkbooks } from "../test/hosts";
+import { withStatus } from "./items";
 import { sectionMarkdown } from "./section-scope";
-import { whereILeftOffEdits, withStatus } from "./workbook-writer";
+import { replaceBodyEdits } from "./workbook-writer";
 
 const hosts: PluginHost[] = [];
 
@@ -15,6 +16,7 @@ afterEach(async () => {
 });
 
 const SESSION = "wses_1";
+const today = () => new Date().toISOString().slice(0, 10);
 
 async function boot(options: { flag?: boolean } = {}) {
 	const booted = await bootWorkbooks(options);
@@ -47,12 +49,13 @@ async function boot(options: { flag?: boolean } = {}) {
 		>;
 	};
 	/** A section's markdown: its page, or the part under its heading. */
-	const page = (id: string) => {
-		const section = workbook.sections.find((candidate) => candidate.id === id)!;
-		const markdown = pages.markdown(section.pageId ?? pages.documentOf(workbook.projectId));
-		return sectionMarkdown(markdown, section.heading);
+	const section = (id: string) => {
+		const ref = workbook.sections.find((candidate) => candidate.id === id)!;
+		const markdown = pages.markdown(ref.pageId ?? pages.documentOf(workbook.projectId));
+		return sectionMarkdown(markdown, ref.heading);
 	};
-	return { host, pages, workbook: workbook as Workbook, call, tools, page };
+	const brief = () => pages.markdown(pages.documentOf(workbook.projectId));
+	return { host, pages, workbook: workbook as Workbook, call, tools, section, brief };
 }
 
 describe("workbook tools", () => {
@@ -60,13 +63,13 @@ describe("workbook tools", () => {
 		const on = await boot();
 		await expect
 			.poll(() => on.tools().filter((tool) => tool.pluginId === "kilo.workbooks").length)
-			.toBe(8);
+			.toBe(12);
 
 		const off = await boot({ flag: false });
 		expect(off.tools().filter((tool) => tool.pluginId === "kilo.workbooks")).toEqual([]);
 	});
 
-	it("read the session's workbook: the Brief, a section or the guide", async () => {
+	it("read the session's workbook: its sections, the Brief, a section or the guide", async () => {
 		const { call, workbook } = await boot();
 
 		const brief = await call("read_workbook", {});
@@ -74,21 +77,35 @@ describe("workbook tools", () => {
 			workbook: { id: workbook.id, name: "Fix the server bug" },
 			showing: "brief",
 		});
-		expect(brief.markdown).toContain("Fix the bug");
-		expect((brief.sections as { id: string }[]).map((section) => section.id)).toEqual([
-			"plan",
-			"follow-ups",
-			"decisions",
-			"findings",
-			"questions",
-			"change-log",
+		expect(brief.markdown).toMatch(/^## Goal\n\n_[^\n]*_\n\nFix the bug\n\n## Where we left off/);
+		const sections = brief.sections as {
+			id: string;
+			type: string;
+			role?: string;
+			collects?: string;
+		}[];
+		expect(sections.map((entry) => [entry.id, entry.type, entry.role])).toEqual([
+			["goal", "text", "goal"],
+			["handoff", "journal", "handoff"],
+			["questions", "questions", undefined],
+			["context", "text", undefined],
+			["constraints", "checklist", undefined],
+			["criteria", "checklist", undefined],
+			["plan", "steps", "plan"],
+			["follow-ups", "checklist", undefined],
+			["decisions", "journal", undefined],
+			["findings", "journal", undefined],
+			["change-log", "journal", undefined],
 		]);
+		expect(sections.find((entry) => entry.id === "findings")).toMatchObject({
+			collects: expect.stringContaining("Facts learned"),
+			fields: ["evidence", "status?"],
+		});
 		const plan = (await call("read_workbook", { section: "plan" })).markdown;
 		expect(plan).toContain("**1. Refine");
 		expect(plan).toContain("  - [ ] Confirm the Plan (you)");
-		expect(plan).not.toContain("Follow-ups");
 		expect((await call("read_workbook", { section: "questions" })).markdown).toBe(
-			"_Things the user needs to decide. Each goes once answered, recorded as a decision._",
+			"_Things only the user can decide. When one is answered, record the decision and the question goes._",
 		);
 		expect((await call("read_workbook", { section: "guide" })).markdown).toContain(
 			"Extract, don't archive",
@@ -96,161 +113,324 @@ describe("workbook tools", () => {
 		await expect(call("read_workbook", { section: "nope" })).rejects.toThrow('no "nope" section');
 	});
 
-	it("add numbered plan steps and set their status, ticking done steps", async () => {
-		const { call, page, pages, workbook } = await boot();
+	it("add numbered steps with their tasks, and add and tick tasks under a step", async () => {
+		const { call, section, pages, workbook } = await boot();
 
 		await expect(
-			call("add_plan_step", { title: "Build it", intent: "make it work" }),
-		).resolves.toEqual({ section: "plan", step: 2 });
-		// Pages keeps the template's Plan (headings, text, lists) as one block: the step joins its list.
-		expect(page("plan")).toContain(
-			"  - [ ] Confirm the Plan (you)\n- [ ] **2. Build it**: make it work",
-		);
-		const plan = workbook.sections.find((section) => section.id === "plan")!;
-		expect(pages.pages.get(plan.pageId!)!.blocks).toHaveLength(1);
-		expect(page("follow-ups")).not.toContain("Build it");
-		await call("set_step_status", { step: "2", status: "in_progress" });
-		expect(page("plan")).toContain("- [ ] **2. Build it**: make it work · in progress");
-
-		await call("set_step_status", { step: "build it", status: "done", note: "shipped (abc123)" });
-		expect(page("plan")).toContain("- [x] **2. Build it**: make it work · done: shipped (abc123)");
-
-		await call("set_step_status", { step: "2", status: "todo" });
-		expect(page("plan").split("\n")).toContain("- [ ] **2. Build it**: make it work");
-
-		await call("set_step_status", { step: "2.", status: "blocked", note: "waiting on review" });
-		expect(page("plan")).toContain("**2. Build it**: make it work · blocked: waiting on review");
-		await expect(call("set_step_status", { step: "2", status: "blocked" })).rejects.toThrow(
-			"Say what blocks it",
-		);
-
-		await expect(call("set_step_status", { step: "2", status: "done" })).rejects.toThrow(
-			"Say what was done",
-		);
-		await expect(call("set_step_status", { step: "9", status: "in_progress" })).rejects.toThrow(
-			'No plan step matches "9"',
-		);
-		await expect(call("set_step_status", { step: "**", status: "in_progress" })).rejects.toThrow(
-			"use the step number",
-		);
-	});
-
-	it("add steps with their tasks, and add and tick tasks under a step", async () => {
-		const { call, page } = await boot();
-
-		await expect(
-			call("add_plan_step", {
-				title: "Ship it",
-				intent: "release",
+			call("add_item", {
+				section: "plan",
+				text: "Ship it",
+				detail: "release",
 				tasks: ["Write notes", "Approve the release (you)"],
 			}),
-		).resolves.toEqual({ section: "plan", step: 2 });
-		expect(page("plan")).toContain(
-			"- [ ] **2. Ship it**: release\n  - [ ] Write notes\n  - [ ] Approve the release (you)",
+		).resolves.toMatchObject({ section: "plan", step: 2 });
+		expect(section("plan")).toContain(
+			"  - [ ] Confirm the Plan (you)\n- [ ] **2. Ship it**: release\n  - [ ] Write notes\n  - [ ] Approve the release (you)",
 		);
+		const plan = workbook.sections.find((entry) => entry.id === "plan")!;
+		expect(pages.pages.get(plan.pageId!)!.blocks).toHaveLength(1);
 
 		await call("add_task", { step: "1", text: "**brief.md**: say who it's for" });
-		expect(page("plan")).toContain(
+		expect(section("plan")).toContain(
 			"  - [ ] Confirm the Plan (you)\n  - [ ] **brief.md**: say who it's for\n- [ ] **2. Ship it**",
 		);
 		await call("add_task", { step: "ship", text: "Tag it" });
-		expect(page("plan")).toMatch(/Approve the release \(you\)\n {2}- \[ \] Tag it$/);
+		expect(section("plan")).toMatch(/Approve the release \(you\)\n {2}- \[ \] Tag it$/);
 
 		await expect(call("set_task_done", { step: "2", task: "write notes" })).resolves.toMatchObject({
 			line: "  - [x] Write notes",
 		});
 		await call("set_task_done", { step: "2", task: "write notes", done: false });
-		expect(page("plan")).toContain("  - [ ] Write notes");
+		expect(section("plan")).toContain("  - [ ] Write notes");
 		await expect(call("set_task_done", { step: "2", task: "lunch" })).rejects.toThrow(
 			'Step 2 has no task matching "lunch"',
 		);
 		await expect(call("set_task_done", { step: "1", task: "the" })).rejects.toThrow(
 			"use more of its words",
 		);
-		// Words from a task never pick out a step: only steps are matched.
 		await expect(
-			call("set_step_status", { step: "write notes", status: "in_progress" }),
+			call("set_status", { item: "write notes", status: "in_progress" }),
 		).rejects.toThrow('No plan step matches "write notes"');
 	});
 
-	it("mark a step done only once its tasks are ticked", async () => {
-		const { call, page } = await boot();
-		await call("add_plan_step", { title: "Ship it", intent: "release", tasks: ["Write notes"] });
+	it("set a step's status under the plan's rules: tasks ticked, and a link or a reason", async () => {
+		const { call, section } = await boot();
+		await call("add_item", {
+			section: "plan",
+			text: "Build it",
+			detail: "make it work",
+			tasks: ["Code"],
+		});
 
+		await call("set_status", { item: "2", status: "in_progress" });
+		expect(section("plan")).toContain("- [ ] **2. Build it**: make it work · in progress");
+		await expect(call("set_status", { item: "2", status: "blocked" })).rejects.toThrow(
+			"Say what blocks it",
+		);
+		await call("set_status", { item: "2.", status: "blocked", reason: "waiting on review" });
+		expect(section("plan")).toContain("**2. Build it**: make it work · blocked: waiting on review");
+
+		await expect(call("set_status", { item: "2", status: "done", link: "abc" })).rejects.toThrow(
+			"Say what was done",
+		);
 		await expect(
-			call("set_step_status", { step: "2", status: "done", note: "shipped" }),
-		).rejects.toThrow("Step 2 still has open tasks: Write notes");
+			call("set_status", { item: "2", status: "done", result: "shipped" }),
+		).rejects.toThrow("needs its link");
+		await expect(
+			call("set_status", { item: "2", status: "done", result: "shipped", link: "abc123" }),
+		).rejects.toThrow("Step 2 still has open tasks: Code");
+		await call("set_task_done", { step: "2", task: "code" });
+		await call("set_status", {
+			item: "build it",
+			status: "done",
+			result: "shipped",
+			link: "abc123",
+		});
+		expect(section("plan")).toContain(
+			"- [x] **2. Build it**: make it work · done: shipped (abc123)",
+		);
 
-		await call("set_task_done", { step: "2", task: "notes" });
-		await call("set_step_status", { step: "2", status: "done", note: "shipped (abc123)" });
-		expect(page("plan")).toContain(
-			"- [x] **2. Ship it**: release · done: shipped (abc123)\n  - [x] Write notes",
+		await call("set_status", { item: "2", status: "todo" });
+		expect(section("plan").split("\n")).toContain("- [ ] **2. Build it**: make it work");
+
+		await call("set_task_done", { step: "1", task: "propose" });
+		await call("set_task_done", { step: "1", task: "draft" });
+		await call("set_task_done", { step: "1", task: "confirm" });
+		await call("set_status", {
+			item: "1",
+			status: "done",
+			result: "Plan confirmed",
+			reason: "workbook only, no commit",
+		});
+		expect(section("plan")).toContain("· done: Plan confirmed (workbook only, no commit)");
+		await expect(call("set_status", { item: "9", status: "in_progress" })).rejects.toThrow(
+			'No plan step matches "9"',
+		);
+		await expect(call("set_status", { item: "**", status: "in_progress" })).rejects.toThrow(
+			"use the step number",
 		);
 	});
 
-	it("record decisions and file items in each section's format, under its heading", async () => {
-		const { call, page, pages, workbook } = await boot();
-		const date = new Date().toISOString().slice(0, 10);
+	it("re-cut the plan: edit, move and remove steps, renumbering them in order", async () => {
+		const { call, section } = await boot();
+		await call("add_item", { section: "plan", text: "Two", detail: "b", tasks: ["t2"] });
+		await call("add_item", { section: "plan", text: "Three", detail: "c" });
+		await call("add_item", { section: "plan", text: "Four", detail: "d" });
+		await call("set_status", { item: "4", status: "in_progress" });
 
-		await call("record_decision", { decision: "Use SSE", why: "simpler", rejected: "websockets" });
-		expect(page("decisions")).toContain(
-			`- **Use SSE.** Why: simpler. Rejected: websockets. (${date})`,
+		await expect(
+			call("edit_step", { step: "3", title: "Third", intent: "see" }),
+		).resolves.toMatchObject({ line: "- [ ] **3. Third**: see" });
+		await call("edit_step", { step: "4", title: "Fourth" });
+		expect(section("plan")).toContain("- [ ] **4. Fourth**: d · in progress");
+		await expect(call("edit_step", { step: "4" })).rejects.toThrow("new title or intent");
+
+		await expect(call("move_step", { step: "4", before: "2" })).resolves.toEqual({
+			renumbered: [
+				{ from: 4, to: 2 },
+				{ from: 2, to: 3 },
+				{ from: 3, to: 4 },
+			],
+		});
+		expect(section("plan")).toMatch(
+			/\*\*1\. Refine[\s\S]*- \[ \] \*\*2\. Fourth\*\*: d · in progress\n- \[ \] \*\*3\. Two\*\*: b\n {2}- \[ \] t2\n- \[ \] \*\*4\. Third\*\*: see$/,
+		);
+		await call("move_step", { step: "Fourth", after: "Third" });
+		expect(section("plan")).toMatch(
+			/\*\*2\. Two\*\*: b\n {2}- \[ \] t2\n- \[ \] \*\*3\. Third\*\*: see\n- \[ \] \*\*4\. Fourth\*\*/,
+		);
+		await expect(call("move_step", { step: "2" })).rejects.toThrow("before, or after");
+
+		await expect(call("remove_item", { section: "plan", item: "2" })).resolves.toMatchObject({
+			removed: "- [ ] **2. Two**: b",
+			renumbered: [
+				{ from: 3, to: 2 },
+				{ from: 4, to: 3 },
+			],
+		});
+		expect(section("plan")).not.toContain("t2");
+		expect(section("plan")).toMatch(/\*\*2\. Third\*\*: see\n- \[ \] \*\*3\. Fourth\*\*/);
+
+		await call("set_task_done", { step: "1", task: "propose" });
+		await call("set_task_done", { step: "1", task: "draft" });
+		await call("set_task_done", { step: "1", task: "confirm" });
+		await call("set_status", { item: "1", status: "done", result: "ok", reason: "no commit" });
+		await expect(call("remove_item", { section: "plan", item: "1" })).rejects.toThrow(
+			"part of the record",
+		);
+	});
+
+	it("keep journals: entries with their fields, newest first where the section says, superseded never deleted", async () => {
+		const { call, section } = await boot();
+
+		await expect(call("add_item", { section: "decisions", text: "Use SSE" })).rejects.toThrow(
+			"needs why",
+		);
+		await expect(
+			call("add_item", {
+				section: "decisions",
+				text: "Use SSE",
+				fields: { why: "simpler", how: "x" },
+			}),
+		).rejects.toThrow("has no field how (its fields: why, rejected)");
+		await call("add_item", {
+			section: "decisions",
+			text: "Use a run-time flag",
+			fields: { why: "local testing", rejected: "build-time" },
+		});
+		expect(section("decisions")).toContain(
+			`- **Use a run-time flag.** Why: local testing. Rejected: build-time. (${today()})`,
 		);
 
-		await call("file_item", { section: "follow-ups", text: "Dark mode", detail: "asked for" });
-		expect(page("follow-ups")).toBe(
-			"_Out-of-scope work noticed along the way, never done in the current change._\n\n- [ ] Dark mode (asked for)",
+		await call("add_item", {
+			section: "decisions",
+			text: "Reversal: choose the server line at build time",
+			fields: { why: "short-lived" },
+			supersedes: "run-time flag",
+		});
+		expect(section("decisions")).toContain(
+			`- ~~**Use a run-time flag.** Why: local testing. Rejected: build-time. (${today()})~~ Superseded by: Reversal: choose the server line at build time. (${today()})\n- **Reversal: choose the server line at build time.** Why: short-lived. (${today()})`,
 		);
-		await call("file_item", {
+
+		await call("add_item", {
 			section: "findings",
-			text: "The clock mock flakes",
-			detail: "ran 50x",
+			text: "v2 has no telemetry",
+			fields: { evidence: "no sink in kilo-plugin", status: "toggle is a no-op (step 7)" },
 		});
-		expect(page("findings")).toContain(`- **The clock mock flakes.** Evidence: ran 50x. (${date})`);
-		await call("file_item", { section: "questions", text: "Support Windows", detail: "CI cost" });
-		expect(page("questions")).toContain("- **Support Windows?** CI cost");
-		expect(pages.markdown(pages.documentOf(workbook.projectId))).toMatch(
-			/## Constraints and non-goals[\s\S]*## Open questions[\s\S]*Support Windows/,
+		expect(section("findings")).toContain(
+			`- **v2 has no telemetry.** Evidence: no sink in kilo-plugin. Status: toggle is a no-op (step 7). (${today()})`,
 		);
-		await call("file_item", { section: "follow-ups", text: "Later thing" });
-		expect(page("follow-ups")).toContain("- [ ] Dark mode (asked for)\n- [ ] Later thing");
-		expect(page("decisions")).not.toContain("clock mock");
-
-		await expect(call("file_item", { section: "plan", text: "x" })).rejects.toThrow(
-			"add_plan_step",
+		await call("supersede", {
+			section: "findings",
+			item: "telemetry",
+			by: "telemetry arrives in 0.0.0-v2-300",
+		});
+		expect(section("findings")).toMatch(
+			/^- ~~\*\*v2 has no telemetry\.\*\*[^~]*~~ Superseded by: telemetry arrives in 0\.0\.0-v2-300\./m,
 		);
-		await expect(call("file_item", { section: "decisions", text: "x" })).rejects.toThrow(
-			"record_decision",
+		await expect(
+			call("supersede", { section: "findings", item: "telemetry", by: "x" }),
+		).rejects.toThrow('Nothing in Findings matches "telemetry"');
+		await expect(call("supersede", { section: "plan", item: "1", by: "x" })).rejects.toThrow(
+			"isn't a journal",
+		);
+		await expect(call("remove_item", { section: "findings", item: "telemetry" })).rejects.toThrow(
+			"supersede it instead",
 		);
 	});
 
-	it("replace the Brief's Where I left off, keeping its note, and log each entry newest first", async () => {
-		const { call, page, pages, workbook } = await boot();
-		const date = new Date().toISOString().slice(0, 10);
+	it("keep checklists, on their own page or under a heading, and file questions until they're answered", async () => {
+		const { call, section, host, workbook } = await boot();
+
+		await call("add_item", { section: "follow-ups", text: "Dark mode", detail: "asked for" });
+		await call("add_item", { section: "follow-ups", text: "Later thing" });
+		expect(section("follow-ups")).toMatch(
+			/^_Out-of-scope work[^\n]*_\n\n- \[ \] Dark mode \(asked for\)\n- \[ \] Later thing$/,
+		);
+		await call("set_status", { section: "follow-ups", item: "dark", status: "done" });
+		expect(section("follow-ups")).toContain("- [x] Dark mode (asked for)");
+		await expect(
+			call("set_status", { section: "follow-ups", item: "later", status: "blocked", reason: "x" }),
+		).rejects.toThrow("either done or todo");
+		await call("remove_item", { section: "follow-ups", item: "later" });
+		expect(section("follow-ups")).not.toContain("Later thing");
+
+		await call("add_item", { section: "criteria", text: "A build variable picks v1 or v2" });
+		expect(section("criteria")).toContain("- [ ] A build variable picks v1 or v2");
+
+		await call("add_item", { section: "questions", text: "Support Windows", detail: "CI cost" });
+		await call("add_item", { section: "questions", text: "Which branch is v2?" });
+		expect(section("questions")).toContain(
+			"- **Support Windows?** CI cost\n- **Which branch is v2?**",
+		);
+		await expect(
+			host.invoke(Workbooks, "progress", { workbookId: workbook.id }),
+		).resolves.toMatchObject({
+			openQuestions: 2,
+		});
 
 		await expect(
-			call("set_where_i_left_off", { text: "Step 2 done; next step 3." }),
-		).resolves.toEqual({
-			section: "brief",
-			alsoIn: "change-log",
-			line: `- ${date}: Step 2 done; next step 3.`,
+			call("answer_question", {
+				question: "branch",
+				recordIn: "decisions",
+				text: "The v2 reference is origin/v2",
+				fields: { why: "its AGENTS.md says so" },
+			}),
+		).resolves.toMatchObject({
+			removed: "- **Which branch is v2?**",
+			recorded: `- **The v2 reference is origin/v2.** Why: its AGENTS.md says so. (${today()})`,
 		});
-		await call("set_where_i_left_off", { text: "Step 3 done; next step 4." });
+		expect(section("questions")).not.toContain("branch");
+		expect(section("decisions")).toContain("The v2 reference is origin/v2");
+		await expect(
+			call("answer_question", { question: "windows", recordIn: "follow-ups", text: "No" }),
+		).rejects.toThrow("journal section");
+		await call("answer_question", { question: "windows" });
+		await expect(
+			host.invoke(Workbooks, "progress", { workbookId: workbook.id }),
+		).resolves.toMatchObject({
+			openQuestions: 0,
+		});
+	});
 
-		const brief = pages.markdown(pages.documentOf(workbook.projectId));
-		expect(brief).toMatch(
-			/## Where I left off\n\n_The latest entry only;[^\n]*_\n\n- \d{4}-\d{2}-\d{2}: Step 3 done; next step 4.\n\n## Goal/,
+	it("write text sections, and the goal only with the user's say-so", async () => {
+		const { call, section, brief } = await boot();
+
+		await call("write_section", {
+			section: "context",
+			markdown: "- Branch: kilo/v2\n- PR: none yet",
+		});
+		expect(section("context")).toBe(
+			"_Where things are: the issue, upstream references, entry points in the code, the branch and PR once they exist, local tools and environments._\n\n- Branch: kilo/v2\n- PR: none yet",
 		);
-		expect(brief).not.toContain("Nothing yet.");
-		expect(brief).not.toContain("Step 2 done");
-		expect(page("change-log")).toMatch(
+		expect(brief()).toMatch(/- PR: none yet\n\n## Constraints and non-goals/);
+
+		await expect(
+			call("write_section", { section: "goal", markdown: "Something else" }),
+		).rejects.toThrow("changes only when the user asks");
+		await call("write_section", {
+			section: "goal",
+			markdown: "Fix the bug for good",
+			userConfirmed: true,
+		});
+		expect(section("goal")).toMatch(/^_[^\n]*_\n\nFix the bug for good$/);
+		await expect(call("write_section", { section: "plan", markdown: "x" })).rejects.toThrow(
+			"holds items",
+		);
+		await expect(call("add_item", { section: "context", text: "x" })).rejects.toThrow(
+			"write_section",
+		);
+	});
+
+	it("hand off: replace Where we left off, keeping its note, and log each entry newest first", async () => {
+		const { call, section, brief, host, workbook } = await boot();
+
+		await expect(
+			call("hand_off", { title: "Step 2 done (commit abc)", text: "Next: step 3.", who: "agent" }),
+		).resolves.toEqual({
+			written: `- **Step 2 done (commit abc).** Next: step 3. (${today()}, agent)`,
+			history: "change-log",
+		});
+		await call("hand_off", { title: "Step 3 done", text: "Next: step 4." });
+
+		expect(brief()).toMatch(
 			new RegExp(
-				`^_What happened in this workbook, newest first\\.[^\\n]*_\\n\\n- ${date}: Step 3 done; next step 4\\.\\n- ${date}: Step 2 done; next step 3\\.$`,
+				`## Where we left off\\n\\n_The latest change only;[^\\n]*_\\n\\n- \\*\\*Step 3 done\\.\\*\\* Next: step 4\\. \\(${today()}\\)\\n\\n## Open questions`,
 			),
 		);
-		await expect(call("file_item", { section: "change-log", text: "x" })).rejects.toThrow(
-			"set_where_i_left_off",
+		expect(brief()).not.toContain("Nothing yet.");
+		expect(brief()).not.toContain("Step 2 done");
+		expect(section("change-log")).toMatch(
+			new RegExp(
+				`^_Every handoff[^\\n]*_\\n\\n- \\*\\*Step 3 done\\.\\*\\* Next: step 4\\. \\(${today()}\\)\\n- \\*\\*Step 2 done \\(commit abc\\)\\.\\*\\* Next: step 3\\. \\(${today()}, agent\\)$`,
+			),
 		);
+		await expect(
+			host.invoke(Workbooks, "progress", { workbookId: workbook.id }),
+		).resolves.toMatchObject({
+			whereWeLeftOff: [`**Step 3 done.** Next: step 4. (${today()})`],
+		});
+		await expect(call("add_item", { section: "handoff", text: "x" })).rejects.toThrow("hand_off");
 	});
 
 	it("need a workbook: the session's, or one named", async () => {
@@ -269,7 +449,7 @@ describe("workbook tools", () => {
 	});
 
 	it("retry once when another writer got there first", async () => {
-		const { call, pages, page } = await boot();
+		const { call, pages, section } = await boot();
 		const original = pages.call.bind(pages);
 		let raced = false;
 		pages.call = async (tool, args) => {
@@ -280,41 +460,13 @@ describe("workbook tools", () => {
 			return original(tool, args);
 		};
 
-		await call("file_item", { section: "follow-ups", text: "After a race" });
+		await call("add_item", { section: "follow-ups", text: "After a race" });
 
-		expect(page("follow-ups")).toContain("- [ ] After a race");
+		expect(section("follow-ups")).toContain("- [ ] After a race");
 	});
 });
 
-describe("sections of other item types and layouts", () => {
-	it("file artifacts, snippets and notes on their own pages", async () => {
-		const { call, host, pages } = await boot();
-		const projectId = pages.addProject("Own pages", "", ["Artifacts", "Snippets", "Notes"]);
-		const [artifacts, snippets, notes] = pages.pagesOf(projectId).map((entry) => entry.id);
-		const own = await host.invoke(Workbooks, "add", {
-			workspaceId: null,
-			name: "Own pages",
-			templateId: "custom",
-			backend: { kind: "pages-mcp", server: "pages" },
-			projectId,
-			sections: [
-				{ id: "artifacts", title: "Artifacts", itemType: "artifact", pageId: artifacts! },
-				{ id: "snippets", title: "Snippets", itemType: "reference", pageId: snippets! },
-				{ id: "notes", title: "Notes", itemType: "note", pageId: notes! },
-			],
-		});
-		const date = new Date().toISOString().slice(0, 10);
-		const file = (section: string, text: string, detail?: string) =>
-			call("file_item", { section, text, workbookId: own.id, ...(detail ? { detail } : {}) });
-
-		await file("artifacts", "pr: #12", "the fix");
-		expect(pages.markdown(artifacts!)).toBe(`- pr: #12 · the fix (${date})`);
-		await file("snippets", "Run e2e", "pnpm e2e");
-		expect(pages.markdown(snippets!)).toContain("### Run e2e\n\n```\npnpm e2e\n```");
-		await file("notes", "Remember lunch");
-		expect(pages.markdown(notes!)).toBe("Remember lunch");
-	});
-
+describe("workbooks whose pages differ from their template", () => {
 	it("add a missing heading at the end of the page", async () => {
 		const { call, host, pages } = await boot();
 		const projectId = pages.addProject("No headings", "", ["Plan"]);
@@ -326,19 +478,17 @@ describe("sections of other item types and layouts", () => {
 			backend: { kind: "pages-mcp", server: "pages" },
 			projectId,
 			sections: [
-				{ id: "tasks", title: "Tasks", itemType: "task", pageId: plan!, heading: "Tasks" },
+				{ id: "tasks", title: "Tasks", type: "checklist", pageId: plan!, heading: "Tasks" },
 			],
 		});
 
-		await call("file_item", { section: "tasks", text: "First", workbookId: bare.id });
-		await call("file_item", { section: "tasks", text: "Second", workbookId: bare.id });
+		await call("add_item", { section: "tasks", text: "First", workbookId: bare.id });
+		await call("add_item", { section: "tasks", text: "Second", workbookId: bare.id });
 
 		expect(pages.markdown(plan!)).toBe("## Tasks\n\n- [ ] First\n- [ ] Second");
 	});
-});
 
-describe("workbooks missing a section", () => {
-	it("say which sections there are", async () => {
+	it("say which sections there are, and which role is missing", async () => {
 		const { call, host, workbook } = await boot();
 		const { id: _, createdAt: __, lastUsedAt: ___, usedIn: ____, ...reference } = workbook;
 		const bare = await host.invoke(Workbooks, "add", {
@@ -346,102 +496,67 @@ describe("workbooks missing a section", () => {
 			projectId: "prj_bare",
 			workspaceId: null,
 			name: "Bare",
-			sections: [{ id: "notes", title: "Notes", itemType: "note", pageId: workbook.guidePageId! }],
+			sections: [{ id: "notes", type: "journal", pageId: workbook.guidePageId! }],
 		});
 
+		await expect(call("add_task", { step: "1", text: "x", workbookId: bare.id })).rejects.toThrow(
+			"no plan section",
+		);
 		await expect(
-			call("add_plan_step", { title: "x", intent: "y", workbookId: bare.id }),
-		).rejects.toThrow("no section for plan-steps");
-		await expect(
-			call("file_item", { section: "tasks", text: "x", workbookId: bare.id }),
+			call("add_item", { section: "tasks", text: "x", workbookId: bare.id }),
 		).rejects.toThrow("(it has: notes)");
 	});
 });
 
-describe("withStatus and whereILeftOffEdits", () => {
+describe("withStatus and replaceBodyEdits", () => {
 	it("set a step's checkbox and suffix", () => {
-		expect(withStatus("  - [x] **3. A** · done: x", "blocked", "waiting")).toBe(
-			"  - [ ] **3. A** · blocked: waiting",
+		expect(withStatus("- [x] **3. A** · done: x", "blocked", "waiting")).toBe(
+			"- [ ] **3. A** · blocked: waiting",
 		);
 	});
 
-	it("handle a heading in its own block, an empty section and a Brief without one", () => {
-		const entry = "- today: x";
+	it("replace a section's body, keeping its note, however Pages splits the blocks", () => {
+		const body = "- new";
 		expect(
-			whereILeftOffEdits(
+			replaceBodyEdits(
 				[
-					{ node_id: "h", markdown: "## Where I left off" },
+					{ node_id: "h", markdown: "## Where we left off" },
 					{ node_id: "a", markdown: "_note_" },
 					{ node_id: "b", markdown: "- old" },
 					{ node_id: "c", markdown: "older" },
 					{ node_id: "g", markdown: "## Goal" },
 				],
-				entry,
+				"Where we left off",
+				body,
 			),
 		).toEqual([
-			{ op: "replace_block_markdown", node_id: "b", markdown: entry },
-			{ op: "delete_block", node_id: "c" },
-		]);
-		expect(
-			whereILeftOffEdits(
-				[
-					{ node_id: "h", markdown: "## Where I left off" },
-					{ node_id: "a", markdown: "*note*" },
-				],
-				entry,
-			),
-		).toEqual([{ op: "insert_markdown", after_node_id: "a", markdown: entry }]);
-		expect(
-			whereILeftOffEdits(
-				[
-					{ node_id: "h", markdown: "## Where I left off\n\n*note*" },
-					{ node_id: "b", markdown: "- **bold** old" },
-					{ node_id: "g", markdown: "## Goal" },
-				],
-				entry,
-			),
-		).toEqual([
-			{
-				op: "replace_block_markdown",
-				node_id: "h",
-				markdown: `## Where I left off\n\n*note*\n\n${entry}`,
-			},
 			{ op: "delete_block", node_id: "b" },
+			{ op: "delete_block", node_id: "c" },
+			{ op: "replace_block_markdown", node_id: "a", markdown: "_note_\n\n- new" },
 		]);
 		expect(
-			whereILeftOffEdits(
+			replaceBodyEdits(
 				[
 					{
 						node_id: "b",
-						markdown: "## Where I left off\n\n_note_\n\n**Bold** old\n\n## Goal\n\nG",
+						markdown: "## Where we left off\n\n*note*\n\n**Bold** old\n\n## Goal\n\nG",
 					},
 				],
-				entry,
+				"Where we left off",
+				body,
 			),
 		).toEqual([
 			{
 				op: "replace_block_markdown",
 				node_id: "b",
-				markdown: `## Where I left off\n\n_note_\n\n${entry}\n\n## Goal\n\nG`,
+				markdown: "## Where we left off\n\n*note*\n\n- new\n\n## Goal\n\nG",
 			},
 		]);
-		expect(whereILeftOffEdits([{ node_id: "h", markdown: "## Where I left off" }], entry)).toEqual([
-			{ op: "insert_markdown", after_node_id: "h", markdown: entry },
-		]);
-		expect(
-			whereILeftOffEdits(
-				[{ node_id: "b", markdown: "Intro\n\n## Where I left off\n\n- old" }],
-				entry,
-			),
-		).toEqual([
-			{
-				op: "replace_block_markdown",
-				node_id: "b",
-				markdown: `Intro\n\n## Where I left off\n\n${entry}`,
-			},
-		]);
-		expect(whereILeftOffEdits([{ node_id: "p", markdown: "Hi" }], entry)).toEqual([
-			{ op: "insert_markdown", markdown: `## Where I left off\n\n${entry}` },
+		expect(replaceBodyEdits([{ node_id: "p", markdown: "Hi" }], "Where we left off", body)).toEqual(
+			[{ op: "insert_markdown", markdown: "## Where we left off\n\n- new" }],
+		);
+		expect(replaceBodyEdits([], undefined, body)).toEqual([
+			{ op: "insert_markdown", after_node_id: null, markdown: "- new" },
 		]);
 	});
 });

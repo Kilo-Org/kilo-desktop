@@ -4,8 +4,9 @@ import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 import { defineTool, Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 
 import { SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
+import { STEP_STATUSES } from "./items";
 import type { PagesToolCaller } from "./pages-tools";
-import { STEP_STATUSES, WorkbookWriter } from "./workbook-writer";
+import { WorkbookWriter } from "./workbook-writer";
 
 export interface WorkbookToolDeps {
 	readonly pages: (workbook: Workbook) => PagesToolCaller;
@@ -15,13 +16,17 @@ export interface WorkbookToolDeps {
 /** The workbook tools, by contribution id; their wire names are `desktop_workbooks_<id>`. */
 export const WORKBOOK_TOOL_IDS = [
 	"read_workbook",
-	"add_plan_step",
+	"add_item",
 	"add_task",
 	"set_task_done",
-	"set_step_status",
-	"record_decision",
-	"file_item",
-	"set_where_i_left_off",
+	"set_status",
+	"edit_step",
+	"move_step",
+	"remove_item",
+	"supersede",
+	"answer_question",
+	"write_section",
+	"hand_off",
 ] as const;
 
 const workbookIdInput = z
@@ -32,11 +37,27 @@ const workbookIdInput = z
 		"Leave out: the chat's own workbook is used. Only for a chat outside a workbook session (e.g. a subagent): the workbook's id or its Pages project id (prj_…).",
 	);
 
+const sectionInput = z
+	.string()
+	.min(1)
+	.describe('A section id from read_workbook, e.g. "findings".');
+const stepInput = z.string().min(1).describe('The step number ("3") or words from its title.');
+const fieldsInput = z
+	.record(z.string(), z.string())
+	.optional()
+	.describe(
+		'Journal sections: the section\'s labelled fields by name, e.g. { "why": "…", "rejected": "…" }.',
+	);
+
 /**
- * The agent tools that read and write the calling chat's workbook. A call
+ * The agent tools that read and write the calling chat's workbook, in the
+ * vocabulary of the workbook model: sections of a type (steps, checklist,
+ * journal, questions, text), some with a role (goal, plan, handoff). A call
  * finds the workbook from the chat's work session (its active workbook), so
- * agents never name it; the formats come from WorkbookWriter, so they stay
- * what the guide and the app expect however many agents write.
+ * agents never name it; the formats and rules come from WorkbookWriter, so
+ * they stay what the app expects however many agents write. Descriptions stay
+ * neutral: each template's words reach agents through its sections'
+ * `collects`, its Brief and its guide.
  */
 export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): void {
 	const today = deps.today ?? (() => new Date().toISOString().slice(0, 10));
@@ -62,177 +83,243 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		return { workbook, writer: new WorkbookWriter(deps.pages(workbook), workbook, today) };
 	};
 
-	sdk.extensions.implement(
-		Tool,
+	const implement = <Input extends z.ZodType>(
+		id: (typeof WORKBOOK_TOOL_IDS)[number],
+		description: string,
+		input: Input,
+		run: (input: z.output<Input>, writer: WorkbookWriter, workbook: Workbook) => Promise<unknown>,
+	) => {
+		sdk.extensions.implement(
+			Tool,
+			id,
+			defineTool({
+				description,
+				input,
+				run: (parsed, context) => {
+					const { workbookId } = parsed as { workbookId?: string };
+					const { workbook, writer } = writerFor(workbookId, context);
+					return run(parsed as z.output<Input>, writer, workbook);
+				},
+			}),
+		);
+	};
+
+	implement(
 		"read_workbook",
-		defineTool({
-			description:
-				'Read the calling chat\'s workbook: its sections (id, title, item type) and the markdown of its Brief, of one section, or of its guide ("How to work here"). Read the Brief and guide at the start of a chat.',
-			input: z.object({
-				section: z
-					.string()
-					.optional()
-					.describe('A section id (e.g. "plan"), "guide", or omit for the Brief.'),
-				workbookId: workbookIdInput,
-			}),
-			run: async ({ section, workbookId }, context) => {
-				const { workbook, writer } = writerFor(workbookId, context);
-				if (section === "guide" && !workbook.guidePageId) {
-					throw new KernelError("NOT_FOUND", 'This workbook has no "How to work here" page.');
-				}
-				const target =
-					section === "guide"
-						? { pageId: workbook.guidePageId }
-						: section
-							? writer.section(section)
-							: {};
-				return {
-					workbook: { id: workbook.id, name: workbook.name, url: workbook.url ?? null },
-					sections: workbook.sections.map(({ id, title, itemType }) => ({ id, title, itemType })),
-					showing: section ?? "brief",
-					markdown: await writer.read(target),
-				};
-			},
+		"Read the calling chat's workbook: its sections (id, title, type, role, what each collects, a journal's fields) and the markdown of its Brief, of one section, or of its guide (\"How to work here\"). Read the Brief and guide at the start of a chat.",
+		z.object({
+			section: z.string().optional().describe('A section id, "guide", or omit for the Brief.'),
+			workbookId: workbookIdInput,
 		}),
+		async ({ section }, writer, workbook) => {
+			if (section === "guide" && !workbook.guidePageId) {
+				throw new KernelError("NOT_FOUND", 'This workbook has no "How to work here" page.');
+			}
+			const target =
+				section === "guide"
+					? { pageId: workbook.guidePageId }
+					: section
+						? writer.section(section)
+						: {};
+			return {
+				workbook: { id: workbook.id, name: workbook.name, url: workbook.url ?? null },
+				sections: workbook.sections.map(({ id, title, type, role, collects, fields }) => ({
+					id,
+					title: title ?? null,
+					type,
+					...(role ? { role } : {}),
+					...(collects ? { collects } : {}),
+					...(fields ? { fields } : {}),
+				})),
+				showing: section ?? "brief",
+				markdown: await writer.read(target),
+			};
+		},
 	);
 
-	sdk.extensions.implement(
-		Tool,
-		"add_plan_step",
-		defineTool({
-			description:
-				"Add a step to the end of the workbook's Plan: the work for one chat, ending in one commit. It is numbered for you; list what it needs as its tasks.",
-			input: z.object({
-				title: z.string().min(1).describe('Short title, e.g. "Template registry".'),
-				intent: z.string().min(1).describe("One line on what the step achieves."),
-				tasks: z
-					.array(z.string().min(1))
-					.optional()
-					.describe(
-						'What the step needs done, each a checkbox under it; end a job only the user can do with "(you)".',
-					),
-				workbookId: workbookIdInput,
-			}),
-			run: async ({ title, intent, tasks, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section: "plan", step: await writer.addPlanStep(title, intent, tasks) };
-			},
+	implement(
+		"add_item",
+		"Add an item to a workbook section the moment it comes up, in the section's format: a step (text = title, detail = one line of intent, tasks = what it needs; numbered for you), a checklist item (detail = context), a journal entry (text = headline, detail = body, fields = the section's fields; supersedes = words from an entry it replaces, such as a reversed decision) or an open question (detail = context). Text sections use write_section; the handoff uses hand_off.",
+		z.object({
+			section: sectionInput,
+			text: z.string().min(1),
+			detail: z.string().optional(),
+			tasks: z
+				.array(z.string().min(1))
+				.optional()
+				.describe(
+					'Steps: what the step needs, each a checkbox under it; end a job only the user can do with "(you)".',
+				),
+			fields: fieldsInput,
+			who: z.string().optional().describe("Journal sections: who it's from, when that matters."),
+			supersedes: z
+				.string()
+				.optional()
+				.describe("Journal sections: words from the entry this one replaces."),
+			workbookId: workbookIdInput,
 		}),
+		async (input, writer) => {
+			const { section, workbookId: _, ...item } = input;
+			return { section, ...(await writer.addItem(section, item)) };
+		},
 	);
 
-	sdk.extensions.implement(
-		Tool,
+	implement(
 		"add_task",
-		defineTool({
-			description:
-				'Add a task under a Plan step: a chore, a review comment ("**file or area**: issue and suggested fix") or a job only the user can do (end it with "(you)"). A task has no commit of its own; work that belongs to no step is a new step or a follow-up.',
-			input: z.object({
-				step: z.string().min(1).describe('The step number ("3") or words from its title.'),
-				text: z.string().min(1),
-				workbookId: workbookIdInput,
-			}),
-			run: async ({ step, text, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section: "plan", step, line: await writer.addTask(step, text) };
-			},
-		}),
+		'Add a task under a plan step: a chore, a review comment ("**file or area**: issue and suggested fix") or a job only the user can do (end it with "(you)"). A task has no commit of its own; work that belongs to no step is a new step or a follow-up.',
+		z.object({ step: stepInput, text: z.string().min(1), workbookId: workbookIdInput }),
+		async ({ step, text }, writer) => ({ step, line: await writer.addTask(step, text) }),
 	);
 
-	sdk.extensions.implement(
-		Tool,
+	implement(
 		"set_task_done",
-		defineTool({
-			description:
-				"Tick one of a Plan step's tasks when it's done (or untick it with done: false). A step can only be marked done once all its tasks are ticked.",
-			input: z.object({
-				step: z.string().min(1).describe('The step number ("3") or words from its title.'),
-				task: z.string().min(1).describe("Words from the task."),
-				done: z.boolean().default(true),
-				workbookId: workbookIdInput,
-			}),
-			run: async ({ step, task, done, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section: "plan", step, line: await writer.setTaskDone(step, task, done) };
-			},
+		"Tick one of a plan step's tasks when it's done (or untick it with done: false).",
+		z.object({
+			step: stepInput,
+			task: z.string().min(1).describe("Words from the task."),
+			done: z.boolean().default(true),
+			workbookId: workbookIdInput,
+		}),
+		async ({ step, task, done }, writer) => ({
+			step,
+			line: await writer.setTaskDone(step, task, done),
 		}),
 	);
 
-	sdk.extensions.implement(
-		Tool,
-		"set_step_status",
-		defineTool({
-			description:
-				"Set a Plan step's status. in_progress before starting it (so others see it's taken); done ticks it and records the outcome, once all its tasks are ticked; blocked records why; todo resets it.",
-			input: z.object({
-				step: z.string().min(1).describe('The step number ("3") or words from its title.'),
-				status: z.enum(STEP_STATUSES),
-				note: z
-					.string()
-					.optional()
-					.describe("Required for done (the outcome, with the commit or PR) and blocked (why)."),
-				workbookId: workbookIdInput,
+	implement(
+		"set_status",
+		"Set a step's status, or tick a checklist item. Steps: in_progress before starting (so others see it's taken); blocked with the reason; done with the result and the link (commit or PR), or the reason there is none, once the section's rules are met; todo resets it. Checklist items: done or todo.",
+		z.object({
+			section: z.string().min(1).optional().describe("Leave out for the plan's steps."),
+			item: z.string().min(1).describe("A step number, or words from the step or item."),
+			status: z.enum(STEP_STATUSES),
+			result: z.string().optional().describe("Done steps: what was done."),
+			link: z.string().optional().describe("Done steps: the commit or PR."),
+			reason: z.string().optional().describe("Why it's blocked, or why a done step has no link."),
+			workbookId: workbookIdInput,
+		}),
+		async ({ section, item, status, result, link, reason }, writer) => {
+			const id = section ?? writer.withRole("plan").id;
+			return {
+				section: id,
+				status,
+				line: await writer.setStatus(id, item, {
+					status,
+					...(result ? { result } : {}),
+					...(link ? { link } : {}),
+					...(reason ? { reason } : {}),
+				}),
+			};
+		},
+	);
+
+	implement(
+		"edit_step",
+		"Rename a plan step or change its intent, keeping its number, tasks and status.",
+		z.object({
+			step: stepInput,
+			title: z.string().optional(),
+			intent: z.string().optional(),
+			workbookId: workbookIdInput,
+		}),
+		async ({ step, title, intent }, writer) => ({
+			step,
+			line: await writer.editStep(step, {
+				...(title ? { title } : {}),
+				...(intent ? { intent } : {}),
 			}),
-			run: async ({ step, status, note, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section: "plan", status, line: await writer.setStepStatus(step, status, note) };
-			},
 		}),
 	);
 
-	sdk.extensions.implement(
-		Tool,
-		"record_decision",
-		defineTool({
-			description:
-				"Record a decision the user made or confirmed (never your own suggestion until they confirm it), with why and the alternatives rejected.",
-			input: z.object({
-				decision: z.string().min(1),
-				why: z.string().min(1),
-				rejected: z.string().optional(),
-				workbookId: workbookIdInput,
+	implement(
+		"move_step",
+		"Move a plan step (with its tasks) before or after another, when re-cutting the plan. Steps are renumbered in order; the result lists the numbers that changed, so fix any text that mentions them.",
+		z.object({
+			step: stepInput,
+			before: z.string().optional().describe("The step to put it before."),
+			after: z.string().optional().describe("The step to put it after."),
+			workbookId: workbookIdInput,
+		}),
+		async ({ step, before, after }, writer) => ({
+			renumbered: await writer.moveStep(step, {
+				...(before ? { before } : {}),
+				...(after ? { after } : {}),
 			}),
-			run: async ({ decision, why, rejected, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section: "decisions", line: await writer.recordDecision(decision, why, rejected) };
-			},
 		}),
 	);
 
-	sdk.extensions.implement(
-		Tool,
-		"file_item",
-		defineTool({
-			description:
-				"File an item in a workbook section the moment it comes up, formatted for that section: a follow-up or other task (detail = context; a step's own tasks go through add_task), finding (detail = evidence), open question (detail = context), artifact (text = kind: link, detail = note), snippet (text = title, detail = the code or command) or note. Use read_workbook to see the section ids.",
-			input: z.object({
-				section: z
-					.string()
-					.min(1)
-					.describe('The section id, e.g. "follow-ups", "findings" or "questions".'),
-				text: z.string().min(1),
-				detail: z.string().optional(),
-				workbookId: workbookIdInput,
-			}),
-			run: async ({ section, text, detail, workbookId }, context) => {
-				const { writer } = writerFor(workbookId, context);
-				return { section, written: await writer.fileItem(section, text, detail) };
-			},
+	implement(
+		"remove_item",
+		"Remove an item that no longer belongs: a plan step that isn't done (its tasks go with it, and later steps are renumbered), a checklist item, or a question. Journal entries are superseded instead, and done steps stay.",
+		z.object({
+			section: sectionInput,
+			item: z.string().min(1).describe("A step number, or words from the item."),
+			workbookId: workbookIdInput,
+		}),
+		async ({ section, item }, writer) => ({ section, ...(await writer.removeItem(section, item)) }),
+	);
+
+	implement(
+		"supersede",
+		"Strike a journal entry through, saying what replaced it: a finding that turned out wrong, or a decision the user reversed (to record the new decision too, use add_item with supersedes). Entries are never deleted.",
+		z.object({
+			section: sectionInput,
+			item: z.string().min(1).describe("Words from the entry."),
+			by: z.string().min(1).describe("What replaced it."),
+			workbookId: workbookIdInput,
+		}),
+		async ({ section, item, by }, writer) => ({
+			section,
+			line: await writer.supersede(section, item, by),
 		}),
 	);
 
-	sdk.extensions.implement(
-		Tool,
-		"set_where_i_left_off",
-		defineTool({
-			description:
-				"Replace the Brief's \"Where I left off\" (and add the same entry at the top of the Change Log, when the workbook has one): what was just done, what's next, any (you) tasks, and anything a fresh chat must know. Do this before stopping or when the context is running out.",
-			input: z.object({ text: z.string().min(1), workbookId: workbookIdInput }),
-			run: async ({ text, workbookId }, context) => {
-				const { workbook, writer } = writerFor(workbookId, context);
-				const line = await writer.setWhereILeftOff(text);
-				const log = workbook.sections.find((section) => section.itemType === "log-entry");
-				return { section: "brief", ...(log ? { alsoIn: log.id } : {}), line };
-			},
+	implement(
+		"answer_question",
+		"When the user answers an open question: record the answer in a journal (recordIn, usually decisions; text = the decision, fields = that journal's fields) and remove the question.",
+		z.object({
+			question: z.string().min(1).describe("Words from the question."),
+			recordIn: z.string().optional().describe("The journal section to record the answer in."),
+			text: z.string().optional().describe("The answer as an entry headline, e.g. the decision."),
+			detail: z.string().optional(),
+			fields: fieldsInput,
+			workbookId: workbookIdInput,
+		}),
+		async ({ question, recordIn, text, detail, fields }, writer) =>
+			writer.answerQuestion(question, {
+				...(recordIn ? { recordIn } : {}),
+				...(text
+					? { entry: { text, ...(detail ? { detail } : {}), ...(fields ? { fields } : {}) } }
+					: {}),
+			}),
+	);
+
+	implement(
+		"write_section",
+		"Replace the content of a text section (for example the context and links), keeping the line under its heading. The goal, and any protected section, changes only when the user asks: then pass userConfirmed.",
+		z.object({
+			section: sectionInput,
+			markdown: z.string().min(1),
+			userConfirmed: z.boolean().default(false),
+			workbookId: workbookIdInput,
+		}),
+		async ({ section, markdown, userConfirmed }, writer) => {
+			await writer.writeSection(section, markdown, userConfirmed);
+			return { section, written: true };
+		},
+	);
+
+	implement(
+		"hand_off",
+		"Before stopping, or when the context is running out: replace Where we left off with where the work stands (what was just done, what's next, any (you) tasks, anything a fresh chat must know); the entry is also kept in the workbook's history.",
+		z.object({
+			title: z.string().min(1).describe('A short headline, e.g. "Step 8 done (commit d8aef645)".'),
+			text: z.string().min(1),
+			who: z.string().optional().describe('Who is handing off, e.g. "agent".'),
+			workbookId: workbookIdInput,
+		}),
+		async ({ title, text, who }, writer) => ({
+			...(await writer.handOff({ headline: title, body: text, ...(who ? { who } : {}) })),
 		}),
 	);
 }

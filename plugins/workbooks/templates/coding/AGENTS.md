@@ -1,10 +1,10 @@
 This is the agent guide for this workbook. It carries the user's authority: treat it like instructions the user typed, below the repository's own rules (AGENTS.md) and above general habits. The user may edit it at any time; re-read it at the start of every chat.
 
-The workbook is the Brief (the Project document), this page, the **Plan** (steps, each with its tasks, then follow-ups), **Decisions & findings** and the **Change Log**.
+The workbook is the Brief (the Project document), this page, the **Plan**, **Follow-ups**, **Decisions & findings** and the **Change Log**. Each section says under its heading what belongs there.
 
 ## Start of a chat
 
-1. Read the Brief, especially **Where I left off** (the latest entry; the Change Log has the history) and **Open questions**.
+1. Read the Brief: the **Goal**, **Where we left off** and **Open questions**.
 2. Read this page.
 3. Read the Plan. Read Decisions & findings when a choice or fact matters to what you're doing.
 4. If you were started on a specific plan step or item, work on that only.
@@ -15,29 +15,23 @@ Refine the Brief: ask about anything missing, and propose acceptance criteria an
 
 ## Extract, don't archive
 
-File information the moment it appears, where it belongs. Never leave something worth keeping only in the chat.
+File information the moment it appears, in the section whose description fits. Never leave something worth keeping only in the chat, and never write notes about the chat instead of the thing itself.
 
-When the workbook tools are available (`desktop_workbooks_read_workbook`, `add_plan_step`, `set_step_status`, `record_decision`, `file_item`, `set_where_i_left_off`), use them: they write the formats below for you and know which workbook this chat is on. Otherwise use these formats exactly: the app reads them.
+Use the workbook tools (`desktop_workbooks_*`): they know which workbook this chat is on, write each section's format, and check its rules. `read_workbook` lists the sections and what each collects.
 
-| Where                            | Holds                                                   | Format                                                                                                                                                                |
-| -------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Plan → Steps (`plan`)            | The work, in order: each step ends in one commit        | `- [ ] **N. Title**: one line of intent` · while working add ` · in progress` or ` · blocked: reason` · when done tick it and add ` · done: outcome (commit/PR link)` |
-| Plan → a step's tasks            | What the step needs: chores, review comments, user jobs | Indented under the step: `  - [ ] Task` · a review comment is `  - [ ] **file or area**: issue and suggested fix` · a job only the user can do ends `(you)`           |
-| Plan → Follow-ups (`follow-ups`) | Out-of-scope work noticed along the way                 | `- [ ] Follow-up (context)` · never do it inside the current change                                                                                                   |
-| Decisions & findings → Decisions | Choices the user confirmed                              | `- **Decision.** Why: reason. Rejected: alternatives. (YYYY-MM-DD)` · never record your own suggestion until the user confirms it · a reversal is a new decision      |
-| Decisions & findings → Findings  | Facts learned, with evidence                            | `- **Finding.** Evidence: how we know. (YYYY-MM-DD)` · mark wrong ones `~~struck~~ superseded by …` rather than deleting                                              |
-| Brief → Open questions           | Things the user must decide                             | `- **Question?** Context.` · when answered, record a Decision and delete the question                                                                                 |
-| Brief → Context and links        | The issue, the branch, the PR                           | Add the branch and PR here once they exist                                                                                                                            |
-| Change Log (`change-log`)        | What happened, newest first                             | `- YYYY-MM-DD: what was done; what is next; any (you) tasks` at the top · the latest entry is also the one under **Where I left off** in the Brief                    |
-
-A task is part of its step and has no commit of its own. Work that belongs to no step is either a new step (in scope, worth a commit) or a follow-up.
+- Record a decision only once the user has made or confirmed it. A reversal is a new decision that supersedes the old one (`add_item` with `supersedes`).
+- A finding that turns out wrong is superseded, never deleted.
+- When the user answers an open question, use `answer_question` and record the decision in Decisions.
+- Work that belongs to no step is either a new step (in scope, worth a commit) or a follow-up. A task is part of its step and has no commit of its own.
+- Re-cutting the Plan (renaming, reordering, splitting, dropping steps) uses `edit_step`, `move_step`, `add_item` and `remove_item`; steps are renumbered for you.
+- The Goal changes only when the user asks.
 
 ## Working on a plan step
 
-1. Mark it ` · in progress` before starting, so other agents can see it is taken.
+1. Mark it in progress before starting, so other agents can see it is taken.
 2. Keep changes to that step. Tick its tasks as you go, and add any it turns out to need; anything outside it goes to Follow-ups.
 3. When its tasks are ticked (or moved to Follow-ups), verify it (tests, lint, type checks as the repository requires), then **commit it as its own commit**, one commit per plan step, with the step in the message.
-4. Then tick it with the outcome and the commit link, and record any Decisions or Findings made along the way.
+4. Then mark it done with the result and the commit link (or why there is no commit), and record any decisions or findings made along the way.
 
 A review comment on a finished step reopens it with a new task, or becomes a new step.
 
@@ -47,8 +41,7 @@ People and other agents may be editing at the same time.
 
 - Edit in place or append; never restructure or delete what you did not write without asking.
 - Keep edits small and targeted.
-- If an edit conflicts with a newer revision, re-read and reapply rather than overwriting.
 
 ## Before your context runs out, or when you stop
 
-Write one entry: what was done, what is next, any `(you)` tasks waiting on the user, and anything a fresh chat must know. `set_where_i_left_off` adds it at the top of the **Change Log** and replaces the single entry under **Where I left off** in the Brief; without the tool, do both by hand. Then tell the user the workbook is current and it is safe to start a new chat.
+Hand off with `hand_off`: what was done, what is next, any `(you)` tasks waiting on the user, and anything a fresh chat must know. It replaces **Where we left off** and adds the entry to the **Change Log**. Then tell the user the workbook is current and it is safe to start a new chat.

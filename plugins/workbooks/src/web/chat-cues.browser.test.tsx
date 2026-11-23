@@ -70,19 +70,19 @@ describe("filing receipts", () => {
 				<>
 					<FilingReceipt
 						{...base}
-						toolName="desktop_workbooks_file_item"
+						toolName="desktop_workbooks_add_item"
 						args={{ section: "decisions", text: "Use SSE" }}
 						status={{ type: "complete" }}
 					/>
 					<FilingReceipt
 						{...base}
-						toolName="desktop_workbooks_add_plan_step"
-						args={{ title: "x" }}
+						toolName="desktop_workbooks_add_task"
+						args={{ step: "2", text: "x" }}
 						status={{ type: "running" }}
 					/>
 					<FilingReceipt
 						{...base}
-						toolName="desktop_workbooks_record_decision"
+						toolName="desktop_workbooks_answer_question"
 						args={{}}
 						status={{ type: "incomplete" }}
 					/>
@@ -92,9 +92,9 @@ describe("filing receipts", () => {
 
 		const receipts = page.getByTestId("workbooks-receipt").elements();
 		expect(receipts.map((receipt) => receipt.textContent)).toEqual([
-			"→ Filed to decisions: Use SSE",
-			"Added plan step: x",
-			"Couldn't record the decision",
+			"→ Added to decisions: Use SSE",
+			"Added task to plan step 2: x",
+			"Couldn't answer the question",
 		]);
 		expect(receipts.map((receipt) => receipt.getAttribute("data-state"))).toEqual([
 			"done",

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { workbookTemplateSchema, type WorkbookTemplate } from "../contracts";
+import {
+	workbookTemplateSchema,
+	type WorkbookSectionRef,
+	type WorkbookTemplate,
+} from "../contracts";
 import { FakePages } from "../test/fake-pages";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
 import { discoverWorkbooks, markerFor, matchSections, parseMarker } from "./discover";
@@ -37,94 +41,70 @@ describe("the workbook marker", () => {
 
 describe("matchSections", () => {
 	const page = (title: string, id = title.toLowerCase()) => ({ page_id: id, title });
+	const summary = (sections: readonly WorkbookSectionRef[]) =>
+		sections.map(({ id, type, pageId, heading }) => [id, type, pageId, heading]);
 
-	it("finds sections under their headings on shared pages, and in the Brief", () => {
+	it("finds each template page's sections, and a known template's home sections in the Brief", () => {
 		const matched = matchSections(
 			[
 				page("How to work here", "g"),
 				page(" plan ", "p"),
+				page("Follow-ups", "u"),
 				page("Decisions & Findings", "r"),
+				page("Change Log", "c"),
 				page("Mine"),
 			],
 			templates,
 			coding,
 		);
 
-		expect(matched).toEqual({
-			guidePageId: "g",
-			sections: [
-				{ id: "plan", title: "Steps", itemType: "plan-step", pageId: "p", heading: "Steps" },
-				{
-					id: "follow-ups",
-					title: "Follow-ups",
-					itemType: "task",
-					pageId: "p",
-					heading: "Follow-ups",
-				},
-				{
-					id: "decisions",
-					title: "Decisions",
-					itemType: "decision",
-					pageId: "r",
-					heading: "Decisions",
-				},
-				{
-					id: "findings",
-					title: "Findings",
-					itemType: "finding",
-					pageId: "r",
-					heading: "Findings",
-				},
-				{
-					id: "questions",
-					title: "Open questions",
-					itemType: "question",
-					heading: "Open questions",
-				},
-			],
+		expect(matched.guidePageId).toBe("g");
+		expect(summary(matched.sections)).toEqual([
+			["goal", "text", undefined, "Goal"],
+			["handoff", "journal", undefined, "Where we left off"],
+			["questions", "questions", undefined, "Open questions"],
+			["context", "text", undefined, "Context and links"],
+			["constraints", "checklist", undefined, "Constraints and non-goals"],
+			["criteria", "checklist", undefined, "Acceptance criteria"],
+			["plan", "steps", "p", "Steps"],
+			["follow-ups", "checklist", "u", undefined],
+			["decisions", "journal", "r", "Decisions"],
+			["findings", "journal", "r", "Findings"],
+			["change-log", "journal", "c", undefined],
+		]);
+		expect(matched.sections.find((section) => section.id === "handoff")).toMatchObject({
+			role: "handoff",
+			history: "change-log",
 		});
 	});
 
-	it("keeps an older workbook's sections on their own pages", () => {
-		const matched = matchSections(
-			[
-				page("Plan", "p"),
-				page("Tasks", "t"),
-				page("Decisions", "d"),
-				page("Findings", "f"),
-				page("Open questions", "q"),
-				page("Follow-ups", "u"),
-				page("Snippets", "s"),
-			],
-			templates,
-			coding,
-		);
+	it("leaves out the sections of pages it can't find", () => {
+		const matched = matchSections([page("Plan", "p")], templates, coding);
 
-		expect(
-			matched.sections.map((section) => [section.id, section.pageId, section.heading]),
-		).toEqual([
-			["plan", "p", "Steps"],
-			["follow-ups", "u", undefined],
-			["decisions", "d", undefined],
-			["findings", "f", undefined],
-			["questions", "q", undefined],
+		expect(matched.sections.map((section) => section.id)).toEqual([
+			"goal",
+			"handoff",
+			"questions",
+			"context",
+			"constraints",
+			"criteria",
+			"plan",
 		]);
 	});
 
-	it("falls back to every known template's sections when the template is unknown", () => {
+	it("falls back to every known template's pages when the template is unknown, without the Brief", () => {
 		const matched = matchSections(
-			[page("Findings", "f"), page("Notes", "n"), page("Open questions", "q")],
+			[page("Decisions & findings", "r"), page("Notes", "n")],
 			templates,
 			undefined,
 		);
 
 		expect(matched.guidePageId).toBeUndefined();
 		expect(matched.sections.map((section) => [section.id, section.pageId])).toEqual([
-			["findings", "f"],
-			["questions", "q"],
+			["decisions", "r"],
+			["findings", "r"],
 			["notes", "n"],
 		]);
-		expect(matched.sections.some((section) => !section.pageId)).toBe(false);
 	});
 });
 
@@ -135,11 +115,11 @@ describe("discoverWorkbooks", () => {
 		const made = pages.addProject("Clock", "Workbook · Coding (coding)", [
 			"How to work here",
 			"Plan",
-			"Tasks",
+			"Follow-ups",
 		]);
 		pages.addProject("Shopping list", "Groceries");
 		const spike = pages.addProject("Spike", "Workbook · Spike · workspace: Kilo Desktop.", [
-			"Decisions",
+			"Decisions & findings",
 		]);
 		const older = pages.addProject("Scratch", "Workbook · Blank · workspace: W", ["Notes"]);
 
@@ -154,14 +134,14 @@ describe("discoverWorkbooks", () => {
 			url: `https://pages.test/project/${made}`,
 			backend: { kind: "pages-mcp", server: "pages" },
 		});
-		expect(found[0]!.sections.slice(0, 2)).toMatchObject([
+		expect(found[0]!.sections.slice(6)).toMatchObject([
 			{ id: "plan", heading: "Steps" },
-			{ id: "follow-ups", heading: "Follow-ups" },
+			{ id: "follow-ups", type: "checklist" },
 		]);
 		expect(found[0]!.guidePageId).toEqual(expect.any(String));
 		expect(Date.parse(found[0]!.createdAt)).not.toBeNaN();
 		expect(found[1]).toMatchObject({ templateId: "spike", templateName: "Spike" });
-		expect(found[1]!.sections.map((section) => section.id)).toEqual(["decisions"]);
+		expect(found[1]!.sections.map((section) => section.id)).toEqual(["decisions", "findings"]);
 		expect(found[2]).toMatchObject({ templateId: "blank" });
 	});
 
@@ -170,7 +150,7 @@ describe("discoverWorkbooks", () => {
 		const projectId = pages.addProject("Clock", "Workbook · Coding (coding)", ["Plan"]);
 		const known = {
 			guidePageId: "guide",
-			sections: [{ id: "plan", title: "Plan", itemType: "plan-step" as const, pageId: "p" }],
+			sections: [{ id: "plan", title: "Steps", type: "steps" as const, pageId: "p" }],
 		};
 
 		const [found] = await discoverWorkbooks(pages, {

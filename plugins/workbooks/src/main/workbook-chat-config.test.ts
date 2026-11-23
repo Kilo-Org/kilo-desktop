@@ -56,7 +56,7 @@ describe("chats in a work session on a workbook", () => {
 		expect(text).toContain('works in the workbook "Clock"');
 		expect(text).toContain(`Pages project id ${workbook.projectId}`);
 		expect(text).toContain("make the guide's first move");
-		expect(text).toContain("## Brief\n\n## Where I left off");
+		expect(text).toContain("## Brief\n\n## Goal");
 		expect(text).toContain("Goal of Clock");
 		expect(text).toContain("## How to work here\n\nThis is the agent guide");
 	});

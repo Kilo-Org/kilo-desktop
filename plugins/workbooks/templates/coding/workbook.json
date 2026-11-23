@@ -1,45 +1,136 @@
 {
-	"schemaVersion": 1,
+	"schemaVersion": 2,
 	"id": "coding",
 	"name": "Coding",
 	"description": "Build or change software in small, verifiable increments: plan, decide, build, review.",
 	"icon": "code",
-	"brief": {
-		"file": "pages/brief.md",
-		"fields": [
-			{
-				"id": "goal",
-				"label": "Goal",
-				"required": true,
-				"hint": "What should be true when this is done? Your own words are kept verbatim."
-			},
-			{
-				"id": "context",
-				"label": "Context and links",
-				"hint": "Issue, error output, related PRs, where in the code."
-			}
-		]
-	},
-	"guide": {
-		"file": "AGENTS.md",
-		"title": "How to work here"
-	},
-	"firstMove": "Refine the Brief (ask about anything missing, propose acceptance criteria and constraints), then draft the Plan as small increments, and stop for the user to confirm before building.",
-	"pages": [
-		{ "id": "plan", "title": "Plan", "file": "pages/plan.md" },
-		{ "id": "record", "title": "Decisions & findings", "file": "pages/decisions-and-findings.md" }
+	"guide": { "file": "AGENTS.md", "title": "How to work here" },
+	"firstMove": "Refine the Brief (ask about anything missing, propose acceptance criteria and constraints), then draft the Plan as small steps, and stop for the user to confirm before building.",
+	"intake": [
+		{
+			"fills": "goal",
+			"label": "Goal",
+			"required": true,
+			"hint": "What should be true when this is done? Your own words are kept verbatim."
+		},
+		{
+			"fills": "context",
+			"label": "Context and links",
+			"hint": "Issue, error output, related PRs, where in the code."
+		}
 	],
-	"sections": [
-		{ "id": "plan", "title": "Steps", "itemType": "plan-step", "in": "plan" },
-		{ "id": "follow-ups", "title": "Follow-ups", "itemType": "task", "in": "plan" },
-		{ "id": "decisions", "title": "Decisions", "itemType": "decision", "in": "record" },
-		{ "id": "findings", "title": "Findings", "itemType": "finding", "in": "record" },
-		{ "id": "questions", "title": "Open questions", "itemType": "question", "in": "brief" },
+	"pages": [
+		{
+			"id": "home",
+			"title": "Brief",
+			"home": true,
+			"sections": [
+				{
+					"id": "goal",
+					"title": "Goal",
+					"role": "goal",
+					"collects": "What should be true when this is done, in the user's words. Changed only with the user's say-so."
+				},
+				{
+					"id": "handoff",
+					"title": "Where we left off",
+					"role": "handoff",
+					"history": "change-log",
+					"note": "The latest change only; the full history, newest first, is on the Change Log page.",
+					"collects": "Where the work stands: what was just done, what is next, any (you) tasks waiting on the user, and anything a fresh chat must know."
+				},
+				{
+					"id": "questions",
+					"title": "Open questions",
+					"type": "questions",
+					"collects": "Things only the user can decide. When one is answered, record the decision and the question goes."
+				},
+				{
+					"id": "context",
+					"title": "Context and links",
+					"type": "text",
+					"collects": "Where things are: the issue, upstream references, entry points in the code, the branch and PR once they exist, local tools and environments."
+				},
+				{
+					"id": "constraints",
+					"title": "Constraints and non-goals",
+					"type": "checklist",
+					"collects": "Limits the work must respect, and what is deliberately out of scope. The agent proposes them; the user confirms."
+				},
+				{
+					"id": "criteria",
+					"title": "Acceptance criteria",
+					"type": "checklist",
+					"collects": "Conditions that prove the goal is met, written as what will be true. The agent proposes them; the user confirms."
+				}
+			]
+		},
+		{
+			"id": "plan",
+			"title": "Plan",
+			"sections": [
+				{
+					"id": "plan",
+					"title": "Steps",
+					"role": "plan",
+					"requires": ["tasks-ticked", "link-or-reason"],
+					"collects": "The work, in order. Each step is sized for one chat and ends in one commit; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you).",
+					"starter": [
+						{
+							"title": "Refine the Brief and draft this Plan",
+							"intent": "the first agent's job.",
+							"tasks": [
+								"Propose acceptance criteria and constraints in the Brief",
+								"Draft the steps, each with its tasks",
+								"Confirm the Plan (you)"
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"id": "follow-ups",
+			"title": "Follow-ups",
+			"sections": [
+				{
+					"id": "follow-ups",
+					"type": "checklist",
+					"collects": "Out-of-scope work noticed along the way, never done in the current change. You decide what happens to each one: make it a Plan step, move it to a tracker or another workbook, or drop it."
+				}
+			]
+		},
+		{
+			"id": "record",
+			"title": "Decisions & findings",
+			"sections": [
+				{
+					"id": "decisions",
+					"title": "Decisions",
+					"type": "journal",
+					"fields": ["why", "rejected?"],
+					"collects": "Choices the user made or confirmed, never the agent's own suggestion until confirmed. A reversal is a new decision that supersedes the old one."
+				},
+				{
+					"id": "findings",
+					"title": "Findings",
+					"type": "journal",
+					"fields": ["evidence", "status?"],
+					"collects": "Facts learned while working, with how we know; for a gap or limitation, its status and the step that handles it. A wrong one is superseded, never deleted."
+				}
+			]
+		},
 		{
 			"id": "change-log",
 			"title": "Change Log",
-			"itemType": "log-entry",
-			"file": "pages/change-log.md"
+			"sections": [
+				{
+					"id": "change-log",
+					"type": "journal",
+					"order": "newest-first",
+					"collects": "Every handoff, newest first: what was done, what is next, any (you) tasks."
+				}
+			]
 		}
 	]
 }

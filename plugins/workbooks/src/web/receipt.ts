@@ -6,36 +6,53 @@ export function receiptText(
 ): string {
 	const tool = toolName.replace(/^(desktop_workbooks_|kilo\.workbooks\/)/, "");
 	const text = (value: unknown) => (typeof value === "string" ? value : "");
-	const verb = isError ? "Couldn't " : "";
+	const step = text(args.step);
 	switch (tool) {
 		case "read_workbook":
 			return `${isError ? "Couldn't read" : "Read"} the workbook${args.section ? ` · ${text(args.section)}` : " Brief"}`;
-		case "add_plan_step":
-			return `${verb}${isError ? "add" : "Added"} plan step: ${text(args.title)}`;
+		case "add_item":
+			return isError
+				? `Couldn't add to ${text(args.section)}`
+				: `→ Added to ${text(args.section)}: ${text(args.text)}`;
 		case "add_task":
 			return isError
-				? `Couldn't add a task to plan step ${text(args.step)}`
-				: `Added task to plan step ${text(args.step)}: ${text(args.text)}`;
+				? `Couldn't add a task to plan step ${step}`
+				: `Added task to plan step ${step}: ${text(args.text)}`;
 		case "set_task_done":
-			if (isError) return `Couldn't update a task on plan step ${text(args.step)}`;
+			if (isError) return `Couldn't update a task on plan step ${step}`;
 			return args.done === false
-				? `Unticked task on plan step ${text(args.step)}: ${text(args.task)}`
-				: `✓ Ticked task on plan step ${text(args.step)}: ${text(args.task)}`;
-		case "set_step_status": {
+				? `Unticked task on plan step ${step}: ${text(args.task)}`
+				: `✓ Ticked task on plan step ${step}: ${text(args.task)}`;
+		case "set_status": {
+			const where = args.section
+				? `${text(args.section)}: ${text(args.item)}`
+				: `plan step ${text(args.item)}`;
 			const status = text(args.status).replace("_", " ");
-			if (isError) return `Couldn't update plan step ${text(args.step)}`;
-			return status === "done"
-				? `✓ Ticked plan step ${text(args.step)}`
-				: `Plan step ${text(args.step)} → ${status}`;
+			if (isError) return `Couldn't update ${where}`;
+			return status === "done" ? `✓ Ticked ${where}` : `${where} → ${status}`;
 		}
-		case "record_decision":
-			return isError ? "Couldn't record the decision" : `Recorded decision: ${text(args.decision)}`;
-		case "file_item":
+		case "edit_step":
+			return isError ? `Couldn't edit plan step ${step}` : `Edited plan step ${step}`;
+		case "move_step": {
+			const place = args.before ? `before ${text(args.before)}` : `after ${text(args.after)}`;
+			return isError ? `Couldn't move plan step ${step}` : `Moved plan step ${step} ${place}`;
+		}
+		case "remove_item":
 			return isError
-				? `Couldn't file to ${text(args.section)}`
-				: `→ Filed to ${text(args.section)}: ${text(args.text)}`;
-		case "set_where_i_left_off":
-			return isError ? "Couldn't update Where I left off" : "Updated Where I left off";
+				? `Couldn't remove from ${text(args.section)}`
+				: `Removed from ${text(args.section)}: ${text(args.item)}`;
+		case "supersede":
+			return isError
+				? `Couldn't supersede in ${text(args.section)}`
+				: `Superseded in ${text(args.section)}: ${text(args.item)}`;
+		case "answer_question":
+			return isError
+				? "Couldn't answer the question"
+				: `Answered: ${text(args.question)}${args.recordIn ? ` → ${text(args.recordIn)}` : ""}`;
+		case "write_section":
+			return isError ? `Couldn't write ${text(args.section)}` : `Wrote ${text(args.section)}`;
+		case "hand_off":
+			return isError ? "Couldn't update Where we left off" : "Updated Where we left off";
 		default:
 			return tool;
 	}

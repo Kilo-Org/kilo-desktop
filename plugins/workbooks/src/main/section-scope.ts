@@ -18,6 +18,8 @@ export interface SectionScope {
 	readonly lines: readonly Line[];
 	/** What new content follows: the section's last non-blank line, else its heading; none on an empty page. */
 	readonly end?: Line;
+	/** The section's heading line, when it has one. */
+	readonly heading?: Line;
 }
 
 const HEADING = /^(#{1,6}) +(.*?)\s*$/;
@@ -47,7 +49,7 @@ export function sectionScope(blocks: readonly Block[], heading?: string): Sectio
 		return match !== null && match[1]!.length <= level;
 	});
 	const lines = next === -1 ? after : after.slice(0, next);
-	return { found: true, lines, end: lastFilled(lines) ?? all[at]! };
+	return { found: true, lines, end: lastFilled(lines) ?? all[at]!, heading: all[at]! };
 }
 
 /** A section's markdown out of its page's markdown (the whole page without a heading). */

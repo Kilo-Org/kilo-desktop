@@ -71,8 +71,8 @@
 					}
 				},
 				{
-					"id": "add_plan_step",
-					"title": "Add a plan step",
+					"id": "add_item",
+					"title": "Add an item to the workbook",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
@@ -92,29 +92,57 @@
 					}
 				},
 				{
-					"id": "set_step_status",
-					"title": "Set a plan step's status",
+					"id": "set_status",
+					"title": "Set a step's status or tick an item",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
 				},
 				{
-					"id": "record_decision",
-					"title": "Record a decision",
+					"id": "edit_step",
+					"title": "Edit a plan step",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
 				},
 				{
-					"id": "file_item",
-					"title": "File an item in the workbook",
+					"id": "move_step",
+					"title": "Move a plan step",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
 				},
 				{
-					"id": "set_where_i_left_off",
-					"title": "Update where I left off",
+					"id": "remove_item",
+					"title": "Remove an item from the workbook",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "supersede",
+					"title": "Supersede a journal entry",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "answer_question",
+					"title": "Answer an open question",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "write_section",
+					"title": "Write a text section",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "hand_off",
+					"title": "Hand off: update where we left off",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
@@ -134,13 +162,17 @@
 					"id": "receipts",
 					"tools": [
 						"kilo.workbooks/read_workbook",
-						"kilo.workbooks/add_plan_step",
+						"kilo.workbooks/add_item",
 						"kilo.workbooks/add_task",
 						"kilo.workbooks/set_task_done",
-						"kilo.workbooks/set_step_status",
-						"kilo.workbooks/record_decision",
-						"kilo.workbooks/file_item",
-						"kilo.workbooks/set_where_i_left_off"
+						"kilo.workbooks/set_status",
+						"kilo.workbooks/edit_step",
+						"kilo.workbooks/move_step",
+						"kilo.workbooks/remove_item",
+						"kilo.workbooks/supersede",
+						"kilo.workbooks/answer_question",
+						"kilo.workbooks/write_section",
+						"kilo.workbooks/hand_off"
 					],
 					"standalone": true,
 					"when": {

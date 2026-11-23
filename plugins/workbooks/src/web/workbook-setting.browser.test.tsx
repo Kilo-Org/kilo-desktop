@@ -44,13 +44,22 @@ function manyTemplates(names: readonly string[]) {
 							id: id(name),
 							name,
 							description: `For ${name.toLowerCase()} work.`,
-							brief: {
-								markdown: "{{goal}}",
-								fields: [{ id: "goal", label: "Goal", required: true }],
-							},
 							guide: { title: "How to work here", markdown: "Be good." },
 							firstMove: "Go.",
-							sections: [{ id: "notes", title: "Notes", itemType: "note", markdown: "Notes." }],
+							intake: [{ fills: "goal", label: "Goal", required: true }],
+							pages: [
+								{
+									id: "home",
+									title: "Brief",
+									home: true,
+									sections: [{ id: "goal", title: "Goal", role: "goal" }],
+								},
+								{
+									id: "notes",
+									title: "Notes",
+									sections: [{ id: "notes", type: "journal", collects: "Notes." }],
+								},
+							],
 						}),
 					});
 				}
@@ -252,7 +261,7 @@ describe("the Workbook setting on the New Session page", () => {
 		await expect.poll(trigger).toContain("Scratch");
 		const [workbook] = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
 		expect(workbook).toMatchObject({ templateId: "blank", name: "Scratch" });
-		expect(workbook!.sections.map((section) => section.id)).toEqual(["notes"]);
+		expect(workbook!.sections.map((section) => section.id)).toEqual(["goal", "handoff", "notes"]);
 	});
 
 	it("lists workbooks with their template, and searches them", async () => {
@@ -318,7 +327,7 @@ describe("the Workbook setting on the New Session page", () => {
 			.toBe(1);
 		const [workbook] = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
 		expect(pages.markdown(pages.documentOf(workbook!.projectId))).toContain(
-			"## Context and links\n\nIssue #42",
+			"## Context and links\n\n_Where things are: the issue, upstream references, entry points in the code, the branch and PR once they exist, local tools and environments._\n\nIssue #42",
 		);
 	});
 

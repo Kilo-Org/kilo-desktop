@@ -4,7 +4,7 @@ import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 
 import { Workbooks } from "../contracts";
 import { bootWorkbooks } from "../test/hosts";
-import { nextStep, openQuestions, planSteps, whereILeftOff } from "./progress";
+import { handoffEntries, nextStep, openQuestions, planSteps } from "./progress";
 
 const hosts: PluginHost[] = [];
 
@@ -35,19 +35,16 @@ describe("progress", () => {
 		expect(nextStep([])).toBeUndefined();
 	});
 
-	it("reads Where I left off and counts open questions", () => {
-		expect(
-			whereILeftOff("## Where I left off\n\n_by whoever_\n\n- Nothing yet.\n\n## Goal\n\n- x"),
-		).toEqual([]);
-		expect(whereILeftOff("## Where I left off\n\n- 2026-01-01: did A\n- next B")).toEqual([
-			"2026-01-01: did A",
-			"next B",
+	it("reads the handoff's entries and counts open questions", () => {
+		expect(handoffEntries("_by whoever_\n\n- Nothing yet.")).toEqual([]);
+		expect(handoffEntries("_note_\n\n- **Did A.** Next B. (2026-01-01)")).toEqual([
+			"**Did A.** Next B. (2026-01-01)",
 		]);
-		expect(whereILeftOff("No section")).toEqual([]);
+		expect(handoffEntries("")).toEqual([]);
 		expect(openQuestions("- **Windows?** maybe\n- **Done.** no\ntext")).toBe(1);
 	});
 
-	it("summarises a workbook from Pages", async () => {
+	it("summarises a workbook from Pages, by its sections' roles", async () => {
 		const { host } = await bootWorkbooks();
 		hosts.push(host);
 		const workbook = await host.invoke(Workbooks, "create", {
@@ -58,7 +55,7 @@ describe("progress", () => {
 		});
 
 		await expect(host.invoke(Workbooks, "progress", { workbookId: workbook.id })).resolves.toEqual({
-			whereILeftOff: [],
+			whereWeLeftOff: [],
 			steps: [{ number: 1, title: "Refine the Brief and draft this Plan", status: "todo" }],
 			next: { number: 1, title: "Refine the Brief and draft this Plan" },
 			openTasks: 3,

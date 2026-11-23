@@ -2,25 +2,22 @@ import { z } from "zod";
 
 import type { WorkbookTemplateInput } from "../contracts";
 
-/** `workbook.json`: a template's manifest, whose content lives in sibling files. */
+/**
+ * `workbook.json`: a template's manifest. Its pages and sections are data in
+ * the manifest; only the guide (and any page's intro prose) live in files.
+ */
 const templateManifestSchema = z.object({
-	schemaVersion: z.literal(1),
+	schemaVersion: z.literal(2),
 	id: z.string(),
 	name: z.string(),
 	description: z.string(),
 	icon: z.string().optional(),
-	brief: z.object({ file: z.string(), fields: z.array(z.unknown()) }),
 	guide: z.object({ file: z.string(), title: z.string() }),
 	firstMove: z.string(),
-	pages: z.array(z.object({ id: z.string(), title: z.string(), file: z.string() })).default([]),
-	sections: z.array(
-		z.object({
-			id: z.string(),
-			title: z.string(),
-			itemType: z.string(),
-			/** A page id from `pages`, or "brief"; the section is the part under its heading there. */
-			in: z.string().optional(),
-			file: z.string().optional(),
+	intake: z.array(z.unknown()),
+	pages: z.array(
+		z.looseObject({
+			introFile: z.string().optional(),
 		}),
 	),
 });
@@ -37,33 +34,22 @@ export function templateFromFiles(
 ): WorkbookTemplateInput {
 	const parsed = templateManifestSchema.parse(manifest);
 	const referenced = [
-		parsed.brief.file,
 		parsed.guide.file,
-		...parsed.pages.map((page) => page.file),
-		...parsed.sections.flatMap((section) => (section.file ? [section.file] : [])),
+		...parsed.pages.flatMap((page) => (page.introFile ? [page.introFile] : [])),
 	];
 	const missing = referenced.filter((file) => files[file] === undefined);
 	if (missing.length > 0) throw new Error(`missing template files: ${missing.join(", ")}`);
-	const read = (file: string) => files[file]!;
 	return {
 		id: parsed.id,
 		name: parsed.name,
 		description: parsed.description,
 		...(parsed.icon ? { icon: parsed.icon } : {}),
-		brief: { markdown: read(parsed.brief.file), fields: parsed.brief.fields as never },
-		guide: { title: parsed.guide.title, markdown: read(parsed.guide.file) },
+		guide: { title: parsed.guide.title, markdown: files[parsed.guide.file]! },
 		firstMove: parsed.firstMove,
-		pages: parsed.pages.map((page) => ({
-			id: page.id,
-			title: page.title,
-			markdown: read(page.file),
-		})),
-		sections: parsed.sections.map((section) => ({
-			id: section.id,
-			title: section.title,
-			itemType: section.itemType as never,
-			...(section.in ? { in: section.in } : {}),
-			...(section.file ? { markdown: read(section.file) } : {}),
-		})),
+		intake: parsed.intake as never,
+		pages: parsed.pages.map(({ introFile, ...page }) => ({
+			...page,
+			...(introFile ? { intro: files[introFile]! } : {}),
+		})) as never,
 	};
 }

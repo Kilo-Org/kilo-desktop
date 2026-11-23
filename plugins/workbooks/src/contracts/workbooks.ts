@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
-import { ITEM_TYPES } from "./templates";
+import { SECTION_ROLES, SECTION_TYPES, sectionRulesSchema } from "./templates";
 
 /**
  * Where a workbook's content lives. For now every workbook is a Pages Project
@@ -17,14 +17,16 @@ export const workbookBackendSchema = z.object({
 export type WorkbookBackend = z.output<typeof workbookBackendSchema>;
 
 /**
- * Where a workbook's section lives: a page (`pageId`; without one, the
- * Brief), and within it, for a section sharing the page, the part under its
- * `heading`.
+ * A workbook's section: where it lives (a page, `pageId`; without one, the
+ * Brief; within it, the part under its `heading`, or the whole page) and how
+ * it behaves (its type, role and rules, copied from its template so the
+ * tools need nothing else).
  */
-export const workbookSectionRefSchema = z.object({
+export const workbookSectionRefSchema = sectionRulesSchema.extend({
 	id: z.string().min(1),
-	title: z.string().min(1),
-	itemType: z.enum(ITEM_TYPES),
+	title: z.string().min(1).optional(),
+	type: z.enum(SECTION_TYPES),
+	role: z.enum(SECTION_ROLES).optional(),
 	pageId: z.string().min(1).optional(),
 	heading: z.string().min(1).optional(),
 });
@@ -87,7 +89,7 @@ export const STEP_STATUSES = ["todo", "in_progress", "blocked", "done"] as const
 
 /** Where a workbook is at, read from Pages: what a resume view shows. */
 export const workbookProgressSchema = z.object({
-	whereILeftOff: z.array(z.string()),
+	whereWeLeftOff: z.array(z.string()),
 	steps: z.array(
 		z.object({ number: z.number(), title: z.string(), status: z.enum(STEP_STATUSES) }),
 	),
@@ -129,7 +131,7 @@ export const Workbooks = defineDomainObject({
 		add: method(addWorkbookInputSchema, workbookSchema),
 		rename: method(z.object({ id: z.string(), name: z.string().trim().min(1) }), workbookSchema),
 		forget: method(z.object({ id: z.string() }), z.object({ forgotten: z.boolean() })),
-		/** Where the workbook is at (Where I left off, plan progress, open items), read from Pages. */
+		/** Where the workbook is at (Where we left off, plan progress, open items), read from Pages. */
 		progress: method(z.object({ workbookId: z.string() }), workbookProgressSchema),
 	},
 	lookup: (state, id) => state.workbooks.find((workbook) => workbook.id === id),

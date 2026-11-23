@@ -10,7 +10,7 @@ import {
 	KEY_ENTER_COMMAND,
 	PASTE_COMMAND,
 } from "lexical";
-import type { Unstable_DirectiveFormatter } from "@assistant-ui/react";
+import type { AssistantState, Unstable_DirectiveFormatter } from "@assistant-ui/react";
 import {
 	type CSSProperties,
 	type FC,
@@ -56,6 +56,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	style,
 }) => {
 	const editorGeneration = useEditorGeneration();
+	const slowToOpen = useSlowToOpen();
 	// Cached on `ref`, so a re-render doesn't detach and re-attach it (and set the label again).
 	const attachInput = (node: HTMLDivElement | null) => {
 		if (typeof ref === "function") ref(node);
@@ -68,10 +69,11 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			ref={attachInput}
 			formatter={formatter}
 			directiveChip={KiloDirectiveChip}
-			placeholder={placeholder}
+			placeholder={slowToOpen ? "Loading chat…" : placeholder}
 			cancelOnEscape={cancelOnEscape}
 			submitMode={submitMode}
 			aria-label="Message input"
+			aria-busy={slowToOpen || undefined}
 			onKeyDown={onKeyDown}
 			className={cn(
 				"aui-composer-input caret-foreground max-h-32 w-full bg-transparent px-1 pt-0 pb-1 text-sm",
@@ -80,6 +82,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			style={style}
 		>
 			<LexicalInputAria label="Message input" />
+			<PlaceholderThreadLockPlugin />
 			<AttachmentPastePlugin />
 			<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
 			<QueueEnterWhileRunningPlugin />
@@ -128,6 +131,55 @@ function LexicalInputAria({ label }: { label: string }) {
 			}),
 		[editor, label],
 	);
+	return null;
+}
+
+/**
+ * Whether the runtime shows assistant-ui's empty placeholder thread instead of
+ * a real one. Only the placeholder has no extras: every real thread, a draft
+ * included, carries its message queue controls, given by the `messageQueue`
+ * with `userControls` that use-chat-runtime passes react-opencode.
+ */
+const showsPlaceholderThread = (s: AssistantState) => s.thread.extras === undefined;
+
+const SLOW_TO_OPEN_DELAY_MS = 400;
+
+/**
+ * Whether the placeholder thread has been shown long enough to say so. Most
+ * chats replace it within a frame, where a "Loading chat…" would only flash.
+ */
+function useSlowToOpen(): boolean {
+	const opening = useAuiState(showsPlaceholderThread);
+	const [slow, setSlow] = useState(false);
+	if (!opening && slow) setSlow(false);
+	useEffect(() => {
+		if (!opening || slow) return;
+		const timeoutId = window.setTimeout(() => setSlow(true), SLOW_TO_OPEN_DELAY_MS);
+		return () => window.clearTimeout(timeoutId);
+	}, [opening, slow]);
+	return opening && slow;
+}
+
+/**
+ * Keeps the editor read-only while the runtime shows assistant-ui's empty
+ * placeholder thread, as it does until an opened chat's thread runtime is
+ * attached (seconds on a server still starting). The placeholder's composer
+ * throws on every edit, and SyncPlugin pushes each keystroke into it from a
+ * Lexical listener, where nothing catches the error.
+ *
+ * LexicalComposerInput sets the editor's editable state from its own rule
+ * (thread disabled, dictation blocking input) first, so this repeats that rule
+ * and has the last word; recheck it when upgrading @assistant-ui/react-lexical.
+ */
+function PlaceholderThreadLockPlugin() {
+	const [editor] = useLexicalComposerContext();
+	const editable = useAuiState(
+		(s) =>
+			!showsPlaceholderThread(s) && !s.thread.isDisabled && !s.composer.dictation?.inputDisabled,
+	);
+	useEffect(() => {
+		editor.setEditable(editable);
+	}, [editor, editable]);
 	return null;
 }
 

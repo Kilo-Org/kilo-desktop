@@ -1,6 +1,6 @@
 import { FileTextIcon, GitBranchIcon, SparklesIcon } from "lucide-react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { KernelCommand, type CommandHandler, type PluginEntry } from "@kilo-desktop/kernel";
@@ -749,5 +749,64 @@ describe("a kept work session's composer", () => {
 		await userEvent.click(shownInput());
 		await userEvent.keyboard("{ControlOrMeta>}a{/ControlOrMeta}After");
 		await expect.element(shownInput()).toHaveTextContent("After");
+	});
+});
+
+describe("the composer of a chat still opening", () => {
+	/** Opens chat "ses_a" in the pane, its details held until `release` is called. */
+	async function openHeldChat() {
+		const server = new FakeKiloServer();
+		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
+		let release!: () => void;
+		server.chatReadGate = new Promise((resolve) => {
+			release = resolve;
+		});
+		await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.poll(() => server.requestsTo("GET", "/session/ses_a").length).toBeGreaterThan(0);
+		return release;
+	}
+
+	it("takes no typing until the chat's thread is ready, then takes it", async () => {
+		const release = await openHeldChat();
+
+		await expect.element(input()).toHaveAttribute("contenteditable", "false");
+
+		release();
+		await expect.element(input()).toHaveAttribute("contenteditable", "true");
+		await userEvent.type(input(), "Hello");
+		await expect.element(input()).toHaveTextContent("Hello");
+	});
+
+	it("says the chat is loading while it's slow to open", async () => {
+		const release = await openHeldChat();
+
+		await expect.element(page.getByText("Loading chat…")).toBeVisible();
+
+		release();
+		await expect.element(page.getByText("Loading chat…")).not.toBeInTheDocument();
+	});
+
+	it("doesn't flash the loading text for a chat that opens at once", async () => {
+		let flashed = false;
+		const watcher = new MutationObserver(() => {
+			if (document.body.textContent?.includes("Loading chat…")) flashed = true;
+		});
+		watcher.observe(document.body, { childList: true, subtree: true, characterData: true });
+		onTestFinished(() => watcher.disconnect());
+		const server = new FakeKiloServer();
+		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
+		await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
+
+		await expect.element(input()).toHaveAttribute("contenteditable", "true");
+		watcher.disconnect();
+		expect(flashed).toBe(false);
 	});
 });

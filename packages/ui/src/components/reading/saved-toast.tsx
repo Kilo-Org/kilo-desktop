@@ -1,5 +1,5 @@
 import { CheckIcon, XIcon } from "lucide-react";
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC, type FocusEvent, type PointerEvent } from "react";
 
 import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -16,7 +16,7 @@ export interface SavedToastProps {
 	 */
 	readonly dismissible?: boolean;
 	readonly className?: string;
-	/** How long it stays, paused while hovered or focused. */
+	/** How long it stays; paused while the pointer moves over it or a key has focused it. */
 	readonly durationMs?: number;
 	readonly qaId?: string;
 }
@@ -25,8 +25,12 @@ export interface SavedToastProps {
  * The confirmation after saving or removing: a check, the message, View and
  * Undo (and a close button where it sits in the window's toast stack). Shown
  * at the bottom centre of the pane or the Focus reader, or as the Saved page's
- * toast; it closes after five seconds, waiting while the pointer or focus is
- * on it, and after either action.
+ * toast; it closes five seconds after it appears, and after either action.
+ * The countdown holds while someone is reaching for it: the pointer moving
+ * over it, or keyboard focus on it. A toast that merely appears under a
+ * resting pointer (Chromium reports that as the pointer entering) doesn't
+ * hold, and on leaving the countdown resumes where it stopped rather than
+ * starting over.
  */
 // A new message is a new toast: keying on it restarts the countdown.
 export const SavedToast: FC<SavedToastProps> = (props) => (
@@ -45,11 +49,22 @@ const SavedToastBody: FC<SavedToastProps> = ({
 }) => {
 	const [paused, setPaused] = useState(false);
 	const latest = useLatestRef(onClose);
+	const remaining = useRef(durationMs);
 	useEffect(() => {
 		if (paused) return;
-		const timer = setTimeout(() => latest.current(), durationMs);
-		return () => clearTimeout(timer);
-	}, [durationMs, paused, latest]);
+		const started = performance.now();
+		const timer = setTimeout(() => latest.current(), remaining.current);
+		return () => {
+			clearTimeout(timer);
+			remaining.current = Math.max(0, remaining.current - (performance.now() - started));
+		};
+	}, [paused, latest]);
+	const holdWhileMoving = (event: PointerEvent) => {
+		if (event.movementX !== 0 || event.movementY !== 0) setPaused(true);
+	};
+	const holdForKeyboard = (event: FocusEvent) => {
+		if (event.target instanceof Element && event.target.matches(":focus-visible")) setPaused(true);
+	};
 	const action =
 		"text-foreground hover:bg-state-hover rounded-md px-2 py-1 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50";
 	return (
@@ -60,9 +75,9 @@ const SavedToastBody: FC<SavedToastProps> = ({
 				"bg-popover text-popover-foreground border-border-subtle pointer-events-auto flex h-9 items-center gap-2 rounded-lg border pr-1 pl-3 text-xs shadow-lg",
 				className,
 			)}
-			onPointerEnter={() => setPaused(true)}
+			onPointerMove={holdWhileMoving}
 			onPointerLeave={() => setPaused(false)}
-			onFocus={() => setPaused(true)}
+			onFocus={holdForKeyboard}
 			onBlur={() => setPaused(false)}
 		>
 			<CheckIcon aria-hidden="true" className="size-3.5" />

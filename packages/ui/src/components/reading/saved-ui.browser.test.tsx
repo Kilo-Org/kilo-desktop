@@ -136,7 +136,7 @@ describe("SavedToast", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
-	it("closes by itself, waiting while the pointer is on it", async () => {
+	it("closes by itself, holding while the pointer moves over it", async () => {
 		const onClose = vi.fn();
 		render(<SavedToast message="Removed from Saved" onClose={onClose} durationMs={150} />);
 		const toast = page.getByRole("status");
@@ -150,6 +150,37 @@ describe("SavedToast", () => {
 		await page.elementLocator(document.body).hover({ position: { x: 1, y: 1 } });
 
 		await expect.poll(() => onClose.mock.calls.length).toBe(1);
+	});
+
+	it("still closes when it appears under a pointer that isn't moving", async () => {
+		const onClose = vi.fn();
+		render(
+			<SavedToast message="Added to Saved" onUndo={() => {}} onClose={onClose} durationMs={150} />,
+		);
+		const undo = page.getByRole("button", { name: "Undo" }).element();
+		// What Chromium sends when the toast lands under a resting cursor: entering, no movement.
+		undo.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+		undo.dispatchEvent(new PointerEvent("pointerenter"));
+		undo.dispatchEvent(
+			new PointerEvent("pointermove", { bubbles: true, movementX: 0, movementY: 0 }),
+		);
+
+		await expect.poll(() => onClose.mock.calls.length).toBe(1);
+	});
+
+	it("resumes the countdown where it stopped once the pointer leaves", async () => {
+		const onClose = vi.fn();
+		render(<SavedToast message="Added to Saved" onClose={onClose} durationMs={400} />);
+		const toast = page.getByRole("status");
+		await expect.element(toast).toBeVisible();
+		const shown = performance.now();
+		await expect.poll(() => performance.now() - shown, { interval: 20 }).toBeGreaterThan(280);
+
+		await toast.hover();
+		await page.elementLocator(document.body).hover({ position: { x: 1, y: 1 } });
+
+		// About 100ms were left; starting over would take the full 400.
+		await expect.poll(() => onClose.mock.calls.length, { timeout: 300, interval: 20 }).toBe(1);
 	});
 });
 

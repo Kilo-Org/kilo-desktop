@@ -331,6 +331,7 @@ export class FakeKiloServer {
 		const chat = this.chats.get(decodeURIComponent(id));
 		if (!chat) return json({ name: "NotFoundError", data: { message: "No such chat" } }, 404);
 		if (!action && request.method === "GET") {
+			await this.chatReadGate;
 			if (this.chatReadDelayMs)
 				await new Promise((resolve) => setTimeout(resolve, this.chatReadDelayMs));
 			return json(this.#info(chat));
@@ -411,6 +412,9 @@ export class FakeKiloServer {
 
 	/** Milliseconds a chat's details take to arrive, as from a busy server. */
 	chatReadDelayMs = 0;
+
+	/** Holds answering `/session/:id` (a chat's details) until the test releases it. */
+	chatReadGate?: Promise<void>;
 
 	/** Milliseconds a chat's messages take to arrive, as a long history does. */
 	historyReadDelayMs = 0;

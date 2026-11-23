@@ -751,3 +751,27 @@ describe("a kept work session's composer", () => {
 		await expect.element(shownInput()).toHaveTextContent("After");
 	});
 });
+
+describe("the composer of a chat still opening", () => {
+	it("takes no typing until the chat's thread is ready, then takes it", async () => {
+		const server = new FakeKiloServer();
+		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
+		let release!: () => void;
+		server.chatReadGate = new Promise((resolve) => {
+			release = resolve;
+		});
+		await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.poll(() => server.requestsTo("GET", "/session/ses_a").length).toBeGreaterThan(0);
+
+		await expect.element(input()).toHaveAttribute("contenteditable", "false");
+
+		release();
+		await expect.element(input()).toHaveAttribute("contenteditable", "true");
+		await userEvent.type(input(), "Hello");
+		await expect.element(input()).toHaveTextContent("Hello");
+	});
+});

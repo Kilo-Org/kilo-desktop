@@ -158,6 +158,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 		},
 		messageQueue: {
 			cancelBehavior: "pause",
+			// Also gives every real thread extras, which the composer input tells
+			// assistant-ui's empty placeholder thread apart by.
 			userControls: true,
 			create: createQueue,
 		},

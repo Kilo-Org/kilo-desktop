@@ -50,15 +50,22 @@ export function SwarmFaces({
 						className={cn(
 							"bg-background flex rounded-full p-px",
 							member.needsYou && "ring-foreground ring-[1.5px]",
-							!member.needsYou && !isActive(member.state) && "opacity-55 grayscale",
 						)}
 						data-state={member.needsYou ? "needs-you" : member.state}
 					>
-						<AgentAvatar name={name} color={color} size={size} />
+						{/* Only the avatar fades: the backing stays opaque, so overlapped faces don't show through. */}
+						<span
+							className={cn(
+								"flex rounded-full",
+								!member.needsYou && !isActive(member.state) && "opacity-55 grayscale",
+							)}
+						>
+							<AgentAvatar name={name} color={color} size={size} />
+						</span>
 					</span>
 				);
 				const title = `${name}: ${faceState(member)}`;
-				const overlap = cn("relative first:ms-0", size === "md" ? "-ms-2" : "-ms-1.5");
+				const overlap = cn("relative first:ms-0", size === "md" ? "-ms-1.5" : "-ms-1");
 				if (onOpen && !member.main) {
 					return (
 						<button

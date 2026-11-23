@@ -16,8 +16,8 @@ export function AgentAvatar({
 		<span
 			aria-hidden
 			className={cn(
-				"text-foreground flex shrink-0 items-center justify-center rounded-full font-semibold",
-				size === "sm" ? "size-5 text-xs" : "size-6 text-xs",
+				"text-foreground flex shrink-0 items-center justify-center rounded-full leading-none font-semibold",
+				size === "sm" ? "size-5 text-[10px]" : "size-6 text-xs",
 			)}
 			style={{ backgroundColor: tint(color, 24), boxShadow: `inset 0 0 0 1.5px ${color}` }}
 		>

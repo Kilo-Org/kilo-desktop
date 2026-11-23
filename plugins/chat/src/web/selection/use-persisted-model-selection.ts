@@ -55,6 +55,7 @@ const DEFAULT_SELECTION: SelectionState = {
 	name: undefined,
 	effort: undefined,
 	efforts: undefined,
+	effortByModel: {},
 	dirty: false,
 };
 
@@ -258,14 +259,21 @@ export function usePersistedModelSelection(
 	const setModel = (next: KiloModelRef) => {
 		if (opensUnknownChat) return;
 		const entry = catalogEntry(catalog, next);
+		const nextEfforts = entry ? normalizeEfforts(entry.efforts) : selection.efforts;
+		const effortByModel =
+			model && selection.effort
+				? { ...selection.effortByModel, [modelRefToId(model)]: selection.effort }
+				: selection.effortByModel;
+		const localEffort = effortByModel[modelRefToId(next)];
+		const savedEffort = rememberedEffort(preferences, agent, next);
 		const nextEffort = entry
-			? (preserveEffort(selection.effort, normalizeEfforts(entry.efforts)) ??
-				rememberedEffort(preferences, agent, next))
-			: selection.effort;
+			? ([localEffort, savedEffort].find((effort) =>
+					nextEfforts?.some(({ id }) => id === effort),
+				) ?? preserveEffort(selection.effort, nextEfforts))
+			: (localEffort ?? savedEffort ?? selection.effort);
 		store.update((current) => {
 			const active = current[scope] ?? selection;
 			const nextName = entry?.name ?? active.name;
-			const nextEfforts = entry ? normalizeEfforts(entry.efforts) : active.efforts;
 			return {
 				...current,
 				[scope]: {
@@ -274,6 +282,7 @@ export function usePersistedModelSelection(
 					name: nextName,
 					effort: nextEffort,
 					efforts: nextEfforts,
+					effortByModel,
 					dirty: true,
 				},
 			};
@@ -327,6 +336,7 @@ export function usePersistedModelSelection(
 					name: undefined,
 					effort: next.effort,
 					efforts: undefined,
+					effortByModel: existing?.effortByModel ?? {},
 					dirty: false,
 				},
 			};

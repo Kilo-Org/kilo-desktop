@@ -323,6 +323,51 @@ describe("usePersistedModelSelection", () => {
 		expect(result.current.effort).toBe("max");
 	});
 
+	it("restores saved draft effort before carrying over the current model's effort", () => {
+		const preferences: PersistedModelPreferences = {
+			modelSelections: {},
+			preferred: { ...alternateModel, variant: "low" },
+			variantSelections: { "code/anthropic/claude-sonnet": "high" },
+			recentModels: [],
+			favorites: [],
+		};
+		const remembered: Array<string | undefined> = [];
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				catalog,
+				undefined,
+				{ agent: "code" },
+				preferences,
+				(_agent, _model, effort) => remembered.push(effort),
+			),
+		);
+
+		expect(result.current.effort).toBe("low");
+		act(() => result.current.setModel(defaultModel));
+
+		expect(result.current.effort).toBe("high");
+		act(() => result.current.setModel(alternateModel));
+		expect(result.current.effort).toBe("low");
+		expect(remembered).toEqual(["high", "low"]);
+	});
+
+	it("falls back to carryover if the destination's saved effort is no longer supported", () => {
+		const preferences: PersistedModelPreferences = {
+			modelSelections: {},
+			preferred: { ...alternateModel, variant: "low" },
+			variantSelections: { "code/anthropic/claude-sonnet": "max" },
+			recentModels: [],
+			favorites: [],
+		};
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(catalog, undefined, { agent: "code" }, preferences),
+		);
+
+		act(() => result.current.setModel(defaultModel));
+
+		expect(result.current.effort).toBe("low");
+	});
+
 	it("falls back to the catalog default and applies effort to that model", () => {
 		const { result } = renderHook(() => usePersistedModelSelection(catalog));
 
@@ -581,6 +626,46 @@ describe("usePersistedModelSelection", () => {
 
 			expect(after.result.current.model).toEqual(alternateModel);
 			expect(after.result.current.effort).toBe("max");
+		});
+
+		it("restores a chat's effort for a model after switching away and reopening its pane", () => {
+			const chats = new ChatSelections();
+			const render = () =>
+				renderHook(() =>
+					usePersistedModelSelection(
+						catalog,
+						"chat-a",
+						{ agent: "code" },
+						remembering(defaultModel, "medium"),
+						undefined,
+						undefined,
+						{ chats },
+					),
+				);
+			const before = render();
+			act(() =>
+				before.result.current.hydrateThreadModel("chat-a", {
+					agent: "code",
+					model: defaultModel,
+					effort: "high",
+				}),
+			);
+			act(() => before.result.current.setModel(alternateModel));
+			act(() => before.result.current.setEffort("low"));
+			act(() =>
+				before.result.current.hydrateThreadModel("chat-a", {
+					agent: "code",
+					model: alternateModel,
+					effort: "low",
+				}),
+			);
+			before.unmount();
+
+			const { result } = render();
+			act(() => result.current.setModel(defaultModel));
+			expect(result.current.effort).toBe("high");
+			act(() => result.current.setModel(alternateModel));
+			expect(result.current.effort).toBe("low");
 		});
 
 		it("shows no model for a chat until its Kilo session is read, rather than the remembered one", () => {

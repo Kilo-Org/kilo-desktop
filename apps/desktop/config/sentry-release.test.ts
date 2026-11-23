@@ -10,7 +10,7 @@ describe("sentryReleaseName", () => {
 		);
 	});
 
-	it.each(["1.0.0/x", "1.0.0\\x", "1.0.0\nx", "1.0.0\tx", "", " ", "x".repeat(200)])(
+	it.each(["1.0.0/x", "1.0.0\\x", "1.0.0\nx", "1.0.0\rx", "1.0.0\tx", "", " ", "x".repeat(200)])(
 		"rejects a version Sentry would refuse as a release name: %j",
 		(version) => {
 			expect(() => sentryReleaseName(version)).toThrow(/Sentry release name/);

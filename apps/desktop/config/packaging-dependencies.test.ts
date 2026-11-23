@@ -92,9 +92,11 @@ describe("packaged production dependencies", () => {
 		const main = readFileSync(path.join(desktopRoot, "vite.main.config.ts"), "utf8");
 		const renderer = readFileSync(path.join(workspaceRoot, "apps/web/vite.config.ts"), "utf8");
 
+		expect(main).toContain('import appInfo from "./package.json"');
 		expect(main).toContain("const sentryRelease = sentryReleaseName(appInfo.version)");
 		expect(main).toContain("name: sentryRelease,");
 		expect(main).toContain("SENTRY_RELEASE_NAME: JSON.stringify(sentryRelease)");
+		expect(renderer).toContain('import desktopInfo from "../desktop/package.json"');
 		expect(renderer).toContain("release: { name: sentryReleaseName(desktopInfo.version) }");
 	});
 

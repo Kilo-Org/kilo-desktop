@@ -10,8 +10,9 @@
  */
 export function sentryReleaseName(version: string): string {
 	const name = `kilo-desktop@${version}`;
-	// https://docs.sentry.io/product/releases/naming-releases/
-	if (!version.trim() || /[/\\\n\t]/.test(name) || name.length > 200) {
+	// https://docs.sentry.io/product/releases/naming-releases/ — spaces inside
+	// a name are allowed; only a name that is entirely "." / ".." / " " is not.
+	if (!version.trim() || /[/\\\r\n\t]/.test(name) || name.length > 200) {
 		throw new Error(`Invalid Sentry release name: ${JSON.stringify(name)}`);
 	}
 	return name;

@@ -26,7 +26,10 @@ test("shows a rejected first prompt in the opened chat without retrying into suc
 	chatModelSelectorPage,
 }, testInfo) => {
 	const marker = `${chatFirstSendFailuresData.serverFailureMarker}-ATTEMPT-${testInfo.retry}`;
-	const prompt = `${marker} rejected first message`;
+	const prompt = chatFirstSendFailuresData.serverFailurePrompt.replace(
+		chatFirstSendFailuresData.serverFailureMarker,
+		marker,
+	);
 	await appShellPage.verifyShellIsLoaded();
 	await appShellPage.openSettings();
 	await chatStubProviderPage.configureStubProvider();

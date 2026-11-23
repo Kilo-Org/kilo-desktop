@@ -19,6 +19,11 @@ test.describe("Git worktrees @packaged", () => {
 		const session = await worktreesPage.startSession("Git worktree smoke");
 		const worktree = await worktreesPage.verifyWorksInNewWorktree(gitWorktreeRepo.path, session);
 
+		// Cancelling the worktree question first: neither the session nor the
+		// worktree may go, so the delete below still has both to remove.
+		await worktreesPage.cancelDeletingSessionAndWorktree(session.title);
+		await worktreesPage.verifyWorktreeCount(gitWorktreeRepo.path, 1);
+
 		await worktreesPage.deleteSessionAndWorktree(session.title);
 		await worktreesPage.verifyWorktreeRemoved(gitWorktreeRepo.path, worktree);
 	});

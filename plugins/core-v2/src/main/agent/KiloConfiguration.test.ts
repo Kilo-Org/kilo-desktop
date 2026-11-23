@@ -5,7 +5,7 @@ import path from "node:path";
 import { parse } from "jsonc-parser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { KiloConfigManager } from "./KiloConfigManager.js";
+import { KILO_V2_CONFIG_FILENAME, KiloConfigManager } from "./KiloConfigManager.js";
 import { KiloConfiguration } from "./KiloConfiguration.js";
 import { KiloPluginConfig } from "./KiloPluginConfig.js";
 import { KiloSkillConfig } from "./KiloSkillConfig.js";
@@ -32,7 +32,7 @@ describe("KiloConfiguration", () => {
 	let configuration: KiloConfiguration;
 
 	const readConfig = async () =>
-		parse(await readFile(path.join(configDirectory, "kilo.jsonc"), "utf8")) as Record<
+		parse(await readFile(path.join(configDirectory, KILO_V2_CONFIG_FILENAME), "utf8")) as Record<
 			string,
 			Record<string, unknown> | undefined
 		>;
@@ -83,9 +83,9 @@ describe("KiloConfiguration", () => {
 		await configuration.set("acme.tools", everything);
 
 		expect(await readConfig()).toEqual({
-			mcp: everything.mcpEntries,
-			agent: everything.agents,
-			command: everything.commands,
+			mcp: { servers: everything.mcpEntries },
+			agents: { reviewer: { description: "Reviews", system: "Review.", mode: "subagent" } },
+			commands: everything.commands,
 		});
 		await expect(
 			readFile(path.join(pluginDirectory, "anaconda-notebooks.js"), "utf8"),
@@ -110,9 +110,9 @@ describe("KiloConfiguration", () => {
 		await configuration.set("acme.tools", NOTHING);
 
 		expect(await readConfig()).toEqual({
-			mcp: {},
-			agent: { other: { description: "Other", prompt: "Other.", mode: "all" } },
-			command: {},
+			mcp: { servers: {} },
+			agents: { other: { description: "Other", system: "Other.", mode: "all" } },
+			commands: {},
 		});
 		expect(await exists(path.join(pluginDirectory, "anaconda-notebooks.js"))).toBe(false);
 		expect(await exists(path.join(skillDirectory, "review"))).toBe(false);
@@ -123,8 +123,8 @@ describe("KiloConfiguration", () => {
 	it("leaves an entry the user owns under the same name alone, warning once", async () => {
 		await mkdir(configDirectory, { recursive: true });
 		await writeFile(
-			path.join(configDirectory, "kilo.jsonc"),
-			JSON.stringify({ command: { review: { template: "Mine" } } }),
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
+			JSON.stringify({ commands: { review: { template: "Mine" } } }),
 		);
 		await mkdir(path.join(skillDirectory, "review"), { recursive: true });
 
@@ -132,8 +132,10 @@ describe("KiloConfiguration", () => {
 		await configuration.set("acme.tools", everything);
 
 		const config = await readConfig();
-		expect(config.command).toEqual({ review: { template: "Mine" } });
-		expect(config.agent).toEqual(everything.agents);
+		expect(config.commands).toEqual({ review: { template: "Mine" } });
+		expect(config.agents).toEqual({
+			reviewer: { description: "Reviews", system: "Review.", mode: "subagent" },
+		});
 		expect(await exists(path.join(skillDirectory, "review", "SKILL.md"))).toBe(false);
 		expect(warn.mock.calls).toEqual([
 			[expect.stringContaining('skill "review"')],
@@ -149,7 +151,9 @@ describe("KiloConfiguration", () => {
 			}),
 		).rejects.toThrow('Could not install Desktop-owned Kilo plugin "notebooks"');
 
-		expect((await readConfig()).agent).toEqual(everything.agents);
+		expect((await readConfig()).agents).toEqual({
+			reviewer: { description: "Reviews", system: "Review.", mode: "subagent" },
+		});
 		expect(onChanged).toHaveBeenCalledOnce();
 	});
 });

@@ -33,7 +33,7 @@ afterEach(async () => {
 	await cleanUpAgents();
 });
 
-const CONFIG_FILE = "agent-v2/runtime/config/kilo2/kilo.jsonc";
+const CONFIG_FILE = "agent-v2/runtime/config/kilo2/kilo2.jsonc";
 
 /** A plugin contributing an AI provider it can change later. */
 function aiProviderContributor(id: string, initial: AiProviderConfig | undefined) {
@@ -115,7 +115,9 @@ describe("the Kilo server", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		expect(serverOf(kernel).getState()).toEqual({ status: "ready", version: "7.8.17" });
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).toMatchObject({ permission: { suggest: "deny" } });
+		expect(config).toMatchObject({
+			permissions: [{ action: "suggest", resource: "*", effect: "deny" }],
+		});
 	});
 
 	it("waits for the terms to be accepted before starting the server", async () => {
@@ -253,7 +255,7 @@ describe("AI providers", () => {
 
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).toMatchObject({ provider: { "acme-local": { name: "Acme local" } } });
+		expect(config).toMatchObject({ providers: { "acme-local": { name: "Acme local" } } });
 		expect(server.spawns[0]).toEqual({ ACME_KEY: "k-1" });
 	});
 
@@ -297,7 +299,7 @@ describe("AI providers", () => {
 
 		await eventually(() => expect(server.spawns.at(-1)).toEqual({}));
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).not.toHaveProperty(["provider", "acme-local"]);
+		expect(config).not.toHaveProperty(["providers", "acme-local"]);
 	});
 
 	it("drops a pending restart when the server stops, so its next start isn't restarted again", async () => {
@@ -351,15 +353,19 @@ describe("MCP servers", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const resources = path.join(root, "resources");
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config.mcp).toMatchObject({
-			"acme-mcp": {
-				type: "local",
-				command: [`${resources}/bin/acme`, "--root", resources],
-				environment: { ACME_HOME: `${resources}/home` },
-				enabled: true,
+		expect(config).toMatchObject({
+			mcp: {
+				servers: {
+					"acme-mcp": {
+						type: "local",
+						command: [`${resources}/bin/acme`, "--root", resources],
+						environment: { ACME_HOME: `${resources}/home` },
+						disabled: false,
+					},
+				},
 			},
 		});
-		expect(config.mcp).not.toHaveProperty("no-command");
+		expect(config).not.toHaveProperty(["mcp", "servers", "no-command"]);
 	});
 
 	it("skips a static server whose host could not resolve ${resources}", async () => {
@@ -376,7 +382,7 @@ describe("MCP servers", () => {
 
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config.mcp).not.toHaveProperty("acme-mcp");
+		expect(config).not.toHaveProperty(["mcp", "servers", "acme-mcp"]);
 	});
 
 	it("follows a dynamic server and withdraws it with its contribution, restarting the server", async () => {
@@ -399,19 +405,25 @@ describe("MCP servers", () => {
 		);
 		const configFile = path.join(storage, CONFIG_FILE);
 		await eventually(async () =>
-			expect(await readJsonc(configFile)).toHaveProperty(["mcp", "extra", "command"], ["x"]),
+			expect(await readJsonc(configFile)).toHaveProperty(
+				["mcp", "servers", "extra", "command"],
+				["x"],
+			),
 		);
 		await eventually(() => expect(server.restart).toHaveBeenCalledOnce());
 
 		entry = { type: "local", command: ["y"] };
 		notify();
 		await eventually(async () =>
-			expect(await readJsonc(configFile)).toHaveProperty(["mcp", "extra", "command"], ["y"]),
+			expect(await readJsonc(configFile)).toHaveProperty(
+				["mcp", "servers", "extra", "command"],
+				["y"],
+			),
 		);
 
 		contribution.remove();
 		await eventually(async () =>
-			expect(await readJsonc(configFile)).not.toHaveProperty(["mcp", "extra"]),
+			expect(await readJsonc(configFile)).not.toHaveProperty(["mcp", "servers", "extra"]),
 		);
 	});
 });
@@ -487,22 +499,24 @@ describe("agent extensions", () => {
 
 		expect(await readJsonc(configFile)).toMatchObject({
 			mcp: {
-				"notebook-mcp": { type: "local", command: [`${notebook.resources}/bin/mcp`] },
-			},
-			agent: {
-				analyst: {
-					description: "Analyses notebooks",
-					prompt: "You analyse notebooks.",
-					mode: "subagent",
-					model: "kilo/acme/fast",
+				servers: {
+					"notebook-mcp": { type: "local", command: [`${notebook.resources}/bin/mcp`] },
 				},
 			},
-			command: {
+			agents: {
+				analyst: {
+					description: "Analyses notebooks",
+					system: "You analyse notebooks.",
+					mode: "subagent",
+					model: { providerID: "kilo", model: "acme/fast" },
+				},
+			},
+			commands: {
 				analyse: {
 					template: "Analyse $ARGUMENTS",
 					description: "Analyse a notebook",
 					agent: "analyst",
-					subtask: true,
+					subagent: true,
 				},
 			},
 		});
@@ -515,9 +529,9 @@ describe("agent extensions", () => {
 		notebook.setOn(false);
 		await eventually(async () => {
 			const config = await readJsonc(configFile);
-			expect(config.mcp).not.toHaveProperty("notebook-mcp");
-			expect(config.agent).not.toHaveProperty("analyst");
-			expect(config.command).not.toHaveProperty("analyse");
+			expect(config).not.toHaveProperty(["mcp", "servers", "notebook-mcp"]);
+			expect(config).not.toHaveProperty(["agents", "analyst"]);
+			expect(config).not.toHaveProperty(["commands", "analyse"]);
 			await expect(lstat(pluginFile)).rejects.toThrow(/ENOENT/);
 			await expect(lstat(skillLink)).rejects.toThrow(/ENOENT/);
 		});
@@ -533,7 +547,7 @@ describe("agent extensions", () => {
 		await mkdir(path.join(storage, "agent-v2/runtime/config/kilo2"), { recursive: true });
 		await writeFile(
 			path.join(storage, CONFIG_FILE),
-			JSON.stringify({ agent: { analyst: { prompt: "Mine." } } }),
+			JSON.stringify({ agents: { analyst: { system: "Mine." } } }),
 		);
 		const { kernel } = await boot(notebook.plugins, {
 			storage,
@@ -542,8 +556,8 @@ describe("agent extensions", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config.agent).toEqual({ analyst: { prompt: "Mine." } });
-		expect(config.command).toHaveProperty("analyse");
+		expect(config.agents).toEqual({ analyst: { system: "Mine." } });
+		expect(config.commands).toHaveProperty("analyse");
 	});
 
 	it("withdraws a Kilo plugin added at runtime when its contribution goes away", async () => {
@@ -598,6 +612,6 @@ describe("v1 state", () => {
 		).resolves.toBe(legacyConfig);
 		await expect(readFile(v1Config, "utf8")).resolves.toBe(legacyConfig);
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).not.toMatchObject({ mcp: { mine: expect.anything() } });
+		expect(config).not.toHaveProperty(["mcp", "servers", "mine"]);
 	});
 });

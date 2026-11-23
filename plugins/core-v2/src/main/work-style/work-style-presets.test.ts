@@ -1,147 +1,108 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	conflictingPermissionKeys,
-	planWorkStylePatch,
-	REVIEW_FIRST_PERMISSION,
-	type PermissionConfig,
+	conflictingPermissionActions,
+	planWorkStyle,
+	REVIEW_FIRST_RULES,
+	type PermissionRule,
 } from "./work-style-presets";
-import { mergePermission as applyKiloMerge } from "./test-work-style-client";
 
-const MACHINE_RULES: PermissionConfig = {
-	bash: "allow",
-	read: { "*": "allow", "secrets/*": "deny" },
-	external_directory: { "/Users/me/*": "allow", "/tmp/*": "allow" },
-	atlassian_searchJiraIssuesUsingJql: { "*": "allow" },
+const MCP_ALLOW: PermissionRule = {
+	action: "atlassian_searchJiraIssuesUsingJql",
+	resource: "*",
+	effect: "allow",
 };
 
-describe("planWorkStylePatch", () => {
-	it("writes the review-first block into a global config with no permission rules", () => {
-		const plan = planWorkStylePatch({
+const MACHINE_RULES: readonly PermissionRule[] = [
+	{ action: "shell", resource: "*", effect: "allow" },
+	MCP_ALLOW,
+	{ action: "read", resource: "*", effect: "allow" },
+	{ action: "read", resource: "secrets/*", effect: "deny" },
+	{ action: "external_directory", resource: "/tmp/*", effect: "allow" },
+];
+
+describe("planWorkStyle", () => {
+	it("writes the Review first rules into a config with no permission rules", () => {
+		const plan = planWorkStyle({
 			style: "human-in-the-loop",
-			globalPermission: undefined,
+			permissions: undefined,
 			applied: null,
 		});
 
-		expect(applyKiloMerge({}, plan.patches[0]!.permission)).toEqual(REVIEW_FIRST_PERMISSION);
-		expect(plan.patches[0]?.permission).toMatchObject({
-			edit: "ask",
-			external_directory: "ask",
-			read: { "*": "allow", "*.env": "ask", "*.env.*": "ask", "*.env.example": "allow" },
-			bash: { "*": "ask", "ls *": "allow", "*>*": "ask" },
-		});
-		expect(plan.applied).not.toBeNull();
+		expect(plan.permissions).toEqual(REVIEW_FIRST_RULES);
+		expect(plan.permissions).toContainEqual({ action: "shell", resource: "ls *", effect: "allow" });
+		expect(plan.applied).toEqual({ previous: [] });
 	});
 
-	it("overrides existing machine rules for every preset key, keeping unrelated tool rules", () => {
-		const plan = planWorkStylePatch({
+	it("replaces the rules of every preset action at the end, keeping other rules in place", () => {
+		const plan = planWorkStyle({
 			style: "human-in-the-loop",
-			globalPermission: MACHINE_RULES,
+			permissions: MACHINE_RULES,
 			applied: null,
 		});
 
-		const after = applyKiloMerge(MACHINE_RULES, plan.patches[0]!.permission);
-		expect(after).toEqual({
-			...REVIEW_FIRST_PERMISSION,
-			atlassian_searchJiraIssuesUsingJql: { "*": "allow" },
-		});
-		expect(plan.applied?.previous).toMatchObject({
-			bash: "allow",
-			read: { "*": "allow", "secrets/*": "deny" },
-			external_directory: { "/Users/me/*": "allow", "/tmp/*": "allow" },
-			edit: undefined,
-		});
+		expect(plan.permissions).toEqual([MCP_ALLOW, ...REVIEW_FIRST_RULES]);
+		expect(plan.applied?.previous).toEqual(MACHINE_RULES.filter((rule) => rule !== MCP_ALLOW));
 	});
 
-	it("writes nothing when the preset is already in place, keeping this run's record", () => {
-		const applied = { previous: { bash: "allow" as const } };
-		const plan = planWorkStylePatch({
+	it("writes nothing when the preset is already in place, keeping this session's record", () => {
+		const applied = { previous: [MACHINE_RULES[0]!] };
+		const plan = planWorkStyle({
 			style: "human-in-the-loop",
-			globalPermission: structuredClone(REVIEW_FIRST_PERMISSION),
+			permissions: [MCP_ALLOW, ...REVIEW_FIRST_RULES],
 			applied,
 		});
 
-		expect(plan).toEqual({ patches: [], applied });
+		expect(plan).toEqual({ permissions: undefined, applied });
 	});
 
-	it("writes nothing for high autonomy, leaving Kilo's defaults in place", () => {
-		expect(
-			planWorkStylePatch({ style: "autonomous", globalPermission: undefined, applied: null }),
-		).toEqual({ patches: [], applied: null });
-		expect(
-			planWorkStylePatch({ style: "autonomous", globalPermission: MACHINE_RULES, applied: null }),
-		).toEqual({ patches: [], applied: null });
-	});
-
-	it("restores the replaced machine rules when switching to high autonomy", () => {
-		const review = planWorkStylePatch({
+	it("restores the replaced rules for High autonomy after this session's Review first", () => {
+		const first = planWorkStyle({
 			style: "human-in-the-loop",
-			globalPermission: MACHINE_RULES,
+			permissions: MACHINE_RULES,
 			applied: null,
 		});
-		const written = applyKiloMerge(MACHINE_RULES, review.patches[0]!.permission);
-
-		const revert = planWorkStylePatch({
+		const back = planWorkStyle({
 			style: "autonomous",
-			globalPermission: written,
-			applied: review.applied,
+			permissions: first.permissions,
+			applied: first.applied,
 		});
 
-		expect(revert.applied).toBeNull();
-		expect(
-			revert.patches.reduce((config, patch) => applyKiloMerge(config, patch.permission), written),
-		).toEqual(MACHINE_RULES);
+		expect(back.permissions).toEqual([
+			MCP_ALLOW,
+			...MACHINE_RULES.filter((rule) => rule !== MCP_ALLOW),
+		]);
+		expect(back.applied).toBeNull();
 	});
 
-	it("removes the block entirely when there were no rules before", () => {
-		const review = planWorkStylePatch({
-			style: "human-in-the-loop",
-			globalPermission: undefined,
-			applied: null,
-		});
-		const written = applyKiloMerge({}, review.patches[0]!.permission);
-
-		const revert = planWorkStylePatch({
-			style: "autonomous",
-			globalPermission: written,
-			applied: review.applied,
-		});
-
+	it("leaves the config alone for High autonomy without this session's Review first", () => {
 		expect(
-			revert.patches.reduce((config, patch) => applyKiloMerge(config, patch.permission), written),
-		).toEqual({});
+			planWorkStyle({ style: "autonomous", permissions: REVIEW_FIRST_RULES, applied: null }),
+		).toEqual({ permissions: undefined, applied: null });
 	});
 
-	it("does not restore once the written rules have been changed since", () => {
-		const review = planWorkStylePatch({
-			style: "human-in-the-loop",
-			globalPermission: MACHINE_RULES,
-			applied: null,
-		});
-		const changed = {
-			...applyKiloMerge(MACHINE_RULES, review.patches[0]!.permission),
-			edit: "allow" as const,
-		};
-
+	it("leaves rules the user changed after Review first alone for High autonomy", () => {
+		const changed = [
+			...REVIEW_FIRST_RULES,
+			{ action: "edit", resource: "*", effect: "allow" } as const,
+		];
 		expect(
-			planWorkStylePatch({
-				style: "autonomous",
-				globalPermission: changed,
-				applied: review.applied,
-			}),
-		).toEqual({ patches: [], applied: null });
+			planWorkStyle({ style: "autonomous", permissions: changed, applied: { previous: [] } }),
+		).toEqual({ permissions: undefined, applied: null });
 	});
 });
 
-describe("conflictingPermissionKeys", () => {
-	it("lists preset keys the global config sets to something else", () => {
-		expect(conflictingPermissionKeys(undefined)).toEqual([]);
-		expect(conflictingPermissionKeys(structuredClone(REVIEW_FIRST_PERMISSION))).toEqual([]);
-		expect(conflictingPermissionKeys(MACHINE_RULES)).toEqual([
+describe("conflictingPermissionActions", () => {
+	it("names each preset action with a rule the preset lacks, once", () => {
+		expect(conflictingPermissionActions(MACHINE_RULES)).toEqual([
+			"shell",
 			"read",
 			"external_directory",
-			"bash",
 		]);
-		expect(conflictingPermissionKeys({ atlassian_searchJiraIssuesUsingJql: "allow" })).toEqual([]);
+	});
+
+	it("ignores the preset's own rules and rules for other actions", () => {
+		expect(conflictingPermissionActions([MCP_ALLOW, ...REVIEW_FIRST_RULES])).toEqual([]);
+		expect(conflictingPermissionActions(undefined)).toEqual([]);
 	});
 });

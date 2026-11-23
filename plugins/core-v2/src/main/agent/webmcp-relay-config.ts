@@ -4,7 +4,7 @@ import type { KiloLogger } from "./KiloServerManager.js";
 import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 
 /**
- * Reconciles the Desktop-owned `mcp.desktop` entry in Desktop's Kilo config.
+ * Reconciles the Desktop-owned `mcp.servers.desktop` entry in Desktop's Kilo config.
  * The entry points Kilo at the in-process Streamable HTTP endpoint
  * (`KiloToolEndpoint`). Generic JSONC mutation and ownership tracking live
  * in `KiloConfigManager`; this module only builds the entry and recognizes the
@@ -18,7 +18,7 @@ const STALE_WEBMCP_RELAY_ENTRY_NAMES = ["anaconda-desktop-relay"] as const;
 
 export type WebMcpChannel = "development" | "preview" | "stable";
 
-/** Stdio relay ids that earlier builds wrote into `mcp.desktop`, one per channel. */
+/** Stdio relay ids that earlier (v1) builds wrote into the `desktop` MCP entry, one per channel. */
 const LEGACY_STDIO_RELAY_IDS = new Set([
 	"kilo-desktop",
 	"kilo-desktop-preview",
@@ -37,12 +37,13 @@ export function webMcpChannelFromStorageDir(storageDir: string): WebMcpChannel {
 export const WEBMCP_ENDPOINT_URL_ENV = "KILO_DESKTOP_WEBMCP_URL";
 export const WEBMCP_ENDPOINT_TOKEN_ENV = "KILO_DESKTOP_WEBMCP_TOKEN";
 
+/** The entry in Kilo v2's own shape (`mcp.servers.desktop`). */
 export type WebMcpRelayEntry = Readonly<{
 	type: "remote";
 	url: string;
 	oauth: false;
 	headers: Readonly<Record<string, string>>;
-	enabled: true;
+	codemode: false;
 }>;
 
 const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
@@ -51,7 +52,9 @@ const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
 	// A loopback endpoint with a bearer token; skip Kilo's OAuth discovery.
 	oauth: false,
 	headers: { Authorization: `Bearer {env:${WEBMCP_ENDPOINT_TOKEN_ENV}}` },
-	enabled: true,
+	// v2 wraps MCP tools in Code Mode by default; Desktop's tool renderers and
+	// approvals need each tool called by its own name.
+	codemode: false,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

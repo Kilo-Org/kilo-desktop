@@ -1,4 +1,5 @@
 import { OpenCode } from "@kilocode/client";
+import { Definition as Settings } from "@opencode/schema/kilocode/settings";
 
 import type { ServerConnection } from "../contracts";
 
@@ -68,6 +69,51 @@ export async function pluginsListed(client: KiloV2Client, directory: string): Pr
 		if (listed) return;
 		await new Promise((resolve) => setTimeout(resolve, PLUGIN_POLL_MS));
 	}
+}
+
+/** A JSON value, as config keys hold them. */
+export type SettingsValue =
+	| null
+	| boolean
+	| number
+	| string
+	| readonly SettingsValue[]
+	| { readonly [key: string]: SettingsValue };
+
+/**
+ * The user's global Kilo config through the `kilocode.settings` RPC: v2's
+ * only write path for config keys (`config.get` is read-only). With
+ * `KILO2_CONFIG_DIR` set, "global" is Desktop's own config directory, so
+ * these never reach the user's `~/.config/kilo2`. Writes apply live; v2's
+ * config watcher reloads the location.
+ */
+export interface GlobalSettings {
+	/** The global config file as JSON; `{}` while it doesn't exist. */
+	read(): Promise<Readonly<Record<string, unknown>>>;
+	/**
+	 * Sets each key of `set` at its leaf paths (`null` removes; arrays are
+	 * replaced whole). v2 refuses keys outside its config schema.
+	 */
+	write(set: Readonly<Record<string, SettingsValue>>): Promise<void>;
+}
+
+export function globalSettings(client: KiloV2Client, directory: string): GlobalSettings {
+	const settings = client.rpc(Settings);
+	return {
+		async read() {
+			const { document } = await callRpc(client, directory, (options) =>
+				settings.read({ scope: "global" }, options),
+			);
+			return document !== null && typeof document === "object" && !Array.isArray(document)
+				? (document as Record<string, unknown>)
+				: {};
+		},
+		async write(set) {
+			await callRpc(client, directory, (options) =>
+				settings.write({ scope: "global", set }, options),
+			);
+		},
+	};
 }
 
 /**

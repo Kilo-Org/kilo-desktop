@@ -130,7 +130,7 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * restarts a CLI that won't accept an opt-out, so a failed sync never leaves
  * it collecting.
  *
- * Agent tools reach Kilo as its `mcp.desktop` entry, pointing at the tool
+ * Agent tools reach Kilo as its `mcp.servers.desktop` entry, pointing at the tool
  * gateway's endpoint through env vars set at every spawn; config-sync waits
  * for the gateway's first start so the first spawn already has them, and a
  * new endpoint (the gateway restarted) restarts a server spawned with the old

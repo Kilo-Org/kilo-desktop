@@ -1,53 +1,87 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createKiloClient, type KiloClientConfig } from "@kilocode/sdk/v2/client";
-
 import { mainHost, type PluginSdk } from "@kilo-desktop/kernel";
 
 import type { ServerConnection } from "../../contracts";
+import { createServerClient, globalSettings, pluginsListed, toKiloError } from "../server-client";
 import type { KiloModelsClient } from "./kilo-models-client";
+import { toV1GlobalConfig, toV2SettingsPatch } from "./kilo-v2-provider-config";
+import { toKiloProviderList } from "./kilo-v2-provider-list";
 import type { ModelsOptions } from "./models";
 
-type GlobalConfigUpdate = NonNullable<
-	NonNullable<
-		Parameters<ReturnType<typeof createKiloClient>["global"]["config"]["update"]>[0]
-	>["config"]
->;
+/**
+ * The models API of Desktop's Kilo v2 server, in its global directory's
+ * location: providers, models and connections from `integration.list`,
+ * `provider.list`, `model.list` and `model.default`; keys as credentials
+ * of the provider's integration; config through the `kilocode.settings` RPC in v2 keys.
+ */
+export function createKiloModelsClient(
+	connection: ServerConnection,
+	fetch: typeof globalThis.fetch = globalThis.fetch,
+): KiloModelsClient {
+	const directory = connection.globalDirectory;
+	const location = { directory };
+	const client = createServerClient(connection, fetch);
+	const settings = globalSettings(client, directory);
 
-/** The models API of a running Kilo server, through its SDK, scoped to its global directory. */
-export function createKiloModelsClient(connection: ServerConnection): KiloModelsClient {
-	const credentials = Buffer.from(`${connection.username}:${connection.password}`).toString(
-		"base64",
-	);
-	const config: KiloClientConfig & { directory: string } = {
-		baseUrl: connection.baseUrl,
-		headers: { Authorization: `Basic ${credentials}` },
-		directory: connection.globalDirectory,
-	};
-	const client = createKiloClient(config);
-	const options = { throwOnError: true } as const;
+	async function credentialsOf(integrationID: string) {
+		const credentials = await client.credential.list();
+		return credentials.filter((credential) => credential.integrationID === integrationID);
+	}
+
 	return {
 		async listAiProviders() {
-			const { data } = await client.provider.list({}, options);
-			return data;
+			// Plugins provide most integrations and models; until they register (after start
+			// and after `location.reload()`) the lists are partial.
+			await pluginsListed(client, directory);
+			try {
+				const [integrations, providers, models, defaultModel] = await Promise.all([
+					client.integration.list({ location }),
+					client.provider.list({ location }),
+					client.model.list({ location }),
+					client.model.default({ location }),
+				]);
+				return toKiloProviderList({
+					integrations: integrations.data,
+					providers: providers.data,
+					models: models.data,
+					defaultModel: defaultModel.data,
+				});
+			} catch (error) {
+				throw toKiloError(error);
+			}
 		},
 		async readGlobalConfig() {
-			const { data } = await client.global.config.get(options);
-			return data;
+			return toV1GlobalConfig(await settings.read());
 		},
 		async updateGlobalConfig(patch) {
-			// Kilo deep-merges the patch; its `null`s delete, which the SDK's config type can't express.
-			await client.global.config.update({ config: patch as GlobalConfigUpdate }, options);
+			await settings.write(toV2SettingsPatch(patch));
 		},
 		async setApiKey(aiProviderId, key) {
-			await client.auth.set({ providerID: aiProviderId, auth: { type: "api", key } }, options);
+			// v2 keeps every key it is given; v1 replaced the stored one, so the older keys go.
+			const previous = await credentialsOf(aiProviderId);
+			// `credential.create`, not `integration.connect.key`: a new custom provider's
+			// integration only exists once its config entry, written after the key, loads.
+			await client.credential.create({
+				integrationID: aiProviderId,
+				value: { type: "key", key },
+				activate: true,
+			});
+			await Promise.all(
+				previous
+					.filter((credential) => credential.value.type === "key")
+					.map((credential) => client.credential.remove({ credentialID: credential.id })),
+			);
 		},
 		async removeApiKey(aiProviderId) {
-			await client.auth.remove({ providerID: aiProviderId }, options);
+			const credentials = await credentialsOf(aiProviderId);
+			await Promise.all(
+				credentials.map((credential) => client.credential.remove({ credentialID: credential.id })),
+			);
 		},
 		async disposeInstances() {
-			await client.global.dispose();
+			await client.location.reload();
 		},
 	};
 }

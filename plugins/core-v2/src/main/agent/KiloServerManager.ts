@@ -114,7 +114,7 @@ export interface KiloServerManagerOptions {
 	readonly corsOrigins: readonly string[];
 	/**
 	 * The in-process WebMCP MCP endpoint, read at every spawn. Its URL and
-	 * token reach Kilo as env vars because Desktop's `mcp.desktop` config entry
+	 * token reach Kilo as env vars because Desktop's `mcp.servers.desktop` config entry
 	 * references them through Kilo's `{env:}` substitution.
 	 */
 	readonly webMcpEndpoint?: () => { readonly url: string; readonly token: string } | undefined;
@@ -521,7 +521,10 @@ export class KiloServerManager {
 		try {
 			await this.#ensureRuntimeDirectory();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
-			const environment = this.#createEnvironment(password, kiloInlineConfigContent());
+			const environment = this.#createEnvironment(
+				password,
+				kiloInlineConfigContent(this.#kiloBaseUrl()),
+			);
 			const args = [
 				"serve",
 				"--hostname",
@@ -741,7 +744,7 @@ export class KiloServerManager {
 			environment.KILO_MACHINE_ID = this.#options.installationId;
 		}
 		// Only Desktop's own endpoint may be named here; an inherited value
-		// would point Kilo's `mcp.desktop` entry somewhere else.
+		// would point Kilo's `mcp.servers.desktop` entry somewhere else.
 		const webMcpEndpoint = this.#options.webMcpEndpoint?.();
 		this.#lastSpawnedWebMcpEndpoint = webMcpEndpoint;
 		if (webMcpEndpoint) {

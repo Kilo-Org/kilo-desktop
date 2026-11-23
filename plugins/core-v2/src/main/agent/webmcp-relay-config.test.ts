@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME } from "./KiloConfigManager.js";
+import { KILO_V2_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME } from "./KiloConfigManager.js";
 import {
 	MCP_ENTRY_NAME,
 	MCP_ENTRY_SOURCE_ID,
@@ -23,7 +23,7 @@ const EXPECTED_ENTRY: WebMcpRelayEntry = {
 	url: "{env:KILO_DESKTOP_WEBMCP_URL}",
 	oauth: false,
 	headers: { Authorization: "Bearer {env:KILO_DESKTOP_WEBMCP_TOKEN}" },
-	enabled: true,
+	codemode: false,
 };
 
 /** The stdio relay child entry written by older Desktop builds. */
@@ -54,7 +54,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 	beforeEach(async () => {
 		tempDir = await mkdtemp(path.join(tmpdir(), "webmcp-relay-config-"));
 		configDir = path.join(tempDir, "config", "kilo");
-		configFile = path.join(configDir, KILO_CONFIG_FILENAME);
+		configFile = path.join(configDir, KILO_V2_CONFIG_FILENAME);
 		sidecarFile = path.join(configDir, OWNERSHIP_SIDECAR_FILENAME);
 		await mkdir(configDir, { recursive: true });
 	});
@@ -68,32 +68,37 @@ describe("reconcileWebMcpRelayConfig", () => {
 		return JSON.parse(raw) as Record<string, unknown>;
 	}
 
+	async function readServers(): Promise<Record<string, unknown> | undefined> {
+		const mcp = (await readConfig()).mcp as { servers?: Record<string, unknown> } | undefined;
+		return mcp?.servers;
+	}
+
 	async function readOwnedEntryKeys(): Promise<readonly string[]> {
 		const raw = await readFile(sidecarFile, "utf8");
 		const parsed = JSON.parse(raw) as { ownedEntryKeys: string[] };
 		return parsed.ownedEntryKeys;
 	}
 
-	it("writes to kilo.jsonc (not kilo.json)", async () => {
+	it("writes to kilo2.jsonc, the only global config file Kilo v2 reads", async () => {
 		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 		});
 		const raw = await readFile(configFile, "utf8");
 		expect(raw).toContain(MCP_ENTRY_NAME);
-		await expect(readFile(path.join(configDir, "kilo.json"), "utf8")).rejects.toThrow(/ENOENT/);
+		await expect(readFile(path.join(configDir, "kilo.jsonc"), "utf8")).rejects.toThrow(/ENOENT/);
 	});
 
-	it("creates the file with a schema-clean McpLocalConfig (no unknown top-level keys)", async () => {
+	it("creates the file with a schema-clean v2 MCP server (no unknown top-level keys)", async () => {
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
 		});
 
 		expect(outcome).toEqual({ kind: "written", reason: "created", entry: EXPECTED_ENTRY });
 		const config = await readConfig();
-		// kilo.jsonc must have ONLY schema-allowed top-level keys. Ownership
-		// tracking lives in a sidecar file, not in kilo.jsonc.
+		// The config must have ONLY schema-allowed top-level keys. Ownership
+		// tracking lives in a sidecar file, not in the config.
 		expect(Object.keys(config)).toEqual(["mcp"]);
-		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+		expect(config).toEqual({ mcp: { servers: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } } });
 		// The sidecar records ownership.
 		expect(await readOwnedEntryKeys()).toEqual([`mcp:${MCP_ENTRY_NAME}`]);
 		const sidecar = JSON.parse(await readFile(sidecarFile, "utf8")) as {
@@ -102,10 +107,16 @@ describe("reconcileWebMcpRelayConfig", () => {
 		expect(sidecar.owners).toEqual({ [`mcp:${MCP_ENTRY_NAME}`]: MCP_ENTRY_SOURCE_ID });
 	});
 
+	it("keeps Desktop's tools out of Kilo v2's Code Mode", async () => {
+		await reconcileWebMcpRelayConfig({ configDirectory: configDir });
+
+		expect((await readServers())?.[MCP_ENTRY_NAME]).toMatchObject({ codemode: false });
+	});
+
 	it("migrates the stdio relay entry written by earlier builds", async () => {
 		await writeFile(
 			configFile,
-			`${JSON.stringify({ mcp: { [MCP_ENTRY_NAME]: legacyStdioEntry() } }, undefined, 2)}\n`,
+			`${JSON.stringify({ mcp: { servers: { [MCP_ENTRY_NAME]: legacyStdioEntry() } } }, undefined, 2)}\n`,
 		);
 		await writeFile(
 			sidecarFile,
@@ -115,7 +126,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		const outcome = await reconcileWebMcpRelayConfig({ configDirectory: configDir });
 
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
-		expect(await readConfig()).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+		expect(await readConfig()).toEqual({ mcp: { servers: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } } });
 	});
 
 	it("adopts unowned stdio relay entries left by earlier Desktop builds", async () => {
@@ -124,8 +135,10 @@ describe("reconcileWebMcpRelayConfig", () => {
 			`${JSON.stringify(
 				{
 					mcp: {
-						[MCP_ENTRY_NAME]: legacyStdioEntry("anaconda-agentic-desktop"),
-						"anaconda-desktop-relay": legacyStdioEntry("anaconda-agentic-desktop"),
+						servers: {
+							[MCP_ENTRY_NAME]: legacyStdioEntry("anaconda-agentic-desktop"),
+							"anaconda-desktop-relay": legacyStdioEntry("anaconda-agentic-desktop"),
+						},
 					},
 				},
 				undefined,
@@ -137,7 +150,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		const outcome = await reconcileWebMcpRelayConfig({ configDirectory: configDir });
 
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
-		expect(await readConfig()).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+		expect(await readConfig()).toEqual({ mcp: { servers: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } } });
 	});
 
 	it("is idempotent: a second run returns 'up-to-date' and does not touch the files", async () => {
@@ -161,10 +174,12 @@ describe("reconcileWebMcpRelayConfig", () => {
   // Kilo global config; partly owned by Kilo Desktop.
   "$schema": "https://app.kilo.ai/config.json",
   "mcp": {
-    // user's own MCP servers
-    "my-custom": {
-      "type": "local",
-      "command": ["python", "-m", "my_mcp"]
+    "servers": {
+      // user's own MCP servers
+      "my-custom": {
+        "type": "local",
+        "command": ["python", "-m", "my_mcp"]
+      }
     }
   }
 }
@@ -209,15 +224,17 @@ describe("reconcileWebMcpRelayConfig", () => {
 	});
 
 	it("skips initialization when the user replaces our entry with an entry Desktop does not own (sidecar gone)", async () => {
-		// Simulate: user hand-edited kilo.jsonc and deleted the sidecar.
+		// Simulate: user hand-edited the config and deleted the sidecar.
 		await writeFile(
 			configFile,
 			`{
   "mcp": {
-    "${MCP_ENTRY_NAME}": {
-      "type": "local",
-      "command": ["/my/custom/node", "/my/relay.js"],
-      "environment": {}
+    "servers": {
+      "${MCP_ENTRY_NAME}": {
+        "type": "local",
+        "command": ["/my/custom/node", "/my/relay.js"],
+        "environment": {}
+      }
     }
   }
 }
@@ -230,8 +247,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		});
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "entry-not-owned" });
-		const config = await readConfig();
-		expect((config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME]).toMatchObject({
+		expect((await readServers())?.[MCP_ENTRY_NAME]).toMatchObject({
 			command: ["/my/custom/node", "/my/relay.js"],
 		});
 	});
@@ -247,10 +263,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		});
 
 		expect(outcome).toEqual({ kind: "removed", reason: "endpoint-unavailable" });
-		const config = await readConfig();
-		expect((config.mcp as Record<string, unknown> | undefined) ?? {}).not.toHaveProperty(
-			MCP_ENTRY_NAME,
-		);
+		expect((await readServers()) ?? {}).not.toHaveProperty(MCP_ENTRY_NAME);
 		// Sidecar pruned to empty → file removed to keep the config dir tidy.
 		await expect(readFile(sidecarFile, "utf8")).rejects.toThrow(/ENOENT/);
 	});
@@ -260,9 +273,11 @@ describe("reconcileWebMcpRelayConfig", () => {
 			configFile,
 			`{
   "mcp": {
-    "${MCP_ENTRY_NAME}": {
-      "type": "local",
-      "command": ["/my/custom/node", "/my/relay.js"]
+    "servers": {
+      "${MCP_ENTRY_NAME}": {
+        "type": "local",
+        "command": ["/my/custom/node", "/my/relay.js"]
+      }
     }
   }
 }
@@ -276,8 +291,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 		});
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "entry-not-owned" });
-		const config = await readConfig();
-		expect((config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME]).toMatchObject({
+		expect((await readServers())?.[MCP_ENTRY_NAME]).toMatchObject({
 			command: ["/my/custom/node", "/my/relay.js"],
 		});
 	});
@@ -301,7 +315,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 		const config = await readConfig();
-		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+		expect(config).toEqual({ mcp: { servers: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } } });
 		expect(await readOwnedEntryKeys()).toEqual([`mcp:${MCP_ENTRY_NAME}`]);
 	});
 
@@ -311,13 +325,13 @@ describe("reconcileWebMcpRelayConfig", () => {
 			configDirectory: deepDir,
 		});
 		expect(outcome.kind).toBe("written");
-		const raw = await readFile(path.join(deepDir, KILO_CONFIG_FILENAME), "utf8");
+		const raw = await readFile(path.join(deepDir, KILO_V2_CONFIG_FILENAME), "utf8");
 		expect(raw).toContain(MCP_ENTRY_NAME);
 		const sidecar = await readFile(path.join(deepDir, OWNERSHIP_SIDECAR_FILENAME), "utf8");
 		expect(JSON.parse(sidecar).ownedEntryKeys).toEqual([`mcp:${MCP_ENTRY_NAME}`]);
 	});
 
-	it("recovers when a prior initialization crashed after writing the sidecar but before writing kilo.jsonc", async () => {
+	it("recovers when a prior initialization crashed after writing the sidecar but before writing the config", async () => {
 		// This is the crash window the new write ordering (sidecar first,
 		// config second) is designed to survive. Simulate the intermediate
 		// state and verify the next boot self-heals — i.e. sees the sidecar
@@ -328,7 +342,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 			sidecarFile,
 			`${JSON.stringify({ version: 3, ownedEntryIds: [MCP_ENTRY_NAME], owners: {} }, undefined, 2)}\n`,
 		);
-		// No kilo.jsonc yet.
+		// No config file yet.
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
@@ -336,7 +350,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		expect(outcome).toMatchObject({ kind: "written" });
 		const config = await readConfig();
-		expect(config).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
+		expect(config).toEqual({ mcp: { servers: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } } });
 	});
 
 	it("refuses to write when jsonc-parser's modify() throws (e.g. mcp is a non-object value)", async () => {

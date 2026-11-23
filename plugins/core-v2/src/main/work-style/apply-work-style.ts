@@ -1,54 +1,47 @@
 import type { ServerConnection, WorkStyle } from "../../contracts";
 import {
-	conflictingPermissionKeys,
-	planWorkStylePatch,
+	conflictingPermissionActions,
+	planWorkStyle,
 	type AppliedWorkStyle,
-	type PermissionConfig,
-	type WorkStylePatch,
+	type PermissionRule,
 } from "./work-style-presets";
 
 /**
  * The part of the Kilo server's API the work-style area uses, so tests can
- * fake it. `readGlobalPermission` reads only the user's global files
- * (`~/.config/kilo/`), not Desktop's `KILO_CONFIG_DIR` (which carries
- * `suggest: deny`), so the conflict check sees exactly the rules the user
- * wrote themselves.
+ * fake it: the `permissions` list of the user's global config. On Kilo v2
+ * that is Desktop's own config directory (`KILO2_CONFIG_DIR`); writes apply
+ * live, so nothing needs reloading.
  */
 export interface KiloWorkStyleClient {
-	readGlobalPermission(): Promise<PermissionConfig | undefined>;
-	/** Deep-merges `patch` into the user's global config; `null` deletes. */
-	updateGlobalConfig(patch: WorkStylePatch): Promise<void>;
-	/** Disposes the server's instances so they reload the config. */
-	disposeInstances(): Promise<void>;
+	readGlobalPermissions(): Promise<readonly PermissionRule[] | undefined>;
+	/** Replaces the whole `permissions` list. */
+	writeGlobalPermissions(permissions: readonly PermissionRule[]): Promise<void>;
 }
 
 export type CreateKiloWorkStyleClient = (connection: ServerConnection) => KiloWorkStyleClient;
 
-/** Permission keys Review first would replace in the user's global config. */
+/** Permission actions whose rules Review first would replace in the user's global config. */
 export async function findConflictingPermissionKeys(
 	client: KiloWorkStyleClient,
 ): Promise<string[]> {
-	return conflictingPermissionKeys(await client.readGlobalPermission());
+	return conflictingPermissionActions(await client.readGlobalPermissions());
 }
 
 /**
- * Applies a work style to the user's global Kilo config, which is shared with
- * the Kilo CLI and VS Code extension. Returns this session's review-first
- * write (with the values it replaced) so a later switch can restore exactly them.
+ * Applies a work style to the user's global Kilo config. Returns this
+ * session's Review first write (with the rules it replaced) so a later switch
+ * can restore exactly them.
  */
 export async function applyWorkStyle(
 	client: KiloWorkStyleClient,
 	style: WorkStyle,
 	applied: AppliedWorkStyle | null,
 ): Promise<{ applied: AppliedWorkStyle | null }> {
-	const plan = planWorkStylePatch({
+	const plan = planWorkStyle({
 		style,
-		globalPermission: await client.readGlobalPermission(),
+		permissions: await client.readGlobalPermissions(),
 		applied,
 	});
-	// Sequential: every patch edits the same global config.
-	// react-doctor-disable-next-line react-doctor/async-await-in-loop
-	for (const patch of plan.patches) await client.updateGlobalConfig(patch);
-	if (plan.patches.length > 0) await client.disposeInstances();
+	if (plan.permissions) await client.writeGlobalPermissions(plan.permissions);
 	return { applied: plan.applied };
 }

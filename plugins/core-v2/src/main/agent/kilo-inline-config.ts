@@ -26,12 +26,19 @@ const ARCHIVE_COMMANDS_ASK: readonly PermissionRule[] = [
 
 /**
  * Desktop's inline Kilo v2 config, passed as `KILO_CONFIG_CONTENT`. Kilo
- * reads it after the global, project and `KILO2_CONFIG_DIR` configs. It makes
- * archive commands ask (see `ARCHIVE_COMMANDS_ASK`).
+ * reads it after the global, project and `KILO2_CONFIG_DIR` configs.
  *
- * The Kilo gateway origin needs no pin here: v2 reads it, indexing included,
- * from `KILO_API_URL`, which the server manager sets.
+ * - Makes archive commands ask (see `ARCHIVE_COMMANDS_ASK`).
+ * - Pins the Kilo embedder's base URL, so a project's `indexing.kilo.baseUrl`
+ *   cannot send the user's Kilo token elsewhere: Kilo merges `indexing` field
+ *   by field, the last document winning. The pin is the AI gateway base v2
+ *   derives from `kiloApiUrl` (`KILO_API_URL`), so indexing goes where it would
+ *   without a project override.
  */
-export function kiloInlineConfigContent(): string {
-	return JSON.stringify({ permissions: ARCHIVE_COMMANDS_ASK });
+export function kiloInlineConfigContent(kiloApiUrl: string): string {
+	const gateway = `${kiloApiUrl.replace(/\/+$/, "")}/api/gateway/v1`;
+	return JSON.stringify({
+		permissions: ARCHIVE_COMMANDS_ASK,
+		indexing: { kilo: { baseUrl: gateway } },
+	});
 }

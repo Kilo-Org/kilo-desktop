@@ -1016,7 +1016,7 @@ describe("owned config environment", () => {
 		const environment = spawn.mock.calls[0]![2].env;
 
 		expect(JSON.parse(environment.KILO_CONFIG_CONTENT!)).toEqual(
-			JSON.parse(kiloInlineConfigContent()),
+			JSON.parse(kiloInlineConfigContent("https://api.kilo.ai")),
 		);
 		expect(environment.kilo_config_content).toBeUndefined();
 		expect(environment.OPENCODE_CONFIG_CONTENT).toBeUndefined();
@@ -1034,6 +1034,19 @@ describe("owned config environment", () => {
 			action: "shell",
 			resource: "tar *",
 			effect: "ask",
+		});
+	});
+
+	it("pins the Kilo embedder in Desktop's inline config to the injected Kilo API", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin", KILO_API_URL: "http://127.0.0.1:9000" },
+		});
+		onTestFinished(() => manager.dispose());
+
+		await manager.ensureRunning();
+		const content = JSON.parse(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT!) as unknown;
+		expect(content).toMatchObject({
+			indexing: { kilo: { baseUrl: "http://127.0.0.1:9000/api/gateway/v1" } },
 		});
 	});
 

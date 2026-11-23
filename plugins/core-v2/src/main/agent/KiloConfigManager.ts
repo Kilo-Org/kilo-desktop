@@ -2,13 +2,29 @@ import { mkdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { writeFile as atomicWriteFile } from "atomically";
-import { applyEdits, modify, parseTree, printParseErrorCode } from "jsonc-parser";
+import {
+	applyEdits,
+	findNodeAtLocation,
+	modify,
+	parseTree,
+	printParseErrorCode,
+} from "jsonc-parser";
 import isEqual from "lodash/isEqual.js";
 
-import type { Node, ParseError } from "jsonc-parser";
+import type { JSONPath, Node, ParseError } from "jsonc-parser";
 import type { KiloLogger } from "./KiloServerManager.js";
 
-export const KILO_CONFIG_FILENAME = "kilo.jsonc";
+import {
+	toV2Agent,
+	toV2Command,
+	toV2McpServer,
+	toV2PermissionRule,
+	toV2Provider,
+	type V2Translation,
+} from "./kilo-v2-config-entries.js";
+
+/** Desktop's own Kilo v2 global config file (`KILO2_CONFIG_DIR` replaces v2's global config directory). */
+export const KILO_V2_CONFIG_FILENAME = "kilo2.jsonc";
 export const OWNERSHIP_SIDECAR_FILENAME = ".kilo-desktop-ownership.json";
 const LEGACY_OWNERSHIP_SIDECAR_FILENAMES = [
 	".anaconda-desktop-ownership.json",
@@ -16,6 +32,7 @@ const LEGACY_OWNERSHIP_SIDECAR_FILENAMES = [
 ] as const;
 const OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME = "anaconda-local";
 const SIDECAR_SCHEMA_VERSION = 4;
+const PERMISSIONS_KEY = "permissions";
 
 export type KiloConfigEntry = Readonly<Record<string, unknown>>;
 export type KiloMcpEntry = KiloConfigEntry;
@@ -181,7 +198,7 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 		// A legacy sidecar beside the current one comes from an older build that
 		// ran after the rename (e.g. switching branches that share a profile).
 		// Its entries were still written by Desktop, so fold them in; ignoring
-		// them orphans those entries in kilo.jsonc forever.
+		// them orphans those entries in the config file forever.
 		let { sidecar, requiresMigration } = current.result;
 		for (const filename of LEGACY_OWNERSHIP_SIDECAR_FILENAMES) {
 			// In order: each legacy sidecar folds into the result of the previous one.
@@ -286,33 +303,14 @@ function nodeToValue(node: Node | undefined): unknown {
 	return node.value;
 }
 
-function readEntry(root: Node | undefined, section: KiloConfigSection, name: string): unknown {
-	if (!root?.children) return undefined;
-	const sectionProperty = root.children.find(
-		(child) =>
-			child.type === "property" &&
-			child.children?.[0]?.type === "string" &&
-			child.children[0].value === section,
-	);
-	const sectionNode = sectionProperty?.children?.[1];
-	if (sectionNode?.type !== "object" || !sectionNode.children) return undefined;
-	const entryProperty = sectionNode.children.find(
-		(child) =>
-			child.type === "property" &&
-			child.children?.[0]?.type === "string" &&
-			child.children[0].value === name,
-	);
-	return nodeToValue(entryProperty?.children?.[1]);
+function readValue(root: Node | undefined, location: JSONPath): unknown {
+	if (!root) return undefined;
+	return nodeToValue(findNodeAtLocation(root, location));
 }
 
-function applyModification(
-	text: string,
-	section: KiloConfigSection,
-	entryName: string,
-	value: unknown,
-): string {
+function applyModification(text: string, location: JSONPath, value: unknown): string {
 	let result = text || "{}\n";
-	const edits = modify(result, [section, entryName], value, {
+	const edits = modify(result, location, value, {
 		formattingOptions: { insertSpaces: true, tabSize: 2 },
 	});
 	result = applyEdits(result, edits);
@@ -321,12 +319,11 @@ function applyModification(
 
 function tryApplyModification(
 	text: string,
-	section: KiloConfigSection,
-	entryName: string,
+	location: JSONPath,
 	value: unknown,
 ): { ok: true; text: string } | { ok: false; reason: string } {
 	try {
-		return { ok: true, text: applyModification(text, section, entryName, value) };
+		return { ok: true, text: applyModification(text, location, value) };
 	} catch (error) {
 		return {
 			ok: false,
@@ -335,15 +332,49 @@ function tryApplyModification(
 	}
 }
 
+/** Where each whole-object section's entries live in the v2 file, and their v1→v2 translation. */
+const ENTRY_LAYOUT: Readonly<
+	Record<
+		Exclude<KiloConfigSection, "permission">,
+		{
+			readonly location: (entryName: string) => JSONPath;
+			readonly translate: (entry: KiloConfigEntry) => V2Translation;
+		}
+	>
+> = {
+	mcp: { location: (name) => ["mcp", "servers", name], translate: toV2McpServer },
+	provider: { location: (name) => ["providers", name], translate: toV2Provider },
+	agent: { location: (name) => ["agents", name], translate: toV2Agent },
+	command: { location: (name) => ["commands", name], translate: toV2Command },
+};
+
+/** A config file and ownership sidecar read for one mutation. */
+interface Loaded {
+	readonly filePath: string;
+	readonly sidecarPath: string;
+	readonly created: boolean;
+	readonly text: string;
+	readonly root: Node | undefined;
+	readonly sidecar: Sidecar;
+}
+
 /**
- * Owns serialized mutations of Desktop's Kilo config and its ownership sidecar.
- * Unknown entries and JSONC formatting remain user-owned; only sidecar-owned
- * MCP, agent, command, provider, and permission entries may be updated or
- * removed, and MCP, agent and command entries may be enumerated by their
- * owning source. Each section-qualified entry is bound to
- * the source that first claimed it. Flat historical ownership records are
- * migrated as MCP ownership. The queue prevents independent features and the
- * boot-time WebMCP initialization from losing each other's writes.
+ * Owns serialized mutations of Desktop's Kilo v2 config (`kilo2.jsonc` in
+ * Desktop's `KILO2_CONFIG_DIR`, which is v2's whole global config directory)
+ * and its ownership sidecar. Callers describe entries in Kilo v1's shape;
+ * each is translated to v2's (`kilo-v2-config-entries.ts`) and written at its
+ * v2 key: `mcp.servers.<name>`, `providers.<id>`, `agents.<id>`,
+ * `commands.<id>`, and for a tool permission one `{ action, resource: "*",
+ * effect }` rule in the ordered `permissions` list (Desktop's is the first
+ * rule for that tool on every resource; other rules are never touched).
+ *
+ * Unknown entries and JSONC formatting stay user-owned; only sidecar-owned
+ * entries are updated or removed, compared as translated v2 entries. Sidecar
+ * keys stay `section:entry` in v1 section names, so ownership recorded by
+ * earlier builds carries over; each key is bound to the source that first
+ * claimed it, and flat historical records migrate as MCP ownership. The
+ * queue prevents independent features and the boot-time WebMCP
+ * initialization from losing each other's writes.
  */
 export class KiloConfigManager {
 	readonly #configDirectory: string;
@@ -445,17 +476,16 @@ export class KiloConfigManager {
 		return this.#enqueue(() => this.#replaceProviderEntry(sourceId, entryName, snapshot));
 	}
 
-	/** A user-authored rule for the same tool is left alone. */
+	/**
+	 * Owns the `{ action: <v2 tool name>, resource: "*", effect }` rule; a
+	 * user-authored rule for the same tool is left alone unless it already says the same.
+	 */
 	setPermissionEntry(
 		sourceId: string,
 		toolName: string,
 		action: KiloPermissionAction,
 	): Promise<KiloConfigMutationOutcome> {
-		return this.#enqueue(() =>
-			this.#updateEntry("permission", sourceId, toolName, action, {
-				adoptExisting: (current) => current === action,
-			}),
-		);
+		return this.#enqueue(() => this.#updatePermission(sourceId, toolName, action));
 	}
 
 	#enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -467,11 +497,56 @@ export class KiloConfigManager {
 		return result;
 	}
 
+	async #load(section: KiloConfigSection): Promise<Loaded | { readonly error: string }> {
+		await mkdir(this.#configDirectory, { recursive: true });
+		const filePath = path.join(this.#configDirectory, KILO_V2_CONFIG_FILENAME);
+		const existing = await readExistingConfig(filePath);
+		if (existing.kind === "unparseable") {
+			this.#logger.warn(
+				`Refusing to touch ${filePath}: ${existing.reason}. Fix the file or delete it.`,
+			);
+			return { error: existing.reason };
+		}
+		const sidecarResult = await readSidecar(this.#configDirectory);
+		if (sidecarResult.requiresMigration) {
+			await migrateSidecar(this.#configDirectory, sidecarResult.sidecar);
+		}
+		const root = existing.kind === "ok" ? existing.config.root : undefined;
+		if (section === "permission") {
+			const rules = root && findNodeAtLocation(root, [PERMISSIONS_KEY]);
+			if (rules && rules.type !== "array") {
+				return { error: `"${PERMISSIONS_KEY}" in ${filePath} is not a list of rules` };
+			}
+		}
+		return {
+			filePath,
+			sidecarPath: path.join(this.#configDirectory, OWNERSHIP_SIDECAR_FILENAME),
+			created: existing.kind === "absent",
+			text: existing.kind === "ok" ? existing.config.text : "",
+			root,
+			sidecar: sidecarResult.sidecar,
+		};
+	}
+
+	#translate(
+		section: Exclude<KiloConfigSection, "permission">,
+		entryName: string,
+		entry: KiloConfigEntry,
+	): KiloConfigEntry {
+		const { entry: translated, dropped } = ENTRY_LAYOUT[section].translate(entry);
+		if (dropped.length > 0) {
+			this.#logger.warn(
+				`Kilo v2 has no place for ${section} "${entryName}": ${dropped.join(", ")}; left out.`,
+			);
+		}
+		return translated;
+	}
+
 	async #updateEntry(
-		section: KiloConfigSection,
+		section: Exclude<KiloConfigSection, "permission">,
 		sourceId: string,
 		entryName: string,
-		entry: KiloConfigEntry | KiloPermissionAction | undefined,
+		entry: KiloConfigEntry | undefined,
 		options?: KiloEntryOptions,
 	): Promise<KiloConfigMutationOutcome> {
 		if (!sourceId.trim()) {
@@ -480,41 +555,78 @@ export class KiloConfigManager {
 		if (!entryName.trim()) {
 			return { kind: "skipped-error", reason: `${section} entry name is empty` };
 		}
+		const loaded = await this.#load(section);
+		if ("error" in loaded) return { kind: "skipped-error", reason: loaded.error };
+		const location = ENTRY_LAYOUT[section].location(entryName);
+		return this.#mutate(loaded, section, entryName, {
+			current: readValue(loaded.root, location),
+			location,
+			desired: entry && this.#translate(section, entryName, entry),
+			sourceId,
+			...(options ? { options } : {}),
+		});
+	}
 
-		await mkdir(this.#configDirectory, { recursive: true });
-		const filePath = path.join(this.#configDirectory, KILO_CONFIG_FILENAME);
-		const sidecarPath = path.join(this.#configDirectory, OWNERSHIP_SIDECAR_FILENAME);
-		const existing = await readExistingConfig(filePath);
-		if (existing.kind === "unparseable") {
-			this.#logger.warn(
-				`Refusing to touch ${filePath}: ${existing.reason}. Fix the file or delete it.`,
-			);
-			return { kind: "skipped-error", reason: existing.reason };
-		}
+	async #updatePermission(
+		sourceId: string,
+		toolName: string,
+		effect: KiloPermissionAction,
+	): Promise<KiloConfigMutationOutcome> {
+		if (!sourceId.trim()) return { kind: "skipped-error", reason: "permission source id is empty" };
+		if (!toolName.trim()) return { kind: "skipped-error", reason: "permission tool name is empty" };
+		const loaded = await this.#load("permission");
+		if ("error" in loaded) return { kind: "skipped-error", reason: loaded.error };
+		const rule = toV2PermissionRule(toolName, effect);
+		const rules = readValue(loaded.root, [PERMISSIONS_KEY]);
+		const list = Array.isArray(rules) ? rules : [];
+		// Desktop's rule for a tool is the first rule for that tool on every resource.
+		const index = list.findIndex(
+			(candidate: unknown) =>
+				typeof candidate === "object" &&
+				candidate !== null &&
+				(candidate as Record<string, unknown>).action === rule.action &&
+				(candidate as Record<string, unknown>).resource === rule.resource,
+		);
+		return this.#mutate(loaded, "permission", toolName, {
+			current: index === -1 ? undefined : list[index],
+			location: [PERMISSIONS_KEY, index === -1 ? -1 : index],
+			desired: rule,
+			sourceId,
+			options: { adoptExisting: (current) => isEqual(current, rule) },
+		});
+	}
 
-		const sidecarResult = await readSidecar(this.#configDirectory);
-		const sidecar = sidecarResult.sidecar;
-		if (sidecarResult.requiresMigration) {
-			await migrateSidecar(this.#configDirectory, sidecar);
-		}
-		const root = existing.kind === "ok" ? existing.config.root : undefined;
-		const text = existing.kind === "ok" ? existing.config.text : "";
-		const currentEntry = readEntry(root, section, entryName);
+	/**
+	 * Writes or removes one entry at `location` if Desktop's `sourceId` owns it
+	 * (or may adopt it), comparing the v2 entry with what is in the file.
+	 */
+	async #mutate(
+		loaded: Loaded,
+		section: KiloConfigSection,
+		entryName: string,
+		change: {
+			readonly current: unknown;
+			readonly location: JSONPath;
+			readonly desired: unknown;
+			readonly sourceId: string;
+			readonly options?: KiloEntryOptions;
+		},
+	): Promise<KiloConfigMutationOutcome> {
+		const { filePath, sidecarPath, sidecar, text } = loaded;
+		const { current, location, desired, sourceId, options } = change;
 		const key = ownershipKey(section, entryName);
 		const isOwnedByDesktop = sidecar.ownedEntryKeys.includes(key);
 		const owner = sidecar.owners[key];
 		const canAdopt =
-			!isOwnedByDesktop &&
-			currentEntry !== undefined &&
-			options?.adoptExisting?.(currentEntry) === true;
+			!isOwnedByDesktop && current !== undefined && options?.adoptExisting?.(current) === true;
 		const ownsEntry = isOwnedByDesktop || canAdopt;
 
 		if (isOwnedByDesktop && owner !== undefined && owner !== sourceId) {
 			return { kind: "skipped", reason: "owned-by-other-source" };
 		}
 
-		if (entry === undefined) {
-			if (currentEntry === undefined) {
+		if (desired === undefined) {
+			if (current === undefined) {
 				if (isOwnedByDesktop) {
 					await writeSidecar(sidecarPath, removeOwnership(sidecar, key));
 				}
@@ -526,32 +638,29 @@ export class KiloConfigManager {
 				);
 				return { kind: "skipped", reason: "entry-not-owned" };
 			}
-			const removed = tryApplyModification(text, section, entryName, undefined);
+			const removed = tryApplyModification(text, location, undefined);
 			if (!removed.ok) return { kind: "skipped-error", reason: removed.reason };
 			await atomicWriteFile(filePath, removed.text, { encoding: "utf8" });
 			await writeSidecar(sidecarPath, removeOwnership(sidecar, key));
 			return { kind: "removed", reason: "explicit" };
 		}
 
-		if (currentEntry !== undefined && !ownsEntry) {
+		if (current !== undefined && !ownsEntry) {
 			this.#logger.info(`Leaving ${section}["${entryName}"] alone: entry is not owned by Desktop.`);
 			return { kind: "skipped", reason: "entry-not-owned" };
 		}
-		if (isOwnedByDesktop && isEqual(currentEntry, entry)) {
+		if (isOwnedByDesktop && isEqual(current, desired)) {
 			if (owner === undefined) {
 				await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
 			}
 			return { kind: "skipped", reason: "up-to-date" };
 		}
 
-		const nextConfig = tryApplyModification(text, section, entryName, entry);
+		const nextConfig = tryApplyModification(text, location, desired);
 		if (!nextConfig.ok) return { kind: "skipped-error", reason: nextConfig.reason };
 		await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
 		await atomicWriteFile(filePath, nextConfig.text, { encoding: "utf8" });
-		return {
-			kind: "written",
-			reason: existing.kind === "absent" ? "created" : "updated",
-		};
+		return { kind: "written", reason: loaded.created ? "created" : "updated" };
 	}
 
 	async #replaceProviderEntry(
@@ -563,25 +672,16 @@ export class KiloConfigManager {
 		if (!entryName.trim()) {
 			return { kind: "skipped-error", reason: "provider entry name is empty" };
 		}
-
-		await mkdir(this.#configDirectory, { recursive: true });
-		const filePath = path.join(this.#configDirectory, KILO_CONFIG_FILENAME);
-		const sidecarPath = path.join(this.#configDirectory, OWNERSHIP_SIDECAR_FILENAME);
-		const existing = await readExistingConfig(filePath);
-		if (existing.kind === "unparseable") {
-			return { kind: "skipped-error", reason: existing.reason };
-		}
-
-		const sidecarResult = await readSidecar(this.#configDirectory);
-		let sidecar = sidecarResult.sidecar;
-		if (sidecarResult.requiresMigration) await migrateSidecar(this.#configDirectory, sidecar);
-
-		const root = existing.kind === "ok" ? existing.config.root : undefined;
-		const originalText = existing.kind === "ok" ? existing.config.text : "";
-		const currentEntry = readEntry(root, "provider", entryName);
-		const legacyEntry = readEntry(root, "provider", OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME);
+		const loaded = await this.#load("provider");
+		if ("error" in loaded) return { kind: "skipped-error", reason: loaded.error };
+		const { location } = ENTRY_LAYOUT.provider;
+		const desired = this.#translate("provider", entryName, entry);
+		const currentEntry = readValue(loaded.root, location(entryName));
+		const legacyLocation = location(OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME);
+		const legacyEntry = readValue(loaded.root, legacyLocation);
 		const key = ownershipKey("provider", entryName);
 		const legacyKey = ownershipKey("provider", OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME);
+		let sidecar = loaded.sidecar;
 		const isOwned = sidecar.ownedEntryKeys.includes(key);
 		const owner = sidecar.owners[key];
 
@@ -592,35 +692,26 @@ export class KiloConfigManager {
 			return { kind: "skipped", reason: "entry-not-owned" };
 		}
 
-		if (isOwned && isEqual(currentEntry, entry) && legacyEntry === undefined) {
+		if (isOwned && isEqual(currentEntry, desired) && legacyEntry === undefined) {
 			if (owner === undefined)
-				await writeSidecar(sidecarPath, assignOwnership(sidecar, key, sourceId));
+				await writeSidecar(loaded.sidecarPath, assignOwnership(sidecar, key, sourceId));
 			return { kind: "skipped", reason: "up-to-date" };
 		}
 
-		let nextText = originalText;
-		const updated = tryApplyModification(nextText, "provider", entryName, entry);
+		const updated = tryApplyModification(loaded.text, location(entryName), desired);
 		if (!updated.ok) return { kind: "skipped-error", reason: updated.reason };
-		nextText = updated.text;
+		let nextText = updated.text;
 		sidecar = assignOwnership(sidecar, key, sourceId);
 		if (legacyEntry !== undefined) {
-			const removed = tryApplyModification(
-				nextText,
-				"provider",
-				OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME,
-				undefined,
-			);
+			const removed = tryApplyModification(nextText, legacyLocation, undefined);
 			if (!removed.ok) return { kind: "skipped-error", reason: removed.reason };
 			nextText = removed.text;
 		}
 		sidecar = removeOwnership(sidecar, legacyKey);
 
-		await writeSidecar(sidecarPath, sidecar);
-		await atomicWriteFile(filePath, nextText, { encoding: "utf8" });
-		return {
-			kind: "written",
-			reason: existing.kind === "absent" ? "created" : "updated",
-		};
+		await writeSidecar(loaded.sidecarPath, sidecar);
+		await atomicWriteFile(loaded.filePath, nextText, { encoding: "utf8" });
+		return { kind: "written", reason: loaded.created ? "created" : "updated" };
 	}
 }
 

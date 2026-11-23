@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { parse } from "jsonc-parser";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-	KILO_CONFIG_FILENAME,
+	KILO_V2_CONFIG_FILENAME,
 	OWNERSHIP_SIDECAR_FILENAME,
 	KiloConfigManager,
 } from "./KiloConfigManager.js";
@@ -31,8 +31,12 @@ describe("KiloConfigManager", () => {
 
 	async function readConfig(): Promise<Record<string, Record<string, unknown> | undefined>> {
 		return parse(
-			await readFile(path.join(configDirectory, KILO_CONFIG_FILENAME), "utf8"),
+			await readFile(path.join(configDirectory, KILO_V2_CONFIG_FILENAME), "utf8"),
 		) as Record<string, Record<string, unknown> | undefined>;
+	}
+
+	async function mcpServers(): Promise<Record<string, unknown> | undefined> {
+		return (await readConfig()).mcp?.servers as Record<string, unknown> | undefined;
 	}
 
 	it("serializes concurrent writers so both Desktop-owned entries survive", async () => {
@@ -49,7 +53,7 @@ describe("KiloConfigManager", () => {
 			}),
 		]);
 
-		expect((await readConfig()).mcp).toEqual({
+		expect(await mcpServers()).toEqual({
 			one: { type: "remote", url: "https://one.test/mcp" },
 			two: { type: "remote", url: "https://two.test/mcp" },
 		});
@@ -86,8 +90,8 @@ describe("KiloConfigManager", () => {
 
 	it("owns agent and command entries per section and source, beside the user's", async () => {
 		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
-			`${JSON.stringify({ agent: { mine: { prompt: "user agent" } } })}\n`,
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
+			`${JSON.stringify({ agents: { mine: { system: "user agent" } } })}\n`,
 		);
 		const config = new KiloConfigManager(configDirectory);
 		const reviewer = { description: "Reviews", prompt: "Review it.", mode: "subagent" };
@@ -103,8 +107,11 @@ describe("KiloConfigManager", () => {
 		).resolves.toEqual({ kind: "skipped", reason: "entry-not-owned" });
 
 		expect(await readConfig()).toEqual({
-			agent: { mine: { prompt: "user agent" }, reviewer },
-			command: {
+			agents: {
+				mine: { system: "user agent" },
+				reviewer: { description: "Reviews", system: "Review it.", mode: "subagent" },
+			},
+			commands: {
 				reviewer: { template: "Review $ARGUMENTS" },
 				other: { template: "Other" },
 			},
@@ -121,16 +128,16 @@ describe("KiloConfigManager", () => {
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
-		expect((await readConfig()).agent).toEqual({ mine: { prompt: "user agent" } });
+		expect((await readConfig()).agents).toEqual({ mine: { system: "user agent" } });
 	});
 
 	it("preserves user comments and refuses to claim an entry Desktop does not own", async () => {
-		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
 		await writeFile(
 			filePath,
 			`{
   // user-owned entry
-  "mcp": { "shared": { "type": "remote", "url": "https://user.test" } }
+  "mcp": { "servers": { "shared": { "type": "remote", "url": "https://user.test" } } }
 }
 `,
 		);
@@ -143,15 +150,18 @@ describe("KiloConfigManager", () => {
 			}),
 		).resolves.toEqual({ kind: "skipped", reason: "entry-not-owned" });
 		expect(await readFile(filePath, "utf8")).toContain("// user-owned entry");
-		expect((await readConfig()).mcp?.shared).toEqual({
+		expect((await mcpServers())?.shared).toEqual({
 			type: "remote",
 			url: "https://user.test",
 		});
 	});
 
-	it("adds a Desktop-owned permission rule beside user rules", async () => {
-		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
-		await writeFile(filePath, `{\n  "permission": { "bash": "allow" }\n}\n`);
+	it("appends a Desktop-owned permission rule after the user's rules", async () => {
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
+		await writeFile(
+			filePath,
+			`{\n  // user rules\n  "permissions": [{ "action": "shell", "resource": "*", "effect": "allow" }]\n}\n`,
+		);
 		const config = new KiloConfigManager(configDirectory);
 
 		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toEqual({
@@ -162,22 +172,76 @@ describe("KiloConfigManager", () => {
 			kind: "skipped",
 			reason: "up-to-date",
 		});
+		expect(await readFile(filePath, "utf8")).toContain("// user rules");
 		expect(parse(await readFile(filePath, "utf8"))).toEqual({
-			permission: { bash: "allow", suggest: "deny" },
+			permissions: [
+				{ action: "shell", resource: "*", effect: "allow" },
+				{ action: "suggest", resource: "*", effect: "deny" },
+			],
+		});
+	});
+
+	it("changes its own permission rule in place, leaving rules around it alone", async () => {
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
+		const config = new KiloConfigManager(configDirectory);
+		await config.setPermissionEntry(SOURCE_ONE, "bash", "ask");
+		const userRule = { action: "edit", resource: "*.md", effect: "allow" };
+		const current = parse(await readFile(filePath, "utf8")) as { permissions: unknown[] };
+		await writeFile(filePath, JSON.stringify({ permissions: [...current.permissions, userRule] }));
+
+		await expect(config.setPermissionEntry(SOURCE_ONE, "bash", "deny")).resolves.toEqual({
+			kind: "written",
+			reason: "updated",
+		});
+		expect(parse(await readFile(filePath, "utf8"))).toEqual({
+			permissions: [{ action: "shell", resource: "*", effect: "deny" }, userRule],
 		});
 	});
 
 	it("leaves a user-authored permission rule for the same tool alone", async () => {
-		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
-		await writeFile(filePath, `{\n  "permission": { "suggest": "allow" }\n}\n`);
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
+		const userRules = {
+			permission: { suggest: "deny" },
+			permissions: [{ action: "suggest", resource: "*", effect: "allow" }],
+		};
+		await writeFile(filePath, JSON.stringify(userRules));
 		const config = new KiloConfigManager(configDirectory);
 
 		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toEqual({
 			kind: "skipped",
 			reason: "entry-not-owned",
 		});
+		expect(parse(await readFile(filePath, "utf8"))).toEqual(userRules);
+	});
+
+	it("adopts a user-authored permission rule that already says the same", async () => {
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
+		await writeFile(
+			filePath,
+			JSON.stringify({ permissions: [{ action: "suggest", resource: "*", effect: "deny" }] }),
+		);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toEqual({
+			kind: "written",
+			reason: "updated",
+		});
+		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "allow")).resolves.toEqual({
+			kind: "written",
+			reason: "updated",
+		});
 		expect(parse(await readFile(filePath, "utf8"))).toEqual({
-			permission: { suggest: "allow" },
+			permissions: [{ action: "suggest", resource: "*", effect: "allow" }],
+		});
+	});
+
+	it("refuses to touch a permissions value that isn't a list", async () => {
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
+		await writeFile(filePath, JSON.stringify({ permissions: { suggest: "allow" } }));
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toMatchObject({
+			kind: "skipped-error",
 		});
 	});
 
@@ -192,7 +256,7 @@ describe("KiloConfigManager", () => {
 			kind: "removed",
 			reason: "explicit",
 		});
-		expect((await readConfig()).mcp).not.toHaveProperty("owned");
+		expect(await mcpServers()).not.toHaveProperty("owned");
 		await expect(
 			readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
 		).rejects.toThrow(/ENOENT/);
@@ -215,7 +279,7 @@ describe("KiloConfigManager", () => {
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
-		expect((await readConfig()).mcp?.shared).toEqual({
+		expect((await mcpServers())?.shared).toEqual({
 			type: "remote",
 			url: "https://one.test/mcp",
 		});
@@ -226,7 +290,7 @@ describe("KiloConfigManager", () => {
 				url: "https://one.test/updated",
 			}),
 		).resolves.toMatchObject({ kind: "written" });
-		expect((await readConfig()).mcp?.shared).toMatchObject({
+		expect((await mcpServers())?.shared).toMatchObject({
 			url: "https://one.test/updated",
 		});
 	});
@@ -238,7 +302,7 @@ describe("KiloConfigManager", () => {
 		entry.url = "https://mutated.test";
 
 		await writing;
-		expect((await readConfig()).mcp?.snapshot).toMatchObject({
+		expect((await mcpServers())?.snapshot).toMatchObject({
 			url: "https://original.test",
 		});
 	});
@@ -260,10 +324,10 @@ describe("KiloConfigManager", () => {
 				options: { baseURL: "http://127.0.0.1:43124/v1" },
 			}),
 		).resolves.toEqual({ kind: "written", reason: "updated" });
-		expect((await readConfig()).provider?.["kilo-desktop-model-server"]).toEqual({
+		expect((await readConfig()).providers?.["kilo-desktop-model-server"]).toEqual({
 			name: "Local inference",
-			npm: "@ai-sdk/openai-compatible",
-			options: { baseURL: "http://127.0.0.1:43124/v1" },
+			package: "@ai-sdk/openai-compatible",
+			settings: { baseURL: "http://127.0.0.1:43124/v1" },
 		});
 
 		await expect(
@@ -272,13 +336,13 @@ describe("KiloConfigManager", () => {
 			kind: "removed",
 			reason: "explicit",
 		});
-		expect((await readConfig()).provider).not.toHaveProperty("kilo-desktop-model-server");
+		expect((await readConfig()).providers).not.toHaveProperty("kilo-desktop-model-server");
 	});
 
 	it("migrates legacy ownership and renames the Desktop-owned local provider", async () => {
 		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
-			`${JSON.stringify({ provider: { "anaconda-local": { name: "Local" } } })}\n`,
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
+			`${JSON.stringify({ providers: { "anaconda-local": { name: "Local" } } })}\n`,
 		);
 		await writeFile(
 			path.join(configDirectory, LEGACY_OWNERSHIP_SIDECAR_FILENAME),
@@ -296,7 +360,7 @@ describe("KiloConfigManager", () => {
 			}),
 		).resolves.toEqual({ kind: "written", reason: "updated" });
 
-		expect((await readConfig()).provider).toEqual({
+		expect((await readConfig()).providers).toEqual({
 			"kilo-desktop-model-server": { name: "Local model server" },
 		});
 		const sidecar = JSON.parse(
@@ -313,12 +377,14 @@ describe("KiloConfigManager", () => {
 
 	it("folds a legacy sidecar left beside the current one so its entries stay removable", async () => {
 		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
 			`${JSON.stringify({
 				mcp: {
-					desktop: { type: "local" },
-					notebooks: { type: "local" },
-					"nteract-mcp": { type: "local" },
+					servers: {
+						desktop: { type: "local" },
+						notebooks: { type: "local" },
+						"nteract-mcp": { type: "local" },
+					},
 				},
 			})}\n`,
 		);
@@ -354,7 +420,7 @@ describe("KiloConfigManager", () => {
 			reason: "explicit",
 		});
 
-		expect(Object.keys((await readConfig()).mcp ?? {})).toEqual(["desktop", "nteract-mcp"]);
+		expect(Object.keys((await mcpServers()) ?? {})).toEqual(["desktop", "nteract-mcp"]);
 		await expect(
 			readFile(path.join(configDirectory, LEGACY_OWNERSHIP_SIDECAR_FILENAME), "utf8"),
 		).rejects.toThrow(/ENOENT/);
@@ -362,8 +428,8 @@ describe("KiloConfigManager", () => {
 
 	it("removes the reserved legacy local provider without ownership metadata", async () => {
 		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
-			`${JSON.stringify({ provider: { "anaconda-local": { name: "User local" } } })}\n`,
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
+			`${JSON.stringify({ providers: { "anaconda-local": { name: "User local" } } })}\n`,
 		);
 		const config = new KiloConfigManager(configDirectory);
 
@@ -372,16 +438,16 @@ describe("KiloConfigManager", () => {
 				name: "Local model server",
 			}),
 		).resolves.toEqual({ kind: "written", reason: "updated" });
-		expect((await readConfig()).provider).toEqual({
+		expect((await readConfig()).providers).toEqual({
 			"kilo-desktop-model-server": { name: "Local model server" },
 		});
 	});
 
 	it("refuses to overwrite an unowned renamed provider", async () => {
 		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
 			`${JSON.stringify({
-				provider: { "kilo-desktop-model-server": { name: "User server" } },
+				providers: { "kilo-desktop-model-server": { name: "User server" } },
 			})}\n`,
 		);
 		const config = new KiloConfigManager(configDirectory);
@@ -391,19 +457,19 @@ describe("KiloConfigManager", () => {
 				name: "Local model server",
 			}),
 		).resolves.toEqual({ kind: "skipped", reason: "entry-not-owned" });
-		expect((await readConfig()).provider).toEqual({
+		expect((await readConfig()).providers).toEqual({
 			"kilo-desktop-model-server": { name: "User server" },
 		});
 	});
 
 	it("preserves JSONC while refusing to overwrite a user-owned provider", async () => {
-		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
+		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
 		await writeFile(
 			filePath,
 			`{
   // keep this provider and comment
-  "provider": {
-    "user-local": { "name": "User local", "npm": "@ai-sdk/openai-compatible" },
+  "providers": {
+    "user-local": { "name": "User local", "package": "@ai-sdk/openai-compatible" },
   },
   // keep unrelated settings
   "theme": "system",
@@ -426,8 +492,8 @@ describe("KiloConfigManager", () => {
 		const text = await readFile(filePath, "utf8");
 		expect(text).toContain("// keep this provider and comment");
 		expect(text).toContain("// keep unrelated settings");
-		expect((await readConfig()).provider).toEqual({
-			"user-local": { name: "User local", npm: "@ai-sdk/openai-compatible" },
+		expect((await readConfig()).providers).toEqual({
+			"user-local": { name: "User local", package: "@ai-sdk/openai-compatible" },
 			"kilo-desktop-model-server": { name: "Local" },
 		});
 	});
@@ -446,8 +512,8 @@ describe("KiloConfigManager", () => {
 		).resolves.toMatchObject({ kind: "written" });
 
 		const contents = await readConfig();
-		expect(contents.mcp?.shared).toMatchObject({ type: "remote" });
-		expect(contents.provider?.shared).toEqual({ name: "Shared provider" });
+		expect((await mcpServers())?.shared).toMatchObject({ type: "remote" });
+		expect(contents.providers?.shared).toEqual({ name: "Shared provider" });
 		const sidecar = JSON.parse(
 			await readFile(path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME), "utf8"),
 		) as { ownedEntryKeys: string[]; owners: Record<string, string> };
@@ -471,7 +537,9 @@ describe("KiloConfigManager", () => {
 			kind: "skipped",
 			reason: "owned-by-other-source",
 		});
-		expect((await readConfig()).provider?.["kilo-desktop-model-server"]).toEqual({ name: "Local" });
+		expect((await readConfig()).providers?.["kilo-desktop-model-server"]).toEqual({
+			name: "Local",
+		});
 	});
 
 	it("skips an idempotent provider write without changing the config", async () => {
@@ -481,7 +549,7 @@ describe("KiloConfigManager", () => {
 			options: { baseURL: "http://127.0.0.1:43123/v1" },
 		};
 		await config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", entry);
-		const before = await readFile(path.join(configDirectory, KILO_CONFIG_FILENAME), "utf8");
+		const before = await readFile(path.join(configDirectory, KILO_V2_CONFIG_FILENAME), "utf8");
 
 		await expect(
 			config.setProviderEntry(SOURCE_ONE, "kilo-desktop-model-server", entry),
@@ -489,14 +557,16 @@ describe("KiloConfigManager", () => {
 			kind: "skipped",
 			reason: "up-to-date",
 		});
-		expect(await readFile(path.join(configDirectory, KILO_CONFIG_FILENAME), "utf8")).toBe(before);
+		expect(await readFile(path.join(configDirectory, KILO_V2_CONFIG_FILENAME), "utf8")).toBe(
+			before,
+		);
 	});
 
 	it("migrates the current flat MCP ownership sidecar to section-qualified keys", async () => {
 		await writeFile(
-			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			path.join(configDirectory, KILO_V2_CONFIG_FILENAME),
 			`${JSON.stringify({
-				mcp: { shared: { type: "remote", url: "https://one.test/mcp" } },
+				mcp: { servers: { shared: { type: "remote", url: "https://one.test/mcp" } } },
 			})}\n`,
 		);
 		await writeFile(
@@ -524,5 +594,28 @@ describe("KiloConfigManager", () => {
 				"provider:shared": SOURCE_TWO,
 			},
 		});
+	});
+
+	it("writes v2 MCP entries and warns about fields v2 has no place for", async () => {
+		const warn = vi.fn();
+		const config = new KiloConfigManager(configDirectory, { info() {}, warn, error() {} });
+		const entry = { type: "local", command: ["server"], enabled: true, timeout: 500, stray: 1 };
+
+		await expect(config.setMcpEntry(SOURCE_ONE, "server", entry)).resolves.toEqual({
+			kind: "written",
+			reason: "created",
+		});
+		await expect(config.setMcpEntry(SOURCE_ONE, "server", entry)).resolves.toEqual({
+			kind: "skipped",
+			reason: "up-to-date",
+		});
+
+		expect((await mcpServers())?.server).toEqual({
+			type: "local",
+			command: ["server"],
+			disabled: false,
+			timeout: { startup: 500, catalog: 500, execution: 500 },
+		});
+		expect(warn).toHaveBeenCalledWith(expect.stringContaining('mcp "server": stray'));
 	});
 });

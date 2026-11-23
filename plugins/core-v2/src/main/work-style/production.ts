@@ -1,45 +1,41 @@
-import { createKiloClient, type KiloClientConfig } from "@kilocode/sdk/v2/client";
-
 import type { PluginSdk } from "@kilo-desktop/kernel";
 
 import type { ServerConnection } from "../../contracts";
+import { createServerClient, globalSettings, type SettingsValue } from "../server-client";
 import type { KiloWorkStyleClient, WorkStyleOptions } from "./index";
-import type { PermissionConfig } from "./work-style-presets";
+import type { PermissionRule } from "./work-style-presets";
 
-type GlobalConfigUpdate = NonNullable<
-	NonNullable<
-		Parameters<ReturnType<typeof createKiloClient>["global"]["config"]["update"]>[0]
-	>["config"]
->;
-
-/** The global config API of a running Kilo server, through its SDK, scoped to its global directory. */
-export function createKiloWorkStyleClient(connection: ServerConnection): KiloWorkStyleClient {
-	const credentials = Buffer.from(`${connection.username}:${connection.password}`).toString(
-		"base64",
+function isRule(value: unknown): value is PermissionRule {
+	if (!value || typeof value !== "object") return false;
+	const rule = value as Record<string, unknown>;
+	return (
+		typeof rule.action === "string" &&
+		typeof rule.resource === "string" &&
+		(rule.effect === "allow" || rule.effect === "ask" || rule.effect === "deny")
 	);
-	const config: KiloClientConfig & { directory: string } = {
-		baseUrl: connection.baseUrl,
-		headers: { Authorization: `Basic ${credentials}` },
-		directory: connection.globalDirectory,
-	};
-	const client = createKiloClient(config);
-	const options = { throwOnError: true } as const;
+}
+
+/** The global `permissions` of Desktop's Kilo v2 server, through the `kilocode.settings` RPC. */
+export function createKiloWorkStyleClient(
+	connection: ServerConnection,
+	fetch: typeof globalThis.fetch = globalThis.fetch,
+): KiloWorkStyleClient {
+	const settings = globalSettings(
+		createServerClient(connection, fetch),
+		connection.globalDirectory,
+	);
 	return {
-		async readGlobalPermission() {
-			const { data } = await client.global.config.get(options);
-			return (data as { permission?: PermissionConfig } | undefined)?.permission;
+		async readGlobalPermissions() {
+			const { permissions } = await settings.read();
+			return Array.isArray(permissions) ? permissions.filter(isRule) : undefined;
 		},
-		async updateGlobalConfig(patch) {
-			// Kilo deep-merges the patch; its `null`s delete, which the SDK's config type can't express.
-			await client.global.config.update({ config: patch as GlobalConfigUpdate }, options);
-		},
-		async disposeInstances() {
-			await client.global.dispose();
+		async writeGlobalPermissions(permissions) {
+			await settings.write({ permissions: permissions as unknown as SettingsValue });
 		},
 	};
 }
 
-/** Production wiring: the real Kilo SDK client. */
+/** Production wiring: Desktop's Kilo v2 server. */
 export function productionWorkStyleOptions(_sdk: PluginSdk): WorkStyleOptions {
 	return { createClient: createKiloWorkStyleClient };
 }

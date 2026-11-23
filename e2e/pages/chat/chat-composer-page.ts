@@ -70,6 +70,10 @@ export class ChatComposerPage {
 	// sr-only span ("Remove file"), not an aria-label attribute.
 	private readonly attachmentRemoveButton = () =>
 		this.attachmentRoots().getByRole("button", { name: "Remove file" });
+	private readonly modelSelector = () => getLocatorByRole("combobox", { name: "Select model" });
+	private readonly modelSelectorValue = () =>
+		this.starter().locator('[data-slot="model-selector-value"]');
+	private readonly chatMessageError = () => this.thread().getByTestId("chat-message-error");
 	// Specs send one message per test, so strict mode throws rather than
 	// grabbing the wrong reply if a future spec sends more than once.
 	private readonly assistantMessage = () => this.thread().locator('[data-role="assistant"]');
@@ -155,12 +159,15 @@ export class ChatComposerPage {
 		}
 	}
 
-	/**
-	 * The welcome composer is still the draft and the launcher idle. A send
-	 * marks the launcher busy (inert, aria-busy) as soon as it begins, so call
-	 * this only after a later keystroke has landed in the composer: keys are
-	 * processed in order, so a send that Enter started can't be read as idle.
-	 */
+	async verifyNoModelSelected(): Promise<void> {
+		await expectElementToHaveAttribute(
+			this.starter().locator('[data-slot="model-selector-value"]'),
+			"data-model-selected",
+			"false",
+			{ message: "The New Session composer should have no selected model" },
+		);
+	}
+
 	async verifyStillOnDraft(): Promise<void> {
 		await expectElementToBeVisible(this.starter(), {
 			message: "The New Session page's starter should still be showing",
@@ -219,6 +226,26 @@ export class ChatComposerPage {
 	/** Requires exactly one composer attachment. */
 	async removeAttachment(): Promise<void> {
 		await click(this.attachmentRemoveButton());
+	}
+
+	async verifyNoModelMessageOutcome(message: string): Promise<void> {
+		await expectElementToBeVisible(this.userMessage(message), {
+			message: `The no-model message "${message}" should remain visible`,
+		});
+		await expectElementToBeVisible(this.chatMessageError(), {
+			message: "A no-model send should show the CLI's provider error in the chat",
+		});
+	}
+
+	async verifySendFailureVisible(expectedMessage: string): Promise<void> {
+		await expectElementToBeVisible(this.chatMessageError(), {
+			message: "The failed first prompt should show the chat error banner",
+		});
+		await expectElementToContainText(
+			this.chatMessageError().locator(".aui-message-error-message"),
+			expectedMessage,
+			{ message: `The chat error should explain "${expectedMessage}"` },
+		);
 	}
 
 	async verifySendDisabled(): Promise<void> {

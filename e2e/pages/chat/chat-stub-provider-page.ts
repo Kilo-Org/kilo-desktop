@@ -79,25 +79,59 @@ export class ChatStubProviderPage {
 	 * whose typed message text contains `promptMarker`, so a spec can assert
 	 * on exactly what the model request carried for its own send.
 	 */
-	async waitForCapturedRequest(promptMarker: string): Promise<CapturedCompletionRequest> {
-		const url = `${this.stubUrl()}${CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH}?marker=${encodeURIComponent(promptMarker)}`;
+	private async getCapturedRequestAndErrors(marker: string): Promise<{
+		request: CapturedCompletionRequest | null;
+		errors: readonly {
+			promptText: string;
+			status: number;
+			message: string;
+			attempts: number;
+		}[];
+	}> {
+		const url = `${this.stubUrl()}${CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH}?marker=${encodeURIComponent(marker)}`;
 		const deadline = Date.now() + REQUEST_POLL_TIMEOUT_MS;
 		for (;;) {
 			const response = await getRequest(url);
-			const payload = (await response.json()) as { request: CapturedCompletionRequest | null };
-			if (payload.request) return payload.request;
+			const payload = (await response.json()) as {
+				request: CapturedCompletionRequest | null;
+				errors: readonly {
+					promptText: string;
+					status: number;
+					message: string;
+					attempts: number;
+				}[];
+			};
+			if (payload.request) return payload;
 			if (Date.now() >= deadline) {
-				throw new Error(
-					`Chat completions stub never received a request matching "${promptMarker}"`,
-				);
+				throw new Error(`Chat completions stub never received a request matching "${marker}"`);
 			}
 			await getPage().waitForTimeout(REQUEST_POLL_INTERVAL_MS);
 		}
 	}
 
+	async waitForCapturedRequest(promptMarker: string): Promise<CapturedCompletionRequest> {
+		const payload = await this.getCapturedRequestAndErrors(promptMarker);
+		if (!payload.request) {
+			throw new Error(`Chat completions stub never received a request matching "${promptMarker}"`);
+		}
+		return payload.request;
+	}
+
+	async verifyCapturedErrorResponse(
+		marker: string,
+		status: number,
+		message: string,
+	): Promise<void> {
+		const payload = await this.getCapturedRequestAndErrors(marker);
+		const error = payload.errors.find(
+			(entry) => entry.status === status && entry.message === message,
+		);
+		expect(error, `The stub should return HTTP ${status} with "${message}"`).toBeDefined();
+		expect(error?.attempts, "The failed prompt should not be retried by the Kilo CLI").toBe(1);
+	}
+
 	/**
 	 * Resolves `waitForCapturedRequest(promptMarker)` and asserts it carried
-	 * exactly one image part whose decoded byte length matches
 	 * `expectedByteLength` — proof the uploaded fixture's actual bytes, not
 	 * just "some image", reached the model request.
 	 */

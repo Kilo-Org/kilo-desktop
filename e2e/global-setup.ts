@@ -6,14 +6,20 @@ import {
 import {
 	CHAT_COMPLETIONS_STUB_URL_ENV,
 	startChatCompletionsStub,
+	type ChatCompletionsStubError,
 } from "./utils/chat-completions-stub.js";
 import { assertSharedHarnessDependencies } from "./utils/harness-dependencies.js";
 import { prewarmKiloCli } from "./utils/kilo-cli-prewarm.js";
 import { startKiloGatewayStub } from "./utils/kilo-gateway-stub.js";
 import { chatAttachmentStubReplies } from "./testdata/chat/attachments.js";
 import { chatFileMentionStubReplies } from "./testdata/chat/file-mentions.js";
+import { chatFirstSendFailureStubErrors } from "./testdata/chat/first-send-failures.js";
 import { chatSendKeysStubReplies } from "./testdata/chat/send-keys.js";
 import { chatSmokeStubReplies, chatSmokeStubTitles } from "./testdata/chat/smoke.js";
+
+const CHAT_COMPLETION_ERRORS: Record<string, ChatCompletionsStubError> = {
+	...chatFirstSendFailureStubErrors,
+};
 
 /**
  * Runs once per Playwright invocation, before any worker launches the app.
@@ -49,6 +55,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 			...chatFileMentionStubReplies,
 		},
 		chatSmokeStubTitles,
+		CHAT_COMPLETION_ERRORS,
 	);
 	process.env[CHAT_COMPLETIONS_STUB_URL_ENV] = chatCompletions.url;
 	const teardown = async () => {

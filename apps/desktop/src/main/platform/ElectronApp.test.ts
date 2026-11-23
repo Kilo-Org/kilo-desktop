@@ -84,7 +84,7 @@ describe("ElectronApp", () => {
 		expect(adapter.requestSingleInstanceLock()).toBe(true);
 		const identity = getAppIdentity("preview");
 		adapter.setIdentity(identity);
-		expect(electronApp.setName).toHaveBeenCalledWith("Kilo Preview");
+		expect(electronApp.setName).toHaveBeenCalledWith("Kilo");
 		expect(electronApp.setAppUserModelId).toHaveBeenCalledWith(
 			process.platform === "win32" ? identity.windowsAppUserModelId : identity.appBundleId,
 		);
@@ -180,7 +180,7 @@ describe("ElectronApp", () => {
 	});
 
 	it.each([
-		["preview", "Kilo Preview", "Kilo Desktop"],
+		["preview", "Kilo", "Kilo Desktop"],
 		["stable", "Kilo", "Kilo Desktop"],
 	] as const)("configures the %s packaged data path", (environment, productName, userDataName) => {
 		const makeDirectory = vi.fn();
@@ -232,7 +232,7 @@ describe("ElectronApp", () => {
 			"--user-data-dir=/tmp/e2e-profile",
 		]);
 
-		expect(electronApp.setName).toHaveBeenCalledWith("Kilo Preview");
+		expect(electronApp.setName).toHaveBeenCalledWith("Kilo");
 		expect(electronApp.getPath).not.toHaveBeenCalled();
 		expect(makeDirectory).not.toHaveBeenCalled();
 		expect(electronApp.setPath).not.toHaveBeenCalled();

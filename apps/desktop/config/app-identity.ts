@@ -31,9 +31,12 @@ export function getDmgVolumeTitle(track: ReleaseTrack): string {
 	return track === "preview" ? "Kilo Preview" : "Kilo";
 }
 
+// Preview is the same app as Stable on another update track, so it shares the
+// product name: an update or a downloaded Preview replaces the one macOS bundle
+// instead of adding a second with the same bundle ID.
 const PRODUCT_NAMES = {
 	development: "Kilo Dev",
-	preview: "Kilo Preview",
+	preview: "Kilo",
 	stable: "Kilo",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 

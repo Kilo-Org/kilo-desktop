@@ -21,24 +21,18 @@ describe("app identity", () => {
 		});
 	});
 
-	it.each([
-		["preview", "Kilo Preview", "Kilo-Preview-Setup.exe", "Kilo Desktop"],
-		["stable", "Kilo", "Kilo-Setup.exe", "Kilo Desktop"],
-	] as const)(
-		"uses the %s product identity",
-		(environment, productName, setupExecutableName, userDataName) => {
-			expect(getAppIdentity(environment)).toEqual({
-				appBundleId: "ai.kilo.desktop",
-				environment,
-				executableName: "kilo-desktop",
-				productName,
-				setupExecutableName,
-				squirrelName: "KiloDesktop",
-				userDataName,
-				windowsAppUserModelId: "com.squirrel.KiloDesktop.kilo-desktop",
-			});
-		},
-	);
+	it.each(["preview", "stable"] as const)("installs %s as the one Kilo app", (environment) => {
+		expect(getAppIdentity(environment)).toEqual({
+			appBundleId: "ai.kilo.desktop",
+			environment,
+			executableName: "kilo-desktop",
+			productName: "Kilo",
+			setupExecutableName: "Kilo-Setup.exe",
+			squirrelName: "KiloDesktop",
+			userDataName: "Kilo Desktop",
+			windowsAppUserModelId: "com.squirrel.KiloDesktop.kilo-desktop",
+		});
+	});
 
 	it.each([
 		["stable", "1.2.3", "x64", "Kilo-1.2.3-x64-Setup.exe"],
@@ -46,7 +40,7 @@ describe("app identity", () => {
 			"preview",
 			"1.2.3-preview-260101-12345",
 			"arm64",
-			"Kilo-Preview-1.2.3-preview-260101-12345-arm64-Setup.exe",
+			"Kilo-1.2.3-preview-260101-12345-arm64-Setup.exe",
 		],
 		["development", "0.0.0", "x64", "Kilo-Dev-0.0.0-x64-Setup.exe"],
 	] as const)(

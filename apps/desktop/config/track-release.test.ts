@@ -220,12 +220,10 @@ describe("track release publishing", () => {
 	});
 
 	it("classifies public downloads and derives latest aliases", () => {
-		const download = classifyReleaseDownload(
-			"/tmp/release/mac/out/make/dmg/darwin/arm64/Kilo Preview.dmg",
-		);
+		const download = classifyReleaseDownload("/tmp/release/mac/out/make/dmg/darwin/arm64/Kilo.dmg");
 		expect(download).toMatchObject({ platform: "macos", arch: "arm64", type: "dmg" });
 		expect(getLatestAliasKey("preview", download!)).toBe(
-			"kilo-desktop/preview/latest/macos/arm64/Kilo Preview.dmg",
+			"kilo-desktop/preview/latest/macos/arm64/Kilo.dmg",
 		);
 		expect(
 			getLatestAliasKey("preview", {
@@ -233,7 +231,7 @@ describe("track release publishing", () => {
 				platform: "windows",
 				type: "setup",
 			}),
-		).toBe("kilo-desktop/preview/latest/windows/arm64/Kilo-Preview-Setup.exe");
+		).toBe("kilo-desktop/preview/latest/windows/arm64/Kilo-Setup.exe");
 		expect(getLatestAliasKey("stable", { ...download!, platform: "linux", type: "deb" })).toBe(
 			"kilo-desktop/latest/latest/linux/arm64/kilo-desktop.deb",
 		);

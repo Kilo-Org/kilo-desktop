@@ -20,21 +20,24 @@ configuration.
 | `preview` | Continuously consumable prerelease | Early adopters / testers | Scheduled cadence or manual `Release` run |
 | `stable`  | Stable customer release            | Customers                | Manual `Release` run from `main`          |
 
-Development has an isolated identity. Preview and Stable intentionally share one durable
-packaged identity so the About settings update-track selector (gated by the `update-track-switcher`
-feature flag) can move the installed app between tracks:
+Development has an isolated identity. Preview and Stable are one app on two update tracks, so
+the About settings update-track selector (gated by the `update-track-switcher` feature flag) can
+move the installed app between them:
 
 | Environment       | Product name | Identity suffix |
 | ----------------- | ------------ | --------------- |
 | Local development | Kilo Dev     | `dev`           |
-| `preview`         | Kilo Preview | none            |
+| `preview`         | Kilo         | none            |
 | `stable`          | Kilo         | none            |
 
 The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
 Linux package and executable names, and Electron's application name. Preview and Stable share the
-same bundle ID, Squirrel identity, executable, and protocol registration, so on Windows and Linux
-installing one replaces the other (macOS names the app bundle after the product name, so both can be
-installed).
+same product name, bundle ID, Squirrel identity, executable, and protocol registration, so
+installing one replaces the other on every platform. Release files are named the same on both
+tracks and are kept apart by the track's prefix; the version (`X.Y.Z-preview-…`), the DMG volume
+title and the macOS icon show which track a build belongs to. Preview builds released before the
+shared name installed as `Kilo Preview.app`; macOS keeps that file name across updates, so remove
+it by hand once a shared-name build is installed.
 
 They also share one user-data directory, `Kilo Desktop`, so workspaces, work sessions and
 preferences, including the selected update track, follow a track switch. Electron's single-instance

@@ -2,3 +2,7 @@
    so browser tests get real layout and visibility. */
 @import "tailwindcss";
 @source "../";
+/* The app gets these from shadcn/tailwind.css: base-ui marks orientation with
+   data-orientation, which the slider and tabs lay out by. */
+@custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
+@custom-variant data-vertical (&:where([data-orientation="vertical"]));

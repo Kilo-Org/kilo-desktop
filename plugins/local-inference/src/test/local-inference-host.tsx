@@ -242,6 +242,8 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 					openSettings: ({ section }) => void settingsOpened.push(section),
 					goHome: () => undefined,
 					openDialog: () => undefined,
+					openTakeover: () => undefined,
+					closeTakeover: () => undefined,
 					reportLocation: () => undefined,
 				},
 			});

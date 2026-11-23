@@ -129,7 +129,9 @@ html {
 	padding-top: calc(3rem - var(--shell-titlebar-height));
 }
 
-@custom-variant dark (&:is([data-theme="dark"] *));
+/* A subtree may take another scheme than the app (the Focus reader's reading
+   theme): `dark:` stops at a light subtree inside the dark app. */
+@custom-variant dark (&:is([data-theme="dark"] *):not(:is([data-theme="light"], [data-theme="light"] *)));
 
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 

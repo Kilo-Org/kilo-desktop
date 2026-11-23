@@ -36,6 +36,7 @@ import {
 	LayoutPresets,
 	PaneKind,
 	Panes,
+	SavedItems,
 	WORK_SESSIONS_DEFINITIONS,
 	WORK_SESSIONS_PLUGIN_ID,
 	WorkSessions,
@@ -48,6 +49,7 @@ import {
 	type PaneImplementation,
 	type PaneKindMetadata,
 	type PaneProps,
+	type SavedItem,
 	type WorkSession,
 	type WorkSessionPanes,
 	type Workspace,
@@ -141,6 +143,8 @@ export interface WorkSessionsMainState {
 	readonly isolation?: IsolationOptions | null;
 	/** `remove({removeCopy})` reports this copy removal failure. */
 	readonly copyError?: string;
+	/** Saved items, newest first. */
+	readonly saved?: readonly SavedItem[];
 }
 
 /**
@@ -435,11 +439,48 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 		return provider;
 	}
 
+	let saved: DomainObjectProvider<typeof SavedItems> | undefined;
+	function provideSaved(sdk: PluginSdk) {
+		let nextId = 1;
+		const write = (items: SavedItem[], addedTotal = provider.state.addedTotal) =>
+			provider.setState({ items, addedTotal });
+		const provider: DomainObjectProvider<typeof SavedItems> = sdk.domainObjects.provide(
+			SavedItems,
+			{
+				initialState: { items: [...(initial.saved ?? [])], addedTotal: initial.saved?.length ?? 0 },
+				methods: {
+					add: (input) => {
+						const item: SavedItem = {
+							...input,
+							id: `saved_new_${nextId++}`,
+							createdAt: Date.now(),
+						};
+						write([item, ...provider.state.items], provider.state.addedTotal + 1);
+						provider.emit("added", { item });
+						return { item, created: true };
+					},
+					remove: ({ id }) => {
+						const item = provider.state.items.find((candidate) => candidate.id === id) ?? null;
+						if (item) write(provider.state.items.filter((candidate) => candidate.id !== id));
+						if (item) provider.emit("removed", { item });
+						return { removed: item };
+					},
+					restore: ({ item }) => {
+						write([...provider.state.items, item].sort((a, b) => b.createdAt - a.createdAt));
+						return item;
+					},
+				},
+			},
+		);
+		return provider;
+	}
+
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
 			workspaces = provideWorkspaces(sdk);
 			workSessions = provideWorkSessions(sdk);
 			panes = providePanes(sdk);
+			saved = provideSaved(sdk);
 			if (initial.presets !== null) presets = provideLayoutPresets(sdk);
 		},
 	});
@@ -467,6 +508,7 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 		workspaces: () => workspaces!,
 		panes: () => panes!,
 		presets: () => presets!,
+		saved: () => saved!,
 	};
 }
 

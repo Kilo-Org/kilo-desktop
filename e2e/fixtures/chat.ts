@@ -5,6 +5,7 @@ import { ChatModeSelectorPage } from "../pages/chat/chat-mode-selector-page.js";
 import { ChatModelSelectorPage } from "../pages/chat/chat-model-selector-page.js";
 import { DesktopToolsPage } from "../pages/chat/desktop-tools-page.js";
 import { NewChatPage } from "../pages/chat/new-chat-page.js";
+import { ReadingPage } from "../pages/chat/reading-page.js";
 import { test as workSessionsTest } from "./work-sessions.js";
 
 type ChatFixtures = {
@@ -15,6 +16,7 @@ type ChatFixtures = {
 	chatModelSelectorPage: ChatModelSelectorPage;
 	desktopToolsPage: DesktopToolsPage;
 	newChatPage: NewChatPage;
+	readingPage: ReadingPage;
 };
 
 /**
@@ -51,6 +53,10 @@ export const test = workSessionsTest.extend<ChatFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	newChatPage: async ({}, use) => {
 		await use(new NewChatPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	readingPage: async ({}, use) => {
+		await use(new ReadingPage());
 	},
 });
 

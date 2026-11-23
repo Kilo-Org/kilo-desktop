@@ -2,7 +2,7 @@ import type { AnyRouter } from "@tanstack/react-router";
 
 import { KernelApp, type Contribution, type PluginSdk } from "@kilo-desktop/kernel";
 
-import { DeepLink, Dialog, Navigation, type WindowLocation } from "../../contracts";
+import { DeepLink, Dialog, Navigation, Takeover, type WindowLocation } from "../../contracts";
 import type { ShellUiState } from "./ui-state";
 
 type SearchParams = Readonly<Record<string, string>>;
@@ -28,8 +28,9 @@ export function routerGo(router: AnyRouter): Go {
 /**
  * Joins this window to `kilo.shell/navigation` in main: reports where the
  * router is whenever it settles, and applies the requests main addresses to
- * this window (navigating, opening a dialog). Without main's navigation
- * (browser mode) the window still navigates on its own.
+ * this window (navigating, opening a dialog, showing or closing a take-over).
+ * Without main's navigation (browser mode) the window still navigates on its
+ * own.
  */
 export function connectWindowNavigation(sdk: PluginSdk, router: AnyRouter, ui: ShellUiState): void {
 	const windowId = sdk.windowId;
@@ -63,6 +64,17 @@ export function connectWindowNavigation(sdk: PluginSdk, router: AnyRouter, ui: S
 						return;
 					}
 					ui.openDialog(request.dialog, request.input);
+				}),
+				navigation.on("takeover-requested", (request) => {
+					if (request.windowId !== windowId) return;
+					if (!sdk.extensions.list(Takeover).some((each) => each.key === request.takeover)) {
+						sdk.logger.warn(`No take-over "${request.takeover}" to show.`);
+						return;
+					}
+					ui.openTakeover(request.takeover, request.input);
+				}),
+				navigation.on("takeover-close-requested", (request) => {
+					if (request.windowId === windowId) ui.closeTakeover();
 				}),
 			];
 		},

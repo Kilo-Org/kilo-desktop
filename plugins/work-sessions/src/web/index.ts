@@ -8,6 +8,7 @@ import { activateLayouts } from "./layouts";
 import { activateList } from "./list";
 import { activateNotifications } from "./notifications";
 import { activatePanes } from "./panes";
+import { activateSaved } from "./saved";
 import { activateViews } from "./views";
 import { activateWindow } from "./window";
 import { activateWorkspaces } from "./workspaces";
@@ -24,6 +25,7 @@ export const workSessionsWebEntry = definePlugin({
 		activatePanes(sdk);
 		activateLayouts(sdk);
 		activateViews(sdk);
+		activateSaved(sdk);
 		activateAttention(sdk);
 		activateList(sdk);
 		activateHome(sdk);

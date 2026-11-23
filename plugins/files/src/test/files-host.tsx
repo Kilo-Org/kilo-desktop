@@ -8,7 +8,7 @@
 // their manifests. Panes render as kilo.work-sessions' canvas renders them,
 // from the Panes state.
 import { act, cleanup, render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
 	definePlugin,
@@ -22,13 +22,25 @@ import {
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
 import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
-import { KernelProvider, RenderContribution, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import {
+	KernelProvider,
+	RenderContribution,
+	useDomainObject,
+	useDomainObjectState,
+	useExtensions,
+} from "@kilo-desktop/kernel/web";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
-import { SHELL_DEFINITIONS, Theme } from "@kilo-desktop/plugin-shell/contracts";
+import {
+	Navigation,
+	SHELL_DEFINITIONS,
+	Takeover,
+	Theme,
+	type TakeoverProps,
+} from "@kilo-desktop/plugin-shell/contracts";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
 	EMPTY_WORK_SESSION_PANES,
@@ -317,6 +329,33 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 		},
 	});
 
+	// kilo.shell's navigation, reduced to the take-over requests Focus makes.
+	const shellMain: PluginEntry = definePlugin({
+		activate(sdk) {
+			const navigation: DomainObjectProvider<typeof Navigation> = sdk.domainObjects.provide(
+				Navigation,
+				{
+					initialState: { windows: {} },
+					methods: {
+						navigate: () => undefined,
+						openSettings: () => undefined,
+						goHome: () => undefined,
+						openDialog: () => undefined,
+						openTakeover: ({ takeover, input }, caller) =>
+							navigation.emit("takeover-requested", {
+								windowId: caller.windowId ?? "",
+								takeover,
+								...(input === undefined ? {} : { input }),
+							}),
+						closeTakeover: (_input, caller) =>
+							navigation.emit("takeover-close-requested", { windowId: caller.windowId ?? "" }),
+						reportLocation: () => undefined,
+					},
+				},
+			);
+		},
+	});
+
 	const shellWeb: PluginEntry = definePlugin({
 		activate(sdk) {
 			if (options.theme) {
@@ -356,7 +395,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 		host: createTestHost(),
 		main: [
 			{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
-			{ manifest: shellManifest, definitions: SHELL_DEFINITIONS },
+			{ manifest: shellManifest, definitions: SHELL_DEFINITIONS, entry: shellMain },
 			{
 				manifest: workSessionsManifest,
 				definitions: WORK_SESSIONS_DEFINITIONS,
@@ -388,7 +427,10 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 
 	const wrap = (element: ReactNode) => (
 		<KernelProvider kernel={renderer}>
-			<TooltipProvider>{element}</TooltipProvider>
+			<TooltipProvider>
+				{element}
+				<TestTakeoverHost />
+			</TooltipProvider>
 			<Toaster />
 		</KernelProvider>
 	);
@@ -485,4 +527,31 @@ export function PaneHost({ host, paneId }: { readonly host: FilesHost; readonly 
 export function filesPaneKind(host: FilesHost): PaneImplementation {
 	return host.renderer.extensions.list(PaneKind).find((kind) => kind.key === FILES_PANE_KIND)!
 		.implementation as PaneImplementation;
+}
+
+/** kilo.shell's take-over layer, reduced: shows the take-over Navigation asks this window for. */
+function TestTakeoverHost() {
+	const navigation = useDomainObject(Navigation);
+	const takeovers = useExtensions(Takeover);
+	const [shown, setShown] = useState<{ key: string; input: unknown } | null>(null);
+	useEffect(() => {
+		if (!navigation) return;
+		const stops = [
+			navigation.on("takeover-requested", ({ takeover, input }) =>
+				setShown({ key: takeover, input }),
+			),
+			navigation.on("takeover-close-requested", () => setShown(null)),
+		];
+		return () => {
+			for (const stop of stops) stop();
+		};
+	}, [navigation]);
+	const contribution = shown ? takeovers.find(({ key }) => key === shown.key) : undefined;
+	if (!shown || !contribution) return null;
+	const props: TakeoverProps = { close: () => setShown(null), input: shown.input };
+	return (
+		<div data-qa-id="shell-takeover" className="fixed inset-0 z-[45] flex flex-col">
+			<RenderContribution contribution={contribution} props={props} />
+		</div>
+	);
 }

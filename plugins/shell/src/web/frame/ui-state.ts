@@ -6,6 +6,12 @@ export interface OpenDialog {
 	readonly input: unknown;
 }
 
+export interface ShownTakeover {
+	/** The `kilo.shell/takeover` contribution key. */
+	readonly key: string;
+	readonly input: unknown;
+}
+
 export interface RightSidebarState {
 	readonly open: boolean;
 	/** The chosen panel's contribution key; the first panel when unset or gone. */
@@ -17,9 +23,9 @@ export const INITIAL_RIGHT_SIDEBAR: RightSidebarState = { open: false, selected:
 
 /**
  * Window-local UI state that commands and navigation requests drive from
- * outside React: the palette, the shortcuts dialog, open dialogs, the right
- * sidebar and the left sidebar's toggle. Created once per activation and
- * handed to the frame; nothing here outlives the window.
+ * outside React: the palette, the shortcuts dialog, open dialogs, the shown
+ * take-over, the right sidebar and the left sidebar's toggle. Created once
+ * per activation and handed to the frame; nothing here outlives the window.
  */
 export interface ShellUiState {
 	isPaletteOpen(): boolean;
@@ -30,6 +36,11 @@ export interface ShellUiState {
 	/** Opens a dialog, or gives an open one the new input. */
 	openDialog(key: string, input: unknown): void;
 	closeDialog(key: string): void;
+	/** The take-over covering the window, if any. */
+	takeover(): ShownTakeover | null;
+	/** Shows a take-over in place of the one shown, if any. */
+	openTakeover(key: string, input: unknown): void;
+	closeTakeover(): void;
 	rightSidebar(): RightSidebarState;
 	setRightSidebar(patch: Partial<RightSidebarState>): void;
 	/** The frame registers how to toggle the sidebar while it is mounted. */
@@ -42,6 +53,7 @@ export function createShellUiState(): ShellUiState {
 	let paletteOpen = false;
 	let shortcutsOpen = false;
 	let dialogs: readonly OpenDialog[] = [];
+	let takeover: ShownTakeover | null = null;
 	let rightSidebar: RightSidebarState = INITIAL_RIGHT_SIDEBAR;
 	let sidebarToggle: (() => void) | undefined;
 	const listeners = new Set<() => void>();
@@ -69,6 +81,16 @@ export function createShellUiState(): ShellUiState {
 		closeDialog(key) {
 			if (!dialogs.some((dialog) => dialog.key === key)) return;
 			dialogs = dialogs.filter((dialog) => dialog.key !== key);
+			notify();
+		},
+		takeover: () => takeover,
+		openTakeover(key, input) {
+			takeover = { key, input };
+			notify();
+		},
+		closeTakeover() {
+			if (!takeover) return;
+			takeover = null;
 			notify();
 		},
 		rightSidebar: () => rightSidebar,
@@ -117,6 +139,10 @@ export function useShortcutsOpen(): [boolean, (open: boolean) => void] {
 
 export function useOpenDialogs(): readonly OpenDialog[] {
 	return useShellUiValue((ui) => ui.openDialogs());
+}
+
+export function useShownTakeover(): ShownTakeover | null {
+	return useShellUiValue((ui) => ui.takeover());
 }
 
 export function useRightSidebar(): RightSidebarState {

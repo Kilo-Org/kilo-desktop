@@ -166,7 +166,10 @@ function DetachedPlaceholder({ view }: { readonly view: ViewContribution }) {
 	);
 }
 
-/** The window header's title while a view shows: the focused workspace › the view. */
+/**
+ * The window header's title while a view shows: the focused workspace › the
+ * view, or the view alone when it covers every workspace.
+ */
 export function WorkSessionsViewHeaderLeading({ view }: { readonly view: ViewContribution }) {
 	const workspaces = useDomainObjectState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	return <ViewTitle view={view} workspaces={workspaces} focus={useMainWindowFocus()} />;
@@ -178,9 +181,15 @@ const ViewTitle: FC<{
 	focus: string | null;
 }> = ({ view, workspaces, focus }) => {
 	const resolved = resolveWorkspaceFocus(focus, workspaces);
-	const workspace = workspaces.find((candidate) => candidate.id === resolved);
-	const locationLabel =
-		resolved === UNSCOPED_WORKSPACE_FOCUS ? "No workspace" : (workspace?.name ?? null);
+	const allWorkspaces = view.metadata.scope === "all-workspaces";
+	const workspace = allWorkspaces
+		? undefined
+		: workspaces.find((candidate) => candidate.id === resolved);
+	const locationLabel = allWorkspaces
+		? null
+		: resolved === UNSCOPED_WORKSPACE_FOCUS
+			? "No workspace"
+			: (workspace?.name ?? null);
 	return (
 		<div className="flex min-w-0 flex-1 items-center gap-1">
 			<SessionLocationBreadcrumb

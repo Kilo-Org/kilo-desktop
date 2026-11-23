@@ -3,6 +3,7 @@ export * from "./file-watcher";
 export * from "./identity-color";
 export * from "./object-types";
 export * from "./panes";
+export * from "./saved";
 export * from "./vcs";
 export * from "./work-session-folders";
 export * from "./work-sessions";

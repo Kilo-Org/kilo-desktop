@@ -279,6 +279,21 @@ describe("the plan pane", () => {
 			.toEqual({ answers: [["Continue here"]] });
 	});
 
+	it("reads the plan in Focus from its reading control", async () => {
+		const fake = server(planTurn());
+		await show(fake, { otherPanes: [planPaneOf("ses_a")] });
+		await expect.element(planPane().getByText("Patch the session check"), WAIT).toBeVisible();
+
+		await planPane().getByTestId("chat-reading-plan-trigger").click();
+		await page.getByRole("switch", { name: "Focus" }).click();
+
+		const content = page.getByTestId("chat-focus-content");
+		await expect.element(content.getByText("Patch the session check")).toBeVisible();
+		await expect.element(content.getByTestId("chat-focus-plan")).toBeInTheDocument();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByTestId("shell-takeover")).not.toBeInTheDocument();
+	});
+
 	it("brings the agent pane's agent along when the plan is approved there", async () => {
 		const fake = server(planTurn());
 		await show(fake, { otherPanes: [planPaneOf("ses_a")] });

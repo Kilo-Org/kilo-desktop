@@ -13,6 +13,8 @@ export const SEARCH_WORK_SESSIONS_COMMAND = "kilo.work-sessions/search-work-sess
 export const OPEN_WORK_SESSION_COMMAND = "kilo.work-sessions/open-work-session";
 /** Runs in the main window: shows a work sessions view there (from any window). Args `{ view }`. */
 export const SHOW_WORK_SESSIONS_VIEW_COMMAND = "kilo.work-sessions/show-work-sessions-view";
+/** Opens the Saved page. Args `{ source }`: where it was opened from, for telemetry (e.g. `"toast-view"`). */
+export const SHOW_SAVED_COMMAND = "kilo.work-sessions/show-saved";
 /** Opens the "+" picker of the open work session. */
 export const NEW_PANE_COMMAND = "kilo.work-sessions/new-pane";
 /** Closes a pane of the open work session. Args `{ paneId }`, else the active pane. */

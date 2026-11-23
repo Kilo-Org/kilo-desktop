@@ -34,12 +34,19 @@ export const OPEN_FILE_TOOL_ID = "open";
 /** kilo.files' commands, by key (origin's ids, so saved keybindings keep working). */
 export const FILES_COMMANDS = {
 	open: "kilo.files/open",
+	/** Enters Focus on the active Markdown preview, or exits it (⌘⇧F). */
+	toggleFocus: "kilo.files/toggle-focus",
 } as const;
 
 /** The telemetry events kilo.files declares (`kernel/telemetry-event` ids). */
 export const FILES_TELEMETRY_EVENTS = {
 	fileOpened: "file-opened",
 	notebookOpened: "notebook-opened",
+	focusEntered: "focus-entered",
+	focusExited: "focus-exited",
+	focusEntryFailed: "focus-entry-failed",
+	readingControlOpened: "reading-control-opened",
+	readingSettingChanged: "reading-setting-changed",
 } as const;
 
 /** Files inside workspace folders, read and written in main. */

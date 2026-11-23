@@ -111,6 +111,8 @@ export interface ChatHostOptions {
 	/** Folder ids kilo.work-sessions reports it can't find. */
 	readonly unavailableFolderIds?: readonly string[];
 	readonly desktop?: boolean;
+	/** Renders the window (the shell's frame and take-overs) under React StrictMode, as the app does in development. */
+	readonly strictMode?: boolean;
 	/**
 	 * Renders kilo.chat's work session starter (the New Session page's
 	 * composer) instead of the work session's panes, starting work sessions
@@ -211,6 +213,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 			core: core.activate,
 			...(options.localStorage ? { localAppearance: options.localStorage } : {}),
 			...(options.desktop ? { desktop: true } : {}),
+			...(options.strictMode ? { strictMode: true } : {}),
 			...(options.windows ? { windows: options.windows } : {}),
 			beforeRender: (main) => {
 				grantDataCollection(main);

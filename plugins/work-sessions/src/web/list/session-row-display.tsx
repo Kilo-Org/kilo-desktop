@@ -72,7 +72,8 @@ function subscribeSharedNow(intervalMs: number, listener: (now: number) => void)
 	};
 }
 
-function useNow(intervalMs: number): number {
+/** The current time, refreshed every `intervalMs` (one shared timer per interval). */
+export function useNow(intervalMs: number): number {
 	const [now, setNow] = useState(() => Date.now());
 	useEffect(() => subscribeSharedNow(intervalMs, setNow), [intervalMs]);
 	return now;

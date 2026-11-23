@@ -38,6 +38,7 @@ function DropdownMenuContent({
 	side = "bottom",
 	sideOffset = MENU_SIDE_OFFSET,
 	width = "default",
+	container,
 	className,
 	...props
 }: MenuPrimitive.Popup.Props &
@@ -46,9 +47,11 @@ function DropdownMenuContent({
 		"align" | "alignOffset" | "anchor" | "collisionAvoidance" | "side" | "sideOffset"
 	> & {
 		width?: MenuWidth;
+		// local: portal container, for menus opened inside a layered surface (not in stock).
+		container?: MenuPrimitive.Portal.Props["container"] | undefined;
 	}) {
 	return (
-		<MenuPrimitive.Portal>
+		<MenuPrimitive.Portal container={container}>
 			<MenuPrimitive.Positioner
 				className="isolate z-50 outline-none"
 				align={align}

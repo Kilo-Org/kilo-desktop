@@ -156,6 +156,8 @@ export async function bootAccount(
 					},
 					goHome: () => {},
 					openDialog: () => {},
+					openTakeover: () => {},
+					closeTakeover: () => {},
 					reportLocation: () => {},
 				},
 			});

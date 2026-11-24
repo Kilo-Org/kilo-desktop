@@ -18,9 +18,9 @@ import {
 	AUTO_APPROVE_TOOL_APPROVAL_ID,
 	AutoApprove,
 	CHAT_PLUGIN_ID,
-	neverAutoReplied,
 	type ApprovalMode,
 } from "../../contracts";
+import { neverAutoReplied } from "../../shared/person-required";
 
 const SIGNED_IN_KEY = "kilo.core/signedIn";
 

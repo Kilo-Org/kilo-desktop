@@ -14,6 +14,7 @@ import {
 	toV1ToolState,
 	type V2Tool,
 } from "./v2-messages";
+import { toV1PermissionName, toV1ToolInput, toV1ToolMetadata, toV1ToolName } from "./v2-tools";
 
 /**
  * Kilo v2's event stream as the v1 events the thread controller reads
@@ -490,14 +491,18 @@ export class V2EventTranslator {
 			case "session.tool.called":
 				tool.input = record(data.input);
 				tool.ran = created;
-				state = { status: "running", input: tool.input, time: { start: created } };
+				state = {
+					status: "running",
+					input: toV1ToolInput(tool.name, tool.input),
+					time: { start: created },
+				};
 				break;
 			case "session.tool.progress":
 				tool.metadata = record(data.metadata);
 				state = {
 					status: "running",
-					input: tool.input ?? {},
-					metadata: tool.metadata,
+					input: toV1ToolInput(tool.name, tool.input ?? {}),
+					metadata: toV1ToolMetadata(tool.name, tool.metadata ?? {}),
 					time: { start: tool.ran ?? tool.created },
 				};
 				break;
@@ -535,7 +540,7 @@ export class V2EventTranslator {
 			messageID,
 			type: "tool",
 			callID,
-			tool: tool.name,
+			tool: toV1ToolName(tool.name),
 			state,
 		};
 	}
@@ -547,7 +552,7 @@ export function toV1PermissionRequest(data: Record<string, unknown>): Record<str
 	return {
 		id: data.id,
 		sessionID: data.sessionID,
-		permission: data.action,
+		permission: typeof data.action === "string" ? toV1PermissionName(data.action) : data.action,
 		patterns: Array.isArray(data.resources) ? data.resources : [],
 		metadata: record(data.metadata),
 		always: Array.isArray(data.save) ? data.save : [],

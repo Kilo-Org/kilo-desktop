@@ -78,18 +78,20 @@ describe("auto mode", () => {
 		expect(autoApprove.getState().holding).toEqual([]);
 	});
 
-	it("leaves sandbox escalation and protected config to a person, and answers skill-shell unheld", async () => {
+	it("leaves sandbox escalation, protected config and Kilo v2's interactive requests to a person, and answers skill-shell unheld", async () => {
 		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
 		await autoApprove.methods.setMode({ mode: "auto" });
 		core.requests.set("ses_a", [
 			request("per_sandbox", "ses_a", { metadata: { sandboxEscalation: true } }),
 			request("per_config", "ses_a", { metadata: { configProtected: true } }),
 			request("per_skill", "ses_a", { metadata: { skillShell: true } }),
+			request("per_interactive", "ses_a", { metadata: { interactive: true } }),
 		]);
 
 		core.ask("ses_a", "per_sandbox");
 		core.ask("ses_a", "per_config");
 		core.ask("ses_a", "per_skill");
+		core.ask("ses_a", "per_interactive");
 		await settle();
 
 		expect(core.replies.map((reply) => reply.permissionId)).toEqual(["per_skill"]);

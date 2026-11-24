@@ -10,7 +10,8 @@ import {
 	PermissionAutoAnswer,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { AutoApprove, needsPerson, neverAutoReplied, type ApprovalMode } from "../../contracts";
+import { AutoApprove, type ApprovalMode } from "../../contracts";
+import { needsPerson, neverAutoReplied } from "../../shared/person-required";
 import { useOptionalExtensions } from "../optional-extensions";
 
 const NOTHING_HELD: readonly string[] = [];

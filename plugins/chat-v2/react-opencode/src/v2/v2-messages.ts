@@ -6,6 +6,7 @@ import type {
 	ToolContent,
 } from "@kilocode/client";
 
+import { toV1ToolInput, toV1ToolMetadata, toV1ToolName } from "./v2-tools";
 import type {
 	AssistantMessage,
 	FilePart,
@@ -78,33 +79,38 @@ export type { V2Tool };
 export function toV1ToolState(sessionID: string, messageID: string, tool: V2Tool): ToolState {
 	const start = tool.time.ran ?? tool.time.created;
 	const state = tool.state;
+	const input = (value: Record<string, unknown>) => toV1ToolInput(tool.name, value);
 	switch (state.status) {
 		case "streaming":
 			return { status: "pending", input: {}, raw: state.input };
 		case "running":
 			return {
 				status: "running",
-				input: state.input,
-				metadata: state.metadata,
+				input: input(state.input),
+				metadata: toV1ToolMetadata(tool.name, state.metadata),
 				time: { start },
 			};
-		case "completed":
+		case "completed": {
+			const result = toolOutput(sessionID, messageID, state.content);
 			return {
 				status: "completed",
-				input: state.input,
+				input: input(state.input),
 				title: "",
-				metadata: state.metadata ?? {},
+				metadata: toV1ToolMetadata(tool.name, state.metadata ?? {}, result.output) ?? {},
 				time: { start, end: tool.time.completed ?? start },
-				...toolOutput(sessionID, messageID, state.content),
+				...result,
 			};
-		case "error":
+		}
+		case "error": {
+			const metadata = toV1ToolMetadata(tool.name, state.metadata);
 			return {
 				status: "error",
-				input: state.input,
+				input: input(state.input),
 				error: state.error.message,
-				...(state.metadata ? { metadata: state.metadata } : {}),
+				...(metadata ? { metadata } : {}),
 				time: { start, end: tool.time.completed ?? start },
 			};
+		}
 	}
 }
 
@@ -225,7 +231,7 @@ export function toV1ContentParts(
 			messageID,
 			type: "tool",
 			callID: item.id,
-			tool: item.name,
+			tool: toV1ToolName(item.name),
 			state: toV1ToolState(sessionID, messageID, item),
 		};
 	});

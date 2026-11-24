@@ -33,13 +33,52 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		project = path.join(home, "project");
 		mkdirSync(project);
 		writeFileSync(path.join(project, "notes.txt"), "hello\n");
+		// Answers "Done.", except that a turn asked to "run ls" first calls the shell tool.
 		model = createServer(async (request, response) => {
-			for await (const _ of request);
+			const chunks: Buffer[] = [];
+			for await (const chunk of request) chunks.push(chunk as Buffer);
+			const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+				messages: { role: string; content: unknown }[];
+			};
+			const last = body.messages.at(-1);
+			const asked = last?.role === "user" ? JSON.stringify(last.content) : "";
+			const callShell = asked.includes("run ls");
+			const callQuestion = asked.includes("ask me");
 			const chunk = (delta: object, finish: string | null) =>
 				`data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 			response.writeHead(200, { "content-type": "text/event-stream" });
-			response.write(chunk({ role: "assistant", content: "Done." }, null));
-			response.write(chunk({}, "stop"));
+			if (callShell || callQuestion) {
+				const call = callShell
+					? { name: "shell", arguments: JSON.stringify({ command: "ls", description: "List" }) }
+					: {
+							name: "question",
+							arguments: JSON.stringify({
+								questions: [
+									{
+										question: "Ship it?",
+										header: "Ship",
+										options: [
+											{ label: "Yes", description: "Go" },
+											{ label: "No", description: "Wait" },
+										],
+									},
+								],
+							}),
+						};
+				response.write(
+					chunk(
+						{
+							role: "assistant",
+							tool_calls: [{ index: 0, id: "call_1", type: "function", function: call }],
+						},
+						null,
+					),
+				);
+				response.write(chunk({}, "tool_calls"));
+			} else {
+				response.write(chunk({ role: "assistant", content: "Done." }, null));
+				response.write(chunk({}, "stop"));
+			}
 			response.end("data: [DONE]\n\n");
 		});
 		await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve));
@@ -99,6 +138,110 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		kilo?.stdin?.end();
 		model?.close();
 		rmSync(home, { recursive: true, force: true });
+	});
+
+	const send = (controller: OpenCodeThreadController, text: string) =>
+		controller.sendMessage({
+			role: "user",
+			content: [{ type: "text", text }],
+			parentId: null,
+			sourceId: null,
+			runConfig: undefined,
+			attachments: [],
+			createdAt: new Date(),
+			metadata: { custom: {} },
+		} as unknown as AppendMessage);
+
+	it("asks for a shell call's permission as bash, runs it once allowed, and shows it as a bash call", async () => {
+		const session = await client.session.create({
+			location: { directory: project },
+			permissions: [{ action: "shell", resource: "*", effect: "ask" }],
+		});
+		const v1 = createV1Client(client, { directory: project });
+		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const unsubscribe = live.subscribe(() => undefined);
+		await live.load();
+
+		await send(live, "Please run ls");
+		const pending = () => Object.values(live.getState().interactions.permissions.pending);
+		await vi.waitFor(() => expect(pending()).toHaveLength(1), { timeout: 4_000 });
+		expect(pending()[0]).toMatchObject({ permission: "bash", patterns: ["ls"] });
+
+		await live.replyToPermission(pending()[0]!.id, "once");
+		await vi.waitFor(
+			() => {
+				const parts = Object.values(live.getState().messagesById).flatMap(
+					(message) => message.parts,
+				);
+				expect(parts).toContainEqual(
+					expect.objectContaining({
+						type: "tool",
+						tool: "bash",
+						state: expect.objectContaining({
+							status: "completed",
+							input: expect.objectContaining({ command: "ls" }),
+							output: expect.stringContaining("notes.txt"),
+							metadata: expect.objectContaining({ exit: 0 }),
+						}),
+					}),
+				);
+				expect(live.getState().sessionStatus).toEqual({ type: "idle" });
+			},
+			{ timeout: 4_000 },
+		);
+		expect(pending()).toEqual([]);
+		unsubscribe();
+		events.dispose();
+	});
+
+	it("asks a question as a v1 question, and takes its answer", async () => {
+		const session = await client.session.create({ location: { directory: project } });
+		const v1 = createV1Client(client, { directory: project });
+		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const unsubscribe = live.subscribe(() => undefined);
+		await live.load();
+
+		await send(live, "Please ask me");
+		const pending = () => Object.values(live.getState().interactions.questions.pending);
+		await vi.waitFor(() => expect(pending()).toHaveLength(1), { timeout: 4_000 });
+		expect(pending()[0]).toMatchObject({
+			questions: [
+				{
+					question: "Ship it?",
+					header: "Ship",
+					options: [
+						{ label: "Yes", description: "Go" },
+						{ label: "No", description: "Wait" },
+					],
+					multiple: false,
+				},
+			],
+		});
+
+		await live.replyToQuestion(pending()[0]!.id, [["Yes"]]);
+		await vi.waitFor(
+			() => {
+				const parts = Object.values(live.getState().messagesById).flatMap(
+					(message) => message.parts,
+				);
+				expect(parts).toContainEqual(
+					expect.objectContaining({
+						tool: "question",
+						state: expect.objectContaining({
+							status: "completed",
+							output: expect.stringContaining("Yes"),
+						}),
+					}),
+				);
+				expect(live.getState().sessionStatus).toEqual({ type: "idle" });
+			},
+			{ timeout: 4_000 },
+		);
+		expect(pending()).toEqual([]);
+		unsubscribe();
+		events.dispose();
 	});
 
 	it("sends a message, streams the reply, and loads the same transcript", async () => {

@@ -29,6 +29,7 @@ describe("autoAnswers", () => {
 		expect(autoAnswers(request("p"), AUTO)).toBe(true);
 		expect(autoAnswers(request("p", { metadata: { sandboxEscalation: true } }), AUTO)).toBe(false);
 		expect(autoAnswers(request("p", { metadata: { skillShell: true } }), AUTO)).toBe(false);
+		expect(autoAnswers(request("p", { metadata: { interactive: true } }), AUTO)).toBe(false);
 	});
 
 	it("in Manual, takes only signed-out calls to sign-in tools", () => {

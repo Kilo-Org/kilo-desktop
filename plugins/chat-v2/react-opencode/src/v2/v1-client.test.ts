@@ -196,7 +196,7 @@ describe("createV1Client", () => {
 			expect.objectContaining({
 				id: "per_1",
 				sessionID: "ses_turn",
-				permission: "shell",
+				permission: "bash",
 				patterns: ["ls"],
 			}),
 		]);

@@ -259,7 +259,7 @@ describe("V2EventTranslator", () => {
 		expect(tool[3]).toMatchObject({
 			state: { input: { command: "ls" }, metadata: { output: "a" } },
 		});
-		expect(tool[4]).toMatchObject({ id: "m:tool:c1", tool: "shell", state: { error: "exit 1" } });
+		expect(tool[4]).toMatchObject({ id: "m:tool:c1", tool: "bash", state: { error: "exit 1" } });
 	});
 
 	it("turns permission requests and forms into v1 permissions and questions", async () => {
@@ -306,7 +306,7 @@ describe("V2EventTranslator", () => {
 		expect(out[0]!.properties).toEqual({
 			id: "per_1",
 			sessionID: "s",
-			permission: "shell",
+			permission: "bash",
 			patterns: ["ls"],
 			metadata: {},
 			always: ["ls *"],

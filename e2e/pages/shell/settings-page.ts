@@ -6,6 +6,7 @@ import {
 	expectElementToHaveAttribute,
 	expectElementToHaveText,
 	getLocatorByTestId,
+	isElementVisible,
 } from "@anaconda/playwright-utils";
 
 import {
@@ -113,6 +114,13 @@ export class SettingsPage {
 			this.sectionHeading(),
 			`"${section.title}" content should stay hidden until the user signs in`,
 		);
+	}
+
+	/** Returns the app to its main view when a test left Settings open. */
+	async returnToAppIfOpen(): Promise<void> {
+		if (!(await isElementVisible(this.sidebar(), { timeout: 0 }))) return;
+		await click(this.backButton());
+		await expectElementToBeHidden(this.sidebar(), "Back to app should close Settings");
 	}
 
 	private async verifySectionActive(section: SettingsSection): Promise<void> {

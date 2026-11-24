@@ -19,7 +19,17 @@ tests the diff can reach (`scripts/test-changed.mjs`: Vitest `--changed`
 against the PR base, widened to full suites when a lockfile, manifest,
 tsconfig, test config or setup file changes). The merge queue runs every
 package's full suite with the coverage gate. Windows and macOS run the
-platform compatibility tests.
+platform compatibility tests (`.github/platform-test-packages.txt`).
+
+The Kilo Code v2 server line ([ADR-003](./adr/003-kilo-server-line.md)) has
+tests against a real `kilo2`. core-v2's integration tests find the installed
+CLI package themselves and run with the other integration tests. The opt-in
+ones (chat-v2's react-opencode `live-kilo2.test.ts`, notebook's
+`kilo2.integration.test.ts`, marketplace-v2's `kilo-v2-marketplace.live.test.ts`,
+which needs the network) skip unless `KILO2_BIN` names a kilo2. CI's
+`real-kilo2` job sets it from core-v2's staged CLI. Locally:
+`KILO2_BIN=$PWD/plugins/core-v2/resources/kilo/<target>/bin/kilo2` after
+`pnpm --filter @kilo-desktop/plugin-core-v2 run fetch-cli`.
 
 App-level tests cover the kernel boot with the bundled plugins. Plugin journeys belong in browser component tests (in a booted test kernel) and e2e (protocol / IPC / packaging).
 

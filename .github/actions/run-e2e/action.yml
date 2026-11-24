@@ -58,6 +58,8 @@ runs:
 
     - uses: ./plugins/core/actions/setup-cli
 
+    - uses: ./plugins/core-v2/actions/setup-cli
+
     - name: Package desktop for e2e
       shell: bash
       run: pnpm --filter @kilo-desktop/desktop run package:e2e

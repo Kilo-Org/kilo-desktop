@@ -1,8 +1,9 @@
-# The packages with real Git and filesystem checks per platform: ci.yml's
-# `test` job installs and tests only these on Windows and macOS, and
+# The packages with real Git, filesystem or Kilo CLI checks per platform:
+# ci.yml's `test` job installs and tests only these on Windows and macOS, and
 # warm-caches.yml saves their node_modules for it.
 @kilo-desktop/git-client
 @kilo-desktop/plugin-core
+@kilo-desktop/plugin-core-v2
 @kilo-desktop/plugin-git
 @kilo-desktop/plugin-notebook
 @kilo-desktop/plugin-work-sessions

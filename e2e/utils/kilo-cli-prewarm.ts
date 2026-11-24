@@ -13,22 +13,40 @@ import { packagedResourcesDirectory } from "./paths.js";
 const execFileAsync = promisify(execFile);
 const PREWARM_TIMEOUT_MS = 180_000;
 
+export interface PackagedKiloCli {
+	readonly executable: string;
+	/** A command that initializes providers and exits. */
+	readonly warmUpArgs: readonly string[];
+}
+
 /**
- * The packaged CLI lives at `<Resources>/kilo/<target>/bin/kilo[.exe]`.
+ * The CLI each Kilo server line packages (docs/adr/003-kilo-server-line.md).
+ * v2's subcommands talk to a shared background service unless `--standalone`
+ * gives them a private server, so the warm-up never starts or touches one.
+ */
+const SERVER_LINE_CLIS = [
+	{ name: "kilo", warmUpArgs: ["models", "kilo"] },
+	{ name: "kilo2", warmUpArgs: ["models", "--standalone"] },
+] as const;
+
+/**
+ * The packaged CLI lives at `<Resources>/kilo/<target>/bin/<name>[.exe]`,
+ * `kilo` on the v1 server line and `kilo2` on v2; a build carries one line.
  *
  * Packaging copies the whole staging root, which can also hold an interrupted
  * `.staging-*` directory or a `<target>.previous` backup with the same
  * layout. Only a completed staging sits in the directory named after the
  * `target` recorded in its own `staged.json`, so that is the one the app runs.
  */
-export function packagedKiloCliExecutable(): string | undefined {
+export function packagedKiloCli(): PackagedKiloCli | undefined {
 	const kiloRoot = path.join(packagedResourcesDirectory(), "kilo");
 	if (!existsSync(kiloRoot)) return undefined;
-	const executable = process.platform === "win32" ? "kilo.exe" : "kilo";
+	const suffix = process.platform === "win32" ? ".exe" : "";
 	for (const directory of readdirSync(kiloRoot)) {
-		const candidate = path.join(kiloRoot, directory, "bin", executable);
-		if (stagedTarget(path.join(kiloRoot, directory)) === directory && existsSync(candidate)) {
-			return candidate;
+		if (stagedTarget(path.join(kiloRoot, directory)) !== directory) continue;
+		for (const { name, warmUpArgs } of SERVER_LINE_CLIS) {
+			const executable = path.join(kiloRoot, directory, "bin", `${name}${suffix}`);
+			if (existsSync(executable)) return { executable, warmUpArgs };
 		}
 	}
 	return undefined;
@@ -59,15 +77,15 @@ function stagedTarget(stagingDirectory: string): string | undefined {
  * their own sidecar diagnostics, and shell-only specs can still run.
  */
 export async function prewarmKiloCli(): Promise<void> {
-	const executable = packagedKiloCliExecutable();
-	if (!executable) {
+	const cli = packagedKiloCli();
+	if (!cli) {
 		logger.warn("Kilo CLI pre-warm skipped: no packaged CLI found.");
 		return;
 	}
 	const profile = await mkdtemp(path.join(os.tmpdir(), "kilo-e2e-prewarm-"));
 	const started = Date.now();
 	try {
-		await execFileAsync(executable, ["models", "kilo"], {
+		await execFileAsync(cli.executable, cli.warmUpArgs, {
 			env: packagedAppLaunchEnv(profile),
 			timeout: PREWARM_TIMEOUT_MS,
 			windowsHide: true,

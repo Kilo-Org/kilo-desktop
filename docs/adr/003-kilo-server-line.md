@@ -47,8 +47,14 @@ contract imports and saved state (pane kinds, storage folders, allow-lists).
   define where it resolves plugin assets in development.
 - **react-opencode.** The v1 fork stays at `plugins/chat/react-opencode`;
   `plugins/chat-v2` carries its own copy translated to `@kilocode/client`.
-- **CI** builds and tests the v1 line; a v2 job is added once `plugins/core-v2`
-  boots.
+- **CI** builds and tests the v1 line, and the v2 copies as workspace
+  packages. The `server-line-v2` job builds the app bundles with
+  `KILO_SERVER_LINE=v2`; core-v2's real-kilo2 integration tests run in the
+  Linux, macOS and Windows test jobs; the `real-kilo2` job runs the opt-in
+  tests that need `KILO2_BIN` (chat-v2's thread controller, notebook's v2 Kilo
+  plugin, marketplace-v2's live catalog); and the plugin isolation check
+  covers the v2 copies. Every build stages both lines' CLIs, so packaging hosts
+  cache both. E2e against a v2 build is still to come.
 - **Cutover** deletes the v1 packages, moves the contracts into the v2
   packages, drops the `-v2` names and deletes `server-line.ts` and its
   aliases.

@@ -1,0 +1,20 @@
+name: Cache Kilo v2 CLI
+description: >
+  Restore the platform-specific kilo2 staged by core-v2's prepare-assets. Every
+  build stages both server lines' CLIs (prepare:plugins runs each plugin's
+  prepare-assets), so this runs next to plugins/core/actions/setup-cli. The
+  cache key tracks the package manifest and lockfile that pin the native CLI
+  package.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Kilo v2 CLI
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: plugins/core-v2/resources/kilo
+        key: kilo2-cli-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('plugins/core-v2/package.json', 'pnpm-lock.yaml') }}
+        # The key changes with any lockfile change. An older CLI is safe to
+        # restore: fetch-cli compares staged.json and re-stages a mismatch.
+        restore-keys: |
+          kilo2-cli-${{ runner.os }}-${{ runner.arch }}-

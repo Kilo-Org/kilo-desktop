@@ -50,6 +50,8 @@ jobs:
 
       - uses: ./plugins/core/actions/setup-cli
 
+      - uses: ./plugins/core-v2/actions/setup-cli
+
       - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Make unsigned macOS artifacts

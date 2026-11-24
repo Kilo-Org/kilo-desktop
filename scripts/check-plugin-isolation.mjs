@@ -4,8 +4,9 @@
 // published-shape packages: @kilo-desktop/kernel, @kilo-desktop/ui, other
 // plugins' exports, and the few private libraries listed below.
 //
-// For every bundled plugin (the plugin-* dependencies of packages/bundled-plugins)
-// and every example plugin (examples/*, never bundled):
+// For every bundled plugin (the plugin-* dependencies of packages/bundled-plugins,
+// plus the Kilo server line copies a v2 build bundles instead) and every
+// example plugin (examples/*, never bundled):
 //  1. plugin.json passes the kernel's manifest schema; package.json exports
 //     `./plugin.json` and `./contracts`, and every export target exists.
 //  2. Every bare import in src/ is declared: dependencies or peerDependencies
@@ -265,12 +266,28 @@ function buildSelection(plugins, examples) {
 	});
 }
 
+/**
+ * The bundled-plugins package depends on the default (v1) Kilo server line;
+ * a v2 build bundles the copies in SERVER_LINE_PACKAGES instead
+ * (docs/adr/003-kilo-server-line.md), so they are checked too.
+ */
+async function serverLineCopies(bundledNames) {
+	const { SERVER_LINE_PACKAGES } = await tsImport(
+		"../packages/bundled-plugins/src/server-line.ts",
+		import.meta.url,
+	);
+	const shipped = Object.values(SERVER_LINE_PACKAGES).flatMap((lines) => Object.values(lines));
+	return [...new Set(shipped)].filter((name) => !bundledNames.includes(name));
+}
+
 const workspace = workspacePackages();
-const bundled = Object.keys(
+const bundledNames = Object.keys(
 	readJson(path.join(root, "packages/bundled-plugins/package.json")).dependencies ?? {},
-)
-	.filter((name) => name.startsWith("@kilo-desktop/plugin-"))
-	.map((name) => [name, workspace.get(name)]);
+).filter((name) => name.startsWith("@kilo-desktop/plugin-"));
+const bundled = [...bundledNames, ...(await serverLineCopies(bundledNames))].map((name) => [
+	name,
+	workspace.get(name),
+]);
 const missing = bundled.filter(([, dir]) => !dir);
 if (missing.length > 0)
 	throw new Error(`Not in the workspace: ${missing.map(([name]) => name).join(", ")}`);

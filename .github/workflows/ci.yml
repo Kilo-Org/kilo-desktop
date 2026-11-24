@@ -88,6 +88,35 @@ jobs:
       - run: pnpm --filter @kilo-desktop/web build
       - run: pnpm --filter @kilo-desktop/desktop exec vite build -c vite.main.config.ts --mode development
 
+  # The opt-in tests that drive a real kilo2 named by KILO2_BIN: chat-v2's
+  # thread controller, notebook's v2 Kilo plugin and marketplace-v2's live
+  # catalog (which needs the network). core-v2's own kilo2 integration tests
+  # find the installed CLI themselves and run in the test jobs.
+  real-kilo2:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node-pnpm
+        with:
+          save-pnpm-store: "false"
+          install: "true"
+      - uses: ./plugins/core-v2/actions/setup-cli
+      - name: Stage kilo2 and notebook's v2 Kilo plugin
+        shell: bash
+        run: |
+          pnpm --filter @kilo-desktop/plugin-core-v2 run fetch-cli
+          pnpm --filter @kilo-desktop/plugin-notebook run build-kilo-plugin
+          kilo2=("$PWD"/plugins/core-v2/resources/kilo/*/bin/kilo2)
+          [[ -x "${kilo2[0]}" ]] || { echo "No staged kilo2 under plugins/core-v2/resources/kilo"; exit 1; }
+          echo "KILO2_BIN=${kilo2[0]}" >> "$GITHUB_ENV"
+      - run: pnpm --filter @kilo-desktop/react-opencode-v2 exec vitest run src/v2/live-kilo2.test.ts
+      - run: pnpm --filter @kilo-desktop/plugin-notebook exec vitest run --project integration src/kilo-plugin-v2/kilo2.integration.test.ts
+      - run: pnpm --filter @kilo-desktop/plugin-marketplace-v2 exec vitest run src/main/kilo-v2-marketplace.live.test.ts
+
   typecheck:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
@@ -202,8 +231,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
-      # Only these packages and their dependencies (12 of 29 projects, ~900 of
-      # ~1,400 packages): linking the whole workspace was most of this job's
+      # Only these packages and their dependencies (about a third of the
+      # projects, ~900 of ~1,400 packages): linking the whole workspace was most of this job's
       # time on Windows. The root project comes along, with turbo and vitest.
       - uses: ./.github/actions/setup-node-pnpm
         with:
@@ -408,6 +437,7 @@ jobs:
         lint-format,
         plugin-isolation,
         server-line-v2,
+        real-kilo2,
         typecheck,
         test-linux,
         test,

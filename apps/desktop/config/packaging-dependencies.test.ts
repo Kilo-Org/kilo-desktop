@@ -548,25 +548,31 @@ describe("packaged production dependencies", () => {
 		expect(preparePlugins).toMatch(/--filter\s+"@kilo-desktop\/plugin-\*"/);
 	});
 
-	it("caches the Kilo CLI on test packaging hosts", () => {
-		const setupCli = readFileSync(
-			path.join(workspaceRoot, "plugins/core/actions/setup-cli/action.yml"),
-			"utf8",
-		);
-		const workflows = [
-			".github/actions/run-e2e/action.yml",
-			".github/workflows/pr_macos_build.yml",
-		].map((file) => readFileSync(path.join(workspaceRoot, file), "utf8"));
+	// Every build stages both Kilo server lines' CLIs (prepare:plugins runs each
+	// plugin's prepare-assets), so each line's cache runs on every packaging host.
+	it.each(["plugins/core", "plugins/core-v2"])(
+		"caches %s's Kilo CLI on test packaging hosts",
+		(plugin) => {
+			const setupCli = readFileSync(
+				path.join(workspaceRoot, plugin, "actions/setup-cli/action.yml"),
+				"utf8",
+			);
+			const workflows = [
+				".github/actions/run-e2e/action.yml",
+				".github/workflows/pr_macos_build.yml",
+				".github/workflows/warm-caches.yml",
+			].map((file) => readFileSync(path.join(workspaceRoot, file), "utf8"));
 
-		expect(setupCli).toContain("plugins/core/resources/kilo");
-		expect(setupCli).toContain("runner.os");
-		expect(setupCli).toContain("runner.arch");
-		expect(setupCli).toContain("plugins/core/package.json");
-		expect(setupCli).toContain("pnpm-lock.yaml");
-		for (const workflow of workflows) {
-			expect(workflow).toContain("./plugins/core/actions/setup-cli");
-		}
-	});
+			expect(setupCli).toContain(`${plugin}/resources/kilo`);
+			expect(setupCli).toContain("runner.os");
+			expect(setupCli).toContain("runner.arch");
+			expect(setupCli).toContain(`${plugin}/package.json`);
+			expect(setupCli).toContain("pnpm-lock.yaml");
+			for (const workflow of workflows) {
+				expect(workflow).toContain(`./${plugin}/actions/setup-cli`);
+			}
+		},
+	);
 
 	// Release builds stage the Kilo CLI and notebook resources fresh; only the
 	// Electron rebuild cache is restored.
@@ -578,6 +584,7 @@ describe("packaged production dependencies", () => {
 		const workflow = readFileSync(path.join(workspaceRoot, file), "utf8");
 
 		expect(workflow).not.toContain("./plugins/core/actions/setup-cli");
+		expect(workflow).not.toContain("./plugins/core-v2/actions/setup-cli");
 		expect(workflow).not.toContain("./plugins/notebook/actions/setup-native");
 	});
 

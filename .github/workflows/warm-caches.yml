@@ -50,11 +50,14 @@ jobs:
         uses: ./plugins/notebook/actions/setup-native
       - if: matrix.native
         uses: ./plugins/core/actions/setup-cli
-      - name: Stage notebook runtime and Kilo CLI
+      - if: matrix.native
+        uses: ./plugins/core-v2/actions/setup-cli
+      - name: Stage notebook runtime and Kilo CLIs
         if: matrix.native
         shell: bash
         run: |
           pnpm --filter @kilo-desktop/plugin-core run prepare-assets
+          pnpm --filter @kilo-desktop/plugin-core-v2 run prepare-assets
           pnpm --filter @kilo-desktop/plugin-notebook run prepare-assets
       # The Electron download test-linux and run-e2e restore, and the
       # browser cache test-linux restores.

@@ -1,6 +1,7 @@
 import {
 	clear,
 	click,
+	expectElementNotToContainText,
 	expectElementToBeDisabled,
 	expectElementToBeEnabled,
 	expectElementToBeHidden,
@@ -47,6 +48,10 @@ export class ChatComposerPage {
 	// The rich input's chips, e.g. a file mention or a server slash command.
 	private readonly directiveChip = () =>
 		this.composerRoot().locator('[data-slot="directive-text-chip"]');
+	// assistant-ui renders this wrapper only while the composer holds an active `/` or `@` query.
+	private readonly triggerMenu = () => getLocator('[data-slot="composer-trigger-popover"]');
+	private readonly highlightedTriggerRow = () =>
+		this.triggerMenu().locator('[role="option"][aria-selected="true"]');
 	private readonly sendButton = () => getLocatorByTestId("kilo-composer-send");
 	private readonly userMessage = (text: string) =>
 		this.thread().locator('[data-role="user"]').getByText(text, { exact: true });
@@ -203,6 +208,45 @@ export class ChatComposerPage {
 	async verifyComposerCommand(name: string): Promise<void> {
 		await expectElementToContainText(this.directiveChip(), name, {
 			message: `The composer should show a "/${name}" chip`,
+		});
+	}
+
+	async verifyComposerHasNoChip(): Promise<void> {
+		await expectElementToHaveCount(this.directiveChip(), 0, {
+			message: "The composer should hold no command or mention chip",
+		});
+	}
+
+	/** The `/` or `@` menu is showing its rows. */
+	async verifyTriggerMenuOpen(): Promise<void> {
+		await expectElementToBeVisible(this.triggerMenu(), {
+			message: "The composer's trigger menu should be open",
+		});
+	}
+
+	/** The `/` or `@` menu is dismissed, e.g. after Escape. */
+	async verifyTriggerMenuClosed(): Promise<void> {
+		await expectElementToBeHidden(this.triggerMenu(), {
+			message: "The composer's trigger menu should be closed",
+		});
+	}
+
+	/** The menu row the keyboard would pick on Enter. */
+	async verifyHighlightedMenuItem(label: string): Promise<void> {
+		await expectElementToContainText(this.highlightedTriggerRow(), label, {
+			message: `The menu's highlighted row should be "${label}"`,
+		});
+	}
+
+	async verifyMenuItemNotHighlighted(label: string): Promise<void> {
+		await expectElementNotToContainText(this.highlightedTriggerRow(), label, {
+			message: `The menu's highlighted row should no longer be "${label}"`,
+		});
+	}
+
+	async verifyOneMenuItemHighlighted(): Promise<void> {
+		await expectElementToHaveCount(this.highlightedTriggerRow(), 1, {
+			message: "The menu should highlight exactly one row",
 		});
 	}
 

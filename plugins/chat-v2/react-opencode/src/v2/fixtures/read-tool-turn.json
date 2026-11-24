@@ -1,0 +1,548 @@
+{
+	"session": {
+		"id": "ses_turn",
+		"projectID": "05ed3effcf01ca8106944fe68aa94738d92bde05",
+		"cost": 0,
+		"tokens": {
+			"input": 0,
+			"output": 0,
+			"reasoning": 0,
+			"cache": {
+				"read": 0,
+				"write": 0
+			}
+		},
+		"outcome": "succeeded",
+		"time": {
+			"created": 1795551772530,
+			"updated": 1795551772601,
+			"busy": 1795551772542,
+			"idle": 1795551772603
+		},
+		"title": "Turn",
+		"location": {
+			"directory": "/tmp/k2turn/project"
+		}
+	},
+	"events": [
+		{
+			"type": "session.created",
+			"created": 1795551772530,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"slug": "stellar-circuit",
+				"version": "0.0.0-v2-239",
+				"projectID": "05ed3effcf01ca8106944fe68aa94738d92bde05",
+				"location": {
+					"directory": "/tmp/k2turn/project"
+				},
+				"subpath": "",
+				"title": "Turn"
+			}
+		},
+		{
+			"type": "session.inbox.enqueued",
+			"created": 1795551772538,
+			"data": {
+				"inboxID": "msg_20f39bf7a001MQ838dBHd4Iql6",
+				"sessionID": "ses_turn",
+				"item": {
+					"type": "synthetic",
+					"delivery": "steer",
+					"payload": {
+						"text": "hidden note"
+					}
+				}
+			}
+		},
+		{
+			"type": "session.inbox.enqueued",
+			"created": 1795551772541,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"inboxID": "msg_20f39bf7d001Vx4Oolfo2JG2Ga",
+				"sessionID": "ses_turn",
+				"item": {
+					"type": "user",
+					"payload": {
+						"text": "What do my notes say?"
+					},
+					"delivery": "steer"
+				}
+			}
+		},
+		{
+			"type": "session.execution.started",
+			"created": 1795551772542,
+			"data": {
+				"sessionID": "ses_turn"
+			}
+		},
+		{
+			"type": "session.instructions.updated",
+			"created": 1795551772554,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"delta": {
+					"core/codemode": "e4bd83bbe9b13ef6af91a2d6f327458d84bba9f5f20abfabf3c5af630e3f0c3d",
+					"core/skill-guidance": "2d6b7cc3cf7cba9299a58ae56782b240563801a8795bfe642194ab186980ad66",
+					"core/date": "1a2867dfb6d20b9333899d1a2f3ebf58f6df1641a8451a6a55aa1da85d55154c",
+					"core/environment": "88e9a1ff822c90877810641edc3ccbeeda77547d1181aa90bc77049b39df136a"
+				}
+			}
+		},
+		{
+			"type": "session.inbox.delivered",
+			"created": 1795551772556,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"inboxID": "msg_20f39bf7a001MQ838dBHd4Iql6"
+			}
+		},
+		{
+			"type": "session.inbox.delivered",
+			"created": 1795551772557,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"inboxID": "msg_20f39bf7d001Vx4Oolfo2JG2Ga"
+			}
+		},
+		{
+			"type": "session.step.started",
+			"created": 1795551772574,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"agent": "code",
+				"model": {
+					"id": "m",
+					"providerID": "standin"
+				},
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"started": 1795551772568
+			}
+		},
+		{
+			"type": "session.step.first-token",
+			"created": 1795551772575,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F"
+			}
+		},
+		{
+			"type": "session.text.started",
+			"created": 1795551772577,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"ordinal": 0
+			}
+		},
+		{
+			"type": "session.text.delta",
+			"created": 1795551772578,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"ordinal": 0,
+				"delta": "Let me look."
+			}
+		},
+		{
+			"type": "session.tool.input.started",
+			"created": 1795551772579,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"id": "call_1",
+				"name": "read"
+			}
+		},
+		{
+			"type": "session.tool.input.ended",
+			"created": 1795551772580,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"id": "call_1",
+				"text": "{\"path\":\"/tmp/k2turn/project/notes.txt\"}"
+			}
+		},
+		{
+			"type": "session.tool.called",
+			"created": 1795551772580,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"id": "call_1",
+				"input": {
+					"path": "/tmp/k2turn/project/notes.txt"
+				},
+				"executed": false
+			}
+		},
+		{
+			"type": "session.text.ended",
+			"created": 1795551772582,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"ordinal": 0,
+				"text": "Let me look."
+			}
+		},
+		{
+			"type": "session.step.streamed",
+			"created": 1795551772583,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F"
+			}
+		},
+		{
+			"type": "session.tool.success",
+			"created": 1795551772587,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"id": "call_1",
+				"content": [
+					{
+						"type": "text",
+						"text": "Read file /tmp/k2turn/project/notes.txt, lines 1-1\n1: hello from notes"
+					}
+				],
+				"metadata": {
+					"truncated": false
+				},
+				"executed": false
+			}
+		},
+		{
+			"type": "session.step.ended",
+			"created": 1795551772588,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bf92001EqZElZLviHqi6F",
+				"finish": "tool-calls",
+				"rawFinish": "tool_calls",
+				"tokens": {
+					"input": 0,
+					"output": 0,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				},
+				"cost": 0
+			}
+		},
+		{
+			"type": "session.usage.updated",
+			"created": 1795551772589,
+			"data": {
+				"sessionID": "ses_turn",
+				"cost": 0,
+				"tokens": {
+					"input": 0,
+					"output": 0,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				}
+			}
+		},
+		{
+			"type": "session.step.started",
+			"created": 1795551772595,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"agent": "code",
+				"model": {
+					"id": "m",
+					"providerID": "standin"
+				},
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6",
+				"started": 1795551772593
+			}
+		},
+		{
+			"type": "session.step.first-token",
+			"created": 1795551772597,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6"
+			}
+		},
+		{
+			"type": "session.text.started",
+			"created": 1795551772599,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6",
+				"ordinal": 0
+			}
+		},
+		{
+			"type": "session.text.delta",
+			"created": 1795551772600,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6",
+				"ordinal": 0,
+				"delta": "It says hello."
+			}
+		},
+		{
+			"type": "session.text.ended",
+			"created": 1795551772600,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6",
+				"ordinal": 0,
+				"text": "It says hello."
+			}
+		},
+		{
+			"type": "session.step.streamed",
+			"created": 1795551772600,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6"
+			}
+		},
+		{
+			"type": "session.step.ended",
+			"created": 1795551772601,
+			"location": {
+				"directory": "/tmp/k2turn/project"
+			},
+			"data": {
+				"sessionID": "ses_turn",
+				"assistantMessageID": "msg_20f39bfaf001wb6ZhtkPDr6FN6",
+				"finish": "stop",
+				"rawFinish": "stop",
+				"tokens": {
+					"input": 0,
+					"output": 0,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				},
+				"cost": 0
+			}
+		},
+		{
+			"type": "session.usage.updated",
+			"created": 1795551772602,
+			"data": {
+				"sessionID": "ses_turn",
+				"cost": 0,
+				"tokens": {
+					"input": 0,
+					"output": 0,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				}
+			}
+		},
+		{
+			"type": "session.execution.succeeded",
+			"created": 1795551772603,
+			"data": {
+				"sessionID": "ses_turn"
+			}
+		}
+	],
+	"messages": [
+		{
+			"id": "msg_20f39bf7a001MQ838dBHd4Iql6",
+			"time": {
+				"created": 1795551772556
+			},
+			"text": "hidden note",
+			"type": "synthetic"
+		},
+		{
+			"id": "msg_20f39bf7d001Vx4Oolfo2JG2Ga",
+			"time": {
+				"created": 1795551772557
+			},
+			"text": "What do my notes say?",
+			"type": "user"
+		},
+		{
+			"id": "msg_20f39bf92001EqZElZLviHqi6F",
+			"time": {
+				"created": 1795551772568,
+				"firstToken": 1795551772575,
+				"streamed": 1795551772583,
+				"completed": 1795551772588
+			},
+			"type": "assistant",
+			"agent": "code",
+			"model": {
+				"id": "m",
+				"providerID": "standin"
+			},
+			"content": [
+				{
+					"type": "text",
+					"text": "Let me look."
+				},
+				{
+					"type": "tool",
+					"id": "call_1",
+					"name": "read",
+					"executed": false,
+					"state": {
+						"status": "completed",
+						"input": {
+							"path": "/tmp/k2turn/project/notes.txt"
+						},
+						"content": [
+							{
+								"type": "text",
+								"text": "Read file /tmp/k2turn/project/notes.txt, lines 1-1\n1: hello from notes"
+							}
+						],
+						"metadata": {
+							"truncated": false
+						}
+					},
+					"time": {
+						"created": 1795551772579,
+						"ran": 1795551772580,
+						"completed": 1795551772587
+					}
+				}
+			],
+			"finish": "tool-calls",
+			"rawFinish": "tool_calls",
+			"cost": 0,
+			"tokens": {
+				"input": 0,
+				"output": 0,
+				"reasoning": 0,
+				"cache": {
+					"read": 0,
+					"write": 0
+				}
+			}
+		},
+		{
+			"id": "msg_20f39bfaf001wb6ZhtkPDr6FN6",
+			"time": {
+				"created": 1795551772593,
+				"firstToken": 1795551772597,
+				"streamed": 1795551772600,
+				"completed": 1795551772601
+			},
+			"type": "assistant",
+			"agent": "code",
+			"model": {
+				"id": "m",
+				"providerID": "standin"
+			},
+			"content": [
+				{
+					"type": "text",
+					"text": "It says hello."
+				}
+			],
+			"finish": "stop",
+			"rawFinish": "stop",
+			"cost": 0,
+			"tokens": {
+				"input": 0,
+				"output": 0,
+				"reasoning": 0,
+				"cache": {
+					"read": 0,
+					"write": 0
+				}
+			}
+		},
+		{
+			"id": "msg_20f39bfbb001FLAefnhZYO4Ljp",
+			"time": {
+				"created": 1795551772603
+			},
+			"type": "idle",
+			"outcome": "succeeded"
+		}
+	]
+}

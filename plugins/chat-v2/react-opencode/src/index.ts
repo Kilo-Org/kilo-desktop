@@ -93,3 +93,8 @@ export type {
 } from "./types";
 
 export { createOpencodeClient } from "./sdk";
+
+// Kilo v2: its transcript and events in the v1 shapes above.
+export { createV2EventSubscriber, v2ClientEventSubscriber } from "./v2/v2-event-source";
+export { formAnswers, V2EventTranslator, type ReadSession, type V1Event } from "./v2/v2-events";
+export { toV1Messages, toV1Session, type V2Message } from "./v2/v2-messages";

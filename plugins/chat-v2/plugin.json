@@ -2,7 +2,7 @@
 	"manifestVersion": 1,
 	"id": "kilo.chat",
 	"displayName": "Chat",
-	"version": "1.0.0",
+	"version": "2.0.0",
 	"description": "The chat pane: a work session's chats with the agent, their transcript and composer.",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",

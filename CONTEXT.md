@@ -41,6 +41,7 @@ plugins/          Bundled plugins, in layers: kernel → kilo.core → kilo.shel
 ├── git/          @kilo-desktop/plugin-git   kilo.git: git for workspace folders — work sessions' isolation (`kilo.work-sessions/vcs`), the Changes pane, branches, repository actions, pull requests and cloning a repository into a new workspace
 ├── local-inference/ @kilo-desktop/plugin-local-inference kilo.local-inference: the Local Model Server — GGUF models on this device through a managed llama.cpp router, offered to Kilo as an AI provider and to the composer's model picker
 ├── marketplace/  @kilo-desktop/plugin-marketplace kilo.marketplace: Kilo's Marketplace of agents, skills and MCP servers — the Agent Behavior settings section
+├── marketplace-v2/ @kilo-desktop/plugin-marketplace-v2 kilo.marketplace for the Kilo Code v2 server line: same id and contracts, over the kilocode.marketplace/agent/skill RPCs, chosen by KILO_SERVER_LINE (ADR-003)
 ├── notebook/     @kilo-desktop/plugin-notebook kilo.notebook: Notebook panes — nteract notebooks over the runtimed daemon, the `*.ipynb` opener, notebook agent tools and Kilo plugin
 ├── shell/        @kilo-desktop/plugin-shell kilo.shell: the window and everything the user sees of kilo.core
 ├── terminal/     @kilo-desktop/plugin-terminal kilo.terminal: terminal panes — interactive shells (node-pty) in a work session's folder, drawn in an embedded frame

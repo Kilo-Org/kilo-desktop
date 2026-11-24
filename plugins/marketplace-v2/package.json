@@ -1,0 +1,56 @@
+{
+	"name": "@kilo-desktop/plugin-marketplace-v2",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.marketplace for the Kilo Code v2 server line: a copy of @kilo-desktop/plugin-marketplace with the same plugin id and contracts, chosen at build time (docs/adr/003-kilo-server-line.md)",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-marketplace": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
+		"@kilocode/client": "0.0.0-v2-239",
+		"@opencode/schema": "npm:@kilocode/schema@0.0.0-v2-239",
+		"@tanstack/react-query": "^5.108.0",
+		"lucide-react": "catalog:",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1",
+		"which": "catalog:",
+		"yaml": "^2.9.1",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.5",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^26.0.0",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@types/which": "^3.0.4",
+		"@vitejs/plugin-react": "^6.3.0",
+		"@vitest/browser": "5.1.1",
+		"@vitest/browser-playwright": "5.1.1",
+		"@vitest/coverage-v8": "catalog:",
+		"oxc-transform-react": "~0.158.0",
+		"playwright": "catalog:",
+		"tailwindcss": "^4.3.5",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

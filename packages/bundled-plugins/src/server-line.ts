@@ -39,7 +39,7 @@ export const SERVER_LINE_PACKAGES: ServerLinePackages = {
 	},
 	"@kilo-desktop/plugin-marketplace": {
 		v1: "@kilo-desktop/plugin-marketplace",
-		v2: "@kilo-desktop/plugin-marketplace",
+		v2: "@kilo-desktop/plugin-marketplace-v2",
 	},
 };
 

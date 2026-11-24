@@ -10,6 +10,7 @@ import type { KvStore } from "@kilo-desktop/kernel";
 import {
 	ExternalPlugins,
 	externalPluginUrl,
+	localPluginsFlagAtLaunch,
 	type ExternalPluginsOptions,
 	type ExternalPluginsSettings,
 } from "./external-plugins.js";
@@ -511,15 +512,33 @@ describe("ExternalPlugins — feature flag", () => {
 		await expect(plugins.refresh()).rejects.toMatchObject({ code: "UNAVAILABLE" });
 	});
 
-	it("lets the build's override decide at launch, ahead of what was last remembered", async () => {
-		await writePlugin("hello", manifest("acme.hello"));
-		const store = memoryStore({ enabled: true, featureAvailable: false });
-		await approveAll(create({ store: memoryStore({ enabled: true }) }));
-		const plugins = create({ store, featureOverride: true });
+	it("lets a flag value known at launch decide, ahead of what was last remembered", () => {
+		expect(
+			create({ store: memoryStore({ featureAvailable: false }), featureAtLaunch: true }).state(),
+		).not.toBeNull();
+		expect(
+			create({ store: memoryStore({ featureAvailable: true }), featureAtLaunch: false }).state(),
+		).toBeNull();
+	});
 
-		await plugins.load();
-
-		expect(plugins.state()).not.toBeNull();
+	it.each([
+		[
+			"the build's override",
+			{ override: false, flagSourceConfigured: true, declaredDefault: true },
+			false,
+		],
+		[
+			"the declared default without a flag source",
+			{ override: undefined, flagSourceConfigured: false, declaredDefault: false },
+			false,
+		],
+		[
+			"nothing, when only the flag source can say",
+			{ override: undefined, flagSourceConfigured: true, declaredDefault: false },
+			undefined,
+		],
+	])("knows the flag at launch from %s", (_case, input, expected) => {
+		expect(localPluginsFlagAtLaunch(input)).toBe(expected);
 	});
 
 	it("remembers the flag for the next launch, and says a restart applies it", async () => {

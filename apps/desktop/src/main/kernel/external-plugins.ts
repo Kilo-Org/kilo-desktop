@@ -77,8 +77,11 @@ export interface ExternalPluginsOptions {
 	readonly reservedIds: ReadonlySet<string>;
 	/** The kernel's plugin API version, checked against `engines["kilo-desktop"]`. */
 	readonly apiVersion: string;
-	/** The build's override of the `local-plugins` flag, which decides at launch ahead of the remembered value. */
-	readonly featureOverride?: boolean;
+	/**
+	 * The `local-plugins` flag's value when it is already known at launch (see
+	 * {@link localPluginsFlagAtLaunch}); it decides ahead of the remembered value.
+	 */
+	readonly featureAtLaunch?: boolean;
 	/** Asks the user, in the host's own UI, whether this plugin may run. */
 	confirmApproval(request: ApprovalRequest): Promise<boolean>;
 	readonly logger: {
@@ -99,6 +102,21 @@ export interface ExternalPluginsOptions {
  * (and gates Settings → Plugins on it); the host only reads its value.
  */
 export const LOCAL_PLUGINS_FLAG = "local-plugins";
+
+/**
+ * The `local-plugins` flag's value if it can be known before plugins load:
+ * the build's override, or — with no flag source configured — its declared
+ * default, which is all it will ever resolve to. Undefined when only the flag
+ * source can say, so launch falls back to the value it last reported.
+ */
+export function localPluginsFlagAtLaunch(input: {
+	readonly override: unknown;
+	readonly flagSourceConfigured: boolean;
+	readonly declaredDefault: boolean;
+}): boolean | undefined {
+	if (typeof input.override === "boolean") return input.override;
+	return input.flagSourceConfigured ? undefined : input.declaredDefault;
+}
 
 /** Path prefix on the app origin under which loaded plugins' files are served. */
 export const EXTERNAL_PLUGINS_PATH = "/external-plugins/";
@@ -159,7 +177,7 @@ export class ExternalPlugins implements ExternalPluginsHost {
 
 	constructor(options: ExternalPluginsOptions) {
 		this.#options = options;
-		this.#available = options.featureOverride ?? options.store.get("featureAvailable") === true;
+		this.#available = options.featureAtLaunch ?? options.store.get("featureAvailable") === true;
 	}
 
 	/**

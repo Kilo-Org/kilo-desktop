@@ -80,6 +80,7 @@ import {
 	EXTERNAL_PLUGINS_PATH,
 	ExternalPlugins,
 	LOCAL_PLUGINS_FLAG,
+	localPluginsFlagAtLaunch,
 	type ApprovalRequest,
 	type ExternalPluginsSettings,
 } from "./external-plugins.js";
@@ -152,7 +153,13 @@ export class KernelApplication {
 			defaults: { enabled: false, approvals: {}, featureAvailable: false },
 			namespace: "external-plugins",
 		}),
-		...booleanOverride(this.#flagOverrides[LOCAL_PLUGINS_FLAG]),
+		...optionalFeatureAtLaunch(
+			localPluginsFlagAtLaunch({
+				override: this.#flagOverrides[LOCAL_PLUGINS_FLAG],
+				flagSourceConfigured: Boolean(import.meta.env.VITE_LAUNCHDARKLY_CLIENT_SIDE_ID),
+				declaredDefault: declaredFlagDefault(LOCAL_PLUGINS_FLAG),
+			}),
+		),
 		reservedIds: new Set(
 			BUNDLED_PLUGINS.map((plugin) => (plugin.manifest as { readonly id: string }).id),
 		),
@@ -801,7 +808,24 @@ export class KernelApplication {
 	}
 }
 
-/** A boolean flag override as an option, ignoring absent or non-boolean values. */
-function booleanOverride(value: unknown): { readonly featureOverride?: boolean } {
-	return typeof value === "boolean" ? { featureOverride: value } : {};
+function optionalFeatureAtLaunch(value: boolean | undefined): {
+	readonly featureAtLaunch?: boolean;
+} {
+	return value === undefined ? {} : { featureAtLaunch: value };
+}
+
+/** A bundled plugin's declared default for a boolean flag (false when undeclared). */
+function declaredFlagDefault(flagId: string): boolean {
+	for (const { manifest } of BUNDLED_PLUGINS) {
+		const flags = (
+			manifest as {
+				readonly contributes?: {
+					readonly extensions?: Record<string, readonly { id?: unknown; default?: unknown }[]>;
+				};
+			}
+		).contributes?.extensions?.["kernel/flag"];
+		const flag = flags?.find((candidate) => candidate.id === flagId);
+		if (flag) return flag.default === true;
+	}
+	return false;
 }

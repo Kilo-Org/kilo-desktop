@@ -28,10 +28,13 @@ interface Entry {
 	readonly element: HTMLElement;
 }
 
-interface Registry {
+export interface LightboxRegistry {
+	/** Makes `entry` openable under `key`; returns its unregistration. */
 	register(key: string, entry: Entry): () => void;
 	open(key: string): void;
 }
+
+type Registry = LightboxRegistry;
 
 const RegistryContext = createContext<Registry | null>(null);
 
@@ -139,6 +142,14 @@ export function ChatLightboxProvider({ children }: { readonly children: ReactNod
 			/>
 		</RegistryContext.Provider>
 	);
+}
+
+/**
+ * The transcript's viewer registry, for surfaces whose items are not React
+ * elements (diagrams in rendered markdown); null outside a transcript.
+ */
+export function useLightboxRegistry(): LightboxRegistry | null {
+	return useContext(RegistryContext);
 }
 
 /**

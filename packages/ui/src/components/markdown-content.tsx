@@ -1,225 +1,149 @@
-import "@assistant-ui/react-markdown/styles/dot.css";
+import "./markdown-content.css";
 
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import type { ComponentProps } from "react";
+import { Markdown } from "@pierre/words/react";
+import type { ComponentProps, MouseEvent } from "react";
 
+import { useMarkdownHighlighter } from "../hooks/use-markdown-highlighter.js";
+import { useMarkdownMermaid } from "../hooks/use-markdown-mermaid.js";
+import {
+	composeMarkdownRenderer,
+	type MarkdownRendererExtension,
+} from "../lib/markdown-extension.js";
 import { cn } from "../lib/utils.js";
-import { composeMarkdownRenderer, type MarkdownRendererExtension } from "./markdown-extension.js";
 
 const NO_MARKDOWN_EXTENSIONS: readonly MarkdownRendererExtension[] = [];
+const CODE_CONTROLS = { code: { copy: true, download: false } } as const;
+const SAFE_LINK = /^(?:https?:|mailto:|tel:)/iu;
+/** A line that opens a `mermaid` fence, possibly inside a list or quote. */
+const MERMAID_FENCE = /^[\s>*+\-\d.]*(?:`{3,}|~{3,})\s*mermaid\b/mu;
 
-export function MarkdownAnchor({ className, ...props }: ComponentProps<"a">) {
-	return (
-		<a
-			className={cn(
-				"aui-md-a text-primary-ink hover:text-primary-ink/80 underline underline-offset-2",
-				className,
-			)}
-			{...props}
-		/>
-	);
-}
-
-export const markdownComponents = {
-	h1: ({ className, node: _node, ...props }) => (
-		<h1
-			className={cn(
-				"aui-md-h1 mt-5 mb-2 scroll-m-20 text-xl font-semibold first:mt-0 last:mb-0",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	h2: ({ className, node: _node, ...props }) => (
-		<h2
-			className={cn(
-				"aui-md-h2 mt-5 mb-2 scroll-m-20 text-lg font-semibold first:mt-0 last:mb-0",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	h3: ({ className, node: _node, ...props }) => (
-		<h3
-			className={cn(
-				"aui-md-h3 mt-4 mb-1.5 scroll-m-20 text-base font-semibold first:mt-0 last:mb-0",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	h4: ({ className, node: _node, ...props }) => (
-		<h4
-			className={cn(
-				"aui-md-h4 mt-3.5 mb-1 scroll-m-20 text-base font-medium first:mt-0 last:mb-0",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	h5: ({ className, node: _node, ...props }) => (
-		<h5
-			className={cn("aui-md-h5 mt-3 mb-1 text-sm font-semibold first:mt-0 last:mb-0", className)}
-			{...props}
-		/>
-	),
-	h6: ({ className, node: _node, ...props }) => (
-		<h6
-			className={cn("aui-md-h6 mt-3 mb-1 text-sm font-medium first:mt-0 last:mb-0", className)}
-			{...props}
-		/>
-	),
-	p: ({ className, node: _node, ...props }) => (
-		<p className={cn("aui-md-p my-3 leading-relaxed first:mt-0 last:mb-0", className)} {...props} />
-	),
-	a: ({ node: _node, ...props }) => <MarkdownAnchor {...props} />,
-	blockquote: ({ className, node: _node, ...props }) => (
-		<blockquote
-			className={cn(
-				"aui-md-blockquote border-muted-foreground/30 text-muted-foreground my-3 border-s-2 ps-4",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	ul: ({ className, node: _node, ...props }) => (
-		<ul
-			className={cn(
-				"aui-md-ul marker:text-muted-foreground my-3 ms-5 list-disc [&>li]:mt-1",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	ol: ({ className, node: _node, ...props }) => (
-		<ol
-			className={cn(
-				"aui-md-ol marker:text-muted-foreground my-3 ms-5 list-decimal [&>li]:mt-1",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	hr: ({ className, node: _node, ...props }) => (
-		<hr className={cn("aui-md-hr border-muted-foreground/20 my-3", className)} {...props} />
-	),
-	table: ({ className, node: _node, ...props }) => (
-		<div className="aui-md-table-scroll my-3 overflow-x-auto">
-			<table
-				className={cn("aui-md-table w-full border-separate border-spacing-0", className)}
-				{...props}
-			/>
-		</div>
-	),
-	th: ({ className, node: _node, ...props }) => (
-		<th
-			className={cn(
-				"aui-md-th bg-foreground/10 px-3 py-1.5 text-start font-medium first:rounded-ss-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	td: ({ className, node: _node, ...props }) => (
-		<td
-			className={cn(
-				"aui-md-td border-muted-foreground/20 border-s border-b px-3 py-1.5 text-start last:border-e [[align=center]]:text-center [[align=right]]:text-right",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	tr: ({ className, node: _node, ...props }) => (
-		<tr
-			className={cn(
-				"aui-md-tr m-0 border-b p-0 first:border-t [&:last-child>td:first-child]:rounded-es-lg [&:last-child>td:last-child]:rounded-ee-lg",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	li: ({ className, node: _node, ...props }) => (
-		<li className={cn("aui-md-li leading-relaxed", className)} {...props} />
-	),
-	strong: ({ className, node: _node, ...props }) => (
-		<strong className={cn("aui-md-strong font-semibold", className)} {...props} />
-	),
-	sup: ({ className, node: _node, ...props }) => (
-		<sup className={cn("aui-md-sup [&>a]:text-xs [&>a]:no-underline", className)} {...props} />
-	),
-	pre: ({ className, node: _node, ...props }) => (
-		<pre
-			className={cn(
-				"aui-md-pre border-border-subtle bg-muted/30 overflow-x-auto rounded-xl border p-3.5 text-sm leading-relaxed",
-				className,
-			)}
-			{...props}
-		/>
-	),
-	code: ({ className, node: _node, ...props }) => {
-		const isCodeBlock = Boolean(className?.includes("language-"));
-		return (
-			<code
-				className={cn(
-					!isCodeBlock &&
-						"aui-md-inline-code bg-muted rounded-md px-1.5 py-0.5 font-mono text-[0.85em]",
-					className,
-				)}
-				{...props}
-			/>
-		);
-	},
-} satisfies Components;
-
-interface MarkdownBodyProps {
-	readonly text: string;
-	readonly components?: Components;
-	readonly extensions?: readonly MarkdownRendererExtension[];
-	readonly skipHtml?: boolean;
-}
-
-export function MarkdownContent({
-	text,
-	className,
-	components,
-	extensions = NO_MARKDOWN_EXTENSIONS,
-	skipHtml = true,
-	...props
-}: Omit<ComponentProps<"div">, "children"> & MarkdownBodyProps) {
-	return (
-		<div className={cn("aui-md text-sm", className)} {...props}>
-			<MarkdownBody
-				text={text}
-				{...(components ? { components } : {})}
-				extensions={extensions}
-				skipHtml={skipHtml}
-			/>
-		</div>
-	);
+/** A drawn Mermaid diagram: its source and the element showing it. */
+export interface MarkdownMermaidDiagram {
+	readonly code: string;
+	readonly element: HTMLElement;
 }
 
 /**
- * Split from `MarkdownContent` so the composed renderer is cached on
- * `components`/`extensions` alone, not on the wrapper's rest props.
+ * Keeps clicks on links from navigating the app window: a relative link would
+ * load the app's own origin, so only web, mail and phone links keep their
+ * default (the main process opens those externally), and a footnote link
+ * scrolls within the markdown instead of changing the window's hash.
  */
-function MarkdownBody({
-	text,
-	components,
-	extensions = NO_MARKDOWN_EXTENSIONS,
-	skipHtml,
-}: MarkdownBodyProps) {
-	const renderer = composeMarkdownRenderer(
-		components ? { ...markdownComponents, ...components } : markdownComponents,
-		extensions,
+function guardLinkNavigation(event: MouseEvent<HTMLElement>) {
+	if (event.defaultPrevented) return;
+	const anchor = (event.target as Element | null)?.closest?.("a[href]");
+	if (!anchor || !event.currentTarget.contains(anchor)) return;
+	const href = anchor.getAttribute("href") ?? "";
+	if (SAFE_LINK.test(href)) return;
+	event.preventDefault();
+	if (!href.startsWith("#")) return;
+	const target = event.currentTarget.querySelector(`[id="${CSS.escape(href.slice(1))}"]`);
+	target?.scrollIntoView({ block: "nearest" });
+}
+
+/** A click on a closed diagram, or its Expand button, opens it through `onExpandMermaid`. */
+function expandMermaid(
+	event: MouseEvent<HTMLElement>,
+	onExpandMermaid: (diagram: MarkdownMermaidDiagram) => void,
+) {
+	if (event.defaultPrevented) return;
+	const element = (event.target as Element | null)?.closest?.<HTMLElement>(
+		'[data-markdown="mermaid"]',
 	);
+	const code = element?.closest<HTMLElement>('[data-markdown="code-block"]')?.dataset.code;
+	if (!element || code === undefined || !event.currentTarget.contains(element)) return;
+	event.preventDefault();
+	onExpandMermaid({ code, element });
+}
+
+/** Routes a code block's Copy button through `onCopyCode` instead of Words' clipboard call. */
+function interceptCodeCopy(event: MouseEvent<HTMLElement>, onCopyCode: (code: string) => void) {
+	const button = (event.target as Element | null)?.closest?.('button[data-code-action="copy"]');
+	if (!(button instanceof HTMLButtonElement) || !event.currentTarget.contains(button)) return;
+	event.stopPropagation();
+	const block = button.closest<HTMLElement>('[data-markdown="code-block"]');
+	onCopyCode(block?.dataset.code ?? block?.querySelector("pre code")?.textContent ?? "");
+	button.dataset.copied = "true";
+	setTimeout(() => {
+		delete button.dataset.copied;
+	}, 2_000);
+}
+
+export interface MarkdownContentProps extends Omit<
+	ComponentProps<"div">,
+	"children" | "onAnimationStart" | "onAnimationEnd"
+> {
+	readonly text: string;
+	/** Set for text that streams in: `true` while it is still arriving. Omit for static text. */
+	readonly streaming?: boolean;
+	readonly extensions?: readonly MarkdownRendererExtension[];
+	/** The Shiki theme name to highlight code in; code stays plain without one. */
+	readonly codeTheme?: string;
+	/** Opens a drawn diagram in a viewer; each diagram gets an Expand button. */
+	readonly onExpandMermaid?: (diagram: MarkdownMermaidDiagram) => void;
+	/**
+	 * Copies a code block's source, and shows each block's Copy button. Omit it
+	 * where no clipboard is at hand: Electron denies the web clipboard.
+	 */
+	readonly onCopyCode?: (code: string) => void;
+}
+
+/**
+ * Markdown rendered by `@pierre/words`: GitHub Flavored Markdown and TeX math
+ * (`$…$`, `$$…$$`, as SVG) straight to HTML (raw HTML dropped, URLs checked), patched incrementally while
+ * `streaming`. `mermaid` fences draw as diagrams through Words' Mermaid plugin
+ * once Pele has loaded. `extensions` rewrite the HTML, mount React islands and
+ * handle clicks; see `MarkdownRendererExtension`. Words compares renderers and
+ * islands by identity and starts over when they change; React Compiler keeps
+ * them while `extensions` keeps its identity, so callers pass a stable list.
+ */
+export function MarkdownContent({
+	text,
+	streaming,
+	extensions = NO_MARKDOWN_EXTENSIONS,
+	codeTheme,
+	onExpandMermaid,
+	onCopyCode,
+	className,
+	onClick,
+	onClickCapture,
+	...props
+}: MarkdownContentProps) {
+	const highlighter = useMarkdownHighlighter(codeTheme);
+	const mermaid = useMarkdownMermaid(MERMAID_FENCE.test(text), onExpandMermaid !== undefined);
+	const renderer = composeMarkdownRenderer(extensions);
+	const plugins = {
+		renderers: renderer.renderers,
+		...(highlighter ? { code: highlighter } : {}),
+		...(mermaid ? { mermaid } : {}),
+	};
 	return (
-		<ReactMarkdown
-			remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
+		<Markdown
+			{...props}
+			className={cn("kilo-markdown text-sm", className)}
+			mode={streaming === undefined ? "static" : "streaming"}
+			isAnimating={streaming === true}
+			{...(streaming ? { caret: "circle" } : {})}
 			components={renderer.components}
-			skipHtml={skipHtml}
+			plugins={plugins}
+			islands={renderer.islands}
+			{...(renderer.urlTransform ? { urlTransform: renderer.urlTransform } : {})}
+			controls={onCopyCode ? CODE_CONTROLS : false}
+			animated={streaming !== undefined}
+			lineNumbers={false}
+			math
+			onClickCapture={(event) => {
+				onClickCapture?.(event);
+				if (onCopyCode) interceptCodeCopy(event, onCopyCode);
+			}}
+			onClick={(event) => {
+				onClick?.(event);
+				renderer.onClick?.(event);
+				if (onExpandMermaid) expandMermaid(event, onExpandMermaid);
+				guardLinkNavigation(event);
+			}}
 		>
 			{text}
-		</ReactMarkdown>
+		</Markdown>
 	);
 }

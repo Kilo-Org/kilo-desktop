@@ -41,7 +41,11 @@ function createExtension(
 	}
 }
 
-/** The window's `kilo.chat/markdown-extension` contributions, made for this transcript. */
+/**
+ * The window's `kilo.chat/markdown-extension` contributions, made for this
+ * transcript. React Compiler keeps the list while the contributions and the
+ * context are unchanged; the renderer starts over whenever it changes.
+ */
 export function useChatMarkdownExtensions(
 	context: ChatMarkdownContext,
 ): readonly MarkdownRendererExtension[] {

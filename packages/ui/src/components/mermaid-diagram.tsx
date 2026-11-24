@@ -1,10 +1,9 @@
 import { CircleAlertIcon } from "lucide-react";
-import { isValidElement, useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 
 import { useLatestRef } from "../hooks/use-latest-ref.js";
 import { cn } from "../lib/utils.js";
 import { Alert, AlertDescription, AlertTitle } from "./alert.js";
-import type { MarkdownRendererExtension } from "./markdown-extension.js";
 import { Spinner } from "./spinner.js";
 
 const diagramStyle = {
@@ -142,53 +141,4 @@ export function MermaidDiagram({
 			) : null}
 		</div>
 	);
-}
-
-export function createMermaidMarkdownExtension(): MarkdownRendererExtension {
-	return {
-		decorateComponents: (next) => ({
-			...next,
-			pre: ({ node, children, ...props }) => {
-				if (
-					isValidElement<{ className?: string }>(children) &&
-					children.props.className?.split(/\s+/u).includes("language-mermaid")
-				) {
-					return children;
-				}
-				const Pre = next.pre;
-				if (typeof Pre === "function") {
-					return (
-						<Pre node={node} {...props}>
-							{children}
-						</Pre>
-					);
-				}
-				return <pre {...props}>{children}</pre>;
-			},
-			code: ({ node, className, children, ...props }) => {
-				if (className?.split(/\s+/u).includes("language-mermaid")) {
-					const code = Array.isArray(children) ? children.join("") : String(children);
-					return (
-						<MermaidDiagram
-							className="border-border-subtle bg-muted/30 my-3 rounded-xl border p-3.5"
-							code={code}
-						/>
-					);
-				}
-				const Code = next.code;
-				if (typeof Code === "function") {
-					return (
-						<Code node={node} className={className} {...props}>
-							{children}
-						</Code>
-					);
-				}
-				return (
-					<code className={className} {...props}>
-						{children}
-					</code>
-				);
-			},
-		}),
-	};
 }

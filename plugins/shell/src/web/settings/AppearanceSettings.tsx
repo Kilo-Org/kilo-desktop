@@ -270,7 +270,7 @@ function ChatTextPreview() {
 				</p>
 				<MarkdownContent
 					text={CHAT_PREVIEW_REPLY}
-					className="text-foreground px-2 leading-relaxed [&_.aui-md-p]:my-0"
+					className="text-foreground px-2 leading-relaxed [&_[data-markdown=p]]:my-0"
 				/>
 			</div>
 		</div>

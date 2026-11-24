@@ -1455,7 +1455,7 @@ describe("FilesView", () => {
 		await vi.waitFor(() => expect(document.querySelector('[data-qa-id="files-save"]')).toBeNull());
 	});
 
-	it("renders relative Markdown links as file chips that open a new pane", async () => {
+	it("opens relative Markdown links as files in a new pane", async () => {
 		const markdownHandlers: DocumentMethods = {
 			...handlers(),
 			read: async ({ relativePath }) => ({
@@ -1481,8 +1481,10 @@ describe("FilesView", () => {
 			document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent,
 		).not.toContain("hidden");
 		expect(document.querySelector('[data-qa-id="files-markdown-preview"] script')).toBeNull();
-		const fileLink = document.querySelector<HTMLElement>('[data-qa-id="markdown-file-link"]');
-		expect(fileLink?.textContent).toBe("index.ts");
+		const fileLink = document.querySelector<HTMLElement>(
+			'[data-qa-id="files-markdown-preview"] a[href="../src/index.ts"]',
+		);
+		expect(fileLink?.textContent).toBe("Source");
 		fireEvent.click(fileLink!);
 		await vi.waitFor(() => expect(view.openedObjects).toEqual([openedFile("src/index.ts")]));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
@@ -1501,12 +1503,9 @@ describe("FilesView", () => {
 
 		await expect.element(page.getByTestId("files-markdown-preview")).toBeVisible();
 		await expect
-			.element(page.getByTestId("mermaid-diagram"), { timeout: 5_000 })
-			.toHaveAttribute("aria-busy", "false");
-		expect(document.querySelector('[data-qa-id="mermaid-diagram"] svg')).not.toBeNull();
-		expect(
-			document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent,
-		).not.toContain("flowchart LR");
+			.poll(() => document.querySelector('[data-markdown="mermaid"] svg'), { timeout: 10_000 })
+			.not.toBeNull();
+		expect(document.querySelector('[data-qa-id="files-markdown-preview"] pre')).toBeNull();
 	});
 	it.each(["diagram.mmd", "diagram.mermaid"])(
 		"renders standalone %s files by default and toggles to source",

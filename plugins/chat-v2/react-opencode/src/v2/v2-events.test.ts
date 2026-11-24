@@ -349,6 +349,148 @@ describe("V2EventTranslator", () => {
 	});
 });
 
+describe("shell runs, skills and compactions", () => {
+	const ev = (
+		id: string,
+		type: string,
+		data: Record<string, unknown>,
+		created: number,
+	): OpenCodeEvent =>
+		({ id, created, type, data, location: { directory: "/p" } }) as unknown as OpenCodeEvent;
+
+	const shellInfo = (status: string, extra: Record<string, unknown> = {}) => ({
+		id: "sh_1",
+		status,
+		command: "ls",
+		cwd: "/p",
+		shell: "zsh",
+		file: "/tmp/sh",
+		metadata: {},
+		time: { started: 5, ...(status === "running" ? {} : { completed: 9 }) },
+		...extra,
+	});
+
+	async function streamed(events: OpenCodeEvent[]) {
+		const translator = new V2EventTranslator();
+		let state = createOpenCodeThreadState("s");
+		for (const item of events) {
+			for (const v1 of await translator.translate(item)) {
+				for (const stateEvent of toStateEvents(v1))
+					state = reduceOpenCodeThreadState(state, stateEvent);
+			}
+		}
+		return state;
+	}
+
+	const loaded = (messages: unknown[]) =>
+		reduceOpenCodeThreadState(createOpenCodeThreadState("s"), {
+			type: "history.loaded",
+			session: null,
+			messages: toV1Messages("s", "/p", messages as V2Message[]),
+		});
+
+	it("streams a composer shell run into the bash call its history loads as", async () => {
+		const live = await streamed([
+			ev("evt_1", "session.shell.started", { sessionID: "s", shell: shellInfo("running") }, 5),
+			ev(
+				"evt_2",
+				"session.shell.ended",
+				{
+					sessionID: "s",
+					shell: shellInfo("exited", { exit: 0 }),
+					output: { output: "a\nb", cursor: 3, size: 3, truncated: false },
+				},
+				9,
+			),
+		]);
+		const history = loaded([
+			{
+				type: "shell",
+				id: "msg_1",
+				shellID: "sh_1",
+				command: "ls",
+				status: "exited",
+				exit: 0,
+				output: { output: "a\nb", cursor: 3, size: 3, truncated: false },
+				time: { created: 5, completed: 9 },
+			},
+		]);
+
+		expect(transcript(live)).toEqual(transcript(history));
+		expect(transcript(live)[0]!.parts).toEqual([
+			expect.objectContaining({ type: "tool", tool: "bash", status: "completed", output: "a\nb" }),
+		]);
+	});
+
+	it("streams a skill as the hidden note its history loads as", async () => {
+		const live = await streamed([
+			ev(
+				"evt_7",
+				"session.skill.activated",
+				{ sessionID: "s", id: "tdd", name: "tdd", text: "Use TDD" },
+				3,
+			),
+		]);
+		const history = loaded([
+			{ type: "skill", id: "msg_7", skill: "tdd", text: "Use TDD", time: { created: 3 } },
+		]);
+
+		expect(transcript(live)).toEqual(transcript(history));
+		expect(live.messagesById.msg_7?.parts[0]).toMatchObject({ synthetic: true });
+	});
+
+	it("streams a compaction into its request and summary, then announces it", async () => {
+		const translator = new V2EventTranslator();
+		const out: V1Event[] = [];
+		for (const item of [
+			ev("evt_c", "session.compaction.started", { sessionID: "s", reason: "manual" }, 4),
+			ev(
+				"evt_d",
+				"session.compaction.ended",
+				{ sessionID: "s", reason: "manual", text: "Summary", model: { id: "m", providerID: "p" } },
+				6,
+			),
+		]) {
+			out.push(...(await translator.translate(item)));
+		}
+		let live = createOpenCodeThreadState("s");
+		for (const v1 of out)
+			for (const stateEvent of toStateEvents(v1))
+				live = reduceOpenCodeThreadState(live, stateEvent);
+		const history = loaded([
+			{
+				type: "compaction",
+				id: "msg_c",
+				reason: "manual",
+				status: "completed",
+				summary: "Summary",
+				model: { id: "m", providerID: "p" },
+				time: { created: 4 },
+			},
+		]);
+
+		expect(transcript(live)).toEqual(transcript(history));
+		expect(out.at(-1)).toMatchObject({ type: "session.compacted" });
+	});
+
+	it("reports a failed compaction as the chat's error", async () => {
+		const out = await new V2EventTranslator().translate(
+			ev(
+				"evt_f",
+				"session.compaction.failed",
+				{ sessionID: "s", reason: "manual", error: { type: "x", message: "Too long" } },
+				1,
+			),
+		);
+		expect(out).toEqual([
+			expect.objectContaining({
+				type: "session.error",
+				properties: { sessionID: "s", error: { name: "x", data: { message: "Too long" } } },
+			}),
+		]);
+	});
+});
+
 describe("formAnswers", () => {
 	it("orders answers by question and lists single answers", () => {
 		expect(formAnswers({ q1: ["b", "c"], q0: "a", other: "x" })).toEqual([["a"], ["b", "c"]]);

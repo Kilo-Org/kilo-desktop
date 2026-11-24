@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { OpenCodeEventSource } from "../OpenCodeEventSource";
 import { OpenCodeThreadController } from "../OpenCodeThreadController";
 import turn from "./fixtures/read-tool-turn.json";
-import { createV1Client, systemNote } from "./v1-client";
+import { commandHints, createV1Client, systemNote, toV1FileContent } from "./v1-client";
 import { createV2EventSubscriber } from "./v2-event-source";
 
 const SESSION = turn.session as unknown as SessionInfo;
@@ -223,7 +223,163 @@ describe("createV1Client", () => {
 		await expect(v1.permission.reply({ requestID: "per_x", reply: "once" })).rejects.toThrow(
 			"needs the session of request per_x",
 		);
-		expect(() => v1.file.read({ path: "a" } as never)).toThrow("isn't on Kilo v2 yet");
+	});
+});
+
+describe("the chat surfaces on Kilo v2", () => {
+	const extra = (calls: [string, unknown][]) => ({
+		command: {
+			list: async (input: unknown) => {
+				calls.push(["command.list", input]);
+				return {
+					data: [
+						{
+							name: "review",
+							description: "Review",
+							template: "Look at $1 then $ARGUMENTS and $1",
+							model: { providerID: "kilo", model: "fast" },
+						},
+						{ name: "init" },
+					],
+				};
+			},
+		},
+		agent: {
+			list: async () => ({
+				data: [
+					{
+						id: "code",
+						name: "Code",
+						mode: "primary",
+						hidden: false,
+						permissions: [],
+						request: {},
+					},
+					{
+						id: "plan",
+						name: "Plan",
+						mode: "primary",
+						hidden: false,
+						color: "#f97316",
+						model: { providerID: "kilo", id: "big", variant: "high" },
+						permissions: [],
+						request: {},
+					},
+				],
+			}),
+		},
+		file: {
+			read: async (input: unknown) => {
+				calls.push(["file.read", input]);
+				return new TextEncoder().encode("# Plan");
+			},
+		},
+		mcp: { list: async () => ({ data: [{ name: "github", status: { status: "connected" } }] }) },
+	});
+
+	it("lists slash commands with v1's hints, and agents by id with their display names", async () => {
+		const calls: [string, unknown][] = [];
+		const base = fakeV2();
+		const v1 = createV1Client({ ...(base.client as object), ...extra(calls) } as never, {
+			directory: "/p",
+		});
+
+		const commands = await v1.command.list({ directory: "/w" } as never);
+		const agents = await v1.app.agents({} as never);
+
+		expect(commands.data).toEqual([
+			{
+				name: "review",
+				description: "Review",
+				model: "kilo/fast",
+				source: "command",
+				template: "Look at $1 then $ARGUMENTS and $1",
+				hints: ["$1", "$ARGUMENTS"],
+			},
+			{ name: "init", source: "command", template: "", hints: [] },
+		]);
+		expect(calls).toContainEqual(["command.list", { location: { directory: "/w" } }]);
+		expect(agents.data).toEqual([
+			expect.objectContaining({
+				name: "code",
+				displayName: "Code",
+				mode: "primary",
+				hidden: false,
+			}),
+			expect.objectContaining({
+				name: "plan",
+				color: "#f97316",
+				model: { providerID: "kilo", modelID: "big" },
+				variant: "high",
+			}),
+		]);
+	});
+
+	it("reads a file in the chat's directory, and reports MCP status for the warm-up", async () => {
+		const calls: [string, unknown][] = [];
+		const base = fakeV2();
+		const v1 = createV1Client({ ...(base.client as object), ...extra(calls) } as never, {
+			directory: "/p",
+		});
+
+		await expect(v1.file.read({ path: "plan.md" } as never)).resolves.toEqual({
+			data: { type: "text", content: "# Plan" },
+		});
+		expect(calls).toContainEqual(["file.read", { path: "plan.md", location: { directory: "/p" } }]);
+		await expect(
+			(v1 as unknown as { mcp: { status(): Promise<unknown> } }).mcp.status(),
+		).resolves.toEqual({
+			data: { github: { status: "connected" } },
+		});
+	});
+
+	it("compacts with the chosen model and runs shell commands after switching agent", async () => {
+		const calls: [string, unknown][] = [];
+		const base = fakeV2();
+		const client = base.client as { session: Record<string, unknown> };
+		client.session.compact = async (input: unknown) => calls.push(["session.compact", input]);
+		client.session.shell = async (input: unknown) => calls.push(["session.shell", input]);
+		const v1 = createV1Client(base.client);
+
+		await v1.session.summarize({ sessionID: "s", providerID: "kilo", modelID: "fast" } as never);
+		await v1.session.shell({ sessionID: "s", agent: "code", command: "ls" } as never);
+
+		expect([...base.calls, ...calls]).toEqual([
+			["session.switchModel", { sessionID: "s", model: { providerID: "kilo", id: "fast" } }],
+			["session.switchAgent", { sessionID: "s", agent: "code" }],
+			["session.compact", { sessionID: "s" }],
+			["session.shell", { sessionID: "s", command: "ls" }],
+		]);
+	});
+});
+
+describe("toV1FileContent and commandHints", () => {
+	it("reads text as text, raster images and undecodable bytes as base64, SVG as text", () => {
+		expect(toV1FileContent("a.md", new TextEncoder().encode("hé"))).toEqual({
+			type: "text",
+			content: "hé",
+		});
+		expect(toV1FileContent("a.png", new Uint8Array([1, 2, 3]))).toEqual({
+			type: "binary",
+			content: "AQID",
+			encoding: "base64",
+			mimeType: "image/png",
+		});
+		expect(toV1FileContent("a.svg", new TextEncoder().encode("<svg/>"))).toEqual({
+			type: "text",
+			content: "<svg/>",
+			mimeType: "image/svg+xml",
+		});
+		expect(toV1FileContent("a.bin", new Uint8Array([0xff, 0xfe]))).toEqual({
+			type: "binary",
+			content: "//4=",
+			encoding: "base64",
+		});
+	});
+
+	it("takes each placeholder once, in order", () => {
+		expect(commandHints("$2 $ARGUMENTS $2 $1")).toEqual(["$2", "$ARGUMENTS", "$1"]);
+		expect(commandHints(undefined)).toEqual([]);
 	});
 });
 

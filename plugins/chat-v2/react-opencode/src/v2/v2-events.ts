@@ -1,6 +1,6 @@
 import type { OpenCodeEvent, SessionInfo, SessionStructuredError } from "@kilocode/client";
 
-import type { AssistantMessage, Part, ToolState, UserMessage } from "../types";
+import type { AssistantMessage, MessageWithParts, Part, ToolState, UserMessage } from "../types";
 import {
 	reasoningPartId,
 	stepFinishPartId,
@@ -8,6 +8,8 @@ import {
 	textPartId,
 	toolPartId,
 	toV1AssistantInfo,
+	toV1CompactionMessages,
+	toV1ShellMessage,
 	toV1Error,
 	toV1FilePart,
 	toV1Session,
@@ -33,8 +35,9 @@ import { toV1PermissionName, toV1ToolInput, toV1ToolMetadata, toV1ToolName } fro
  * v1 part it emits is whole; part ids match `v2-messages.ts`. Questions
  * arrive as forms (one field per question, keyed `q<index>`).
  *
- * Not translated (step 16): shell runs, skills, revert; the controller
- * records them as unhandled.
+ * Shell runs, skills and compactions become whole v1 messages, with the ids
+ * v2's history gives them (the starting event's id, `evt_` → `msg_`). Revert
+ * changes re-read the session, which carries the revert.
  */
 
 export type V1Event = {
@@ -71,7 +74,14 @@ type SessionTrack = {
 	lastUserId: string;
 	inbox: Map<string, InboxItem>;
 	steps: Map<string, Step>;
+	/** Shell run id → its message id, from `session.shell.started`. */
+	shells: Map<string, { id: string; created: number }>;
+	/** The running compaction's message id and start. */
+	compaction?: { id: string; auto: boolean; created: number } | undefined;
 };
+
+/** v2 names a message after the event that started it (`evt_…` → `msg_…`). */
+const messageIdOf = (eventID: string) => eventID.replace(/^evt_/, "msg_");
 
 const SESSION_CHANGES: ReadonlySet<string> = new Set([
 	"session.renamed",
@@ -115,6 +125,7 @@ export class V2EventTranslator {
 				lastUserId: "",
 				inbox: new Map(),
 				steps: new Map(),
+				shells: new Map(),
 			};
 			this.#sessions.set(sessionID, track);
 		} else if (directory) {
@@ -194,8 +205,106 @@ export class V2EventTranslator {
 					}),
 					...idle(),
 				];
-			case "session.compaction.ended":
-				return [at("session.compacted", { sessionID })];
+			case "session.compaction.started": {
+				const id = typeof data.inputID === "string" ? data.inputID : messageIdOf(event.id);
+				track.compaction = { id, auto: data.reason === "auto", created: event.created };
+				return this.#messages(
+					sessionID,
+					track,
+					toV1CompactionMessages(sessionID, track.directory, track, track.compaction),
+				).map(({ type, properties }) => at(type, properties));
+			}
+			case "session.compaction.ended": {
+				const started = track.compaction ?? {
+					id: messageIdOf(event.id),
+					auto: data.reason === "auto",
+					created: event.created,
+				};
+				track.compaction = undefined;
+				const model = record(data.model);
+				const messages = toV1CompactionMessages(sessionID, track.directory, track, {
+					...started,
+					summary: String(data.text ?? ""),
+					...(typeof model.id === "string"
+						? { model: { id: model.id, providerID: String(model.providerID) } }
+						: {}),
+					...(typeof data.cost === "number" ? { cost: data.cost } : {}),
+					...(data.tokens ? { tokens: data.tokens as never } : {}),
+				});
+				return [
+					...this.#messages(sessionID, track, messages).map(({ type, properties }) =>
+						at(type, properties),
+					),
+					at("session.compacted", { sessionID }),
+				];
+			}
+			case "session.compaction.failed":
+				track.compaction = undefined;
+				return [
+					at("session.error", {
+						sessionID,
+						error: toV1Error(data.error as SessionStructuredError),
+					}),
+				];
+			case "session.shell.started":
+			case "session.shell.ended": {
+				const shell = record(data.shell);
+				const shellID = String(shell.id);
+				const known = track.shells.get(shellID) ?? {
+					id: messageIdOf(event.id),
+					created: event.created,
+				};
+				const ended = event.type === "session.shell.ended";
+				if (ended) track.shells.delete(shellID);
+				else track.shells.set(shellID, known);
+				const time = record(shell.time);
+				const message = toV1ShellMessage(
+					sessionID,
+					track.directory,
+					{ agent: track.agent, model: track.model, parentID: track.lastUserId },
+					{
+						id: known.id,
+						shellID,
+						command: String(shell.command ?? ""),
+						status: ended ? String(shell.status) : "running",
+						exit: typeof shell.exit === "number" ? shell.exit : undefined,
+						output: ended ? String(record(data.output).output ?? "") : undefined,
+						created: typeof time.started === "number" ? time.started : known.created,
+						completed: ended
+							? typeof time.completed === "number"
+								? time.completed
+								: event.created
+							: undefined,
+					},
+				);
+				return this.#messages(sessionID, track, [message]).map(({ type, properties }) =>
+					at(type, properties),
+				);
+			}
+			case "session.skill.activated": {
+				const id = messageIdOf(event.id);
+				const info: UserMessage = {
+					id,
+					sessionID,
+					role: "user",
+					time: { created: event.created },
+					agent: track.agent,
+					model: track.model,
+				};
+				return [
+					at("message.updated", { info }),
+					at("message.part.updated", {
+						part: {
+							id: textPartId(id, 0),
+							sessionID,
+							messageID: id,
+							type: "text",
+							text: String(data.text ?? ""),
+							synthetic: true,
+						},
+					}),
+				];
+			}
 
 			case "session.inbox.enqueued": {
 				const item = record(data.item);
@@ -326,6 +435,18 @@ export class V2EventTranslator {
 			default:
 				return [];
 		}
+	}
+
+	/** Whole v1 messages as the events that announce them. */
+	#messages(
+		_sessionID: string,
+		_track: SessionTrack,
+		messages: readonly MessageWithParts[],
+	): V1Event[] {
+		return messages.flatMap((message) => [
+			{ type: "message.updated", properties: { info: message.info } },
+			...message.parts.map((part) => ({ type: "message.part.updated", properties: { part } })),
+		]);
 	}
 
 	#delivered(track: SessionTrack, sessionID: string, inboxID: string, created: number): V1Event[] {

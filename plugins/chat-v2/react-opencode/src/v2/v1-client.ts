@@ -21,8 +21,10 @@ import { toV1Messages, toV1Session } from "./v2-messages";
  *   markers before a page set what its messages carry.
  * - Replies to permissions and questions name their session (v2 needs it);
  *   one the client listed is found without.
- * - Calls v2 has no answer for yet (slash command list, agents, file reads,
- *   summarize, shell) throw, until step 16 moves those surfaces.
+ * - Slash commands carry v1's hints from their template; agents are listed
+ *   by id (v1's name) with their display name; file reads come back as v1's
+ *   text or base64 content; compaction switches to the given model first, as
+ *   v2 compacts with the session's; MCP status (the warm-up) is `mcp.list`.
  */
 
 type V2Client = ReturnType<typeof OpenCode.make>;
@@ -37,10 +39,6 @@ type PromptPart = Record<string, unknown>;
 
 /** The largest page `message.list` takes. */
 const MESSAGE_PAGE = 200;
-
-const notOnV2 = (what: string) => () => {
-	throw new Error(`${what} isn't on Kilo v2 yet.`);
-};
 
 const ok = <T>(data: T) => ({ data });
 
@@ -82,6 +80,59 @@ function promptInput(parts: readonly PromptPart[]) {
 		}
 	}
 	return { text: text.join("\n"), notes, files };
+}
+
+/** v1's argument hints (`$1`, `$ARGUMENTS`) from a command template, in order of first use. */
+export function commandHints(template: string | undefined): string[] {
+	return [...new Set(template?.match(/\$(?:\d+|ARGUMENTS)/g) ?? [])];
+}
+
+/** `p/m` as v1's `model` string, from v2's string or `{ providerID, model }`. */
+function commandModel(model: unknown): string | undefined {
+	if (typeof model === "string") return model;
+	const ref = model as { providerID?: unknown; model?: unknown } | undefined;
+	return typeof ref?.providerID === "string" && typeof ref.model === "string"
+		? `${ref.providerID}/${ref.model}`
+		: undefined;
+}
+
+const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+	bmp: "image/bmp",
+	ico: "image/x-icon",
+	avif: "image/avif",
+	svg: "image/svg+xml",
+	pdf: "application/pdf",
+};
+
+function base64Of(bytes: Uint8Array): string {
+	let binary = "";
+	for (let index = 0; index < bytes.length; index += 0x8000) {
+		binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+	}
+	return globalThis.btoa(binary);
+}
+
+/**
+ * v2's file bytes as v1's file content: text when they decode as UTF-8 and
+ * aren't a raster image, else base64, with the MIME type the path names.
+ */
+export function toV1FileContent(path: string, bytes: Uint8Array) {
+	const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+	const mimeType = MIME_BY_EXTENSION[extension];
+	const binary = { type: "binary" as const, content: base64Of(bytes), encoding: "base64" as const };
+	if (mimeType?.startsWith("image/") && mimeType !== "image/svg+xml")
+		return { ...binary, mimeType };
+	try {
+		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		return { type: "text" as const, content: text, ...(mimeType ? { mimeType } : {}) };
+	} catch {
+		return { ...binary, ...(mimeType ? { mimeType } : {}) };
+	}
 }
 
 export const systemNote = (system: string) => `<system-reminder>\n${system}\n</system-reminder>`;
@@ -222,8 +273,25 @@ export function createV1Client(client: V2Client, options: V1ClientOptions = {}):
 				await client.session.revert.clear({ sessionID });
 				return revertedSession(sessionID);
 			},
-			summarize: notOnV2("Compacting a chat"),
-			shell: notOnV2("Running a shell command"),
+			summarize: async (args: Args) => {
+				const sessionID = sessionIdOf(args);
+				const model = modelRef(
+					typeof args.providerID === "string" && typeof args.modelID === "string"
+						? { providerID: args.providerID, modelID: args.modelID }
+						: undefined,
+					undefined,
+				);
+				// v2 compacts with the session's model.
+				if (model) await client.session.switchModel({ sessionID, model });
+				await client.session.compact({ sessionID });
+				return ok(true);
+			},
+			shell: async (args: Args) => {
+				const sessionID = sessionIdOf(args);
+				await prepare(sessionID, args);
+				await client.session.shell({ sessionID, command: String(args.command ?? "") });
+				return ok(undefined);
+			},
 		},
 		permission: {
 			list: async () => {
@@ -279,9 +347,65 @@ export function createV1Client(client: V2Client, options: V1ClientOptions = {}):
 				},
 			},
 		},
-		command: { list: notOnV2("The slash command list") },
-		app: { agents: notOnV2("The agent list") },
-		file: { read: notOnV2("Reading a file") },
+		command: {
+			list: async (args: Args = {}) => {
+				const directory = typeof args.directory === "string" ? args.directory : options.directory;
+				const { data } = await client.command.list(
+					directory ? { location: { directory } } : undefined,
+				);
+				return ok(
+					data.map((command) => {
+						const model = commandModel(command.model);
+						return {
+							name: command.name,
+							...(command.description ? { description: command.description } : {}),
+							...(model ? { model } : {}),
+							source: "command",
+							template: command.template ?? "",
+							hints: commandHints(command.template),
+						};
+					}),
+				);
+			},
+		},
+		app: {
+			agents: async () => {
+				const { data } = await client.agent.list(location);
+				return ok(
+					data.map((agent) => ({
+						name: agent.id,
+						displayName: agent.name,
+						...(agent.description ? { description: agent.description } : {}),
+						mode: agent.mode,
+						hidden: agent.hidden,
+						...(agent.color ? { color: agent.color } : {}),
+						...(agent.model
+							? { model: { providerID: agent.model.providerID, modelID: agent.model.id } }
+							: {}),
+						...(agent.model?.variant ? { variant: agent.model.variant } : {}),
+						permission: [],
+						options: {},
+					})),
+				);
+			},
+		},
+		file: {
+			read: async (args: Args) => {
+				const path = String(args.path ?? "");
+				const directory = typeof args.directory === "string" ? args.directory : options.directory;
+				const bytes = await client.file.read({
+					path,
+					...(directory ? { location: { directory } } : {}),
+				});
+				return ok(toV1FileContent(path, bytes));
+			},
+		},
+		mcp: {
+			status: async () => {
+				const { data } = await client.mcp.list(location);
+				return ok(Object.fromEntries(data.map((server) => [server.name, server.status])));
+			},
+		},
 	};
 	return v1 as unknown as OpencodeClient;
 }

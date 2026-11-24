@@ -277,48 +277,129 @@ function assistantMessage(context: Context, message: SessionMessageAssistant): M
 	return { info, parts };
 }
 
+/** Who a message without its own agent and model stands for: the session's current ones. */
+export interface V1Speaker {
+	readonly agent: string;
+	readonly model: { providerID: string; modelID: string };
+	readonly parentID: string;
+}
+
 /** A shell command run from the composer, shown as v1 did: a `bash` tool call. */
-function shellMessage(
-	context: Context,
-	message: Extract<V2Message, { type: "shell" }>,
+export function toV1ShellMessage(
+	sessionID: string,
+	directory: string,
+	speaker: V1Speaker,
+	shell: {
+		readonly id: string;
+		readonly shellID: string;
+		readonly command: string;
+		readonly status: string;
+		readonly exit?: number | undefined;
+		readonly output?: string | undefined;
+		readonly created: number;
+		readonly completed?: number | undefined;
+	},
 ): MessageWithParts {
-	const { sessionID } = context;
-	const id = message.id;
-	const start = message.time.created;
-	const end = message.time.completed ?? start;
-	const output = message.output?.output ?? "";
+	const { id, created: start } = shell;
+	const end = shell.completed ?? start;
+	const output = shell.output ?? "";
 	const state: ToolState =
-		message.status === "running"
-			? { status: "running", input: { command: message.command }, time: { start } }
+		shell.status === "running"
+			? { status: "running", input: { command: shell.command }, time: { start } }
 			: {
 					status: "completed",
-					input: { command: message.command },
+					input: { command: shell.command },
 					output,
-					title: message.command,
-					metadata: { exit: message.exit ?? null, status: message.status, output },
+					title: shell.command,
+					metadata: { exit: shell.exit ?? null, status: shell.status, output },
 					time: { start, end },
 				};
 	return {
-		info: toV1AssistantInfo(sessionID, context.directory, {
+		info: toV1AssistantInfo(sessionID, directory, {
 			id,
 			created: start,
-			...(message.time.completed === undefined ? {} : { completed: end }),
-			agent: context.agent,
-			model: { id: context.model.modelID, providerID: context.model.providerID },
-			parentID: context.lastUserId,
+			...(shell.completed === undefined ? {} : { completed: end }),
+			agent: speaker.agent,
+			model: { id: speaker.model.modelID, providerID: speaker.model.providerID },
+			parentID: speaker.parentID,
 		}),
 		parts: [
 			{
-				id: toolPartId(id, message.shellID),
+				id: toolPartId(id, shell.shellID),
 				sessionID,
 				messageID: id,
 				type: "tool",
-				callID: message.shellID,
+				callID: shell.shellID,
 				tool: "bash",
 				state,
 			},
 		],
 	};
+}
+
+/** A compaction as v1 showed it: its request, then (once done) the summary as a reply. */
+export function toV1CompactionMessages(
+	sessionID: string,
+	directory: string,
+	speaker: Omit<V1Speaker, "parentID"> & { readonly variant?: string },
+	compaction: {
+		readonly id: string;
+		readonly auto: boolean;
+		readonly created: number;
+		readonly summary?: string | undefined;
+		readonly model?: { id: string; providerID: string; variant?: string } | undefined;
+		readonly cost?: number | undefined;
+		readonly tokens?: SessionMessageAssistant["tokens"];
+	},
+): MessageWithParts[] {
+	const { id } = compaction;
+	const request: MessageWithParts = {
+		info: {
+			id,
+			sessionID,
+			role: "user",
+			time: { created: compaction.created },
+			agent: speaker.agent,
+			model: speaker.model,
+		},
+		parts: [
+			{
+				id: `${id}:compaction`,
+				sessionID,
+				messageID: id,
+				type: "compaction",
+				auto: compaction.auto,
+			},
+		],
+	};
+	if (compaction.summary === undefined) return [request];
+	const summaryId = `${id}:summary`;
+	const summary = toV1AssistantInfo(sessionID, directory, {
+		id: summaryId,
+		created: compaction.created,
+		completed: compaction.created,
+		agent: speaker.agent,
+		model: compaction.model ?? { id: speaker.model.modelID, providerID: speaker.model.providerID },
+		parentID: id,
+		cost: compaction.cost,
+		tokens: compaction.tokens,
+		finish: "stop",
+	});
+	return [
+		request,
+		{
+			info: { ...summary, summary: true },
+			parts: [
+				{
+					id: textPartId(summaryId, 0),
+					sessionID,
+					messageID: summaryId,
+					type: "text",
+					text: compaction.summary,
+				},
+			],
+		},
+	];
 }
 
 /** A prompt's attached file as v1's file part, its bytes inline as a data URL. */
@@ -398,60 +479,41 @@ export function toV1Messages(
 				result.push(assistantMessage(context, message));
 				break;
 			case "shell":
-				result.push(shellMessage(context, message));
-				break;
-			case "compaction": {
-				const request: MessageWithParts = {
-					info: {
-						id: message.id,
+				result.push(
+					toV1ShellMessage(
 						sessionID,
-						role: "user",
-						time: { created: message.time.created },
-						agent: context.agent,
-						model: context.model,
-					},
-					parts: [
+						directory,
+						{ agent: context.agent, model: context.model, parentID: context.lastUserId },
 						{
-							id: `${message.id}:compaction`,
-							sessionID,
-							messageID: message.id,
-							type: "compaction",
-							auto: message.reason === "auto",
+							id: message.id,
+							shellID: message.shellID,
+							command: message.command,
+							status: message.status,
+							exit: typeof message.exit === "number" ? message.exit : undefined,
+							output: message.output?.output,
+							created: message.time.created,
+							completed: message.time.completed,
 						},
-					],
-				};
-				result.push(request);
-				if (message.status === "completed") {
-					const summaryId = `${message.id}:summary`;
-					const summary = toV1AssistantInfo(sessionID, directory, {
-						id: summaryId,
-						created: message.time.created,
-						completed: message.time.created,
-						agent: context.agent,
-						model: message.model ?? {
-							id: context.model.modelID,
-							providerID: context.model.providerID,
-						},
-						parentID: message.id,
-						cost: message.cost,
-						tokens: message.tokens,
-						finish: "stop",
-					});
-					result.push({
-						info: { ...summary, summary: true },
-						parts: [
-							{
-								id: textPartId(summaryId, 0),
-								sessionID,
-								messageID: summaryId,
-								type: "text",
-								text: message.summary,
-							},
-						],
-					});
-				}
+					),
+				);
 				break;
-			}
+			case "compaction":
+				result.push(
+					...toV1CompactionMessages(sessionID, directory, context, {
+						id: message.id,
+						auto: message.reason === "auto",
+						created: message.time.created,
+						...(message.status === "completed"
+							? {
+									summary: message.summary,
+									model: message.model,
+									cost: message.cost,
+									tokens: message.tokens,
+								}
+							: {}),
+					}),
+				);
+				break;
 			default:
 				break;
 		}

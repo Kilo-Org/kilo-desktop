@@ -1,7 +1,5 @@
 import type { CostLine } from "./cost-meter";
 import type { KiloCatalogModel } from "../selection/model-catalog";
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
-import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
 
 export type SessionModelUsageTokens = {
 	input: number;
@@ -280,23 +278,6 @@ export function parseSessionModelUsage(value: unknown): SessionModelUsage | unde
 			})
 		: [];
 	return { sessionIDs, totals, models };
-}
-
-export async function fetchSessionModelUsage(input: {
-	connection: KiloGlobalConnection;
-	directory: string;
-	sessionID: string;
-}): Promise<SessionModelUsage | undefined> {
-	try {
-		const client = createKiloDirectoryClient(input.connection, input.directory);
-		const { data } = await client.kilocode.sessionModelUsage(
-			{ sessionID: input.sessionID },
-			{ throwOnError: true },
-		);
-		return parseSessionModelUsage(data);
-	} catch {
-		return undefined;
-	}
 }
 
 function messageParts(message: ThreadUsageMessage): ReadonlyArray<ThreadUsagePart> {

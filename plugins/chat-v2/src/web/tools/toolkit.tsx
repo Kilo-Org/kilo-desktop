@@ -108,7 +108,9 @@ function publishToolkit(
 ): Toolkit {
 	const { toolkit, categories } = buildToolkit(renderers);
 	setContributedToolCategories(categories);
-	setHostableMcpApps(hostableMcpApps(apps));
+	// Kilo v2 serves no MCP App resources, so widgets are hidden (decision): their tools render as plain calls.
+	void apps;
+	setHostableMcpApps(new Map());
 	return toolkit;
 }
 

@@ -244,6 +244,74 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		events.dispose();
 	});
 
+	it("lists agents and slash commands, reads a file, runs a composer shell command and compacts", async () => {
+		const session = await client.session.create({ location: { directory: project } });
+		const v1 = createV1Client(client, { directory: project });
+		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const unsubscribe = live.subscribe(() => undefined);
+		await live.load();
+
+		const agents = (await v1.app.agents({} as never)).data ?? [];
+		expect(agents.map((agent) => agent.name)).toContain("code");
+		expect(Array.isArray((await v1.command.list({} as never)).data)).toBe(true);
+		await expect(v1.file.read({ path: "notes.txt" } as never)).resolves.toEqual({
+			data: { type: "text", content: "hello\n" },
+		});
+
+		await v1.session.shell({ sessionID: session.id, command: "ls" } as never);
+		const parts = () =>
+			Object.values(live.getState().messagesById).flatMap((message) => message.parts);
+		await vi.waitFor(
+			() =>
+				expect(parts()).toContainEqual(
+					expect.objectContaining({
+						tool: "bash",
+						state: expect.objectContaining({
+							status: "completed",
+							output: expect.stringContaining("notes.txt"),
+						}),
+					}),
+				),
+			{ timeout: 4_000 },
+		);
+
+		await send(live, "Hi");
+		await vi.waitFor(() => expect(live.getState().sessionStatus).toEqual({ type: "idle" }), {
+			timeout: 4_000,
+		});
+		await v1.session.summarize({
+			sessionID: session.id,
+			providerID: "standin",
+			modelID: "m",
+		} as never);
+		await vi.waitFor(
+			() => expect(parts()).toContainEqual(expect.objectContaining({ type: "compaction" })),
+			{ timeout: 4_000 },
+		);
+
+		const shape = (controller: OpenCodeThreadController) => {
+			const state = controller.getState();
+			return state.messageOrder.map((id) =>
+				state.messagesById[id]!.parts.map((part) => `${part.id}:${part.type}`),
+			);
+		};
+		await vi.waitFor(
+			async () => {
+				const loaded = new OpenCodeThreadController(
+					v1,
+					() => ({ subscribe: () => () => undefined }),
+					session.id,
+				);
+				await loaded.load();
+				expect(shape(live)).toEqual(shape(loaded));
+			},
+			{ timeout: 4_000 },
+		);
+		unsubscribe();
+		events.dispose();
+	});
+
 	it("sends a message, streams the reply, and loads the same transcript", async () => {
 		const session = await client.session.create({ location: { directory: project } });
 		const v1 = createV1Client(client, { directory: project });

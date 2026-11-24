@@ -417,11 +417,9 @@ describe("the tool-renderer point", () => {
 	});
 });
 
-describe("the mcp-app point", () => {
-	const WIDGET = "<!doctype html><title>Acme list</title><p>widget</p>";
-
-	it("frames a contributed widget for its tool's calls", async () => {
-		const loadHtml = vi.fn(() => WIDGET);
+describe("the mcp-app point on Kilo v2", () => {
+	it("hides a contributed widget: its tool's calls render as plain calls", async () => {
+		const loadHtml = vi.fn(() => "<!doctype html><p>widget</p>");
 		await showChat(
 			chatWith([toolPart(toolWireName("acme.tools/list"), { output: "[]" }), reply("Listed.")]),
 			{
@@ -444,43 +442,9 @@ describe("the mcp-app point", () => {
 			},
 		);
 
-		await vi.waitFor(() => expectPresent('iframe[title="MCP App"]'), { timeout: 10_000 });
-		expect(loadHtml).toHaveBeenCalled();
-	});
-
-	it("reads a widget without its own HTML from the tool's server", async () => {
-		const server = new FakeKiloServer();
-		server.resources["ui://acme/remote"] = { mimeType: "text/html;profile=mcp-app", text: WIDGET };
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			messages: chatWith([
-				toolPart(toolWireName("acme.tools/remote"), { output: "[]" }),
-				reply("Done."),
-			]),
-		});
-		await renderChat({
-			server,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-			plugins: [
-				contributor(
-					{
-						"kilo.chat/mcp-app": [
-							{ id: "remote", tools: ["acme.tools/remote"], resourceUri: "ui://acme/remote" },
-						],
-					},
-					{},
-				),
-			],
-		});
-
-		await vi.waitFor(() => expectPresent('iframe[title="MCP App"]'), { timeout: 10_000 });
-		expect(server.requestsTo("POST", "/experimental/resource/read")[0]?.body).toEqual({
-			uri: "ui://acme/remote",
-			server: "desktop",
-		});
+		await expect.element(page.getByText("Listed.")).toBeVisible();
+		expect(document.querySelector('iframe[title="MCP App"]')).toBeNull();
+		expect(loadHtml).not.toHaveBeenCalled();
 	});
 });
 

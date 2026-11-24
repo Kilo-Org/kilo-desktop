@@ -9,6 +9,7 @@ describe("react-opencode-v2's client", () => {
 		expect(typeof client.session.promptAsync).toBe("function");
 		expect(typeof client.permission.reply).toBe("function");
 		expect(typeof client.question.reply).toBe("function");
-		expect(() => client.file.read({ path: "a" } as never)).toThrow("isn't on Kilo v2 yet");
+		expect(typeof client.file.read).toBe("function");
+		expect(typeof client.command.list).toBe("function");
 	});
 });

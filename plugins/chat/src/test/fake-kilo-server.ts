@@ -343,6 +343,14 @@ export class FakeKiloServer {
 		}
 		if (action === "prompt_async") {
 			if (this.failPrompts) return json({ message: "The model is overloaded" }, 500);
+			if (this.promptSessionError !== undefined) {
+				const error = this.promptSessionError;
+				setTimeout(
+					() => this.emit("session.error", { sessionID: chat.id, error }, chat.directory),
+					20,
+				);
+				return new Response(null, { status: 204 });
+			}
 			this.#accept(chat, recorded.body as { parts?: Record<string, unknown>[] });
 			return new Response(null, { status: 204 });
 		}
@@ -417,6 +425,13 @@ export class FakeKiloServer {
 
 	/** Whether prompts fail, as when the server rejects them. */
 	failPrompts = false;
+
+	/**
+	 * The `session.error` Kilo publishes for each accepted prompt instead of
+	 * running it, with no idle after it: what it does when it has no model to
+	 * run the prompt with.
+	 */
+	promptSessionError: unknown = undefined;
 
 	/** Permission and question ids whose replies fail. */
 	readonly failingReplies = new Set<string>();

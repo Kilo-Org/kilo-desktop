@@ -73,6 +73,31 @@ export function messageErrorText(
 	return error === undefined ? undefined : String(error);
 }
 
+const NO_MODEL_ERROR = "No model is available. Connect a provider in Settings to send messages.";
+const NO_MODEL_CAUSES = ["ProviderNoProvidersError", "ProviderNoModelsError"];
+const STACK_FRAME = /\n\s+at\s/;
+
+function rawErrorText(error: unknown): string {
+	if (typeof error === "string") return error;
+	if (isObject(error) && isObject(error.data) && typeof error.data.message === "string") {
+		return error.data.message;
+	}
+	if (error instanceof Error || (isObject(error) && typeof error.message === "string")) {
+		return String(error.message);
+	}
+	return String(error);
+}
+
+/**
+ * A failed turn's error as text: a `session.error` (Kilo's named error, whose
+ * message for an unexpected failure carries a stack trace) or a refused prompt.
+ */
+export function turnErrorText(error: unknown): string {
+	const text = rawErrorText(error);
+	if (NO_MODEL_CAUSES.some((cause) => text.includes(cause))) return NO_MODEL_ERROR;
+	return text.split(STACK_FRAME, 1)[0]!.trim();
+}
+
 /** Whether a turn failed because the Kilo Gateway wants the person signed in (or signed up). */
 export function isKiloSignInError(message: string | undefined): boolean {
 	if (!message) return false;

@@ -464,3 +464,46 @@ describe("the conversation map", () => {
 		);
 	});
 });
+
+describe("a turn Kilo couldn't run", () => {
+	const noModel = {
+		name: "UnknownError",
+		data: { message: "ProviderNoProvidersError: No providers are available\n    at defaultModel" },
+	};
+
+	async function send(text: string) {
+		await userEvent.fill(page.getByTestId("kilo-composer-input"), text);
+		await page.getByTestId("kilo-composer-send").click();
+	}
+
+	it("says why instead of working forever", async () => {
+		const host = await showChat([]);
+		host.server.promptSessionError = noModel;
+
+		await send("Fix the login form");
+
+		await expect
+			.element(page.getByTestId("chat-message-error"))
+			.toHaveTextContent("No model is available. Connect a provider in Settings to send messages.");
+		await expect.element(page.getByTestId("kilo-turn-working")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("kilo-composer-send")).toBeVisible();
+		await expect.element(page.getByText("Fix the login form")).toBeVisible();
+	});
+
+	it("explains a reply's error once, on the reply", async () => {
+		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
+		const error = { name: "APIError", data: { message: "Rate limited" } };
+		const host = await showChat([
+			userMessage("ses_a", "msg_1", "Go"),
+			{ ...failed, info: { ...failed.info, error } },
+		]);
+		await expect.element(page.getByTestId("chat-message-error")).toBeVisible();
+
+		host.server.emit("session.error", { sessionID: "ses_a", error });
+		host.server.emit("session.idle", { sessionID: "ses_a" });
+
+		await vi.waitFor(() =>
+			expect(document.querySelectorAll('[data-qa-id="chat-message-error"]')).toHaveLength(1),
+		);
+	});
+});

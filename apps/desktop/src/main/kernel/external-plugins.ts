@@ -33,10 +33,11 @@ import type { ExternalPluginsHost } from "@kilo-desktop/kernel/main";
  * - each plugin is approved in a native dialog (the host's UI, not a window
  *   a plugin could draw in) for the digest of its files, so any change to
  *   them — a rebuild, or something else writing there — asks again;
- * - windows are served the bytes that were hashed (held in memory), not
- *   whatever is on disk later. Main imports from disk right after hashing,
- *   so only a write racing launch could slip past; anything that can do that
- *   can already change what the user runs.
+ * - main and windows run only the bytes that were hashed, held in memory:
+ *   windows are served them from the app origin, and main's loader hooks
+ *   (external-plugin-modules.ts) load a plugin's modules from them and refuse
+ *   any other file — so nothing the digest skipped (`node_modules`, dot
+ *   entries, symlinks) or wrote later can run under an approval.
  *
  * Everything applies from the next launch, as for turning bundled plugins on
  * or off: `load()` runs once before the kernels are created, and the rest of
@@ -77,8 +78,11 @@ export interface ExternalPluginsOptions {
 		warn(message: string, ...details: unknown[]): void;
 		error(message: string, ...details: unknown[]): void;
 	};
-	/** Runs before a plugin's modules are imported from `root` (main shares its modules with them). */
-	readonly beforeImport?: (root: string) => void;
+	/**
+	 * Runs before a plugin's modules are imported from `root`: main then loads
+	 * them only from `files`, the approved bytes (external-plugin-modules.ts).
+	 */
+	readonly beforeImport?: (root: string, files: ReadonlyMap<string, Uint8Array>) => void;
 	/** Loads an ES module by URL; tests inject it. */
 	readonly importModule?: (url: string) => Promise<unknown>;
 }
@@ -91,6 +95,8 @@ const MANIFEST_FILE = "plugin.json";
 const MAX_FILES = 2_000;
 const MAX_BYTES = 50 * 1024 * 1024;
 const MAX_DEPTH = 12;
+const NODE_MODULES_HINT =
+	"Its node_modules folder isn't loaded. Bundle its dependencies into its JavaScript.";
 /** What main and windows can import as-is: built ES modules, not TypeScript or JSX source. */
 const MODULE_EXTENSIONS = new Set([".js", ".mjs"]);
 /** Host permissions a local plugin may hold; the rest govern the app itself or other plugins. */
@@ -109,6 +115,7 @@ interface ScannedPlugin {
 	readonly hash?: string;
 	readonly files?: ReadonlyMap<string, Uint8Array>;
 	readonly error?: string;
+	readonly hint?: string;
 }
 
 interface LoadedPlugin {
@@ -133,7 +140,8 @@ export class ExternalPlugins implements ExternalPluginsHost {
 	readonly #listeners = new Set<() => void>();
 	#scanned: readonly ScannedPlugin[] = [];
 	#loaded = new Map<string, LoadedPlugin>();
-	#failures = new Map<string, string>();
+	/** Plugin id → why its files (by digest) failed to load this launch. */
+	#failures = new Map<string, { readonly hash: string; readonly message: string }>();
 
 	constructor(options: ExternalPluginsOptions) {
 		this.#options = options;
@@ -155,7 +163,7 @@ export class ExternalPlugins implements ExternalPluginsHost {
 				this.#loaded.set(scanned.manifest.id, await this.#import(scanned));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				this.#failures.set(scanned.manifest.id, message);
+				this.#failures.set(scanned.manifest.id, { hash: scanned.hash, message });
 				this.#options.logger.error(`Local plugin "${scanned.manifest.id}" failed to load`, error);
 			}
 		}
@@ -211,7 +219,8 @@ export class ExternalPlugins implements ExternalPluginsHost {
 		const loadable = new Set(
 			this.#enabled()
 				? records
-						.filter((record) => record.status !== "invalid" && record.approved)
+						// Files that failed this launch would fail again, so they don't call for a restart.
+						.filter((record) => record.status === "ready" && record.approved)
 						.map((record) => record.id)
 				: [],
 		);
@@ -295,7 +304,9 @@ export class ExternalPlugins implements ExternalPluginsHost {
 
 	#record(scanned: ScannedPlugin): ExternalPluginRecord {
 		const { manifest } = scanned;
-		const failure = manifest ? this.#failures.get(manifest.id) : undefined;
+		// A failure belongs to the files that failed: a rebuilt plugin is judged afresh.
+		const failed = manifest ? this.#failures.get(manifest.id) : undefined;
+		const failure = failed && failed.hash === scanned.hash ? failed.message : undefined;
 		const message = scanned.error ?? failure;
 		return {
 			folder: scanned.folder,
@@ -310,6 +321,7 @@ export class ExternalPlugins implements ExternalPluginsHost {
 			...(scanned.hash ? { hash: scanned.hash } : {}),
 			status: scanned.error ? "invalid" : failure ? "failed" : "ready",
 			...(message ? { message } : {}),
+			...(scanned.hint ? { hint: scanned.hint } : {}),
 			approved: !scanned.error && this.#isApproved(scanned),
 			loaded: manifest !== undefined && this.#loaded.has(manifest.id),
 		};
@@ -325,7 +337,7 @@ export class ExternalPlugins implements ExternalPluginsHost {
 		const urlOf = (entryPath: string) =>
 			`${pathToFileURL(path.resolve(scanned.root, entryPath)).href}?v=${scanned.hash.slice(0, 12)}`;
 		const { manifest } = scanned;
-		this.#options.beforeImport?.(scanned.root);
+		this.#options.beforeImport?.(scanned.root, scanned.files);
 		const definitions = manifest.contracts
 			? definitionsOf(await importModule(urlOf(manifest.contracts)))
 			: {};
@@ -444,8 +456,9 @@ async function scanPlugin(
 		);
 	}
 
-	const collected = await collectFiles(root);
-	if (typeof collected === "string") return invalid(collected, manifest);
+	const scan = await collectFiles(root);
+	if (typeof scan === "string") return invalid(scan, manifest);
+	const collected = scan.files;
 
 	const missing = [manifest.contracts, manifest.main, manifest.web].find(
 		(entry) => entry !== undefined && !collected.has(normalizeEntry(entry) ?? ""),
@@ -458,7 +471,14 @@ async function scanPlugin(
 			manifest,
 		);
 	}
-	return { folder, root, manifest, hash: digest(collected), files: collected };
+	return {
+		folder,
+		root,
+		manifest,
+		hash: digest(collected),
+		files: collected,
+		...(scan.hasNodeModules ? { hint: NODE_MODULES_HINT } : {}),
+	};
 }
 
 function manifestProblem(
@@ -503,16 +523,24 @@ function normalizeEntry(entry: string): string | undefined {
 /**
  * Every file of a plugin by normalised relative path, skipping dot entries
  * (`.git`, `.DS_Store`) and `node_modules`: a plugin ships bundled code, and
- * what isn't collected is neither approved nor served.
+ * what isn't collected is neither approved nor loadable. Notes whether it
+ * skipped a `node_modules`, so Settings can say to bundle instead.
  */
-async function collectFiles(root: string): Promise<Map<string, Uint8Array> | string> {
+async function collectFiles(
+	root: string,
+): Promise<{ readonly files: Map<string, Uint8Array>; readonly hasNodeModules: boolean } | string> {
 	const files = new Map<string, Uint8Array>();
 	let bytes = 0;
+	let hasNodeModules = false;
 	const walk = async (relative: string, depth: number): Promise<string | undefined> => {
 		if (depth > MAX_DEPTH) return "Its folders are nested too deeply.";
 		const entries = await readdir(path.join(root, relative), { withFileTypes: true });
 		for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-			if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+			if (entry.name === "node_modules") {
+				hasNodeModules = true;
+				continue;
+			}
+			if (entry.name.startsWith(".")) continue;
 			const child = relative ? `${relative}/${entry.name}` : entry.name;
 			if (entry.isDirectory()) {
 				// Depth-first, in name order, so the digest is stable.
@@ -532,7 +560,7 @@ async function collectFiles(root: string): Promise<Map<string, Uint8Array> | str
 		return undefined;
 	};
 	const problem = await walk("", 0);
-	return problem ?? files;
+	return problem ?? { files, hasNodeModules };
 }
 
 function digest(files: ReadonlyMap<string, Uint8Array>): string {

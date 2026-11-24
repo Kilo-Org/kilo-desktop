@@ -14,8 +14,13 @@ import { defineConfig, type Plugin } from "vite";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.join(root, "dist/local-plugin");
 
-/** Specifiers the app provides to local plugins' window code (apps/web/plugin-shared-modules.ts). */
-const SHARED = [
+/**
+ * Specifiers the app provides to local plugins' window code, exactly as its
+ * import map lists them (apps/web/plugin-shared-modules.ts; a test there keeps
+ * the two in step). Anything else must be bundled: a specifier left external
+ * that the map doesn't list fails to load at runtime.
+ */
+export const SHARED = [
 	"react",
 	"react/jsx-runtime",
 	"react-dom",
@@ -23,7 +28,29 @@ const SHARED = [
 	"zod",
 	"@kilo-desktop/kernel",
 	"@kilo-desktop/kernel/web",
-	/^@kilo-desktop\/ui\//,
+	"@kilo-desktop/ui/lib/utils",
+	...[
+		"alert",
+		"badge",
+		"button",
+		"card",
+		"checkbox",
+		"empty",
+		"field",
+		"input",
+		"item",
+		"kbd",
+		"label",
+		"scroll-area",
+		"select",
+		"separator",
+		"skeleton",
+		"spinner",
+		"switch",
+		"tabs",
+		"textarea",
+		"tooltip",
+	].map((component) => `@kilo-desktop/ui/components/${component}`),
 ];
 
 /** Writes the manifest next to the bundle, pointing at it. */

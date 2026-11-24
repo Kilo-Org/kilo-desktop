@@ -212,4 +212,21 @@ describe("Local plugins settings", () => {
 			.toHaveTextContent("Failed to start");
 		await expect.element(row.getByTestId("local-plugin-message")).toBeInTheDocument();
 	});
+	it("passes on the host's hint about a plugin's node_modules folder", async () => {
+		await openLocalPlugins(
+			fakeExternalPlugins({
+				plugins: [
+					plugin({
+						hint: "Its node_modules folder isn't loaded. Bundle its dependencies into its JavaScript.",
+					}),
+				],
+			}),
+		);
+
+		await expect
+			.element(page.getByTestId("local-plugin-hello").getByTestId("local-plugin-hint"))
+			.toHaveTextContent(
+				"Its node_modules folder isn't loaded. Bundle its dependencies into its JavaScript.",
+			);
+	});
 });

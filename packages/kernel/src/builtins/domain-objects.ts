@@ -74,6 +74,8 @@ export const externalPluginRecordSchema = z.object({
 	status: z.enum(EXTERNAL_PLUGIN_STATUSES),
 	/** Why it is `invalid` or `failed`. */
 	message: z.string().optional(),
+	/** Advice that doesn't stop it loading, e.g. that its node_modules folder is ignored. */
+	hint: z.string().optional(),
 	/** The user approved exactly these files. */
 	approved: z.boolean(),
 	/** Running this launch. */

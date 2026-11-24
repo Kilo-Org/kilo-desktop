@@ -316,6 +316,7 @@ export function LocalPluginsSettings() {
 										status={localPluginStatus(
 											plugin,
 											kernelFacts(plugin.id, kernelPlugins, issues),
+											external.enabled,
 										)}
 										busy={busy}
 										run={run}
@@ -375,6 +376,11 @@ function PluginRow({
 				{status.message ? (
 					<p className="text-destructive text-2xs" data-qa-id="local-plugin-message">
 						{status.message}
+					</p>
+				) : null}
+				{plugin.hint ? (
+					<p className="text-warning-foreground text-2xs" data-qa-id="local-plugin-hint">
+						{plugin.hint}
 					</p>
 				) : null}
 			</SummaryCard.Content>

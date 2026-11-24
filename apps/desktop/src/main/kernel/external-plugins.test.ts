@@ -155,6 +155,26 @@ describe("ExternalPlugins — scanning", () => {
 		]);
 	});
 
+	it("hints that a node_modules folder isn't loaded, without rejecting the plugin", async () => {
+		await writePlugin("deps", manifest("acme.deps"), {
+			"main.js": "export default { activate() {} };",
+			"node_modules/left-pad/index.js": "export default 1;",
+		});
+		await writePlugin("plain", manifest("acme.plain"));
+		const plugins = create();
+
+		await plugins.refresh();
+
+		expect(plugins.state().plugins).toEqual([
+			expect.objectContaining({
+				id: "acme.deps",
+				status: "ready",
+				hint: expect.stringMatching(/node_modules.*bundle/i),
+			}),
+			expect.not.objectContaining({ hint: expect.anything() }),
+		]);
+	});
+
 	it("treats a missing directory as empty", async () => {
 		const plugins = create({ directory: path.join(directory, "missing") });
 
@@ -395,6 +415,28 @@ describe("ExternalPlugins — loading at launch", () => {
 			}),
 			expect.objectContaining({ id: "acme.good", loaded: true }),
 		]);
+		expect(plugins.state().restartNeeded).toBe(false);
+	});
+
+	it("judges a rebuilt plugin afresh after its old files failed to load", async () => {
+		const root = await writePlugin("bad", manifest("acme.bad"), {
+			"main.js": "throw new Error('boom');",
+		});
+		const store = memoryStore({ enabled: true });
+		await approveAll(create({ store }));
+		const plugins = create({ store });
+		await plugins.load();
+
+		await writeFile(path.join(root, "main.js"), "export default { activate() {} };");
+		await plugins.refresh();
+		const [rebuilt] = plugins.state().plugins;
+		await plugins.approve("acme.bad", rebuilt!.hash!);
+
+		expect(plugins.state()).toMatchObject({
+			restartNeeded: true,
+			plugins: [{ status: "ready", approved: true, loaded: false }],
+		});
+		expect(plugins.state().plugins[0]?.message).toBeUndefined();
 	});
 
 	it("rejects a main entry that is not a plugin entry", async () => {

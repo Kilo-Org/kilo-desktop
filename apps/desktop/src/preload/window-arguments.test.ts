@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { readWindowArguments, windowArguments } from "./window-arguments";
+import {
+	readExternalPluginsArgument,
+	readWindowArguments,
+	windowArguments,
+} from "./window-arguments";
 
 describe("window arguments", () => {
 	it("round-trips a secondary window's identity, view and params", () => {
@@ -20,5 +24,14 @@ describe("window arguments", () => {
 
 	it("ignores malformed params", () => {
 		expect(readWindowArguments(["--kilo-window-params=%7Bnot-json"]).params).toEqual({});
+	});
+
+	it("tells the window whether main loaded local plugins", () => {
+		const window = { id: "main", role: "main" as const, params: {} };
+
+		expect(readExternalPluginsArgument(windowArguments(window, { externalPlugins: true }))).toBe(
+			true,
+		);
+		expect(readExternalPluginsArgument(windowArguments(window))).toBe(false);
 	});
 });

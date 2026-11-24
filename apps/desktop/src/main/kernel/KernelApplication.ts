@@ -73,7 +73,7 @@ import { WindowsUpdateFeed } from "../platform/WindowsUpdateFeed.js";
 import { windowArguments } from "../../preload/window-arguments.js";
 import { buildMenuTemplate, WindowMenus, type MenuCommands } from "./app-menu.js";
 import { ElectronKernelTransport } from "./ElectronKernelTransport.js";
-import { shareModulesWith } from "./external-plugin-modules.js";
+import { loadPluginModulesFrom } from "./external-plugin-modules.js";
 import {
 	EXTERNAL_PLUGINS_PATH,
 	ExternalPlugins,
@@ -153,7 +153,7 @@ export class KernelApplication {
 		),
 		apiVersion: KERNEL_API_VERSION,
 		confirmApproval: (request) => this.#confirmPluginApproval(request),
-		beforeImport: shareModulesWith,
+		beforeImport: loadPluginModulesFrom,
 		logger: createLogger("external-plugins"),
 	});
 	readonly #disposers: (() => void)[] = [];
@@ -510,11 +510,19 @@ export class KernelApplication {
 			deferShow: true,
 			options: {
 				webPreferences: {
-					additionalArguments: windowArguments({ id: "main", role: "main", params: {} }),
+					additionalArguments: windowArguments(
+						{ id: "main", role: "main", params: {} },
+						this.#windowArgumentOptions(),
+					),
 				},
 			},
 		});
 		this.#trackWindow(kernel, "main", window, { role: "main" });
+	}
+
+	/** Lets a window skip asking for local plugins when main loaded none this launch. */
+	#windowArgumentOptions(): { readonly externalPlugins: boolean } {
+		return { externalPlugins: this.#externalPlugins.windowPlugins().length > 0 };
 	}
 
 	async #openSecondaryWindow(request: WindowOpenRequest): Promise<string> {
@@ -526,12 +534,15 @@ export class KernelApplication {
 			title: request.title,
 			...(request.width === undefined ? {} : { width: request.width }),
 			...(request.height === undefined ? {} : { height: request.height }),
-			additionalArguments: windowArguments({
-				id: windowId,
-				role: "secondary",
-				view: request.view,
-				params: request.params,
-			}),
+			additionalArguments: windowArguments(
+				{
+					id: windowId,
+					role: "secondary",
+					view: request.view,
+					params: request.params,
+				},
+				this.#windowArgumentOptions(),
+			),
 		});
 		this.#trackWindow(kernel, windowId, window, { role: "secondary", view: request.view });
 		return windowId;

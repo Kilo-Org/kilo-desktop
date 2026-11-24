@@ -18,7 +18,9 @@ So:
 - Each plugin runs only once you **approve** it. The app asks in a native
   dialog and pins the approval to a digest of the plugin's files: change any
   file (a rebuild included) and it asks again.
-- Windows are served the exact bytes you approved, from the app's own origin.
+- Main and windows run only the exact bytes you approved, held in memory:
+  a plugin can import its own approved files, Node's built-ins (main) and
+  the shared modules below — nothing else.
 - Everything applies **from the next launch**; the page offers a restart.
 - Safe mode (`--safe-mode`) loads no local plugins.
 
@@ -27,7 +29,7 @@ So:
 One folder per plugin in `<userData>/local-plugins/` (Settings → Plugins shows the
 path and opens it). A folder may be a symlink to your project, so you can
 develop in place: dot entries (`.git`) and `node_modules` are ignored, and
-are neither approved nor served — **bundle your dependencies**.
+are neither approved nor loadable — **bundle your dependencies**.
 
 ```
 plugins/

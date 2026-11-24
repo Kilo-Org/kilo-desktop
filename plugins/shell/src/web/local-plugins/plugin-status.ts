@@ -25,7 +25,11 @@ export interface KernelPluginFacts {
 export function localPluginStatus(
 	plugin: ExternalPluginRecord,
 	kernel: KernelPluginFacts,
+	/** Whether local plugins load at the next launch ("Enable local plugins"). */
+	localPluginsEnabled: boolean,
 ): LocalPluginStatus {
+	// What loads at the next launch: only enabled plugins, and only while local plugins are on.
+	const willLoad = localPluginsEnabled && plugin.approved;
 	const reason = plugin.message ?? kernel.errors[0];
 	const withReason = (status: Omit<LocalPluginStatus, "message">): LocalPluginStatus =>
 		reason ? { ...status, message: reason } : status;
@@ -33,7 +37,7 @@ export function localPluginStatus(
 	if (plugin.status === "invalid") return withReason({ label: "Can't load", kind: "problem" });
 	if (plugin.status === "failed") return withReason({ label: "Failed to load", kind: "problem" });
 	if (!plugin.loaded) {
-		return plugin.approved
+		return willLoad
 			? { label: "Starts after restart", kind: "pending" }
 			: { label: "Disabled", kind: "attention" };
 	}
@@ -45,7 +49,7 @@ export function localPluginStatus(
 		case "disabled":
 			return { label: "Turned off in Diagnostics", kind: "idle" };
 		case "active":
-			return plugin.approved
+			return willLoad
 				? { label: "Active", kind: "active" }
 				: { label: "Stops after restart", kind: "pending" };
 		case "resolved":

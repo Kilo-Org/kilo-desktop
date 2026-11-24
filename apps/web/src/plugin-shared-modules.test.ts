@@ -53,3 +53,12 @@ describe("pluginSharedModules", () => {
 		expect(call(plugin.load, "/src/main.tsx")).toBeUndefined();
 	});
 });
+
+describe("the right-panel example's local plugin build", () => {
+	it("keeps exactly the shared modules external", async () => {
+		const { SHARED } =
+			await import("../../../examples/right-panel-plugin/vite.local-plugin.config");
+
+		expect(SHARED).toEqual(SHARED_MODULES.map((shared) => shared.specifier));
+	});
+});

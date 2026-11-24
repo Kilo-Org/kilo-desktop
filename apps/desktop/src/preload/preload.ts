@@ -8,7 +8,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { KernelBridge, KeyboardPlatform } from "@kilo-desktop/kernel";
 
 import { removeWebRtcGlobals } from "./subframe-webrtc";
-import { readWindowArguments } from "./window-arguments";
+import { readExternalPluginsArgument, readWindowArguments } from "./window-arguments";
 
 const KERNEL_IPC = {
 	request: "kernel:request",
@@ -28,6 +28,7 @@ function exposeKernelBridge(): void {
 	const kernelBridge: KernelBridge = {
 		window: readWindowArguments(process.argv),
 		platform: platformOf(process.platform),
+		externalPlugins: readExternalPluginsArgument(process.argv),
 		request: (channel, payload) => ipcRenderer.invoke(KERNEL_IPC.request, { channel, payload }),
 		send: (channel, payload) => ipcRenderer.send(KERNEL_IPC.message, { channel, payload }),
 		on(listener) {

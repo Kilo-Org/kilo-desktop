@@ -79,12 +79,15 @@ export async function bootKernel(
 
 	let kernel: RendererKernel;
 	if (bridge) {
-		// Local plugins exist only on the desktop, where main loaded them from disk.
-		const external = await externalPluginRegistrations({
-			request: async (channel, payload) =>
-				unwrapTransportResult(await bridge.request(channel, payload)),
-			logger: consoleLogger,
-		});
+		// Local plugins exist only on the desktop, where main loaded them from disk;
+		// main says whether it loaded any, so most windows skip the round trip.
+		const external = bridge.externalPlugins
+			? await externalPluginRegistrations({
+					request: async (channel, payload) =>
+						unwrapTransportResult(await bridge.request(channel, payload)),
+					logger: consoleLogger,
+				})
+			: [];
 		kernel = createRendererKernel({
 			windowId: bridge.window.id,
 			window: bridge.window,

@@ -18,7 +18,7 @@ import { bootAgent, cleanUpAgents, eventually, tempDir } from "../../../test/age
 import { desktopChat, FakeKiloChats, rawChat } from "../../../test/agent/fake-kilo-chats";
 import { FakeServer } from "../../../test/agent/fake-server";
 import { withWorktreeBranch } from ".";
-import type { CreateChatParams } from "./kilo-chat-client";
+import type { CreateChatParams, GenerateTextParams } from "./kilo-chat-client";
 
 afterEach(cleanUpAgents);
 
@@ -901,7 +901,7 @@ describe("one structured answer", () => {
 		schema: { type: "object", properties: { message: { type: "string" } } },
 	};
 
-	it("asks a throwaway chat that may only answer, then deletes it without listing it", async () => {
+	it("asks for one completion with the schema in the prompt, creating no chat", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a")];
 		const { generation, whenReady, state, events } = await boot({ chats });
@@ -913,38 +913,13 @@ describe("one structured answer", () => {
 		});
 
 		expect(answer).toEqual({ message: "Fix it" });
-		const [create, prompt, remove] = chats.writes;
-		expect(create).toMatchObject({ call: "create", directory: "/projects/app" });
-		const params = create?.args[0] as CreateChatParams;
-		expect(params.metadata).toBeUndefined();
-		expect(params.title).toBe("Generate commit message");
-		expect(params.permission).toEqual([
-			{ permission: "*", pattern: "*", action: "deny" },
-			{ permission: "StructuredOutput", pattern: "*", action: "allow" },
-		]);
-		expect(prompt).toEqual({
-			call: "promptStructured",
-			directory: "/projects/app",
-			args: [
-				"ses_new_1",
-				{
-					system: request.system,
-					text: request.prompt,
-					schema: request.schema,
-					model: { providerID: "kilo", modelID: "fast", variant: "low" },
-				},
-			],
-		});
-		expect(remove).toEqual({ call: "delete", directory: "/projects/app", args: ["ses_new_1"] });
-
-		// A late announcement of the throwaway chat, already deleted.
-		const throwaway = desktopChat("ses_new_1", {
-			title: "Generate commit message",
-			metadata: null,
-		});
-		chats.push({ type: "session.created", properties: { info: rawChat(throwaway) } });
-		// The stream consumes the announcement on the next tick; it must not publish.
-		await new Promise((resolve) => setImmediate(resolve));
+		expect(chats.writes).toHaveLength(1);
+		expect(chats.writes[0]?.call).toBe("generateText");
+		const params = chats.writes[0]?.args[0] as GenerateTextParams;
+		expect(params.model).toEqual({ providerID: "kilo", modelID: "fast", variant: "low" });
+		expect(params.prompt).toContain(request.system);
+		expect(params.prompt).toContain(JSON.stringify(request.schema));
+		expect(params.prompt).toContain(request.prompt);
 		expect(Object.keys(state().chats)).toEqual(["ses_a"]);
 		expect(events).toEqual([]);
 	});
@@ -956,24 +931,27 @@ describe("one structured answer", () => {
 
 		await generation.methods.generate(request);
 
-		expect(chats.writes[1]?.args[1]).not.toHaveProperty("model");
+		expect(chats.writes[0]?.args[0]).not.toHaveProperty("model");
 	});
 
-	it("deletes the chat when the answer is missing or the prompt fails", async () => {
+	it("asks once more when the answer doesn't fit, then fails as the model's fault", async () => {
 		const chats = new FakeKiloChats();
 		const { generation, whenReady } = await boot({ chats });
 		await whenReady();
 
-		chats.structuredAnswer = "just text";
-		await expect(generation.methods.generate(request)).rejects.toThrow(
-			"The model did not return a structured answer.",
-		);
+		chats.textAnswers = ["just text", '{"message": "Fix it"}'];
+		await expect(generation.methods.generate(request)).resolves.toEqual({ message: "Fix it" });
+		expect(chats.writes).toHaveLength(2);
+
+		chats.textAnswers = ["just text"];
+		await expect(generation.methods.generate(request)).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: expect.stringContaining("The model did not return a structured answer"),
+		});
 		chats.failPrompt = true;
 		await expect(generation.methods.generate(request)).rejects.toThrow(
 			"Could not get an answer: model unavailable",
 		);
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(2);
 	});
 });
 

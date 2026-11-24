@@ -4,7 +4,7 @@ import type {
 	ChatPromptParams,
 	CreateChatParams,
 	KiloChatClient,
-	StructuredPromptParams,
+	GenerateTextParams,
 } from "../../main/agent/conversations/kilo-chat-client";
 import type { PendingRequest } from "../../main/agent/conversations/store";
 import type { PermissionRequest, PermissionRule } from "../../contracts";
@@ -165,16 +165,15 @@ export class FakeKiloChats implements KiloChatClient {
 		this.#write("generateBranchName", directory, [id, params]);
 		return this.branchName;
 	}
-	/** What `promptStructured` answers; a function sees the prompt. */
-	structuredAnswer: unknown | ((params: StructuredPromptParams) => unknown) = { message: "Fix it" };
+	/** What `generateText` answers, in turn (the last one repeats); a function sees the params. */
+	textAnswers: (string | ((params: GenerateTextParams) => string))[] = ['{"message": "Fix it"}'];
 	failPrompt = false;
 
-	async promptStructured(directory: string, id: string, params: StructuredPromptParams) {
-		this.#write("promptStructured", directory, [id, params]);
+	async generateText(params: GenerateTextParams) {
+		this.#write("generateText", "", [params]);
 		if (this.failPrompt) throw new Error("model unavailable");
-		return typeof this.structuredAnswer === "function"
-			? (this.structuredAnswer as (params: StructuredPromptParams) => unknown)(params)
-			: this.structuredAnswer;
+		const answer = this.textAnswers.length > 1 ? this.textAnswers.shift()! : this.textAnswers[0]!;
+		return typeof answer === "function" ? answer(params) : answer;
 	}
 	async prompt(directory: string, id: string, params: ChatPromptParams) {
 		this.#write("prompt", directory, [id, params]);

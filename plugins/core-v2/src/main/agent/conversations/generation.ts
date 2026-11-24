@@ -2,17 +2,8 @@ import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 
 import { Generation } from "../../../contracts";
 import type { ConversationsService } from "./index";
+import { generateStructured, StructuredAnswerError } from "./structured-generation";
 import { wireModel } from "./wire";
-
-/**
- * A throwaway chat may answer only through the structured-output sink: its
- * prompt can carry untrusted content (repository diffs). An empty `tools`
- * map on the prompt disables nothing; a chat-level deny-all ruleset does.
- */
-export const GENERATE_PERMISSION = [
-	{ permission: "*", pattern: "*", action: "deny" as const },
-	{ permission: "StructuredOutput", pattern: "*", action: "allow" as const },
-];
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -26,24 +17,20 @@ async function serverCall<T>(label: string, call: () => Promise<T>): Promise<T> 
 
 /**
  * `kilo.core/generation`: one-shot structured calls through the chats'
- * server connection. A generated answer comes from a throwaway chat without
- * the app's stamp, so it is never listed, and is deleted afterwards.
+ * server connection. On Kilo v2 an answer is a plain completion with no chat
+ * and no tools (`structured-generation.ts`), so the contract's `directory`
+ * and `title` go unused; a branch name comes from the chat's location.
  */
 export function provideGeneration(sdk: PluginSdk, chats: ConversationsService): void {
 	sdk.domainObjects.provide(Generation, {
 		initialState: {},
 		methods: {
-			generate: async ({ directory, title, system, prompt, schema, model }) => {
+			generate: async ({ system, prompt, schema, model }) => {
 				const { client } = await chats.connected();
-				const chat = await serverCall("start the request", () =>
-					client.createChat(directory, { title, permission: GENERATE_PERMISSION }),
-				);
-				try {
-					const structured = await serverCall("get an answer", () =>
-						client.promptStructured(directory, chat.id, {
-							system,
-							text: prompt,
-							schema,
+				const complete = (text: string) =>
+					serverCall("get an answer", () =>
+						client.generateText({
+							prompt: text,
 							...(model
 								? {
 										model: {
@@ -54,12 +41,13 @@ export function provideGeneration(sdk: PluginSdk, chats: ConversationsService): 
 								: {}),
 						}),
 					);
-					if (structured === null || typeof structured !== "object" || Array.isArray(structured)) {
-						throw new KernelError("BUSINESS", "The model did not return a structured answer.");
+				try {
+					return await generateStructured(complete, { system, text: prompt, schema });
+				} catch (error) {
+					if (error instanceof StructuredAnswerError) {
+						throw new KernelError("BUSINESS", error.message);
 					}
-					return structured as Record<string, unknown>;
-				} finally {
-					await client.deleteChat(directory, chat.id).catch(() => undefined);
+					throw error;
 				}
 			},
 			generateBranchName: async ({ chatId, prompt, model }) => {

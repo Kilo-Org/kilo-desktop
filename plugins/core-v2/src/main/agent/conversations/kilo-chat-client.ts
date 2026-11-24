@@ -1,4 +1,5 @@
 import type { SessionInfo } from "@kilocode/client";
+import { Definition as BranchName } from "@opencode/schema/kilocode/branch-name";
 import { Definition as SessionDrain } from "@opencode/schema/kilocode/session-drain";
 
 import type { PermissionRequest, ServerConnection, PermissionRule } from "../../../contracts";
@@ -22,10 +23,8 @@ export interface CreateChatParams {
 	readonly permission?: readonly PermissionRule[];
 }
 
-export interface StructuredPromptParams {
-	readonly system: string;
-	readonly text: string;
-	readonly schema: Readonly<Record<string, unknown>>;
+export interface GenerateTextParams {
+	readonly prompt: string;
 	readonly model?: {
 		readonly providerID: string;
 		readonly modelID: string;
@@ -101,8 +100,8 @@ export interface KiloChatClient {
 		params: { readonly prompt: string; readonly providerID?: string; readonly modelID?: string },
 	): Promise<string | null>;
 	deleteChat(directory: string, id: string): Promise<void>;
-	/** Sends one prompt asking for a JSON answer; resolves the reply's structured output. */
-	promptStructured(directory: string, id: string, params: StructuredPromptParams): Promise<unknown>;
+	/** One completion with no chat and no tools; resolves its text. */
+	generateText(params: GenerateTextParams): Promise<string>;
 	/** Queues a prompt on the chat; resolves once the server has it, not when the turn ends. */
 	prompt(directory: string, id: string, params: ChatPromptParams): Promise<void>;
 	/** Starts a slash command; resolves once it is sent, leaving it to run. */
@@ -184,7 +183,9 @@ const sameRule = (left: V2PermissionRule, right: V2PermissionRule) =>
  * (pending permissions and forms, the drain RPC) use the chat's directory or
  * the server's global one. v2 has no per-prompt agent, model or system text:
  * the agent and model are switched on the session first, and system text is
- * a synthetic note. Branch names and structured answers move to v2 in step 11.
+ * a synthetic note. Structured answers are plain completions
+ * (`structured-generation.ts`); branch names come from the
+ * `kilocode.branch-name` RPC.
  */
 export function createKiloChatClient(
 	connection: ServerConnection,
@@ -192,6 +193,7 @@ export function createKiloChatClient(
 ): KiloChatClient {
 	const client: KiloV2Client = createServerClient(connection, fetch);
 	const drain = client.rpc(SessionDrain);
+	const branchName = client.rpc(BranchName);
 	const location = (directory: string | undefined) => ({
 		location: { directory: directory ?? connection.globalDirectory },
 	});
@@ -332,14 +334,37 @@ export function createKiloChatClient(
 		async getChatPermission(_directory, sessionID) {
 			return ((await client.session.get({ sessionID })).permissions ?? []).map(toV1Rule);
 		},
-		async generateBranchName() {
-			throw new Error("Branch names aren't on Kilo v2 yet.");
+		async generateBranchName(directory, sessionID, params) {
+			const { branch } = await callRpc(client, directory, (options) =>
+				branchName.generate(
+					{
+						sessionID,
+						prompt: params.prompt,
+						...(params.providerID ? { providerID: params.providerID } : {}),
+						...(params.modelID ? { modelID: params.modelID } : {}),
+					},
+					options,
+				),
+			);
+			return branch;
 		},
 		async deleteChat(_directory, sessionID) {
 			await client.session.remove({ sessionID });
 		},
-		async promptStructured() {
-			throw new Error("Structured answers aren't on Kilo v2 yet.");
+		async generateText(params) {
+			const { text } = await client.experimental.generate.text({
+				prompt: params.prompt,
+				...(params.model
+					? {
+							model: {
+								providerID: params.model.providerID,
+								id: params.model.modelID,
+								...(params.model.variant ? { variant: params.model.variant } : {}),
+							},
+						}
+					: {}),
+			});
+			return text;
 		},
 		async prompt(_directory, sessionID, params) {
 			await switchTo(sessionID, params);

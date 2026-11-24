@@ -817,6 +817,8 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	public async replyToPermission(permissionId: string, response: OpenCodePermissionResponse) {
 		await this.client.permission.reply(
 			{
+				// Kilo v2 replies name the request's session.
+				sessionID: this.sessionId,
 				requestID: permissionId,
 				reply: response,
 				// A human answered this prompt. The server refuses non-reject
@@ -826,7 +828,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				// permission in the same session is answered. Mirror the TUI, which
 				// sets interactive:true on Allow/Always and omits it on reject.
 				...(response !== "reject" ? { interactive: true } : {}),
-			},
+			} as never,
 			OPEN_CODE_REQUEST_OPTIONS,
 		);
 
@@ -840,9 +842,10 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	public async replyToQuestion(questionId: string, answers: readonly QuestionAnswer[]) {
 		await this.client.question.reply(
 			{
+				sessionID: this.sessionId,
 				requestID: questionId,
 				answers: answers.slice(),
-			},
+			} as never,
 			OPEN_CODE_REQUEST_OPTIONS,
 		);
 
@@ -856,8 +859,9 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	public async rejectQuestion(questionId: string) {
 		await this.client.question.reject(
 			{
+				sessionID: this.sessionId,
 				requestID: questionId,
-			},
+			} as never,
 			OPEN_CODE_REQUEST_OPTIONS,
 		);
 

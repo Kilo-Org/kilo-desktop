@@ -13,7 +13,7 @@ import { ChatSelections } from "../selection/chat-selections";
 import { createDeferredKiloClient } from "./deferred-client";
 import { createEventBatcher } from "./event-batcher";
 import { HistoryPrefetch } from "./history-prefetch";
-import { KiloClients } from "./kilo-client";
+import { KiloClients, kiloWire } from "./kilo-client";
 import { LiveParts } from "./live-parts";
 
 type ServerHandle = DomainObjectHandle<typeof KiloServer>;
@@ -152,8 +152,7 @@ export class ChatServices {
 
 	#openEvents(): OpenCodeEventSource {
 		const subscribe: OpenCodeEventSubscriber = async (options) => {
-			const client = this.clients.global(await this.connection());
-			const subscription = await client.global.event(withSkipForkSync(options) as never);
+			const subscription = await kiloWire().subscribe(await this.connection(), options);
 			return { stream: resyncOnceConnected(subscription.stream as AsyncIterable<unknown>) };
 		};
 		const source = new OpenCodeEventSource(this.globalClient as never, subscribe);
@@ -180,14 +179,4 @@ export class ChatServices {
 			if (state.status !== "ready") this.#connection = undefined;
 		});
 	}
-}
-
-/**
- * A fork replays its whole copied transcript twice on `/global/event`: as the
- * usual events and as durable `sync` copies, which no thread reads. VS Code
- * and JetBrains send the same header.
- */
-function withSkipForkSync(options: unknown): Record<string, unknown> {
-	const given = (options ?? {}) as { headers?: Record<string, string> };
-	return { ...given, headers: { ...given.headers, "x-kilo-sse-skip-fork-sync": "1" } };
 }

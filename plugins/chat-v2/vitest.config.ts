@@ -26,6 +26,7 @@ export default defineConfig({
 					name: "unit",
 					include: ["src/**/*.test.ts"],
 					environment: "node",
+					setupFiles: ["src/test/v1-wire.ts"],
 				},
 			},
 			{
@@ -66,6 +67,7 @@ export default defineConfig({
 						"@assistant-ui/core/react",
 						"@assistant-ui/react",
 						"@assistant-ui/react-markdown",
+						"@kilocode/client",
 						"@kilocode/sdk/v2/client",
 						"@pierre/diffs",
 						"@assistant-ui/react-lexical",
@@ -128,7 +130,7 @@ export default defineConfig({
 					include: perf
 						? ["src/perf/**/*.perf.browser.test.tsx"]
 						: ["src/web/**/*.browser.test.tsx", "src/test/**/*.browser.test.tsx"],
-					setupFiles: ["src/test/setup.ts"],
+					setupFiles: ["src/test/v1-wire.ts", "src/test/setup.ts"],
 					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
 					// groupOrder 1 keeps this project in a separate scheduling bucket from
 					// the unit project; Vitest requires unique groupOrders when two projects

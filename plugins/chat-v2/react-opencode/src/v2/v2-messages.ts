@@ -468,6 +468,16 @@ export function toV1Session(info: SessionInfo): Session {
 		...(info.metadata ? { metadata: info.metadata as Record<string, unknown> } : {}),
 		cost: info.cost,
 		tokens: info.tokens,
+		...(info.revert
+			? {
+					revert: {
+						messageID: info.revert.messageID,
+						...(info.revert.partID ? { partID: info.revert.partID } : {}),
+						...(info.revert.snapshot ? { snapshot: info.revert.snapshot } : {}),
+						...(info.revert.workspace ? { workspace: info.revert.workspace } : {}),
+					},
+				}
+			: {}),
 		time: {
 			created: info.time.created,
 			updated: info.time.updated,

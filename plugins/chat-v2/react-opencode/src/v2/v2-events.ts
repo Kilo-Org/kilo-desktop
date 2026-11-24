@@ -142,8 +142,9 @@ export class V2EventTranslator {
 					: "session.updated";
 			return [at(type, { info: toV1Session(info) })];
 		}
+		if (event.type === "server.connected") return [at("server.connected", {})];
 		if (event.type === "form.created")
-			return [at("question.asked", this.#question(record(data.form)))];
+			return [at("question.asked", toV1QuestionRequest(record(data.form)))];
 		if (!sessionID) return [];
 
 		const track = this.#track(sessionID, directory);
@@ -306,7 +307,7 @@ export class V2EventTranslator {
 				return part ? [partUpdated(part)] : [];
 			}
 			case "permission.asked":
-				return [at("permission.asked", this.#permission(data))];
+				return [at("permission.asked", toV1PermissionRequest(data))];
 			case "permission.replied":
 				return PERMISSION_REPLIES.has(data.reply)
 					? [at("permission.replied", { sessionID, requestID: data.requestID, reply: data.reply })]
@@ -538,39 +539,39 @@ export class V2EventTranslator {
 			state,
 		};
 	}
+}
 
-	#permission(data: Record<string, unknown>): Record<string, unknown> {
-		const source = record(data.source);
-		return {
-			id: data.id,
-			sessionID: data.sessionID,
-			permission: data.action,
-			patterns: Array.isArray(data.resources) ? data.resources : [],
-			metadata: record(data.metadata),
-			always: Array.isArray(data.save) ? data.save : [],
-			...(source.type === "tool"
-				? { tool: { messageID: source.messageID, callID: source.id } }
-				: {}),
-		};
-	}
+/** A v2 permission request (event data or listed request) as v1's. */
+export function toV1PermissionRequest(data: Record<string, unknown>): Record<string, unknown> {
+	const source = record(data.source);
+	return {
+		id: data.id,
+		sessionID: data.sessionID,
+		permission: data.action,
+		patterns: Array.isArray(data.resources) ? data.resources : [],
+		metadata: record(data.metadata),
+		always: Array.isArray(data.save) ? data.save : [],
+		...(source.type === "tool" ? { tool: { messageID: source.messageID, callID: source.id } } : {}),
+	};
+}
 
-	#question(form: Record<string, unknown>): Record<string, unknown> {
-		const fields = Array.isArray(form.fields) ? form.fields.map(record) : [];
-		return {
-			id: form.id,
-			sessionID: form.sessionID,
-			questions: fields.map((field) => ({
-				question: String(field.description ?? field.title ?? form.title ?? ""),
-				header: String(field.title ?? ""),
-				options: (Array.isArray(field.options) ? field.options.map(record) : []).map((option) => ({
-					label: String(option.label ?? option.value ?? ""),
-					description: String(option.description ?? ""),
-				})),
-				multiple: field.type === "multiselect",
-				...(field.custom === true ? { custom: true } : {}),
+/** A v2 form (one field per question, keyed `q<index>`) as v1's question request. */
+export function toV1QuestionRequest(form: Record<string, unknown>): Record<string, unknown> {
+	const fields = Array.isArray(form.fields) ? form.fields.map(record) : [];
+	return {
+		id: form.id,
+		sessionID: form.sessionID,
+		questions: fields.map((field) => ({
+			question: String(field.description ?? field.title ?? form.title ?? ""),
+			header: String(field.title ?? ""),
+			options: (Array.isArray(field.options) ? field.options.map(record) : []).map((option) => ({
+				label: String(option.label ?? option.value ?? ""),
+				description: String(option.description ?? ""),
 			})),
-		};
-	}
+			multiple: field.type === "multiselect",
+			...(field.custom === true ? { custom: true } : {}),
+		})),
+	};
 }
 
 /** A form's answer (`{ q0: "…", q1: ["…"] }`) as v1's answers, one list per question. */

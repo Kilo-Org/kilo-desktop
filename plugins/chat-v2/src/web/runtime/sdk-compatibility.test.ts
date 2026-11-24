@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { createOpencodeClient, type OpencodeClient } from "@kilo-desktop/react-opencode-v2";
-import { createKiloClient, KiloClient } from "@kilocode/sdk/v2/client";
+import { createOpencodeClient } from "@kilo-desktop/react-opencode-v2";
 
-describe("OpenCode SDK compatibility facade", () => {
-	it("uses Kilo clients for the adapter's OpenCode client surface", () => {
-		const adapterClient: OpencodeClient = createKiloClient();
-		const kiloClient: KiloClient = createOpencodeClient();
+describe("react-opencode-v2's client", () => {
+	it("is a v1-shaped client answered by Kilo v2", () => {
+		const client = createOpencodeClient({ baseUrl: "http://127.0.0.1:1", directory: "/p" });
 
-		expect(adapterClient).toBeInstanceOf(KiloClient);
-		expect(kiloClient).toBeInstanceOf(KiloClient);
+		expect(typeof client.session.promptAsync).toBe("function");
+		expect(typeof client.permission.reply).toBe("function");
+		expect(typeof client.question.reply).toBe("function");
+		expect(() => client.file.read({ path: "a" } as never)).toThrow("isn't on Kilo v2 yet");
 	});
 });

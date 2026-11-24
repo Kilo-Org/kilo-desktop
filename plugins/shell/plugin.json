@@ -236,7 +236,7 @@
 				},
 				{
 					"id": "local-plugins",
-					"description": "Settings → Plugins: load the user's own plugins from their plugins folder.",
+					"description": "Local plugins: loading the user's own plugins, and Settings → Plugins. Off, none load and the page is hidden (applies from the next launch).",
 					"default": false
 				}
 			],

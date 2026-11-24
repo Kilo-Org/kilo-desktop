@@ -80,7 +80,8 @@ export interface MainKernelHost {
 
 /** What `kernel/plugins` relays to the host for local plugins; every change applies from the next launch. */
 export interface ExternalPluginsHost {
-	state(): ExternalPluginsState;
+	/** Null while the feature is unavailable (its flag is off); its methods then throw UNAVAILABLE. */
+	state(): ExternalPluginsState | null;
 	onChange(listener: () => void): () => void;
 	setEnabled(enabled: boolean): void;
 	/** Confirms with the user, then approves; false when they decline. */

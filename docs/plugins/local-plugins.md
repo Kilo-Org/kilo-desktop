@@ -13,8 +13,13 @@ main process (full Node: your files, the network, child processes), its web
 entry inside every window, next to the app's own code. Nothing sandboxes it.
 So:
 
-- Local plugins are **off** until you turn them on in **Settings → Plugins**
-  (behind kilo.shell's `local-plugins` flag while it rolls out).
+- The whole feature sits behind kilo.shell's `local-plugins` feature flag.
+  While it's off, Settings → Plugins is hidden and nothing is scanned or
+  loaded, whatever was enabled before. Plugins load before flags are fetched,
+  so the app remembers the flag's last value and a change applies from the
+  next launch (a build override, e.g. `VITE_FEATURE_FLAG_OVERRIDES`, applies at
+  once).
+- Local plugins are **off** until you turn them on in **Settings → Plugins**.
 - Each plugin runs only once you **approve** it. The app asks in a native
   dialog and pins the approval to a digest of the plugin's files: change any
   file (a rebuild included) and it asks again.

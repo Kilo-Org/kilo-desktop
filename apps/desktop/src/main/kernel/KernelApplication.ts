@@ -19,9 +19,11 @@ import {
 	KERNEL_API_VERSION,
 	KernelCommand,
 	KernelError,
+	KernelFlags,
 	KernelKeybindings,
 	resolveKeybindings,
 	type AppMenuNode,
+	type DomainObjectState,
 	type EmbeddedHostRegistration,
 	type KernelLogger,
 	type KeyboardPlatform,
@@ -77,6 +79,7 @@ import { loadPluginModulesFrom } from "./external-plugin-modules.js";
 import {
 	EXTERNAL_PLUGINS_PATH,
 	ExternalPlugins,
+	LOCAL_PLUGINS_FLAG,
 	type ApprovalRequest,
 	type ExternalPluginsSettings,
 } from "./external-plugins.js";
@@ -142,12 +145,14 @@ export class KernelApplication {
 	);
 	readonly #embeddedHosts = new Map<string, EmbeddedWebHost>();
 	readonly #storageRoot = app.getPath("userData");
+	readonly #flagOverrides = parseFlagOverrides(import.meta.env.VITE_FEATURE_FLAG_OVERRIDES);
 	readonly #externalPlugins = new ExternalPlugins({
 		directory: localPluginsDir(this.#storageRoot),
 		store: this.#kernelStore<ExternalPluginsSettings>({
-			defaults: { enabled: false, approvals: {} },
+			defaults: { enabled: false, approvals: {}, featureAvailable: false },
 			namespace: "external-plugins",
 		}),
+		...booleanOverride(this.#flagOverrides[LOCAL_PLUGINS_FLAG]),
 		reservedIds: new Set(
 			BUNDLED_PLUGINS.map((plugin) => (plugin.manifest as { readonly id: string }).id),
 		),
@@ -230,6 +235,7 @@ export class KernelApplication {
 		if (!safeMode) await this.#externalPlugins.load();
 		const kernel = this.#createKernel(identity.squirrelName, safeMode);
 		this.#kernel = kernel;
+		this.#followLocalPluginsFlag(kernel);
 		this.#watchAppUrls(kernel);
 		this.#disposers.push(
 			this.#app.on("before-quit", (event: { preventDefault(): void }) => this.#onBeforeQuit(event)),
@@ -322,7 +328,7 @@ export class KernelApplication {
 				version: this.#app.metadata.appVersion,
 				rendererOrigins: [getDesktopOrigin(this.#isDevelopment)],
 				safeMode,
-				flagOverrides: parseFlagOverrides(import.meta.env.VITE_FEATURE_FLAG_OVERRIDES),
+				flagOverrides: this.#flagOverrides,
 				initialSystem: {
 					appearance: nativeTheme.shouldUseDarkColors ? "dark" : "light",
 					online: net.isOnline(),
@@ -518,6 +524,22 @@ export class KernelApplication {
 			},
 		});
 		this.#trackWindow(kernel, "main", window, { role: "main" });
+	}
+
+	/**
+	 * Remembers the `local-plugins` flag once the flag source has answered, for
+	 * the next launch's decision (plugins load before flags are known).
+	 */
+	#followLocalPluginsFlag(kernel: MainKernel): void {
+		const flags = kernel.kernelSdk.domainObjects.get(KernelFlags);
+		if (!flags) return;
+		const apply = (state: DomainObjectState<typeof KernelFlags>) => {
+			if (state.ready) {
+				this.#externalPlugins.setFeatureAvailable(state.flags[LOCAL_PLUGINS_FLAG]?.value === true);
+			}
+		};
+		apply(flags.getState());
+		this.#disposers.push(flags.subscribe(apply));
 	}
 
 	/** Lets a window skip asking for local plugins when main loaded none this launch. */
@@ -777,4 +799,9 @@ export class KernelApplication {
 		}
 		this.#protocol.dispose();
 	}
+}
+
+/** A boolean flag override as an option, ignoring absent or non-boolean values. */
+function booleanOverride(value: unknown): { readonly featureOverride?: boolean } {
+	return typeof value === "boolean" ? { featureOverride: value } : {};
 }

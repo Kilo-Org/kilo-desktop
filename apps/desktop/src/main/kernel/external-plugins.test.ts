@@ -27,7 +27,12 @@ afterEach(async () => {
 function memoryStore(
 	initial: Partial<ExternalPluginsSettings> = {},
 ): KvStore<ExternalPluginsSettings> {
-	let value: ExternalPluginsSettings = { enabled: false, approvals: {}, ...initial };
+	let value: ExternalPluginsSettings = {
+		enabled: false,
+		approvals: {},
+		featureAvailable: true,
+		...initial,
+	};
 	return {
 		snapshot: () => ({ ...value }),
 		get: (key) => value[key],
@@ -36,7 +41,7 @@ function memoryStore(
 			return { ...value };
 		},
 		clear: () => {
-			value = { enabled: false, approvals: {} };
+			value = { enabled: false, approvals: {}, featureAvailable: false };
 		},
 	};
 }
@@ -82,10 +87,17 @@ function create(overrides: Partial<ExternalPluginsOptions> = {}) {
 	});
 }
 
+/** Its state, which is null only while the feature is unavailable. */
+function stateOf(plugins: ExternalPlugins) {
+	const state = plugins.state();
+	if (!state) throw new Error("Local plugins are unavailable.");
+	return state;
+}
+
 /** Scans, then approves every ready plugin as the user would. */
 async function approveAll(plugins: ExternalPlugins): Promise<void> {
 	await plugins.refresh();
-	for (const record of plugins.state().plugins) {
+	for (const record of stateOf(plugins).plugins) {
 		if (record.status === "ready") await plugins.approve(record.id!, record.hash!);
 	}
 }
@@ -112,7 +124,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins).toEqual([
+		expect(stateOf(plugins).plugins).toEqual([
 			{
 				folder: "hello",
 				id: "acme.hello",
@@ -134,7 +146,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins).toEqual([
+		expect(stateOf(plugins).plugins).toEqual([
 			expect.objectContaining({ id: "example.local-hello", status: "ready" }),
 		]);
 	});
@@ -146,7 +158,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins).toEqual([
+		expect(stateOf(plugins).plugins).toEqual([
 			expect.objectContaining({
 				id: "example.right-panel",
 				status: "invalid",
@@ -165,7 +177,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins).toEqual([
+		expect(stateOf(plugins).plugins).toEqual([
 			expect.objectContaining({
 				id: "acme.deps",
 				status: "ready",
@@ -180,7 +192,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins).toEqual([]);
+		expect(stateOf(plugins).plugins).toEqual([]);
 	});
 
 	it.each([
@@ -222,7 +234,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins).toEqual([
+		expect(stateOf(plugins).plugins).toEqual([
 			expect.objectContaining({
 				folder: "broken",
 				status: "invalid",
@@ -239,7 +251,7 @@ describe("ExternalPlugins — scanning", () => {
 
 		await plugins.refresh();
 
-		expect(plugins.state().plugins.map(({ folder, status }) => [folder, status])).toEqual([
+		expect(stateOf(plugins).plugins.map(({ folder, status }) => [folder, status])).toEqual([
 			["one", "invalid"],
 			["two", "invalid"],
 		]);
@@ -253,7 +265,7 @@ describe("ExternalPlugins — scanning", () => {
 			await symlink(project, path.join(directory, "linked"));
 			const plugins = create();
 			await plugins.refresh();
-			const before = plugins.state().plugins[0]?.hash;
+			const before = stateOf(plugins).plugins[0]?.hash;
 
 			await mkdir(path.join(project, ".git"));
 			await writeFile(path.join(project, ".git", "HEAD"), "ref: main");
@@ -261,8 +273,8 @@ describe("ExternalPlugins — scanning", () => {
 			await writeFile(path.join(project, "node_modules", "x.js"), "");
 			await plugins.refresh();
 
-			expect(plugins.state().plugins[0]).toMatchObject({ id: "acme.linked", status: "ready" });
-			expect(plugins.state().plugins[0]?.hash).toBe(before);
+			expect(stateOf(plugins).plugins[0]).toMatchObject({ id: "acme.linked", status: "ready" });
+			expect(stateOf(plugins).plugins[0]?.hash).toBe(before);
 		} finally {
 			await rm(project, { recursive: true, force: true });
 		}
@@ -275,14 +287,14 @@ describe("ExternalPlugins — approval", () => {
 		const confirmApproval = vi.fn(async () => false);
 		const plugins = create({ confirmApproval });
 		await plugins.refresh();
-		const { hash } = plugins.state().plugins[0]!;
+		const { hash } = stateOf(plugins).plugins[0]!;
 
 		await expect(plugins.approve("acme.hello", hash!)).resolves.toBe(false);
 
 		expect(confirmApproval).toHaveBeenCalledWith(
 			expect.objectContaining({ id: "acme.hello", folder: path.join(directory, "hello") }),
 		);
-		expect(plugins.state().plugins[0]?.approved).toBe(false);
+		expect(stateOf(plugins).plugins[0]?.approved).toBe(false);
 	});
 
 	it("pins approval to the files: a change asks again", async () => {
@@ -290,19 +302,19 @@ describe("ExternalPlugins — approval", () => {
 		const store = memoryStore({ enabled: true });
 		const plugins = create({ store });
 		await approveAll(plugins);
-		expect(plugins.state().plugins[0]?.approved).toBe(true);
+		expect(stateOf(plugins).plugins[0]?.approved).toBe(true);
 
 		await writeFile(path.join(root, "main.js"), "export default { activate() { /* changed */ } };");
 		await plugins.refresh();
 
-		expect(plugins.state().plugins[0]).toMatchObject({ approved: false, status: "ready" });
+		expect(stateOf(plugins).plugins[0]).toMatchObject({ approved: false, status: "ready" });
 	});
 
 	it("refuses to approve files that changed since the user saw them", async () => {
 		const root = await writePlugin("hello", manifest("acme.hello"));
 		const plugins = create();
 		await plugins.refresh();
-		const { hash } = plugins.state().plugins[0]!;
+		const { hash } = stateOf(plugins).plugins[0]!;
 		await writeFile(path.join(root, "main.js"), "export default { activate() { /* changed */ } };");
 		await plugins.refresh();
 
@@ -326,7 +338,7 @@ describe("ExternalPlugins — approval", () => {
 
 		plugins.revoke("acme.hello");
 
-		expect(plugins.state().plugins[0]?.approved).toBe(false);
+		expect(stateOf(plugins).plugins[0]?.approved).toBe(false);
 	});
 
 	it("creates the plugins folder at launch, even while local plugins are off", async () => {
@@ -407,7 +419,7 @@ describe("ExternalPlugins — loading at launch", () => {
 		expect(plugins.registrations().map((registration) => registration.source)).toEqual([
 			"external",
 		]);
-		expect(plugins.state().plugins).toEqual([
+		expect(stateOf(plugins).plugins).toEqual([
 			expect.objectContaining({
 				id: "acme.bad",
 				status: "failed",
@@ -415,7 +427,7 @@ describe("ExternalPlugins — loading at launch", () => {
 			}),
 			expect.objectContaining({ id: "acme.good", loaded: true }),
 		]);
-		expect(plugins.state().restartNeeded).toBe(false);
+		expect(stateOf(plugins).restartNeeded).toBe(false);
 	});
 
 	it("judges a rebuilt plugin afresh after its old files failed to load", async () => {
@@ -429,14 +441,14 @@ describe("ExternalPlugins — loading at launch", () => {
 
 		await writeFile(path.join(root, "main.js"), "export default { activate() {} };");
 		await plugins.refresh();
-		const [rebuilt] = plugins.state().plugins;
+		const [rebuilt] = stateOf(plugins).plugins;
 		await plugins.approve("acme.bad", rebuilt!.hash!);
 
 		expect(plugins.state()).toMatchObject({
 			restartNeeded: true,
 			plugins: [{ status: "ready", approved: true, loaded: false }],
 		});
-		expect(plugins.state().plugins[0]?.message).toBeUndefined();
+		expect(stateOf(plugins).plugins[0]?.message).toBeUndefined();
 	});
 
 	it("rejects a main entry that is not a plugin entry", async () => {
@@ -447,7 +459,7 @@ describe("ExternalPlugins — loading at launch", () => {
 
 		await plugins.load();
 
-		expect(plugins.state().plugins[0]).toMatchObject({
+		expect(stateOf(plugins).plugins[0]).toMatchObject({
 			status: "failed",
 			message: expect.stringMatching(/activate/),
 		});
@@ -478,6 +490,53 @@ describe("ExternalPlugins — loading at launch", () => {
 
 		expect(plugins.state()).toMatchObject({ enabled: false, restartNeeded: true });
 		expect(store.get("enabled")).toBe(false);
+	});
+});
+
+describe("ExternalPlugins — feature flag", () => {
+	it("is unavailable, loads nothing and creates no folder while the feature is off", async () => {
+		const folder = path.join(directory, "not-yet");
+		await writePlugin("hello", manifest("acme.hello"));
+		const plugins = create({
+			directory: folder,
+			store: memoryStore({ enabled: true, featureAvailable: false }),
+		});
+
+		await plugins.load();
+
+		expect(plugins.state()).toBeNull();
+		expect(plugins.registrations()).toEqual([]);
+		await expect(stat(folder)).rejects.toThrow();
+		expect(() => plugins.setEnabled(true)).toThrow(/not available/);
+		await expect(plugins.refresh()).rejects.toMatchObject({ code: "UNAVAILABLE" });
+	});
+
+	it("lets the build's override decide at launch, ahead of what was last remembered", async () => {
+		await writePlugin("hello", manifest("acme.hello"));
+		const store = memoryStore({ enabled: true, featureAvailable: false });
+		await approveAll(create({ store: memoryStore({ enabled: true }) }));
+		const plugins = create({ store, featureOverride: true });
+
+		await plugins.load();
+
+		expect(plugins.state()).not.toBeNull();
+	});
+
+	it("remembers the flag for the next launch, and says a restart applies it", async () => {
+		await writePlugin("hello", manifest("acme.hello"));
+		const store = memoryStore({ enabled: true });
+		await approveAll(create({ store }));
+		const plugins = create({ store });
+		await plugins.load();
+		const listener = vi.fn();
+		plugins.onChange(listener);
+
+		plugins.setFeatureAvailable(false);
+
+		expect(store.get("featureAvailable")).toBe(false);
+		expect(plugins.state()).toBeNull();
+		expect(listener).toHaveBeenCalled();
+		expect(create({ store }).state()).toBeNull();
 	});
 });
 

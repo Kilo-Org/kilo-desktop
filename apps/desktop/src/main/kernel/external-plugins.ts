@@ -53,6 +53,11 @@ export interface ExternalPluginsSettings extends Record<string, unknown> {
 	enabled: boolean;
 	/** Plugin id → digest of the files the user approved. */
 	approvals: Record<string, string>;
+	/**
+	 * The `local-plugins` flag's last known value. Plugins load before the flag
+	 * source answers, so launch decides from this; a change applies next launch.
+	 */
+	featureAvailable: boolean;
 }
 
 export interface ApprovalRequest {
@@ -72,6 +77,8 @@ export interface ExternalPluginsOptions {
 	readonly reservedIds: ReadonlySet<string>;
 	/** The kernel's plugin API version, checked against `engines["kilo-desktop"]`. */
 	readonly apiVersion: string;
+	/** The build's override of the `local-plugins` flag, which decides at launch ahead of the remembered value. */
+	readonly featureOverride?: boolean;
 	/** Asks the user, in the host's own UI, whether this plugin may run. */
 	confirmApproval(request: ApprovalRequest): Promise<boolean>;
 	readonly logger: {
@@ -86,6 +93,12 @@ export interface ExternalPluginsOptions {
 	/** Loads an ES module by URL; tests inject it. */
 	readonly importModule?: (url: string) => Promise<unknown>;
 }
+
+/**
+ * The feature flag that gates local plugins as a whole. kilo.shell declares it
+ * (and gates Settings → Plugins on it); the host only reads its value.
+ */
+export const LOCAL_PLUGINS_FLAG = "local-plugins";
 
 /** Path prefix on the app origin under which loaded plugins' files are served. */
 export const EXTERNAL_PLUGINS_PATH = "/external-plugins/";
@@ -141,14 +154,31 @@ export class ExternalPlugins implements ExternalPluginsHost {
 	#scanned: readonly ScannedPlugin[] = [];
 	#loaded = new Map<string, LoadedPlugin>();
 	/** Plugin id → why its files (by digest) failed to load this launch. */
+	#available: boolean;
 	#failures = new Map<string, { readonly hash: string; readonly message: string }>();
 
 	constructor(options: ExternalPluginsOptions) {
 		this.#options = options;
+		this.#available = options.featureOverride ?? options.store.get("featureAvailable") === true;
+	}
+
+	/**
+	 * Records the `local-plugins` flag's value. While it is off nothing loads,
+	 * nothing is scanned and `state()` is null; like every change here, it
+	 * applies to loading from the next launch.
+	 */
+	setFeatureAvailable(available: boolean): void {
+		if (this.#options.store.get("featureAvailable") !== available) {
+			this.#options.store.set({ featureAvailable: available });
+		}
+		if (this.#available === available) return;
+		this.#available = available;
+		this.#notify();
 	}
 
 	/** At launch, before the kernels exist: scans and imports approved plugins, when local plugins are on. */
 	async load(): Promise<void> {
+		if (!this.#available) return;
 		// Always there, so Settings can reveal it before local plugins are turned on.
 		await mkdir(this.#options.directory, { recursive: true }).catch((error: unknown) =>
 			this.#options.logger.warn("Couldn't create the local plugins directory", error),
@@ -214,7 +244,8 @@ export class ExternalPlugins implements ExternalPluginsHost {
 		return body ? { body, filePath: relative } : undefined;
 	}
 
-	state(): ExternalPluginsState {
+	state(): ExternalPluginsState | null {
+		if (!this.#available) return null;
 		const records = this.#scanned.map((scanned) => this.#record(scanned));
 		const loadable = new Set(
 			this.#enabled()
@@ -239,6 +270,7 @@ export class ExternalPlugins implements ExternalPluginsHost {
 	}
 
 	setEnabled(enabled: boolean): void {
+		this.#requireAvailable();
 		this.#options.store.set({ enabled });
 		this.#notify();
 		// Lists what is already there.
@@ -250,6 +282,7 @@ export class ExternalPlugins implements ExternalPluginsHost {
 	}
 
 	async approve(pluginId: string, hash: string): Promise<boolean> {
+		this.#requireAvailable();
 		const scanned = this.#scanned.find(
 			(candidate) => candidate.manifest?.id === pluginId && !candidate.error,
 		);
@@ -274,15 +307,23 @@ export class ExternalPlugins implements ExternalPluginsHost {
 	}
 
 	revoke(pluginId: string): void {
+		this.#requireAvailable();
 		const { [pluginId]: _revoked, ...rest } = this.#approvals();
 		this.#options.store.set({ approvals: rest });
 		this.#notify();
 	}
 
 	async refresh(): Promise<void> {
+		this.#requireAvailable();
 		await mkdir(this.#options.directory, { recursive: true });
 		await this.#scan();
 		this.#notify();
+	}
+
+	#requireAvailable(): void {
+		if (!this.#available) {
+			throw new KernelError("UNAVAILABLE", "Local plugins are not available.");
+		}
 	}
 
 	#enabled(): boolean {

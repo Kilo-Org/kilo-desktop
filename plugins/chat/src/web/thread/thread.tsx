@@ -22,6 +22,7 @@ import { WindowedMessages } from "./message-window";
 import { ThreadMessage } from "./messages";
 import { OlderHistoryStatus } from "./older-history-status";
 import { TooltipIconButton } from "./tooltip-icon-button";
+import { TurnErrorStatus } from "./turn-error-status";
 
 import "./composer.css";
 
@@ -219,6 +220,7 @@ const TranscriptMessages: FC = () => (
 	<ManualDisclosureMemoryProvider>
 		<OlderHistoryStatus />
 		<WindowedMessages Message={ThreadMessage} disabled={useFindScopeOpen()} />
+		<TurnErrorStatus />
 	</ManualDisclosureMemoryProvider>
 );
 

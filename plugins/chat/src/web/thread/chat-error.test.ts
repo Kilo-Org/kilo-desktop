@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { displayChatError, messageErrorText } from "./chat-error";
+import { displayChatError, messageErrorText, turnErrorText } from "./chat-error";
 
 describe("displayChatError", () => {
 	it("is empty without a message", () => {
@@ -49,5 +49,41 @@ describe("messageErrorText", () => {
 			messageErrorText({ type: "incomplete", reason: "error", error: { message: "Oops" } }),
 		).toBe("Oops");
 		expect(messageErrorText({ type: "incomplete", reason: "error", error: 42 })).toBe("42");
+	});
+});
+
+describe("turnErrorText", () => {
+	it("reads Kilo's named errors, plain errors and refused requests", () => {
+		expect(turnErrorText({ name: "UnknownError", data: { message: "Database is busy" } })).toBe(
+			"Database is busy",
+		);
+		expect(turnErrorText(new Error("The model is overloaded"))).toBe("The model is overloaded");
+		expect(turnErrorText({ message: "Session not found" })).toBe("Session not found");
+		expect(turnErrorText("Boom")).toBe("Boom");
+	});
+
+	it("drops the stack trace Kilo appends to an unexpected failure", () => {
+		expect(
+			turnErrorText({
+				name: "UnknownError",
+				data: { message: "Error: Model not found: acme/gone\n    at getModel (prompt.ts:812)" },
+			}),
+		).toBe("Error: Model not found: acme/gone");
+	});
+
+	it("explains a prompt Kilo had no model for", () => {
+		const noModel = "No model is available. Connect a provider in Settings to send messages.";
+		expect(
+			turnErrorText({
+				name: "UnknownError",
+				data: { message: "ProviderNoProvidersError: No providers are available\n    at x" },
+			}),
+		).toBe(noModel);
+		expect(
+			turnErrorText({
+				name: "UnknownError",
+				data: { message: "ProviderNoModelsError: No models are available for provider: kilo" },
+			}),
+		).toBe(noModel);
 	});
 });

@@ -1,7 +1,6 @@
 import {
 	clear,
 	click,
-	expectElementNotToContainText,
 	expectElementToBeDisabled,
 	expectElementToBeEnabled,
 	expectElementToBeHidden,
@@ -239,14 +238,24 @@ export class ChatComposerPage {
 	}
 
 	async verifyMenuItemNotHighlighted(label: string): Promise<void> {
-		await expectElementNotToContainText(this.highlightedTriggerRow(), label, {
-			message: `The menu's highlighted row should no longer be "${label}"`,
-		});
+		await expectElementToHaveAttribute(
+			getLocatorByRole("option", { name: label, exact: false }),
+			"aria-selected",
+			"false",
+			{ message: `The menu's "${label}" row should not be highlighted` },
+		);
 	}
 
 	async verifyOneMenuItemHighlighted(): Promise<void> {
 		await expectElementToHaveCount(this.highlightedTriggerRow(), 1, {
 			message: "The menu should highlight exactly one row",
+		});
+	}
+
+	/** An open menu with nothing to offer, e.g. an unknown `/` command or a workspace with no files. */
+	async verifyTriggerMenuHasNoRows(): Promise<void> {
+		await expectElementToHaveCount(this.triggerMenu().locator('[role="option"]'), 0, {
+			message: "The trigger menu should show no rows",
 		});
 	}
 

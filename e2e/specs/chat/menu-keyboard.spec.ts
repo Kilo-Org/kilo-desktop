@@ -12,6 +12,8 @@ import { test } from "../../fixtures/chat.js";
  *
  * `/in` narrows the catalog to a single row, so the ArrowDown movement is
  * asserted on a query with several rows and `/in` keeps the Escape/Enter flow.
+ * A leading `/name` stays an open menu even when nothing matches, so the
+ * unknown-command case has to be typed to see that (an empty) menu at all.
  */
 test.describe("Chat welcome menu keyboard", () => {
 	test("Escape closes the / menu and leaves /in unsent in the composer @smoke @packaged", async ({
@@ -24,8 +26,6 @@ test.describe("Chat welcome menu keyboard", () => {
 		await chatComposerPage.typeSlashQuery("in");
 		await chatComposerPage.verifyTriggerMenuOpen();
 		await chatComposerPage.verifyHighlightedMenuItem("init");
-		await chatComposerPage.pressKey("ArrowDown");
-		await chatComposerPage.verifyTriggerMenuOpen();
 		await chatComposerPage.pressKey("Escape");
 
 		await chatComposerPage.verifyTriggerMenuClosed();
@@ -80,7 +80,16 @@ test.describe("Chat welcome menu keyboard", () => {
 		await chatComposerPage.verifyComposerHasNoChip();
 	});
 
-	test("literal slash text opens no menu and an unknown command sends as plain text @packaged", async ({
+	test("a mid-sentence / opens no menu", async ({ appShellPage, chatComposerPage }) => {
+		await appShellPage.verifyShellIsLoaded();
+		await chatComposerPage.openDraft();
+
+		await chatComposerPage.typeMessageSequentially(`see /tmp`);
+
+		await chatComposerPage.verifyTriggerMenuClosed();
+	});
+
+	test("an unknown /command opens an empty menu and sends as plain text once closed @packaged", async ({
 		appShellPage,
 		chatStubProviderPage,
 		chatComposerPage,
@@ -99,10 +108,11 @@ test.describe("Chat welcome menu keyboard", () => {
 		await chatModelSelectorPage.selectCustomProviderRail(CUSTOM_PROVIDER_ID);
 		await chatModelSelectorPage.selectModel(CUSTOM_MODEL_OPTION_ID);
 
-		await chatComposerPage.typeMessageSequentially(`see /tmp`);
-		await chatComposerPage.verifyTriggerMenuClosed();
+		await chatComposerPage.typeMessageSequentially("/nosuchcommand");
+		await chatComposerPage.verifyTriggerMenuOpen();
+		await chatComposerPage.verifyTriggerMenuHasNoRows();
 
-		await chatComposerPage.typeMessage(prompt);
+		await chatComposerPage.typeMessageSequentially(` ${marker}`);
 		await chatComposerPage.verifyTriggerMenuClosed();
 		await chatComposerPage.pressKey("Enter");
 

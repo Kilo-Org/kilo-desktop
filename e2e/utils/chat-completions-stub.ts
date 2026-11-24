@@ -52,6 +52,18 @@ export type CapturedCompletionRequest = {
 	files: CapturedFilePart[];
 };
 
+export type CapturedCompletionError = {
+	promptText: string;
+	status: number;
+	message: string;
+	attempts: number;
+};
+
+export type ChatCompletionsStubError = {
+	status: number;
+	message: string;
+};
+
 export type ChatCompletionsStub = {
 	url: string;
 	close: () => Promise<void>;
@@ -60,7 +72,7 @@ export type ChatCompletionsStub = {
 /**
  * Local stand-in for a custom OpenAI-compatible provider's
  * `/chat/completions` endpoint, so chat-attachment e2e specs get a
- * deterministic assistant reply instead of depending on a real model call —
+ * deterministic assistant reply or marker-keyed error instead of depending on a real model call —
  * no provider API keys exist in CI (see `kilo-gateway-stub.ts` for the
  * equivalent pattern used for the Kilo Gateway catalog).
  *
@@ -91,8 +103,10 @@ export type ChatCompletionsStub = {
 export async function startChatCompletionsStub(
 	replies: Record<string, string>,
 	titles: Record<string, string> = {},
+	errors: Record<string, ChatCompletionsStubError> = {},
 ): Promise<ChatCompletionsStub> {
 	const requests: CapturedCompletionRequest[] = [];
+	const errorsByPrompt = new Map<string, CapturedCompletionError>();
 
 	const server = createServer((request, response) => {
 		handle(request, response, {
@@ -104,6 +118,19 @@ export async function startChatCompletionsStub(
 				requests.push(captured);
 				if (requests.length > REQUEST_LOG_LIMIT) requests.shift();
 			},
+			getError: (captured) => {
+				const error = resolveMatch(captured.promptText, errors);
+				if (!error || captured.isTitleRequest) return undefined;
+				const previous = errorsByPrompt.get(captured.promptText);
+				if (previous) {
+					previous.attempts += 1;
+					return error;
+				}
+				const firstAttempt = { promptText: captured.promptText, ...error, attempts: 1 };
+				errorsByPrompt.set(captured.promptText, firstAttempt);
+				return error;
+			},
+			getErrorHistory: () => [...errorsByPrompt.values()],
 		}).catch((error: unknown) => {
 			logger.warn(
 				`Chat completions stub failed ${request.method} ${request.url}: ${String(error)}`,
@@ -133,6 +160,13 @@ function resolveReply(promptText: string, replies: Record<string, string>): stri
 	return DEFAULT_REPLY;
 }
 
+function resolveMatch<T>(promptText: string, matches: Record<string, T>): T | undefined {
+	for (const [marker, value] of Object.entries(matches)) {
+		if (promptText.includes(marker)) return value;
+	}
+	return undefined;
+}
+
 async function handle(
 	request: IncomingMessage,
 	response: ServerResponse,
@@ -140,12 +174,14 @@ async function handle(
 		getReply: (captured: CapturedCompletionRequest) => string;
 		getRequests: () => readonly CapturedCompletionRequest[];
 		onRequest: (captured: CapturedCompletionRequest) => void;
+		getError: (captured: CapturedCompletionRequest) => ChatCompletionsStubError | undefined;
+		getErrorHistory: () => readonly CapturedCompletionError[];
 	},
 ): Promise<void> {
 	const url = new URL(request.url ?? "/", "http://stub");
 
 	if (request.method === "GET" && url.pathname === CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH) {
-		serveIntrospection(response, url, options.getRequests());
+		serveIntrospection(response, url, options.getRequests(), options.getErrorHistory());
 		return;
 	}
 
@@ -160,6 +196,17 @@ async function handle(
 	const captured = extractCaptured(parsed);
 	options.onRequest(captured);
 
+	const error = options.getError(captured);
+	if (error) {
+		response.writeHead(error.status, { "content-type": "application/json" });
+		response.end(
+			JSON.stringify({
+				error: { message: error.message, type: "e2e_test_error", code: "e2e_test_error" },
+			}),
+		);
+		return;
+	}
+
 	const reply = options.getReply(captured);
 	if (parsed?.stream) {
 		writeStreamedReply(response, reply);
@@ -173,13 +220,17 @@ function serveIntrospection(
 	response: ServerResponse,
 	url: URL,
 	requests: readonly CapturedCompletionRequest[],
+	errors: readonly CapturedCompletionError[],
 ): void {
 	const marker = url.searchParams.get("marker");
 	const match = marker
 		? requests.findLast((captured) => captured.promptText.includes(marker))
 		: undefined;
+	const matchingErrors = marker
+		? errors.filter((captured) => captured.promptText.includes(marker))
+		: [];
 	response.writeHead(200, { "content-type": "application/json" });
-	response.end(JSON.stringify({ request: match ?? null }));
+	response.end(JSON.stringify({ request: match ?? null, errors: matchingErrors }));
 }
 
 function parseBody(bodyText: string): ChatCompletionsRequestBody | undefined {

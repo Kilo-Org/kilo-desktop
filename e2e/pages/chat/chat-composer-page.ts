@@ -70,6 +70,7 @@ export class ChatComposerPage {
 	// sr-only span ("Remove file"), not an aria-label attribute.
 	private readonly attachmentRemoveButton = () =>
 		this.attachmentRoots().getByRole("button", { name: "Remove file" });
+	private readonly chatMessageError = () => this.thread().getByTestId("chat-message-error");
 	// Specs send one message per test, so strict mode throws rather than
 	// grabbing the wrong reply if a future spec sends more than once.
 	private readonly assistantMessage = () => this.thread().locator('[data-role="assistant"]');
@@ -219,6 +220,17 @@ export class ChatComposerPage {
 	/** Requires exactly one composer attachment. */
 	async removeAttachment(): Promise<void> {
 		await click(this.attachmentRemoveButton());
+	}
+
+	async verifySendFailureVisible(expectedMessage: string): Promise<void> {
+		await expectElementToBeVisible(this.chatMessageError(), {
+			message: "The failed first prompt should show the chat error banner",
+		});
+		await expectElementToContainText(
+			this.chatMessageError().locator(".aui-message-error-message"),
+			expectedMessage,
+			{ message: `The chat error should explain "${expectedMessage}"` },
+		);
 	}
 
 	async verifySendDisabled(): Promise<void> {

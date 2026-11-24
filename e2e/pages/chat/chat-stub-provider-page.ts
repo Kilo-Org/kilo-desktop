@@ -7,6 +7,7 @@ import { AiProvidersPage } from "../shell/ai-providers-page.js";
 import {
 	CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH,
 	CHAT_COMPLETIONS_STUB_URL_ENV,
+	type CapturedCompletionError,
 	type CapturedCompletionRequest,
 } from "../../utils/chat-completions-stub.js";
 
@@ -79,20 +80,61 @@ export class ChatStubProviderPage {
 	 * whose typed message text contains `promptMarker`, so a spec can assert
 	 * on exactly what the model request carried for its own send.
 	 */
-	async waitForCapturedRequest(promptMarker: string): Promise<CapturedCompletionRequest> {
-		const url = `${this.stubUrl()}${CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH}?marker=${encodeURIComponent(promptMarker)}`;
+	private async getCapturedRequestAndErrors(
+		marker: string,
+		isReady: (payload: {
+			request: CapturedCompletionRequest | null;
+			errors: readonly CapturedCompletionError[];
+		}) => boolean = (payload) => payload.request !== null,
+		waitError: (marker: string) => string = (value) =>
+			`Chat completions stub never received a request matching "${value}"`,
+	): Promise<{
+		request: CapturedCompletionRequest | null;
+		errors: readonly CapturedCompletionError[];
+	}> {
+		const url = `${this.stubUrl()}${CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH}?marker=${encodeURIComponent(marker)}`;
 		const deadline = Date.now() + REQUEST_POLL_TIMEOUT_MS;
 		for (;;) {
 			const response = await getRequest(url);
-			const payload = (await response.json()) as { request: CapturedCompletionRequest | null };
-			if (payload.request) return payload.request;
+			const payload = (await response.json()) as {
+				request: CapturedCompletionRequest | null;
+				errors: readonly CapturedCompletionError[];
+			};
+			if (isReady(payload)) return payload;
 			if (Date.now() >= deadline) {
-				throw new Error(
-					`Chat completions stub never received a request matching "${promptMarker}"`,
-				);
+				throw new Error(waitError(marker));
 			}
 			await getPage().waitForTimeout(REQUEST_POLL_INTERVAL_MS);
 		}
+	}
+
+	async waitForCapturedRequest(promptMarker: string): Promise<CapturedCompletionRequest> {
+		const payload = await this.getCapturedRequestAndErrors(promptMarker);
+		if (!payload.request) {
+			throw new Error(`Chat completions stub never received a request matching "${promptMarker}"`);
+		}
+		return payload.request;
+	}
+
+	async verifyCapturedErrorResponse(
+		marker: string,
+		status: number,
+		message: string,
+	): Promise<void> {
+		const payload = await this.getCapturedRequestAndErrors(
+			marker,
+			(response) => response.errors.length > 0,
+			(value) => `Chat completions stub never recorded an error matching "${value}"`,
+		);
+		const matchingErrors = payload.errors.filter(
+			(entry) => entry.status === status && entry.message === message,
+		);
+		expect(
+			matchingErrors.length,
+			`The stub should return HTTP ${status} with "${message}"`,
+		).toBeGreaterThan(0);
+		const attempts = matchingErrors.reduce((total, entry) => total + entry.attempts, 0);
+		expect(attempts, "The failed prompt should not be retried by the Kilo CLI").toBe(1);
 	}
 
 	/**

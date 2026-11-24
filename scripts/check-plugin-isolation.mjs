@@ -54,6 +54,7 @@ const PRIVATE_LIBRARIES = {
 	"@kilo-desktop/git-client": "@kilo-desktop/plugin-git",
 	"@kilo-desktop/pane-layout": "@kilo-desktop/plugin-work-sessions",
 	"@kilo-desktop/react-opencode": "@kilo-desktop/plugin-chat",
+	"@kilo-desktop/react-opencode-v2": "@kilo-desktop/plugin-chat-v2",
 };
 const BUILTINS = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
 

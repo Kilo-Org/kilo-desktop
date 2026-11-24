@@ -5,6 +5,7 @@ packages:
   # Example plugins for authors (docs/plugins): workspace packages, never bundled.
   - examples/*
   - plugins/chat/react-opencode
+  - plugins/chat-v2/react-opencode
   - e2e
 
 catalog:

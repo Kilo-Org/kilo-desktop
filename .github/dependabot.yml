@@ -44,7 +44,7 @@ updates:
       - dependency-name: "axios"
         versions: ["0.30.4", "1.14.1"]
       # @assistant-ui core/store/tap are pinned through pnpm overrides to match
-      # react-opencode and its patch; upgrade the family by hand.
+      # kilo.chat's react-opencode forks (plugins/chat, plugins/chat-v2); upgrade the family by hand.
       - dependency-name: "@assistant-ui/*"
       # @sentry/react and @sentry/vite-plugin must match the @sentry/core pinned
       # by @sentry/electron. When Dependabot bumps @sentry/electron, set both to

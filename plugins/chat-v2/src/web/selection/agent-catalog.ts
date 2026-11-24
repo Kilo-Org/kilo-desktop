@@ -1,0 +1,145 @@
+import type { Agent } from "@kilocode/sdk/v2/client";
+import {
+	BotIcon,
+	BugIcon,
+	HammerIcon,
+	ListTodoIcon,
+	MessageCircleQuestionMarkIcon,
+	type LucideIcon,
+} from "lucide-react";
+
+/** Agent fields the switcher renders from `client.app.agents()`. */
+export type KiloCatalogAgent = {
+	name: string;
+	displayName: string;
+	icon: LucideIcon;
+	color?: string;
+	model?: { providerID: string; modelID: string };
+	variant?: string;
+};
+
+export type KiloAgentCatalog = {
+	agents: readonly KiloCatalogAgent[];
+};
+
+/** Kilo’s default coding agent — always the switcher default. */
+export const DEFAULT_AGENT = "code";
+
+const SWITCHER_AGENTS = [
+	{ name: "code", displayName: "Code", icon: HammerIcon },
+	{ name: "plan", displayName: "Plan", color: "#f97316", icon: ListTodoIcon },
+	{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionMarkIcon },
+	{ name: "debug", displayName: "Debug", color: "#ef4444", icon: BugIcon },
+] as const satisfies readonly KiloCatalogAgent[];
+
+/**
+ * Assumed switcher set while `app.agents` is still loading.
+ * Used for the trigger and menu so selection works before the catalog arrives.
+ */
+export const OPTIMISTIC_AGENT_CATALOG: KiloAgentCatalog = {
+	agents: SWITCHER_AGENTS,
+};
+
+/** Older Kilo builds used `build` for the coding agent. */
+const AGENT_ALIASES: Record<string, string> = {
+	build: "code",
+};
+
+function canonicalizeAgentName(name: string): string {
+	return AGENT_ALIASES[name] ?? name;
+}
+
+function isSelectableAgent(agent: Pick<Agent, "mode" | "hidden" | "deprecated">): boolean {
+	if (agent.hidden || agent.deprecated) {
+		return false;
+	}
+	return agent.mode === "primary" || agent.mode === "all";
+}
+
+const HEX_COLOR_RE = /^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i;
+const FUNCTIONAL_COLOR_RE = /^(?:rgb|hsl|okl(?:ab|ch)|lab|lch|color|hwb)a?\([^)]*\)$/i;
+const VAR_COLOR_RE = /^var\(--[^)]*\)$/i;
+
+/** Returns true when a color string is a CSS-resolvable value the renderer can use. */
+export function isCssColor(value: string | undefined): value is string {
+	if (!value) return false;
+	return HEX_COLOR_RE.test(value) || FUNCTIONAL_COLOR_RE.test(value) || VAR_COLOR_RE.test(value);
+}
+
+/**
+ * Prettify a kebab/snake/space-delimited agent id into a display name.
+ * "docs-writer" → "Docs Writer", "my_agent" → "My Agent"
+ */
+function prettifyAgentId(id: string): string {
+	return id
+		.split(/[-_\s]+/)
+		.map((word) => (word.length > 0 ? word[0]!.toUpperCase() + word.slice(1) : ""))
+		.join(" ");
+}
+
+/**
+ * Build the catalog from the server's agent list.
+ * Curated built-ins appear first in their fixed order, followed by any
+ * additional selectable custom agents in server order.
+ */
+export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
+	const selectable = agents.filter(isSelectableAgent);
+	const available = new Map(
+		selectable.map((agent) => [canonicalizeAgentName(agent.name), agent] as const),
+	);
+	const builtInNames: Set<string> = new Set(SWITCHER_AGENTS.map((entry) => entry.name));
+
+	const configuredDefaults = (agent: Agent) => ({
+		...(agent.model ? { model: agent.model } : {}),
+		...(agent.variant ? { variant: agent.variant } : {}),
+	});
+	const builtIns = SWITCHER_AGENTS.flatMap((entry) => {
+		const source = available.get(entry.name);
+		return source ? [{ ...entry, ...configuredDefaults(source) }] : [];
+	});
+
+	const seen: Set<string> = new Set(builtInNames);
+	const custom: KiloCatalogAgent[] = [];
+	for (const agent of selectable) {
+		const name = canonicalizeAgentName(agent.name);
+		if (seen.has(name)) continue;
+		seen.add(name);
+		const color = isCssColor(agent.color) ? agent.color : undefined;
+		custom.push({
+			name,
+			displayName: agent.displayName || prettifyAgentId(name),
+			icon: BotIcon,
+			...(color ? { color } : {}),
+			...configuredDefaults(agent),
+		});
+	}
+
+	return { agents: [...builtIns, ...custom] };
+}
+
+export function findCatalogAgent(
+	catalog: KiloAgentCatalog | undefined,
+	name: string | undefined,
+): KiloCatalogAgent | undefined {
+	if (!catalog || !name) {
+		return undefined;
+	}
+	return catalog.agents.find((agent) => agent.name === name);
+}
+
+/** Next/previous switcher agent, wrapping at the ends. */
+export function cycleCatalogAgent(
+	catalog: KiloAgentCatalog | undefined,
+	current: string | undefined,
+	direction: 1 | -1,
+): string | undefined {
+	const agents = catalog?.agents ?? [];
+	if (agents.length === 0) {
+		return current;
+	}
+
+	const index = agents.findIndex((entry) => entry.name === current);
+	const from = index === -1 ? 0 : index;
+	const next = (from + direction + agents.length) % agents.length;
+	return agents[next]?.name;
+}

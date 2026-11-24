@@ -1,0 +1,145 @@
+import { CircleAlertIcon, ListTodoIcon } from "lucide-react";
+import type { FC } from "react";
+
+import type { PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
+import { FindScope } from "@kilo-desktop/ui/components/find-bar";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+
+import {
+	paneChatId,
+	PLAN_ANCHOR_CALL_ID_METADATA_KEY,
+	PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY,
+} from "../../contracts";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
+import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
+import { ApprovePlanButton } from "./ApprovePlanButton";
+import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "./plan-markdown";
+import {
+	isCurrentPlanVersion,
+	resolveDisplayedPlan,
+	type PlanProjection,
+	type PlanThreadProjection,
+} from "./plan-projection";
+import { PlanMarkdown } from "./PlanMarkdown";
+import { useApprovePlan } from "./use-approve-plan";
+import { usePlanContent } from "./use-plan-content";
+import { usePlanThreadProjection } from "./use-plan-thread-projection";
+
+export const PlanIcon: FC<{ className?: string }> = ({ className }) => (
+	<ListTodoIcon className={className} />
+);
+
+/**
+ * The plan pane: the plan revision opened from a chat's plan card (its
+ * anchors are in the pane's metadata), over the pane's own runtime for the
+ * chat it shows (its `object`).
+ */
+export function createPlanPane(services: ChatMirrorServices): FC<PaneProps> {
+	return (props) => <PlanPane {...props} services={services} />;
+}
+
+function PlanPane({ workSessionId, pane, services }: PaneProps & { services: ChatMirrorServices }) {
+	const chatId = paneChatId(pane);
+	return (
+		<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-plan-pane">
+			<ChatMirror services={services} workSessionId={workSessionId} chatId={chatId}>
+				<PlanPaneContent
+					anchorCallId={pane.metadata[PLAN_ANCHOR_CALL_ID_METADATA_KEY] ?? null}
+					newestAnchorCallIdAtOpen={pane.metadata[PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY] ?? null}
+				/>
+			</ChatMirror>
+		</div>
+	);
+}
+
+export function PlanPaneContent({
+	anchorCallId,
+	newestAnchorCallIdAtOpen,
+}: {
+	anchorCallId: string | null;
+	newestAnchorCallIdAtOpen: string | null;
+}) {
+	const planThread = usePlanThreadProjection();
+	const projection = resolveDisplayedPlan(planThread, anchorCallId, newestAnchorCallIdAtOpen);
+
+	if (!projection) {
+		return (
+			<div
+				className="text-muted-foreground flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-6 text-center"
+				data-qa-id="chat-pane-plan-empty"
+			>
+				<p className="text-foreground text-sm font-medium">No plan yet</p>
+				<p className="text-xs">A plan will appear here after the plan agent finishes writing.</p>
+			</div>
+		);
+	}
+
+	// Keyed per revision so scroll and find-bar matches reset with the content they describe.
+	return (
+		<PlanRevision key={projection.anchorCallId} projection={projection} planThread={planThread} />
+	);
+}
+
+function PlanRevision({
+	projection,
+	planThread,
+}: {
+	projection: PlanProjection;
+	planThread: PlanThreadProjection;
+}) {
+	const chatId = useOptionalOpenCodeSession()?.id;
+	const { approve, submitting, approved, error } = useApprovePlan({
+		fallbackApprovalScope: `${chatId}:${projection.anchorCallId}`,
+	});
+	const { markdown, isLoading, isError } = usePlanContent(projection);
+
+	const title = proposedPlanTitle(markdown) ?? "Plan";
+	const body = markdown ? stripDisplayedPlanMarkdown(markdown) : "";
+	const canApprove =
+		projection.status === "ready" && isCurrentPlanVersion(planThread, projection.anchorCallId);
+
+	return (
+		<FindScope
+			className="flex min-h-0 flex-1 flex-col"
+			data-qa-id="chat-pane-plan"
+			searchRootSelector='[data-qa-id="chat-pane-plan-body"]'
+			qaPrefix="plan-find"
+			placeholder="Find in plan"
+			barClassName="top-14"
+		>
+			<div className="flex h-11 shrink-0 items-center gap-3 px-4">
+				<p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
+				<ApprovePlanButton
+					enabled={canApprove}
+					approve={approve}
+					submitting={submitting}
+					approved={approved}
+					className="h-7 gap-1 px-2.5 text-xs"
+					approveQaId="chat-pane-plan-approve"
+					approvedQaId="chat-pane-plan-approved"
+				/>
+			</div>
+			<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-qa-id="chat-pane-plan-body">
+				{isLoading && !markdown ? (
+					<Empty>
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<Spinner aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>Loading plan…</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
+				) : null}
+				{isError || error ? (
+					<Alert variant="destructive" className="mb-3">
+						<CircleAlertIcon aria-hidden="true" />
+						<AlertTitle>{error ?? "Could not load the plan file"}</AlertTitle>
+					</Alert>
+				) : null}
+				{body ? <PlanMarkdown text={body} /> : null}
+			</div>
+		</FindScope>
+	);
+}

@@ -35,9 +35,13 @@ describe("a static MCP server", () => {
 
 describe("an agent extension", () => {
 	it("as a Kilo plugin or a skill, is installed from its absolute path", () => {
-		expect(extension({ type: "kilo-plugin", path: "/acme/resources/plugin.js" })).toEqual({
-			plugin: "/acme/resources/plugin.js",
-		});
+		expect(
+			extension({
+				type: "kilo-plugin",
+				path: "/acme/resources/plugin.js",
+				v2Path: "/acme/resources/plugin-v2",
+			}),
+		).toEqual({ plugin: "/acme/resources/plugin-v2" });
 		expect(extension({ type: "skill", path: "/acme/resources/skills/review" })).toEqual({
 			skill: "/acme/resources/skills/review",
 		});
@@ -47,8 +51,13 @@ describe("an agent extension", () => {
 		expect(extension({ type: "skill", path: "${resources}/skills/review" })).toEqual({
 			problem: "the host could not resolve ${resources} for its plugin",
 		});
-		expect(extension({ type: "kilo-plugin", path: "plugin.js" })).toEqual({
-			problem: 'its path must be absolute (start it with "${resources}/")',
+		expect(
+			extension({ type: "kilo-plugin", path: "/acme/plugin.js", v2Path: "plugin-v2" }),
+		).toEqual({
+			problem: 'its v2Path must be absolute (start it with "${resources}/")',
+		});
+		expect(extension({ type: "kilo-plugin", path: "/acme/plugin.js" })).toEqual({
+			problem: "it has no Kilo v2 build (v2Path)",
 		});
 	});
 

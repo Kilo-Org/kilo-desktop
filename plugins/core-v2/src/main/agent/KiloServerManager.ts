@@ -15,6 +15,10 @@ import type { KiloServerConnection, KiloServerStatus } from "./types.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { kiloInlineConfigContent } from "./kilo-inline-config.js";
+import {
+	listManagedKiloPluginDirectories,
+	managedKiloPluginDirectory,
+} from "./managed-kilo-plugins.js";
 import { WEBMCP_ENDPOINT_TOKEN_ENV, WEBMCP_ENDPOINT_URL_ENV } from "./webmcp-relay-config.js";
 
 const execFile = promisify(execFileCallback);
@@ -521,9 +525,12 @@ export class KiloServerManager {
 		try {
 			await this.#ensureRuntimeDirectory();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
+			const pluginDirectories = await listManagedKiloPluginDirectories(
+				managedKiloPluginDirectory(this.#options.runtimeDirectory),
+			);
 			const environment = this.#createEnvironment(
 				password,
-				kiloInlineConfigContent(this.#kiloBaseUrl()),
+				kiloInlineConfigContent(this.#kiloBaseUrl(), pluginDirectories),
 			);
 			const args = [
 				"serve",

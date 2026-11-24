@@ -1,30 +1,39 @@
-import { readdir, readFile, unlink } from "node:fs/promises";
+import type { Dirent } from "node:fs";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
 /**
- * Desktop's own Kilo plugins live outside `KILO_CONFIG_DIR` and reach Kilo as
- * `file://` specs in `KILO_CONFIG_CONTENT`, the way the JetBrains extension
- * injects its config. Plugin files in a config directory's `plugin/` folder
- * make the CLI npm-install `@kilocode/plugin` (62 MB) there on first launch
- * and block instance bootstrap on it; inline config never does. Desktop's
- * plugins are dependency-free, so they never need that install.
+ * Desktop's own Kilo plugins live outside `KILO2_CONFIG_DIR` and reach Kilo v2
+ * as absolute folder paths in the inline config's `plugins` (v2 loads a
+ * configured local plugin as a folder whose `index.js` is its entry). Every
+ * change to them restarts the server, so the list is read at each start.
+ * Desktop's plugins are dependency-free bundles, so Kilo installs nothing.
  */
 export function managedKiloPluginDirectory(runtimeDirectory: string): string {
 	return path.join(runtimeDirectory, "kilo-plugins");
 }
 
-export async function listManagedKiloPluginFiles(directory: string): Promise<string[]> {
-	let filenames: string[];
+/** The plugin folders (each holding an `index.js`) in the managed directory, in a stable order. */
+export async function listManagedKiloPluginDirectories(directory: string): Promise<string[]> {
+	let entries: Dirent[];
 	try {
-		filenames = await readdir(directory);
+		entries = await readdir(directory, { withFileTypes: true });
 	} catch (error) {
 		if (isMissingFileError(error)) return [];
 		throw error;
 	}
-	return filenames
-		.filter((filename) => filename.endsWith(".js"))
-		.sort()
-		.map((filename) => path.join(directory, filename));
+	const folders = entries
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => path.join(directory, entry.name))
+		.sort();
+	const withEntry = await Promise.all(
+		folders.map(async (folder) =>
+			(await stat(path.join(folder, "index.js")).catch(() => undefined))?.isFile()
+				? folder
+				: undefined,
+		),
+	);
+	return withEntry.filter((folder): folder is string => folder !== undefined);
 }
 
 const LEGACY_MANAGED_PLUGIN_MARKER = "// Kilo Desktop managed plugin: ";

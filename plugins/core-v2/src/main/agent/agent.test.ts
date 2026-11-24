@@ -435,6 +435,8 @@ describe("agent extensions", () => {
 		const resources = path.join(root, "resources");
 		await mkdir(path.join(resources, "skills/review"), { recursive: true });
 		await writeFile(path.join(resources, "notebook-plugin.js"), "export default {};\n");
+		await mkdir(path.join(resources, "notebook-plugin-v2"), { recursive: true });
+		await writeFile(path.join(resources, "notebook-plugin-v2", "index.js"), "export default {};\n");
 		await writeFile(path.join(resources, "skills/review/SKILL.md"), "---\nname: review\n---\n");
 		let switchSdk: PluginSdk | undefined;
 		const plugins = [
@@ -456,7 +458,12 @@ describe("agent extensions", () => {
 								{ id: "notebook-mcp", command: "${resources}/bin/mcp", args: [] },
 							],
 							"kilo.core/agent-extension": [
-								{ id: "notebooks", type: "kilo-plugin", path: "${resources}/notebook-plugin.js" },
+								{
+									id: "notebooks",
+									type: "kilo-plugin",
+									path: "${resources}/notebook-plugin.js",
+									v2Path: "${resources}/notebook-plugin-v2",
+								},
 								{ id: "review", type: "skill", path: "${resources}/skills/review" },
 								{
 									id: "analyst",
@@ -494,7 +501,10 @@ describe("agent extensions", () => {
 		});
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const configFile = path.join(storage, CONFIG_FILE);
-		const pluginFile = path.join(storage, "agent-v2/runtime/kilo-plugins/anaconda-notebooks.js");
+		const pluginFile = path.join(
+			storage,
+			"agent-v2/runtime/kilo-plugins/anaconda-notebooks/index.js",
+		);
 		const skillLink = path.join(storage, "agent-v2/runtime/config/kilo2/skills/review");
 
 		expect(await readJsonc(configFile)).toMatchObject({
@@ -563,16 +573,19 @@ describe("agent extensions", () => {
 	it("withdraws a Kilo plugin added at runtime when its contribution goes away", async () => {
 		const root = await tempDir();
 		await writeFile(path.join(root, "plugin.js"), "export default {};\n");
+		await mkdir(path.join(root, "plugin-v2"));
+		await writeFile(path.join(root, "plugin-v2", "index.js"), "export default {};\n");
 		const { kernel, storage } = await boot([
 			testPlugin("acme.dynamic", { entry: { activate: () => {} } }),
 		]);
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
-		const file = path.join(storage, "agent-v2/runtime/kilo-plugins/anaconda-extra.js");
+		const file = path.join(storage, "agent-v2/runtime/kilo-plugins/anaconda-extra/index.js");
 
 		const contribution = kernel.sdkFor("acme.dynamic").extensions.add(AgentExtension, {
 			id: "extra",
 			type: "kilo-plugin",
 			path: path.join(root, "plugin.js"),
+			v2Path: path.join(root, "plugin-v2"),
 		});
 		await eventually(async () => expect(await readFile(file, "utf8")).toContain("export default"));
 

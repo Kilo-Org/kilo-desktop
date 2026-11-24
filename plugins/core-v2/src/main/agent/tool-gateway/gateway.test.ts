@@ -23,7 +23,7 @@ import type { FakeServer } from "../../../test/agent/fake-server";
 import type { KiloToolEndpointConnection } from "./kilo-tool-endpoint";
 import {
 	KILO_CALLER_CONTEXT_KEY,
-	KILO_CALLER_CONTEXT_PLUGIN_FILENAME,
+	KILO_CALLER_CONTEXT_PLUGIN_DIRECTORY,
 } from "./kilo-caller-context-plugin";
 import { SIGN_IN_DECLINED_TOOL_MESSAGE, signInRequiredToolMessage } from "./sign-in-messages";
 
@@ -116,7 +116,12 @@ describe("the agent tool gateway", () => {
 		});
 		await expect(
 			readFile(
-				path.join(storage, "agent-v2/runtime/kilo-plugins", KILO_CALLER_CONTEXT_PLUGIN_FILENAME),
+				path.join(
+					storage,
+					"agent-v2/runtime/kilo-plugins",
+					KILO_CALLER_CONTEXT_PLUGIN_DIRECTORY,
+					"index.js",
+				),
 				"utf8",
 			),
 		).resolves.toContain(KILO_CALLER_CONTEXT_KEY);

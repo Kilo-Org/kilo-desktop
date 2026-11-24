@@ -34,11 +34,17 @@ const ARCHIVE_COMMANDS_ASK: readonly PermissionRule[] = [
  *   by field, the last document winning. The pin is the AI gateway base v2
  *   derives from `kiloApiUrl` (`KILO_API_URL`), so indexing goes where it would
  *   without a project override.
+ * - Loads Desktop's managed Kilo plugins: their folders, by absolute path
+ *   (see `managed-kilo-plugins.ts`).
  */
-export function kiloInlineConfigContent(kiloApiUrl: string): string {
+export function kiloInlineConfigContent(
+	kiloApiUrl: string,
+	pluginDirectories: readonly string[] = [],
+): string {
 	const gateway = `${kiloApiUrl.replace(/\/+$/, "")}/api/gateway/v1`;
 	return JSON.stringify({
 		permissions: ARCHIVE_COMMANDS_ASK,
 		indexing: { kilo: { baseUrl: gateway } },
+		...(pluginDirectories.length > 0 ? { plugins: [...pluginDirectories] } : {}),
 	});
 }

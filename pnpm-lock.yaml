@@ -2547,6 +2547,9 @@ importers:
       7zip-bin-full:
         specifier: ^26.2.1
         version: 26.6.0
+      '@kilocode/client':
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239(effect@4.1.0)
       '@runtimed/node':
         specifier: 0.8.1
         version: 0.8.1

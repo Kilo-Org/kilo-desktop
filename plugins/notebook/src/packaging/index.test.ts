@@ -36,6 +36,7 @@ describe("notebook packaging", () => {
 			path.join(pluginRoot, "resources/notebook/index.html"),
 			path.join(pluginRoot, "resources/notebook/staged.json"),
 			path.join(pluginRoot, "resources/kilo-plugin/index.js"),
+			path.join(pluginRoot, "resources/kilo-plugin-v2/index.js"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/runtimed.exe"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/staged.json"),
 		]);
@@ -51,6 +52,7 @@ describe("notebook packaging", () => {
 			extraResources: [
 				path.join(pluginRoot, "resources/notebook"),
 				path.join(pluginRoot, "resources/kilo-plugin"),
+				path.join(pluginRoot, "resources/kilo-plugin-v2"),
 				path.join(pluginRoot, "resources/runtimed"),
 			],
 			asarUnpackPackages: NOTEBOOK_ASAR_UNPACK_PACKAGES,
@@ -63,6 +65,7 @@ describe("notebook packaging", () => {
 			path.join(pluginRoot, "resources/notebook/index.html"),
 			path.join(pluginRoot, "resources/notebook/staged.json"),
 			path.join(pluginRoot, "resources/kilo-plugin/index.js"),
+			path.join(pluginRoot, "resources/kilo-plugin-v2/index.js"),
 			path.join(pluginRoot, "resources/runtimed/win32-arm64/runtimed.exe"),
 			path.join(pluginRoot, "resources/runtimed/win32-arm64/staged.json"),
 		]);
@@ -157,6 +160,7 @@ describe("notebook packaging", () => {
 		expect(plan.extraResources).toEqual([
 			path.join(pluginRoot, "resources/notebook"),
 			path.join(pluginRoot, "resources/kilo-plugin"),
+			path.join(pluginRoot, "resources/kilo-plugin-v2"),
 			path.join(pluginRoot, "resources/runtimed"),
 		]);
 	});

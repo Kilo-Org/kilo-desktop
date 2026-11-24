@@ -61,6 +61,8 @@ export function createNotebookPackagingPlan(
 	const exists = options.exists ?? existsSync;
 	const stagedNotebookBundle = path.join(pluginRoot, "resources/notebook");
 	const stagedKiloPlugin = path.join(pluginRoot, "resources/kilo-plugin");
+	// Kilo Code v2's copy of the tool plugin, until the v1 server line is retired.
+	const stagedKiloPluginV2 = path.join(pluginRoot, "resources/kilo-plugin-v2");
 	const stagedRuntimed = path.join(pluginRoot, "resources/runtimed");
 	const platform = options.platform ?? process.platform;
 	const arch = options.arch ?? process.arch;
@@ -73,6 +75,7 @@ export function createNotebookPackagingPlan(
 		path.join(stagedNotebookBundle, "index.html"),
 		path.join(stagedNotebookBundle, "staged.json"),
 		path.join(stagedKiloPlugin, "index.js"),
+		path.join(stagedKiloPluginV2, "index.js"),
 		path.join(stagedRuntimed, target, runtimedExecutable),
 		path.join(stagedRuntimed, target, "staged.json"),
 	];
@@ -86,7 +89,7 @@ export function createNotebookPackagingPlan(
 	}
 
 	return {
-		extraResources: [stagedNotebookBundle, stagedKiloPlugin, stagedRuntimed],
+		extraResources: [stagedNotebookBundle, stagedKiloPlugin, stagedKiloPluginV2, stagedRuntimed],
 		asarUnpackPackages: NOTEBOOK_ASAR_UNPACK_PACKAGES,
 	};
 }

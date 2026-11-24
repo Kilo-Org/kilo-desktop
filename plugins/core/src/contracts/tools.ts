@@ -153,8 +153,17 @@ export const McpServer = defineExtensionPoint({
 const resourcePathSchema = z.string().min(1);
 
 export const agentExtensionSchema = z.discriminatedUnion("type", [
-	/** A Kilo plugin module, e.g. `${resources}/notebook-plugin.js`. */
-	z.object({ type: z.literal("kilo-plugin"), path: resourcePathSchema }),
+	/**
+	 * A Kilo plugin module, e.g. `${resources}/notebook-plugin.js`. `v2Path` is
+	 * the same plugin built for the Kilo v2 server line: a folder whose
+	 * `index.js` is the plugin's single bundled entry. Each line loads only its
+	 * own build; a v2 build without `v2Path` skips the plugin.
+	 */
+	z.object({
+		type: z.literal("kilo-plugin"),
+		path: resourcePathSchema,
+		v2Path: resourcePathSchema.optional(),
+	}),
 	/** A skill: a folder holding `SKILL.md` and its supporting files. */
 	z.object({ type: z.literal("skill"), path: resourcePathSchema }),
 	/** An agent, invoked by its contribution id. */

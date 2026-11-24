@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 
 import { writeFile as atomicWriteFile } from "atomically";
@@ -8,6 +8,9 @@ export type KiloPluginMutationOutcome =
 	| { readonly kind: "removed"; readonly reason: "explicit" }
 	| { readonly kind: "skipped"; readonly reason: "up-to-date" | "nothing-to-remove" | "not-owned" }
 	| { readonly kind: "skipped-error"; readonly reason: string };
+
+/** A Kilo v2 plugin folder's entry: the single bundled module Desktop ships. */
+const ENTRY = "index.js";
 
 const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
 
@@ -51,10 +54,11 @@ async function readIfPresent(filePath: string): Promise<Buffer | undefined> {
  * crash cannot leave the plugin and its ownership record out of sync. Only an
  * exact source marker permits updates, removal, or source-scoped discovery;
  * user-created files are never claimed. Writes are atomic so Kilo cannot import
- * a partially copied bundle. The directory is Desktop's managed plugin
- * directory (see `managed-kilo-plugins.ts`), never a Kilo config `plugin/`
- * folder, and bundles are copied out of the app so Kilo can read them outside
- * asar.
+ * a partially copied bundle. Each plugin is a folder `anaconda-<id>/` holding
+ * the contributed folder's `index.js` (Kilo v2 loads plugins as folders). The
+ * directory is Desktop's managed plugin directory (see
+ * `managed-kilo-plugins.ts`), never a Kilo config folder, and bundles are
+ * copied out of the app so Kilo can read them outside asar.
  */
 export class KiloPluginConfig {
 	readonly #pluginDirectory: string;
@@ -78,7 +82,7 @@ export class KiloPluginConfig {
 			}
 
 			const marker = ownershipMarker(sourceId, pluginId);
-			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.js`);
+			const destinationPath = this.#entryOf(pluginId);
 			const existing = await readIfPresent(destinationPath);
 			if (existing && !isOwnedBy(existing, sourceId, pluginId)) {
 				return {
@@ -86,11 +90,14 @@ export class KiloPluginConfig {
 					reason: `plugin file is not owned by ${sourceId}`,
 				};
 			}
-			const source = await readFile(sourcePath);
+			const source = await readIfPresent(path.join(sourcePath, ENTRY));
+			if (!source) {
+				return { kind: "skipped-error", reason: `the plugin folder has no ${ENTRY}` };
+			}
 			const next = Buffer.concat([Buffer.from(marker), source]);
 			if (existing?.equals(next)) return { kind: "skipped", reason: "up-to-date" };
 
-			await mkdir(this.#pluginDirectory, { recursive: true });
+			await mkdir(path.dirname(destinationPath), { recursive: true });
 			await atomicWriteFile(destinationPath, next);
 			return { kind: "written", reason: existing ? "updated" : "created" };
 		});
@@ -102,13 +109,13 @@ export class KiloPluginConfig {
 				validateId("source id", sourceId) ?? validateId("plugin id", pluginId);
 			if (validationError) return { kind: "skipped-error", reason: validationError };
 
-			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.js`);
+			const destinationPath = this.#entryOf(pluginId);
 			const existing = await readIfPresent(destinationPath);
 			if (!existing) return { kind: "skipped", reason: "nothing-to-remove" };
 			if (!isOwnedBy(existing, sourceId, pluginId)) {
 				return { kind: "skipped", reason: "not-owned" };
 			}
-			await unlink(destinationPath);
+			await rm(path.dirname(destinationPath), { recursive: true, force: true });
 			return { kind: "removed", reason: "explicit" };
 		});
 	}
@@ -127,12 +134,12 @@ export class KiloPluginConfig {
 
 			const ownedPluginIds: string[] = [];
 			for (const filename of filenames.sort()) {
-				const match = /^anaconda-(.+)\.js$/.exec(filename);
+				const match = /^anaconda-(.+)$/.exec(filename);
 				const pluginId = match?.[1];
 				if (!pluginId || validateId("plugin id", pluginId)) continue;
 				// A handful of small files, read in sorted order.
 				// react-doctor-disable-next-line react-doctor/async-await-in-loop
-				const contents = await readIfPresent(path.join(this.#pluginDirectory, filename));
+				const contents = await readIfPresent(this.#entryOf(pluginId)).catch(() => undefined);
 				if (!contents) continue;
 				if (isOwnedBy(contents, sourceId, pluginId)) {
 					ownedPluginIds.push(pluginId);
@@ -140,6 +147,10 @@ export class KiloPluginConfig {
 			}
 			return ownedPluginIds;
 		});
+	}
+
+	#entryOf(pluginId: string): string {
+		return path.join(this.#pluginDirectory, `anaconda-${pluginId}`, ENTRY);
 	}
 
 	#enqueue<T>(operation: () => Promise<T>): Promise<T> {

@@ -152,6 +152,7 @@ const shippedBundleLicenseFiles = (buildPath: string): string[] => [
 	...[
 		"plugins/terminal/resources/terminal/.vite/licenses.json",
 		"plugins/notebook/resources/kilo-plugin/.vite/licenses.json",
+		"plugins/notebook/resources/kilo-plugin-v2/.vite/licenses.json",
 	].map((file) => path.join(workspaceRoot, file)),
 ];
 

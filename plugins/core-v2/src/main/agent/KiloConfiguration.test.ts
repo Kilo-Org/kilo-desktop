@@ -55,10 +55,11 @@ describe("KiloConfiguration", () => {
 		configDirectory = path.join(root, "config", "kilo");
 		pluginDirectory = path.join(root, "kilo-plugins");
 		skillDirectory = path.join(configDirectory, "skills");
-		pluginFile = path.join(root, "acme", "plugin.js");
+		pluginFile = path.join(root, "acme", "plugin-v2");
 		skillFolder = path.join(root, "acme", "skills", "review");
 		await mkdir(skillFolder, { recursive: true });
-		await writeFile(pluginFile, "export default {};\n");
+		await mkdir(pluginFile, { recursive: true });
+		await writeFile(path.join(pluginFile, "index.js"), "export default {};\n");
 		await writeFile(path.join(skillFolder, "SKILL.md"), "---\nname: review\n---\n");
 		Object.assign(everything, {
 			plugins: { notebooks: pluginFile },
@@ -88,7 +89,7 @@ describe("KiloConfiguration", () => {
 			commands: everything.commands,
 		});
 		await expect(
-			readFile(path.join(pluginDirectory, "anaconda-notebooks.js"), "utf8"),
+			readFile(path.join(pluginDirectory, "anaconda-notebooks", "index.js"), "utf8"),
 		).resolves.toContain("export default {};");
 		await expect(
 			readFile(path.join(skillDirectory, "review", "SKILL.md"), "utf8"),
@@ -114,7 +115,7 @@ describe("KiloConfiguration", () => {
 			agents: { other: { description: "Other", system: "Other.", mode: "all" } },
 			commands: {},
 		});
-		expect(await exists(path.join(pluginDirectory, "anaconda-notebooks.js"))).toBe(false);
+		expect(await exists(path.join(pluginDirectory, "anaconda-notebooks", "index.js"))).toBe(false);
 		expect(await exists(path.join(skillDirectory, "review"))).toBe(false);
 		expect(await exists(skillFolder)).toBe(true);
 		expect(onChanged).toHaveBeenCalledOnce();

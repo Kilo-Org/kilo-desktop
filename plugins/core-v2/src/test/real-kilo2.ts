@@ -36,9 +36,14 @@ export interface RealKilo2 {
 export async function startRealKilo2(
 	executable: string,
 	environment: Readonly<Record<string, string | undefined>> = {},
+	options: {
+		/** Runs before the server starts, with its runtime directory (to place managed plugins). */
+		readonly prepare?: (runtimeDirectory: string) => Promise<void>;
+	} = {},
 ): Promise<RealKilo2> {
 	const home = await realpath(await mkdtemp(path.join(tmpdir(), "kilo2-")));
 	const runtimeDirectory = path.join(home, "storage", "agent-v2", "runtime");
+	await options.prepare?.(runtimeDirectory);
 	const configDirectory = path.join(runtimeDirectory, "config", "kilo2");
 	const manager = new KiloServerManager({
 		installation: {

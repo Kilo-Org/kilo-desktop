@@ -88,7 +88,8 @@
 				{
 					"id": "kilo-plugin",
 					"type": "kilo-plugin",
-					"path": "${resources}/kilo-plugin/index.js"
+					"path": "${resources}/kilo-plugin/index.js",
+					"v2Path": "${resources}/kilo-plugin-v2"
 				}
 			],
 			"kilo.core/server-env": [

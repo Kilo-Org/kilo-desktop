@@ -189,18 +189,27 @@ export type AgentExtensionEffect =
 /**
  * An agent extension as Kilo takes it, in the field names of Kilo's config
  * schema (`agent` and `command` entries, models as `<provider>/<model>`); a
- * Kilo plugin or skill is a file or folder at an absolute path, which the
- * kernel made by resolving `${resources}`.
+ * Kilo plugin (its v2 build's folder, `v2Path`) or a skill is at an absolute
+ * path, which the kernel made by resolving `${resources}`.
  */
 export function agentExtensionOf(metadata: AgentExtensionConfig): AgentExtensionEffect {
 	if (hasUnresolvedResources(metadata)) return { problem: UNRESOLVED_RESOURCES };
 	switch (metadata.type) {
-		case "kilo-plugin":
+		case "kilo-plugin": {
+			// The Kilo v2 server line loads only the plugin's v2 build, a folder.
+			if (metadata.v2Path === undefined) {
+				return { problem: "it has no Kilo v2 build (v2Path)" };
+			}
+			if (!path.isAbsolute(metadata.v2Path)) {
+				return { problem: 'its v2Path must be absolute (start it with "${resources}/")' };
+			}
+			return { plugin: metadata.v2Path };
+		}
 		case "skill": {
 			if (!path.isAbsolute(metadata.path)) {
 				return { problem: 'its path must be absolute (start it with "${resources}/")' };
 			}
-			return metadata.type === "skill" ? { skill: metadata.path } : { plugin: metadata.path };
+			return { skill: metadata.path };
 		}
 		case "agent":
 			return {

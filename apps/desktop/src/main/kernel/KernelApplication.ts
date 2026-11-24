@@ -15,6 +15,8 @@ import {
 
 import { protocolSchemes, BUNDLED_PLUGINS } from "@kilo-desktop/bundled-plugins";
 import {
+	EXTERNAL_PLUGINS_CHANNEL,
+	KERNEL_API_VERSION,
 	KernelCommand,
 	KernelError,
 	KernelKeybindings,
@@ -53,7 +55,11 @@ import { ElectronShell } from "../platform/ElectronShell.js";
 import { ElectronShortcuts } from "../platform/ElectronShortcuts.js";
 import { ElectronWindow } from "../platform/ElectronWindow.js";
 import { createFeatureKvStoreFactory } from "../platform/featureKvStore.js";
-import { featureFsSandboxDir, featureStorageDir } from "../platform/featureStorage.js";
+import {
+	featureFsSandboxDir,
+	featureStorageDir,
+	localPluginsDir,
+} from "../platform/featureStorage.js";
 import { HttpClient } from "../platform/HttpClient.js";
 import { createLogger, getLogFilePath } from "../platform/logger.js";
 import type { PreferencesStore } from "../platform/PreferencesStore.js";
@@ -67,6 +73,13 @@ import { WindowsUpdateFeed } from "../platform/WindowsUpdateFeed.js";
 import { windowArguments } from "../../preload/window-arguments.js";
 import { buildMenuTemplate, WindowMenus, type MenuCommands } from "./app-menu.js";
 import { ElectronKernelTransport } from "./ElectronKernelTransport.js";
+import { shareModulesWith } from "./external-plugin-modules.js";
+import {
+	EXTERNAL_PLUGINS_PATH,
+	ExternalPlugins,
+	type ApprovalRequest,
+	type ExternalPluginsSettings,
+} from "./external-plugins.js";
 import { parseFlagOverrides } from "./flag-overrides.js";
 import { provideHostPrimitives, type NativeChrome } from "./host-primitives.js";
 import { createHostServices } from "./host-services.js";
@@ -129,6 +142,20 @@ export class KernelApplication {
 	);
 	readonly #embeddedHosts = new Map<string, EmbeddedWebHost>();
 	readonly #storageRoot = app.getPath("userData");
+	readonly #externalPlugins = new ExternalPlugins({
+		directory: localPluginsDir(this.#storageRoot),
+		store: this.#kernelStore<ExternalPluginsSettings>({
+			defaults: { enabled: false, approvals: {} },
+			namespace: "external-plugins",
+		}),
+		reservedIds: new Set(
+			BUNDLED_PLUGINS.map((plugin) => (plugin.manifest as { readonly id: string }).id),
+		),
+		apiVersion: KERNEL_API_VERSION,
+		confirmApproval: (request) => this.#confirmPluginApproval(request),
+		beforeImport: shareModulesWith,
+		logger: createLogger("external-plugins"),
+	});
 	readonly #disposers: (() => void)[] = [];
 	readonly #updaterListeners = new Set<(state: unknown) => void>();
 	readonly #menus = new WindowMenus({
@@ -196,7 +223,12 @@ export class KernelApplication {
 		const loginEnvironment = this.#isDevelopment ? Promise.resolve() : this.#syncLoginEnvironment();
 		this.#loginEnvironment = loginEnvironment;
 
-		const kernel = this.#createKernel(identity.squirrelName);
+		const safeMode = process.argv.includes(SAFE_MODE_SWITCH);
+		// Local plugins are imported before the kernels exist, so main and every
+		// window run the same set for the whole launch. Safe mode runs no plugin
+		// code at all, so it imports none.
+		if (!safeMode) await this.#externalPlugins.load();
+		const kernel = this.#createKernel(identity.squirrelName, safeMode);
 		this.#kernel = kernel;
 		this.#watchAppUrls(kernel);
 		this.#disposers.push(
@@ -219,6 +251,10 @@ export class KernelApplication {
 			...(developmentOrigin ? { developmentOrigin } : {}),
 			embeddedHosts: () => [...this.#embeddedHosts.values()],
 			pluginSchemes,
+			appHostFiles: {
+				prefix: EXTERNAL_PLUGINS_PATH,
+				file: (pathname) => this.#externalPlugins.file(pathname),
+			},
 		});
 		installProxyAgent();
 		this.#disposers.push(
@@ -229,6 +265,7 @@ export class KernelApplication {
 			this.#transport.on(KEYBOARD_SYNC_CHANNEL, (payload, from) =>
 				this.#syncShortcuts(payload, from),
 			),
+			this.#transport.handle(EXTERNAL_PLUGINS_CHANNEL, () => this.#externalPlugins.windowPlugins()),
 		);
 
 		this.#mark("app ready");
@@ -259,7 +296,7 @@ export class KernelApplication {
 		);
 	}
 
-	#createKernel(squirrelName: string): MainKernel {
+	#createKernel(squirrelName: string, safeMode: boolean): MainKernel {
 		const updates = this.#createUpdater(squirrelName);
 		const keybindingsStore = this.#kernelStore({
 			defaults: { overrides: {} as Record<string, string | null> },
@@ -276,15 +313,15 @@ export class KernelApplication {
 		);
 
 		const kernel = createMainKernel({
-			registrations: mainRegistrations(),
-			webPlugins: bundledWebPluginIds(),
+			registrations: [...mainRegistrations(), ...this.#externalPlugins.registrations()],
+			webPlugins: [...bundledWebPluginIds(), ...this.#externalPlugins.webPluginIds()],
 			transport: this.#transport,
 			logger: kernelLogger(),
 			host: {
 				platform: keyboardPlatform(),
 				version: this.#app.metadata.appVersion,
 				rendererOrigins: [getDesktopOrigin(this.#isDevelopment)],
-				safeMode: process.argv.includes(SAFE_MODE_SWITCH),
+				safeMode,
 				flagOverrides: parseFlagOverrides(import.meta.env.VITE_FEATURE_FLAG_OVERRIDES),
 				initialSystem: {
 					appearance: nativeTheme.shouldUseDarkColors ? "dark" : "light",
@@ -324,6 +361,7 @@ export class KernelApplication {
 					},
 					saveDisabled: (disabled) => void pluginsStore.set({ disabled: [...disabled] }),
 				},
+				externalPlugins: this.#externalPlugins,
 			},
 			hostServices: (pluginId, manifest) =>
 				createHostServices(
@@ -652,6 +690,30 @@ export class KernelApplication {
 			buttons: [kind === "quit" ? "Quit Anyway" : "Close Anyway", "Cancel"],
 			defaultId: 1,
 			cancelId: 1,
+		};
+		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
+		const { response } = window
+			? await dialog.showMessageBox(window, options)
+			: await dialog.showMessageBox(options);
+		return response === 0;
+	}
+
+	/**
+	 * Asks in a native dialog, which no plugin can draw or click, whether a
+	 * local plugin may run with the app's access.
+	 */
+	async #confirmPluginApproval(request: ApprovalRequest): Promise<boolean> {
+		const options: Electron.MessageBoxOptions = {
+			type: "warning",
+			message: `Enable \u201c${request.displayName}\u201d?`,
+			detail: [
+				"It will have the same access to your files, network and accounts as Kilo Desktop.",
+				"ONLY ENABLE PLUGINS YOU WROTE OR TRUST.",
+			].join("\n\n"),
+			buttons: ["Enable", "Cancel"],
+			defaultId: 1,
+			cancelId: 1,
+			noLink: true,
 		};
 		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
 		const { response } = window

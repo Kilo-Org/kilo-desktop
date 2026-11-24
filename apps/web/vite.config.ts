@@ -18,6 +18,7 @@ import {
 	themeBootstrapScript,
 } from "../../packages/ui/src/themes/theme-tokens";
 import desktopInfo from "../desktop/package.json";
+import { pluginSharedModules } from "./plugin-shared-modules";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
@@ -52,6 +53,7 @@ export default defineConfig({
 		react({ compiler: true }),
 		tailwindcss(),
 		injectThemeBootstrap(),
+		pluginSharedModules(root),
 		sentryVitePlugin({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			...(process.env.SENTRY_ORG && { org: process.env.SENTRY_ORG }),

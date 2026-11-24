@@ -15,9 +15,11 @@ how-to.
 | [panes-and-openers.md](./panes-and-openers.md)                   | Pane kinds, openers, close guards, pop-outs                                                  |
 | [chat-and-tools.md](./chat-and-tools.md)                         | Agent tools, tool renderers, composer actions and mentions                                   |
 | [testing.md](./testing.md)                                       | Test hosts, robustness rules, removability and isolation checks                              |
+| [local-plugins.md](./local-plugins.md)                           | Running your own plugin in the installed app, from your plugins folder                       |
 | [schema.md](./schema.md)                                         | Generated catalog: every plugin, extension point, domain object, object type and context key |
 | [examples/hello-plugin](../../examples/hello-plugin)             | A small plugin to copy                                                                       |
 | [examples/right-panel-plugin](../../examples/right-panel-plugin) | Panels in the shell's right sidebar, opened from its rail                                    |
+| [examples/local-plugin](../../examples/local-plugin)             | A local plugin in plain JavaScript, ready to drop in your plugins folder                     |
 
 ## Before you write a plugin
 
@@ -275,9 +277,8 @@ declares. A plugin's own domain objects can check who is calling — see
    `CONTEXT.md`.
 
 The removability tests then boot the app without it, and the isolation
-check builds it outside the monorepo. Loading third-party plugins from
-outside the app is not built yet; the example plugin shows the shape they
-will have.
+check builds it outside the monorepo. To run a plugin of your own in the
+installed app without shipping it, see [local-plugins.md](./local-plugins.md).
 
 ## Worked example
 

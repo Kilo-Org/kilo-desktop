@@ -1,0 +1,41 @@
+{
+	"manifestVersion": 1,
+	"id": "example.local-hello",
+	"displayName": "Local Hello",
+	"version": "0.1.0",
+	"description": "An example local plugin in plain JavaScript: a counter in main and a Settings page.",
+	"engines": {
+		"kilo-desktop": "^1.0"
+	},
+	"contracts": "./contracts.js",
+	"main": "./main.js",
+	"web": "./web.js",
+	"requires": {
+		"kilo.shell/settings-section": "optional"
+	},
+	"domainObjects": [
+		{
+			"id": "counter",
+			"home": "main",
+			"description": "How many times the button was pressed, saved across launches."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.shell/settings-section": [
+				{
+					"id": "local-hello",
+					"title": "Local Hello",
+					"description": "An example local plugin's page."
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "increment",
+					"title": "Count one more",
+					"category": "Local Hello"
+				}
+			]
+		}
+	}
+}

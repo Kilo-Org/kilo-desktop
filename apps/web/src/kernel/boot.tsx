@@ -9,6 +9,7 @@ import {
 	createLinkedTransports,
 	detectKeyboardPlatform,
 	serializeChord,
+	unwrapTransportResult,
 	type KernelBridge,
 	type KernelLogger,
 	type PluginEntry,
@@ -31,6 +32,7 @@ import {
 
 import { getKernelBridge } from "./bridge";
 import { startBrowserMainKernel } from "./browser-main";
+import { externalPluginRegistrations } from "./external-plugins";
 import { WEB_ENTRIES } from "./plugins";
 
 const KEYBOARD_SYNC_CHANNEL = "kernel:keyboard-sync";
@@ -77,13 +79,19 @@ export async function bootKernel(
 
 	let kernel: RendererKernel;
 	if (bridge) {
+		// Local plugins exist only on the desktop, where main loaded them from disk.
+		const external = await externalPluginRegistrations({
+			request: async (channel, payload) =>
+				unwrapTransportResult(await bridge.request(channel, payload)),
+			logger: consoleLogger,
+		});
 		kernel = createRendererKernel({
 			windowId: bridge.window.id,
 			window: bridge.window,
 			platform: bridge.platform,
 			transport: createBridgeTransport(bridge),
 			pathForFile: (file) => bridge.getPathForFile(file),
-			registrations,
+			registrations: [...registrations, ...external],
 			logger: consoleLogger,
 		});
 		await kernel.activate();

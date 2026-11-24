@@ -15,7 +15,16 @@
 		"kilo.core/server": "optional"
 	},
 	"permissions": {
-		"host": ["appearance", "windows", "app-menu", "os", "updater", "clipboard", "data-collection"]
+		"host": [
+			"appearance",
+			"windows",
+			"app-menu",
+			"os",
+			"updater",
+			"clipboard",
+			"data-collection",
+			"plugins"
+		]
 	},
 	"extensionPoints": [
 		{
@@ -224,6 +233,11 @@
 					"id": "update-track-switcher",
 					"description": "Lets people switch between the stable and preview update tracks.",
 					"default": false
+				},
+				{
+					"id": "local-plugins",
+					"description": "Settings → Plugins: load the user's own plugins from their plugins folder.",
+					"default": false
 				}
 			],
 			"kernel/telemetry-event": [
@@ -307,6 +321,15 @@
 					"description": "Choose where your models come from.",
 					"category": "kilo.shell/ai",
 					"priority": 90
+				},
+				{
+					"id": "local-plugins",
+					"title": "Plugins",
+					"description": "Use plugins you wrote or trust from your plugins folder.",
+					"priority": 71,
+					"when": {
+						"all": ["kernel/desktop", "kernel/flag:local-plugins"]
+					}
 				},
 				{
 					"id": "external-ai-apps",

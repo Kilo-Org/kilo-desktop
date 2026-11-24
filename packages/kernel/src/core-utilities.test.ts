@@ -1,8 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { DisposableScope } from "./disposables";
+import { INTERNAL_ERROR_MESSAGE, isKernelError, KernelError, serializeError } from "./errors";
 import { isQualifiedId, parseQualifiedId } from "./ids";
 import { ContextKeyStore } from "./when";
+
+describe("KernelError", () => {
+	/** What another copy of the kernel (bundled into an external plugin) throws. */
+	function foreignKernelError(code: string, message: string): Error {
+		const error = Object.assign(new Error(message), { name: "KernelError", code });
+		Object.defineProperty(error, Symbol.for("kilo-desktop.kernel-error"), { value: true });
+		return error;
+	}
+
+	it("is recognised when thrown by another copy of the kernel", () => {
+		const foreign = foreignKernelError("NOT_FOUND", "No such greeting.");
+
+		expect(foreign instanceof KernelError).toBe(true);
+		expect(isKernelError(foreign, "NOT_FOUND")).toBe(true);
+		expect(serializeError(foreign)).toEqual({ code: "NOT_FOUND", message: "No such greeting." });
+	});
+
+	it("still scrubs ordinary errors", () => {
+		expect(new KernelError("VALIDATION", "Bad input.") instanceof KernelError).toBe(true);
+		expect(new Error("secret path") instanceof KernelError).toBe(false);
+		expect(serializeError(new Error("secret path"))).toEqual({
+			code: "INTERNAL",
+			message: INTERNAL_ERROR_MESSAGE,
+		});
+	});
+});
 
 describe("DisposableScope", () => {
 	it("runs disposers once, in reverse order, and keeps going when one fails", async () => {

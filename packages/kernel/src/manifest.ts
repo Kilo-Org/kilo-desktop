@@ -25,9 +25,15 @@ export const manifestSchema = z.strictObject({
 	version: semver,
 	description: z.string().optional(),
 	engines: z.strictObject({ "kilo-desktop": z.string().min(1) }).optional(),
-	/** Informational entry paths; bundled entries are wired by the plugin list. */
+	/**
+	 * Entry paths, relative to the manifest. Bundled entries are wired by the
+	 * plugin list, so for them these are informational; an external plugin is
+	 * loaded from them (`contracts` exports its `definitions`, `main` and `web`
+	 * default-export a plugin entry).
+	 */
 	main: z.string().optional(),
 	web: z.string().optional(),
+	contracts: z.string().optional(),
 	/**
 	 * Runs the plugin only while this holds (e.g. a feature flag's context key):
 	 * the kernel activates it, with its contributions, when it becomes true and

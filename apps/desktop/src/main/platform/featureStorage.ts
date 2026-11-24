@@ -17,6 +17,16 @@ export function featureStorageDir(storageRoot: string, featureId: string): strin
 	return path.join(storageRoot, "plugins", featureId);
 }
 
+/**
+ * Where the user's local plugins (their code) live: `${userData}/local-plugins/`.
+ * Deliberately not under `plugins/`, which holds every plugin's data by id — a
+ * local plugin's folder there would also be its storage directory, so its own
+ * writes would change the files its approval is pinned to.
+ */
+export function localPluginsDir(storageRoot: string): string {
+	return path.join(storageRoot, "local-plugins");
+}
+
 export function featureFsSandboxDir(storageRoot: string, featureId: string): string {
 	return path.join(featureStorageDir(storageRoot, featureId), "fs");
 }

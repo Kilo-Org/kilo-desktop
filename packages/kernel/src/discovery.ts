@@ -21,6 +21,8 @@ export interface DiscoveredPlugin {
 	readonly manifest: PluginManifest;
 	readonly definitions: PluginDefinitions;
 	readonly entry?: PluginEntry;
+	/** Shipped with the app, or loaded from outside it (a local plugin). */
+	readonly source: "bundled" | "external";
 	readonly status: DiscoveryStatus;
 	readonly unresolvedReasons: readonly string[];
 }
@@ -541,6 +543,7 @@ function orderAndResolve(
 			manifest,
 			definitions: registration.definitions ?? {},
 			...(registration.entry ? { entry: registration.entry } : {}),
+			source: registration.source ?? "bundled",
 			status: unresolvedReasons.length > 0 ? "unresolved" : "resolved",
 			unresolvedReasons,
 		};

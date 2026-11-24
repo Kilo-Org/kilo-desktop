@@ -1,5 +1,6 @@
 // Process-agnostic kernel API: definitions, registries, the core runtime and
 // the kernel's own extension points and domain objects.
+export * from "./api-version";
 export * from "./bridge";
 export * from "./builtins";
 export * from "./commands";

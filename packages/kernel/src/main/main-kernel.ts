@@ -13,6 +13,7 @@ import {
 	KernelWindows,
 	KernelWindowView,
 	type AppPhase,
+	type ExternalPluginsState,
 	type FlagValue,
 } from "../builtins";
 import { CommandService } from "../commands";
@@ -66,9 +67,26 @@ export interface MainKernelHost {
 		loadDisabled(): readonly string[];
 		saveDisabled(disabled: readonly string[]): void;
 	};
+	/**
+	 * The user's local plugins, where the host loads them from disk (it passes
+	 * the approved ones in `registrations` as `source: "external"`). Absent,
+	 * `kernel/plugins` reports `external: null`.
+	 */
+	readonly externalPlugins?: ExternalPluginsHost;
 	readonly initialSystem?: Partial<SystemState>;
 	/** Flag values forced by the build or the environment (development, e2e); they win over the flag source. */
 	readonly flagOverrides?: Readonly<Record<string, FlagValue>>;
+}
+
+/** What `kernel/plugins` relays to the host for local plugins; every change applies from the next launch. */
+export interface ExternalPluginsHost {
+	state(): ExternalPluginsState;
+	onChange(listener: () => void): () => void;
+	setEnabled(enabled: boolean): void;
+	/** Confirms with the user, then approves; false when they decline. */
+	approve(pluginId: string, hash: string): Promise<boolean>;
+	revoke(pluginId: string): void;
+	refresh(): Promise<void>;
 }
 
 export interface MainKernelOptions extends Omit<
@@ -293,12 +311,20 @@ function providePlugins(core: Kernel, host: MainKernelHost, disabledAtLaunch: st
 					displayName: plugin.manifest.displayName,
 					version: plugin.manifest.version,
 					state: core.pluginState(plugin.manifest.id) ?? plugin.status,
+					source: plugin.source,
 				},
 			]),
 		),
 		issues: core.issues().map((issue) => ({ ...issue })),
 		disabled,
+		external: host.externalPlugins?.state() ?? null,
 	});
+	const external = () => {
+		if (!host.externalPlugins) {
+			throw new KernelError("UNAVAILABLE", "Local plugins are not available here.");
+		}
+		return host.externalPlugins;
+	};
 	const assertInstalled = (pluginIds: readonly string[]) => {
 		const missing = pluginIds.find((id) => !core.manifest(id));
 		if (missing !== undefined) throw new KernelError("NOT_FOUND", `No plugin "${missing}".`);
@@ -322,6 +348,12 @@ function providePlugins(core: Kernel, host: MainKernelHost, disabledAtLaunch: st
 					assertInstalled(pluginIds);
 					saveDisabled([...new Set(pluginIds)]);
 				},
+				setExternalEnabled: ({ enabled }) => external().setEnabled(enabled),
+				approveExternal: async ({ pluginId, hash }) => ({
+					approved: await external().approve(pluginId, hash),
+				}),
+				revokeExternal: ({ pluginId }) => external().revoke(pluginId),
+				refreshExternal: () => external().refresh(),
 			},
 		},
 	);
@@ -330,6 +362,7 @@ function providePlugins(core: Kernel, host: MainKernelHost, disabledAtLaunch: st
 		provider.emit("state-changed", { pluginId, state });
 	});
 	core.onIssuesChange(() => provider.setState(snapshot()));
+	host.externalPlugins?.onChange(() => provider.setState(snapshot()));
 }
 
 function provideDomainObjectsAndExtensions(core: Kernel): void {

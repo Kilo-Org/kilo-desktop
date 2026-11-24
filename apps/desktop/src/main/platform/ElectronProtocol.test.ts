@@ -126,6 +126,39 @@ describe("ElectronProtocol", () => {
 		expect(response.headers.get("Content-Security-Policy")).toContain("kilo-git:");
 	});
 
+	it("serves host-provided app files ahead of the renderer, in development too", async () => {
+		fetch.mockResolvedValue(new Response("from the dev server"));
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: true,
+			rendererRoot: "/unused",
+			developmentOrigin: "http://localhost:5173",
+			appHostFiles: {
+				prefix: "/external-plugins/",
+				file: (pathname) =>
+					pathname === "/external-plugins/acme.hello/web.js"
+						? { body: new TextEncoder().encode("export default {};"), filePath: "web.js" }
+						: undefined,
+			},
+		});
+		const protocolHandler = handle.mock.calls.at(-1)?.[1] as (
+			request: Request,
+		) => Promise<Response>;
+
+		const served = await protocolHandler(
+			new Request("kilo-desktop-dev://app/external-plugins/acme.hello/web.js?v=abc"),
+		);
+		const missing = await protocolHandler(
+			new Request("kilo-desktop-dev://app/external-plugins/acme.hello/other.js"),
+		);
+
+		expect(await served.text()).toBe("export default {};");
+		expect(served.headers.get("Content-Type")).toContain("text/javascript");
+		expect(served.headers.get("Content-Security-Policy")).toContain("default-src 'self'");
+		expect(missing.status).toBe(404);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
 	it("lets the renderer open no loopback WebSockets (agent tools travel over IPC)", () => {
 		const connectSrc = createContentSecurityPolicy()
 			.split(";")

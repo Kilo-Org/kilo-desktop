@@ -115,9 +115,7 @@ describe("the Kilo server", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		expect(serverOf(kernel).getState()).toEqual({ status: "ready", version: "7.8.17" });
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).toMatchObject({
-			permissions: [{ action: "suggest", resource: "*", effect: "deny" }],
-		});
+		expect(config).toMatchObject({ mcp: { servers: { desktop: { type: "remote" } } } });
 	});
 
 	it("waits for the terms to be accepted before starting the server", async () => {
@@ -186,10 +184,10 @@ describe("the Kilo server", () => {
 
 	it("releases a directory's instance on the running server, and nothing while it is stopped", async () => {
 		const disposed: [unknown, string][] = [];
-		const disposeInstance = async (connection: unknown, directory: string) => {
+		const evictLocation = async (connection: unknown, directory: string) => {
 			disposed.push([connection, directory]);
 		};
-		const { kernel, server } = await boot([], { showWindow: false, agent: { disposeInstance } });
+		const { kernel, server } = await boot([], { showWindow: false, agent: { evictLocation } });
 
 		await serverOf(kernel).methods.disposeInstance({ directory: "/projects/app/wt" });
 		expect(disposed).toEqual([]);
@@ -209,16 +207,6 @@ describe("the Kilo server", () => {
 		await kernel.stop();
 
 		expect(server.status.status).toBe("stopped");
-	});
-});
-
-describe("telemetry consent", () => {
-	it("applies consent before the first start and follows changes", async () => {
-		const { server, consent } = await boot();
-
-		consent.setState({ ...consent.state, allowed: false });
-
-		await eventually(() => expect(server.telemetry).toEqual([true, false]));
 	});
 });
 
@@ -360,7 +348,6 @@ describe("MCP servers", () => {
 						type: "local",
 						command: [`${resources}/bin/acme`, "--root", resources],
 						environment: { ACME_HOME: `${resources}/home` },
-						disabled: false,
 					},
 				},
 			},

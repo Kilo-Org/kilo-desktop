@@ -114,20 +114,6 @@ describe("applying Kilo events", () => {
 		).toBe(NOW);
 	});
 
-	it("follows the server's session.status and session.idle too", () => {
-		const busy = apply(
-			{},
-			kiloEvent("session.status", { sessionID: "ses-1", status: { type: "busy" } }),
-		);
-		expect(busy["ses-1"]?.activity.status).toBe("busy");
-		expect(
-			apply(busy, kiloEvent("session.idle", { sessionID: "ses-1" }))["ses-1"]?.activity,
-		).toEqual({
-			...IDLE,
-			completedAt: NOW,
-		});
-	});
-
 	it("ignores an execution ending for unknown or already idle chats", () => {
 		const idle = records({ "ses-1": {} });
 
@@ -179,9 +165,6 @@ describe("applying Kilo events", () => {
 			chats,
 		);
 		expect(apply(chats, kiloEvent("server.connected"))).toBe(chats);
-		expect(
-			apply(chats, kiloEvent("session.status", { sessionID: "ses-1", status: { type: "weird" } })),
-		).toBe(chats);
 	});
 });
 
@@ -245,23 +228,24 @@ describe("reading Kilo sessions", () => {
 	});
 });
 
-describe("hydrated status", () => {
+describe("hydrated activity", () => {
 	it("stamps workingSince for a chat first seen working", () => {
-		expect(applyHydratedStatus(undefined, "busy", NOW)).toEqual({
+		expect(applyHydratedStatus(undefined, true, NOW)).toEqual({
 			...IDLE,
 			status: "busy",
 			workingSince: NOW,
 		});
+		expect(applyHydratedStatus({ ...IDLE, status: "busy", workingSince: 5 }, true, NOW)).toBeNull();
 		expect(
-			applyHydratedStatus({ ...IDLE, status: "busy", workingSince: 5 }, "busy", NOW),
+			applyHydratedStatus({ ...IDLE, status: "retry", workingSince: 5 }, true, NOW),
 		).toBeNull();
 	});
 
 	it("skips busy only when a live completion raced hydration", () => {
 		const done = { ...IDLE, completedAt: NOW - 10 };
 
-		expect(applyHydratedStatus(done, "busy", NOW, { skipBusyIfCompleted: true })).toBeNull();
-		expect(applyHydratedStatus(done, "busy", NOW)).toEqual({
+		expect(applyHydratedStatus(done, true, NOW, { skipBusyIfCompleted: true })).toBeNull();
+		expect(applyHydratedStatus(done, true, NOW)).toEqual({
 			...IDLE,
 			status: "busy",
 			workingSince: NOW,
@@ -270,12 +254,11 @@ describe("hydrated status", () => {
 	});
 
 	it("settles a stale working chat as idle without inventing a completion", () => {
-		expect(applyHydratedStatus({ ...IDLE, status: "busy", workingSince: 5 }, "idle", NOW)).toEqual({
+		expect(applyHydratedStatus({ ...IDLE, status: "busy", workingSince: 5 }, false, NOW)).toEqual({
 			...IDLE,
 			workingSince: undefined,
 		});
-		expect(applyHydratedStatus(IDLE, "idle", NOW)).toBeNull();
-		expect(applyHydratedStatus(IDLE, "unknown", NOW)).toBeNull();
+		expect(applyHydratedStatus(IDLE, false, NOW)).toBeNull();
 	});
 });
 

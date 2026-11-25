@@ -34,7 +34,6 @@ import {
 } from "./test-kilo-client";
 
 const acme = (modelId: string) => ({ aiProviderId: "acme", modelId });
-const saved = (modelID: string) => ({ providerID: "acme", modelID });
 
 const anthropic = {
 	id: "anthropic",
@@ -239,152 +238,26 @@ describe("model preferences", () => {
 		]);
 	});
 
-	it("adopts origin's preferences once", async () => {
+	it("starts empty, and keeps the choices made here across launches", async () => {
 		const storage = createMemoryStorage("/data/plugins/kilo.core");
-		const origin = vi.fn(async () => ({
-			modelSelections: { plan: saved("deep"), broken: { providerID: "" } },
-			preferred: { ...saved("deep"), variant: "low" },
-			variantSelections: { "plan/acme/deep": "low", bad: 3 },
-			recentModels: [saved("deep"), saved("deep"), "nope"],
-			autoFreeModelsEnabled: false,
-		}));
-		const { models } = await bootModels({ storage, savedPreferences: { origin } });
-
-		expect(models.getState().preferences).toEqual({
-			byAgent: { plan: acme("deep") },
-			preferred: { ...acme("deep"), variant: "low" },
-			variants: { "plan/acme/deep": "low" },
-			recent: [acme("deep")],
+		const first = await bootModels({ storage });
+		expect(first.models.getState().preferences).toEqual({
+			byAgent: {},
+			variants: {},
+			recent: [],
 			favorites: [],
-			autoFreeModels: false,
-		});
-		await models.methods.recordRecent(acme("fast"));
-		await bootModels({ storage, savedPreferences: { origin } });
-		expect(origin).toHaveBeenCalledTimes(1);
-	});
-
-	it("adopts kilo.chat's preferences and favourites, without origin's when kilo.chat already had them", async () => {
-		const origin = vi.fn(async () => ({ recentModels: [saved("origin")] }));
-		const { models } = await bootModels({
-			savedPreferences: {
-				kiloChat: async () => ({
-					modelSelections: { code: saved("fast") },
-					variantSelections: { "code/acme/fast": "high" },
-					recentModels: [saved("fast")],
-					favorites: [saved("fast"), saved("fast"), saved("deep")],
-					autoFreeModelsEnabled: false,
-					importedFromOrigin: true,
-					importedOriginFavorites: true,
-				}),
-				origin,
-			},
-		});
-
-		expect(models.getState().preferences).toEqual({
-			byAgent: { code: acme("fast") },
-			variants: { "code/acme/fast": "high" },
-			recent: [acme("fast")],
-			favorites: [acme("fast"), acme("deep")],
-			autoFreeModels: false,
-		});
-		expect(origin).not.toHaveBeenCalled();
-	});
-
-	it("adopts origin's beneath kilo.chat's when kilo.chat never read origin's", async () => {
-		const { models } = await bootModels({
-			savedPreferences: {
-				kiloChat: async () => ({
-					modelSelections: { code: saved("fast") },
-					recentModels: [saved("fast")],
-					autoFreeModelsEnabled: true,
-				}),
-				origin: async () => ({
-					modelSelections: { code: saved("old"), plan: saved("deep") },
-					recentModels: [saved("deep")],
-					autoFreeModelsEnabled: false,
-				}),
-			},
-		});
-
-		expect(models.getState().preferences).toMatchObject({
-			byAgent: { code: acme("fast"), plan: acme("deep") },
-			recent: [acme("fast"), acme("deep")],
-			autoFreeModels: false,
-		});
-	});
-
-	it("starts empty when the predecessors have none or their files can't be read", async () => {
-		const none = await bootModels({
-			savedPreferences: { kiloChat: async () => null, origin: async () => null },
-		});
-		const broken = await bootModels({
-			savedPreferences: {
-				origin: async () => {
-					throw new Error("corrupt");
-				},
-			},
-		});
-		for (const { models } of [none, broken]) {
-			expect(models.getState().preferences).toEqual({
-				byAgent: {},
-				variants: {},
-				recent: [],
-				favorites: [],
-				autoFreeModels: true,
-			});
-		}
-	});
-
-	it("tries the predecessors again next launch when they can't be read", async () => {
-		const storage = createMemoryStorage("/data/plugins/kilo.core");
-		await bootModels({
-			storage,
-			savedPreferences: {
-				kiloChat: async () => {
-					throw new Error("EBUSY");
-				},
-			},
-		});
-
-		const { models } = await bootModels({
-			storage,
-			savedPreferences: { kiloChat: async () => ({ recentModels: [saved("deep")] }) },
-		});
-
-		expect(models.getState().preferences.recent).toEqual([acme("deep")]);
-	});
-
-	it("keeps choices made here when origin's preferences are read a launch later", async () => {
-		const storage = createMemoryStorage("/data/plugins/kilo.core");
-		const first = await bootModels({
-			storage,
-			savedPreferences: {
-				origin: async () => {
-					throw new Error("EBUSY");
-				},
-			},
+			autoFreeModels: true,
 		});
 		await first.models.methods.remember({ agent: "code", model: acme("fast") });
 		await first.models.methods.setAutoFreeModels({ enabled: false });
 
-		const { models } = await bootModels({
-			storage,
-			savedPreferences: {
-				origin: async () => ({
-					modelSelections: { code: saved("deep"), plan: saved("deep") },
-					preferred: { ...saved("deep"), variant: "low" },
-					variantSelections: { "code/acme/fast": "low", "plan/acme/deep": "low" },
-					recentModels: [saved("deep"), saved("fast")],
-					autoFreeModelsEnabled: true,
-				}),
-			},
-		});
+		const { models } = await bootModels({ storage });
 
 		expect(models.getState().preferences).toEqual({
-			byAgent: { code: acme("fast"), plan: acme("deep") },
+			byAgent: { code: acme("fast") },
 			preferred: { ...acme("fast"), variant: "" },
-			variants: { "code/acme/fast": "", "plan/acme/deep": "low" },
-			recent: [acme("fast"), acme("deep")],
+			variants: { "code/acme/fast": "" },
+			recent: [acme("fast")],
 			favorites: [],
 			autoFreeModels: false,
 		});

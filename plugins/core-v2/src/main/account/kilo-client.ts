@@ -20,7 +20,7 @@ const SIGN_IN_POLL_MS = 500;
  * The account API of Desktop's Kilo v2 server: the `kilocode.gateway` RPC
  * for the account, the `kilo` integration's device OAuth for sign-in and its
  * credentials for sign-out. One client serves one connection; it remembers
- * the sign-in attempt `authorize` started so `callback` can wait for it.
+ * the sign-in attempt `connectOAuth` started so `oauthCompleted` can wait for it.
  */
 export function createKiloAccountClient(
 	connection: ServerConnection,
@@ -50,7 +50,7 @@ export function createKiloAccountClient(
 			]);
 			return toKiloProfile(profile, balance, kiloPass);
 		},
-		async authorize() {
+		async connectOAuth() {
 			// The device method comes from a plugin, registered with the location's plugins.
 			await pluginsListed(client, directory);
 			try {
@@ -65,7 +65,7 @@ export function createKiloAccountClient(
 				throw toKiloError(error);
 			}
 		},
-		async callback(signal) {
+		async oauthCompleted(signal) {
 			const attempt = attemptID;
 			if (!attempt) throw new Error("No Kilo sign-in in progress.");
 			const cancel = () =>
@@ -108,7 +108,7 @@ export function createKiloAccountClient(
 				throw error;
 			});
 		},
-		async dispose() {
+		async reloadLocation() {
 			await client.location.reload();
 		},
 	};

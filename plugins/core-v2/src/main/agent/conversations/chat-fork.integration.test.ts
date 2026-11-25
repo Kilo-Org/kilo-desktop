@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { PermissionRule } from "../../../contracts";
+import type { KiloPermissionRule as PermissionRule } from "../kilo-config-types";
 import { bundledKiloExecutable, startRealKilo2, type RealKilo2 } from "../../../test/real-kilo2";
 import { createServerClient, type KiloV2Client } from "../../server-client";
 import { forkedTitle } from "./fork-title";
@@ -69,36 +69,32 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled kilo2", () => {
 
 	it("copies the messages before the fork point, the stamp and the rules", async () => {
 		const rules: PermissionRule[] = [
-			{ permission: "external_directory", pattern: "/projects/lib", action: "allow" },
-			{ permission: "shell", pattern: "*", action: "ask" },
+			{ action: "external_directory", resource: "/projects/lib", effect: "allow" },
+			{ action: "shell", resource: "*", effect: "ask" },
 		];
 		const stamp = { "kilo-desktop": { workSessionId: "wses_1" } };
-		const source = await kilo.createChat(project, { metadata: stamp, permission: rules });
+		const source = await kilo.createChat(project, { metadata: stamp, permissions: rules });
 		await sendMessage(source.id, "Fix the login");
 		const second = await sendMessage(source.id, "Now the signup");
 
-		const fork = await kilo.forkChat(project, source.id, second);
+		const fork = await kilo.forkChat(source.id, second);
 
 		expect(fork).toMatchObject({ parentId: null, directory: project, metadata: stamp });
 		await expect.poll(() => texts(fork.id, "user")).toEqual(["Fix the login"]);
-		expect(await kilo.getChatPermission(project, source.id)).toEqual(rules);
-		expect(await kilo.getChatPermission(project, fork.id)).toEqual(rules);
+		expect(await kilo.getChatPermissions(source.id)).toEqual(rules);
+		expect(await kilo.getChatPermissions(fork.id)).toEqual(rules);
 
 		// Desktop applies the source's rules again; the server copied them already, so none repeat.
-		await kilo.updateChat(project, fork.id, { permission: rules });
-		expect(await kilo.getChatPermission(project, fork.id)).toEqual(rules);
+		await kilo.updateChat(fork.id, { permissions: rules });
+		expect(await kilo.getChatPermissions(fork.id)).toEqual(rules);
 	});
 
 	it("titles forks as forkedTitle expects, so a lost fork can be found", async () => {
 		const source = await kilo.createChat(project, { title: "Fix login" });
 		await sendMessage(source.id, "Fix the login");
-		const fork = await kilo.forkChat(
-			project,
-			source.id,
-			await sendMessage(source.id, "Now the signup"),
-		);
+		const fork = await kilo.forkChat(source.id, await sendMessage(source.id, "Now the signup"));
 		const last = (await messages(fork.id)).at(-1)!;
-		const forkOfFork = await kilo.forkChat(project, fork.id, last.id);
+		const forkOfFork = await kilo.forkChat(fork.id, last.id);
 
 		expect(fork.title).toBe(forkedTitle("Fix login"));
 		expect(forkOfFork.title).toBe(forkedTitle(fork.title));
@@ -108,9 +104,9 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled kilo2", () => {
 		const source = await kilo.createChat(project, {});
 		await sendMessage(source.id, "Fix the login");
 		const second = await sendMessage(source.id, "Now the signup");
-		const fork = await kilo.forkChat(project, source.id, second);
+		const fork = await kilo.forkChat(source.id, second);
 
-		await kilo.recordForkHandoff(project, fork.id);
+		await kilo.recordForkHandoff(fork.id, project);
 
 		// v2 keeps the note in the fork's inbox; it reaches the model with the next instruction.
 		const inbox = await api.session.inbox.list({ sessionID: fork.id });
@@ -122,6 +118,6 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled kilo2", () => {
 				}),
 			}),
 		);
-		await expect(kilo.statuses()).resolves.not.toHaveProperty(fork.id);
+		expect((await kilo.activeChats()).has(fork.id)).toBe(false);
 	});
 });

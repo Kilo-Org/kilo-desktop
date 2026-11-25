@@ -7,11 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 
 import { DEFAULT_EXTERNAL_CLIENTS_SETTINGS } from "./external-clients";
-import {
-	importKiloAgentExternalClients,
-	importOriginExternalClients,
-	type PersistedExternalClients,
-} from "./import-origin";
+import { importOriginExternalClients, type PersistedExternalClients } from "./import-origin";
 
 const HASH = "a".repeat(64);
 const directories: string[] = [];
@@ -34,7 +30,6 @@ function store(initial: Partial<PersistedExternalClients> = {}) {
 		defaults: {
 			...DEFAULT_EXTERNAL_CLIENTS_SETTINGS,
 			importedFromOrigin: false,
-			importedFromKiloAgent: false,
 		},
 	});
 	kv.set(initial);
@@ -67,7 +62,6 @@ describe("importOriginExternalClients", () => {
 			port: 9400,
 			clients: [originClient("a", { lastUsedAt: "2026-10-02T00:00:00.000Z" })],
 			importedFromOrigin: true,
-			importedFromKiloAgent: false,
 		});
 
 		await writeFile(file, JSON.stringify({ enabled: false, clients: [originClient("b")] }));
@@ -102,7 +96,6 @@ describe("importOriginExternalClients", () => {
 		expect(kv.snapshot()).toEqual({
 			...DEFAULT_EXTERNAL_CLIENTS_SETTINGS,
 			importedFromOrigin: true,
-			importedFromKiloAgent: false,
 		});
 	});
 
@@ -115,49 +108,5 @@ describe("importOriginExternalClients", () => {
 		).rejects.toThrow();
 
 		expect(kv.get("importedFromOrigin")).toBe(false);
-	});
-});
-
-describe("importKiloAgentExternalClients", () => {
-	it("adopts kilo.agent's apps once, with whether it had adopted origin's", async () => {
-		const file = await originFile(
-			JSON.stringify({
-				enabled: true,
-				port: 9401,
-				clients: [originClient("a")],
-				importedFromOrigin: true,
-			}),
-		);
-		const kv = store();
-
-		await importKiloAgentExternalClients(kv, file);
-
-		expect(kv.snapshot()).toEqual({
-			enabled: true,
-			port: 9401,
-			clients: [originClient("a")],
-			importedFromOrigin: true,
-			importedFromKiloAgent: true,
-		});
-
-		await writeFile(file, JSON.stringify({ clients: [originClient("b")] }));
-		await importKiloAgentExternalClients(kv, file);
-		expect(kv.get("clients").map((client) => client.id)).toEqual(["a"]);
-	});
-
-	it("counts a missing file as adopted, leaving origin's still to adopt", async () => {
-		const kv = store();
-
-		await importKiloAgentExternalClients(kv, await originFile());
-
-		expect(kv.snapshot()).toMatchObject({ importedFromKiloAgent: true, importedFromOrigin: false });
-	});
-
-	it("leaves an unreadable file for the next attempt", async () => {
-		const kv = store();
-
-		await expect(importKiloAgentExternalClients(kv, await originFile("{"))).rejects.toThrow();
-
-		expect(kv.get("importedFromKiloAgent")).toBe(false);
 	});
 });

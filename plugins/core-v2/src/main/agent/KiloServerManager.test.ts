@@ -228,21 +228,6 @@ describe("KiloServerManager", () => {
 		});
 	});
 
-	it("records the data-collection preference without calling, starting or restarting the server", async () => {
-		const { manager, spawn, fetch } = createHarness();
-		onTestFinished(() => manager.dispose());
-		await manager.setTelemetryEnabled(true);
-		expect(spawn).not.toHaveBeenCalled();
-
-		await manager.ensureRunning();
-		const requests = fetch.mock.calls.length;
-		await manager.setTelemetryEnabled(false);
-
-		expect(fetch).toHaveBeenCalledTimes(requests);
-		expect(spawn).toHaveBeenCalledOnce();
-		expect(spawn.mock.calls[0]![2].env.KILO_TELEMETRY_LEVEL).toBeUndefined();
-	});
-
 	it("spawns with additive Desktop config, the user's Kilo profile, loopback CORS, and a sanitized environment", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {

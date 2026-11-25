@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { bundledKiloExecutable, startRealKilo2, type RealKilo2 } from "../../../test/real-kilo2";
 import { createServerClient } from "../../server-client";
-import { createInstanceDisposer } from "../dispose-instance";
+import { createLocationEvictor } from "../evict-location";
 import { chatOf } from "./activity";
 import { createKiloChatClient, type KiloChatClient } from "./kilo-chat-client";
 
@@ -66,16 +66,16 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 		});
 		expect(chat).toMatchObject({ title: "Fix login", directory: project, parentId: null });
 
-		await kilo.updateChat(project, chat.id, { title: "Fix the login" });
-		await kilo.updateChat(project, chat.id, { archived: 1 });
+		await kilo.updateChat(chat.id, { title: "Fix the login" });
+		await kilo.updateChat(chat.id, { archived: 1 });
 		await expect(kilo.getChat(chat.id)).resolves.toMatchObject({ archivedAt: expect.any(Number) });
 		await expect(kilo.listChats()).resolves.toContainEqual(
 			expect.objectContaining({ id: chat.id, archivedAt: expect.any(Number) }),
 		);
-		await kilo.updateChat(project, chat.id, { archived: null });
+		await kilo.updateChat(chat.id, { archived: null });
 		await expect(kilo.getChat(chat.id)).resolves.not.toHaveProperty("archivedAt");
 
-		await kilo.deleteChat(project, chat.id);
+		await kilo.deleteChat(chat.id);
 		await expect(kilo.getChat(chat.id)).resolves.toBeUndefined();
 		await expect
 			.poll(() => types(chat.id))
@@ -91,7 +91,7 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 	it("runs a prompt as a turn that ends with the server's error, announcing the person's message", async () => {
 		const chat = await kilo.createChat(project, {});
 
-		await kilo.prompt(project, chat.id, { text: "Fix it" });
+		await kilo.prompt(chat.id, { text: "Fix it" });
 
 		await expect.poll(() => types(chat.id)).toContain("session.execution.failed");
 		expect(events.find((event) => event.type === "session.inbox.enqueued")).toMatchObject({
@@ -99,7 +99,7 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 		});
 		const executions = types(chat.id).filter((type) => type.startsWith("session.execution."));
 		expect(executions).toEqual(["session.execution.started", "session.execution.failed"]);
-		await expect(kilo.statuses()).resolves.toEqual({});
+		expect((await kilo.activeChats()).size).toBe(0);
 	});
 
 	it("waits for a chat to drain and acknowledges it on the stream", async () => {
@@ -121,9 +121,9 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 	it("shuts down a project's location, even one that never loaded", async () => {
 		const client = createServerClient(server.connection);
 		await client.plugin.list({ location: { directory: project } });
-		const dispose = createInstanceDisposer();
+		const evict = createLocationEvictor();
 
-		await dispose(server.connection, project);
-		await dispose(server.connection, path.join(project, "never-loaded"));
+		await evict(server.connection, project);
+		await evict(server.connection, path.join(project, "never-loaded"));
 	});
 });

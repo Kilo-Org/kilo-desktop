@@ -54,9 +54,6 @@ export const IDLE: ChatActivity = {
 const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
 
-const asStatus = (value: unknown): ChatStatus | undefined =>
-	value === "busy" || value === "retry" || value === "idle" ? value : undefined;
-
 const isWorking = (status: ChatStatus | undefined) => status === "busy" || status === "retry";
 
 export function needsAttention(activity: ChatActivity): boolean {
@@ -225,11 +222,6 @@ function applyToActivity(
 			return applyStatus(chats, chatId, "busy", now);
 		case "session.retry.scheduled":
 			return applyStatus(chats, chatId, "retry", now);
-		case "session.status": {
-			const status = asStatus(event.data.status.type);
-			return status ? applyStatus(chats, chatId, status, now) : chats;
-		}
-		case "session.idle":
 		case "session.execution.succeeded":
 		case "session.execution.interrupted":
 			return applyStatus(chats, chatId, "idle", now);
@@ -247,19 +239,17 @@ function applyToActivity(
 }
 
 /**
- * A status read on (re)connect, without stamping `completedAt` (the finish
- * wasn't observed). Null when it changes nothing.
+ * Whether a chat was running a turn, read on (re)connect, without stamping
+ * `completedAt` (the finish wasn't observed). Null when it changes nothing.
  */
 export function applyHydratedStatus(
 	activity: ChatActivity | undefined,
-	statusType: string,
+	working: boolean,
 	now: number,
 	options: { readonly skipBusyIfCompleted?: boolean } = {},
 ): ChatActivity | null {
-	const status = asStatus(statusType);
-	if (!status) return null;
 	const wasWorking = isWorking(activity?.status);
-	if (status === "idle") {
+	if (!working) {
 		if (!activity || !wasWorking) return null;
 		return { ...activity, status: "idle", workingSince: undefined };
 	}
@@ -267,11 +257,11 @@ export function applyHydratedStatus(
 	if (options.skipBusyIfCompleted && activity?.completedAt !== undefined && !wasWorking) {
 		return null;
 	}
-	if (activity && activity.status === status && wasWorking) return null;
+	if (activity && wasWorking) return null;
 	const base = activity ?? IDLE;
 	return {
 		...base,
-		status,
+		status: "busy",
 		workingSince: wasWorking ? base.workingSince : now,
 		completedAt: undefined,
 	};

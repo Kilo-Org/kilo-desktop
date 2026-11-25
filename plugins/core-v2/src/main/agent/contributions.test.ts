@@ -18,7 +18,6 @@ describe("a static MCP server", () => {
 				type: "local",
 				command: ["/plugins/acme/resources/bin/acme", "--root", "/plugins/acme/resources"],
 				environment: { ACME_HOME: "/plugins/acme/resources/home" },
-				enabled: true,
 			},
 		});
 	});
@@ -61,7 +60,7 @@ describe("an agent extension", () => {
 		});
 	});
 
-	it("as an agent, becomes a Kilo agent entry with a provider/model model", () => {
+	it("as an agent, becomes a Kilo v2 agent with its prompt as the system prompt", () => {
 		expect(
 			extension({
 				type: "agent",
@@ -72,14 +71,14 @@ describe("an agent extension", () => {
 		).toEqual({
 			agent: {
 				description: "Reviews code",
-				prompt: "You review code.",
+				system: "You review code.",
 				mode: "subagent",
-				model: "kilo/anthropic/claude-sonnet-4",
+				model: { providerID: "kilo", model: "anthropic/claude-sonnet-4" },
 			},
 		});
 	});
 
-	it("as a command, becomes a Kilo command entry with only what it sets", () => {
+	it("as a command, becomes a Kilo v2 command with only what it sets, run as a subagent for subtask", () => {
 		expect(extension({ type: "command", template: "Review $ARGUMENTS" })).toEqual({
 			command: { template: "Review $ARGUMENTS" },
 		});
@@ -97,8 +96,8 @@ describe("an agent extension", () => {
 				template: "Review $ARGUMENTS",
 				description: "Review",
 				agent: "reviewer",
-				model: "acme/m",
-				subtask: false,
+				model: { providerID: "acme", model: "m" },
+				subagent: false,
 			},
 		});
 	});

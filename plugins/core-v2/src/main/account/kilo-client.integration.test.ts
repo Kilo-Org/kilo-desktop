@@ -130,11 +130,11 @@ describe.skipIf(!kiloExecutable)("the Kilo account on the bundled kilo2", () => 
 	});
 
 	it("signs in with a device code, reads the profile, switches organization and signs out", async () => {
-		const attempt = await account.authorize();
+		const attempt = await account.connectOAuth();
 		expect(new URL(attempt.url).searchParams.get("code")).toBe("ABCD-1234");
 
-		await account.callback(AbortSignal.timeout(20_000));
-		await account.dispose();
+		await account.oauthCompleted(AbortSignal.timeout(20_000));
+		await account.reloadLocation();
 
 		await expect(account.authStatus()).resolves.toEqual({ authenticated: true });
 		await expect(account.profile()).resolves.toEqual({
@@ -158,14 +158,14 @@ describe.skipIf(!kiloExecutable)("the Kilo account on the bundled kilo2", () => 
 		await expect(account.profile()).resolves.toMatchObject({ currentOrgId: "second" });
 
 		await account.signOut();
-		await account.dispose();
+		await account.reloadLocation();
 		await expect(account.authStatus()).resolves.toEqual({ authenticated: false });
 	});
 
 	it("cancels a sign-in that is abandoned", async () => {
-		await account.authorize();
+		await account.connectOAuth();
 		const abandon = new AbortController();
-		const waiting = account.callback(abandon.signal);
+		const waiting = account.oauthCompleted(abandon.signal);
 		abandon.abort(new Error("cancelled"));
 
 		await expect(waiting).rejects.toThrow("cancelled");

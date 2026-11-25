@@ -14,11 +14,7 @@ import { webMcpChannelFromStorageDir, type WebMcpChannel } from "../webmcp-relay
 import type { CallerPolicy, ChatStamp } from "./catalog-view";
 import type { DeclinedSignIns } from "./declined-sign-ins";
 import { DEFAULT_EXTERNAL_CLIENTS_SETTINGS, ExternalClientsServer } from "./external-clients";
-import {
-	importKiloAgentExternalClients,
-	importOriginExternalClients,
-	type PersistedExternalClients,
-} from "./import-origin";
+import { importOriginExternalClients, type PersistedExternalClients } from "./import-origin";
 import { KiloToolEndpoint, type KiloToolEndpointConnection } from "./kilo-tool-endpoint";
 import { ToolCatalog } from "./tool-catalog";
 
@@ -49,8 +45,6 @@ export interface AgentToolGatewayOptions {
 	readonly declinedSignIns: DeclinedSignIns;
 	/** The work session and workspace stamped on a chat (a subagent's are its root's). */
 	readonly stampOfChat?: (chatId: string) => ChatStamp;
-	/** kilo.agent's saved external AI apps, adopted once. */
-	readonly kiloAgentExternalClients?: string;
 	/** Origin's saved external AI apps, adopted once. */
 	readonly originExternalClients?: string;
 }
@@ -81,8 +75,8 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
  *   clears it.
  * - External AI apps are the `kilo.core/external-apps` domain object, changed
  *   only by kilo.core and kilo.shell's settings, and run only while their
- *   flag (`kernel/flag:external-api-apps-settings`) is on. kilo.agent's and
- *   origin's paired apps are adopted once when the service first starts.
+ *   flag (`kernel/flag:external-api-apps-settings`) is on. Origin's paired
+ *   apps are adopted once when the service first starts.
  * - The Kilo endpoint lives as long as the service; each start makes a new
  *   URL and token, announced to `onEndpointChange` so the server can follow.
  */
@@ -110,7 +104,6 @@ export function createAgentToolGateway(
 		defaults: {
 			...DEFAULT_EXTERNAL_CLIENTS_SETTINGS,
 			importedFromOrigin: false,
-			importedFromKiloAgent: false,
 		},
 	});
 	const isAvailable = () => sdk.context.get(EXTERNAL_AI_APPS_FLAG_KEY);
@@ -183,7 +176,6 @@ export function createAgentToolGateway(
 	sdk.extensions.implement(KernelService, SERVICE_ID, {
 		start: async () => {
 			try {
-				await adopt(options.kiloAgentExternalClients, importKiloAgentExternalClients);
 				await adopt(options.originExternalClients, importOriginExternalClients);
 				await external.init();
 				const connection = await kiloEndpoint.start();

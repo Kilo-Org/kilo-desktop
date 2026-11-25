@@ -6,8 +6,7 @@ import { z } from "zod";
  * schema and the request (marked as data), its reply parsed and checked
  * against the schema, and asked once more, naming the problem, when it
  * doesn't fit (decision: prompt-embedded schema, parse, validate, retry once).
- * `generate.text` runs no tools, so untrusted content in the request can't
- * act; v1 needed a throwaway chat with a deny-all ruleset for that.
+ * `generate.text` runs no tools, so untrusted content in the request can't act.
  */
 
 export interface StructuredRequest {

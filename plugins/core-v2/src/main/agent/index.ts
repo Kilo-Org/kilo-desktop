@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import {
 	KernelApp,
 	KernelDataCollection,
@@ -24,20 +22,19 @@ import { ContributedEnvManager } from "./ContributedEnvManager";
 import { provideConversations, type KiloChatClient } from "./conversations";
 import { provideGeneration } from "./conversations/generation";
 import { createUnscopedChatDirectory } from "./conversations/unscoped-directory";
-import { createInstanceDisposer, type InstanceDisposer } from "./dispose-instance";
+import { createLocationEvictor, type LocationEvictor } from "./evict-location";
 import { resolveGlobalConfigFile } from "./global-config-file";
 import { KiloConfigManager } from "./KiloConfigManager";
 import { KiloConfiguration } from "./KiloConfiguration";
 import { KiloPluginConfig } from "./KiloPluginConfig";
 import { KiloSkillConfig, kiloSkillDirectory } from "./KiloSkillConfig";
-import { removeLegacyKiloConfigPlugins } from "./managed-kilo-plugins";
 import { followSignedIn } from "./signed-in";
-import { agentDirectories, KILO_AGENT_EXTERNAL_APPS_FILE, type AgentDirectories } from "./storage";
+import { agentDirectories, type AgentDirectories } from "./storage";
 import { createAgentToolGateway, type KiloToolEndpointConnection } from "./tool-gateway";
 import { DeclinedSignIns } from "./tool-gateway/declined-sign-ins";
 import { reconcileKiloCallerContextPlugin } from "./tool-gateway/kilo-caller-context-plugin";
 import type { KiloServerConnection, KiloServerStatus } from "./types";
-import { MCP_ENTRY_SOURCE_ID, reconcileWebMcpRelayConfig } from "./webmcp-relay-config";
+import { reconcileWebMcpRelayConfig } from "./webmcp-relay-config";
 
 export type { AgentDirectories } from "./storage";
 export type { KiloChatClient } from "./conversations";
@@ -51,8 +48,6 @@ export interface AgentServerManager {
 	/** Restarts in place, keeping the address and credentials. */
 	restart(): Promise<KiloServerConnection>;
 	stop(): Promise<void>;
-	/** Restarts a running CLI that can't be told to opt out, so an opt-out always applies. */
-	setTelemetryEnabled(enabled: boolean): Promise<void>;
 	contributedEnvChangedSinceSpawn(): boolean;
 	webMcpEndpointChangedSinceSpawn(): boolean;
 	dispose(): void;
@@ -79,16 +74,10 @@ export interface AgentOptions {
 	readonly envRestartDebounceMs?: number;
 	/** Origin's saved external AI apps file, adopted once. */
 	readonly originExternalClients?: string;
-	/** Releases the running server's instance for a directory. */
-	readonly disposeInstance?: InstanceDisposer;
+	/** Shuts down the running server's location for a directory. */
+	readonly evictLocation?: LocationEvictor;
 }
 
-/**
- * The source id of kilo.core's own entries in the app-owned Kilo config. It
- * is kilo.agent's, which wrote them first: config ownership is persisted, so
- * keeping the id keeps those entries ours.
- */
-const OWN_SOURCE_ID = MCP_ENTRY_SOURCE_ID;
 const CONFIG_SYNC = "config-sync";
 const SERVER = "server";
 
@@ -111,7 +100,7 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
 
 /**
  * The agent area of kilo.core in main: the Kilo CLI server, its config, its
- * chats and the agent tool gateway. Ported from kilo.agent.
+ * chats and the agent tool gateway.
  *
  * The Kilo CLI server is a supervised daemon (`server`, gated on
  * `kilo.core/termsAccepted` in the manifest) that starts once the window
@@ -125,10 +114,8 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * when the running server's env differs). Writes are owned per contributing
  * plugin, so one plugin can never overwrite another's entries or the user's.
  *
- * Telemetry consent comes from `kernel/data-collection`: applied before the
- * first spawn and synced to the running CLI on change. The server manager
- * restarts a CLI that won't accept an opt-out, so a failed sync never leaves
- * it collecting.
+ * Kilo v2 has no telemetry to switch; the server only gets Desktop's
+ * installation id (`kernel/data-collection`) as its machine id.
  *
  * Agent tools reach Kilo as its `mcp.servers.desktop` entry, pointing at the tool
  * gateway's endpoint through env vars set at every spawn; config-sync waits
@@ -140,9 +127,9 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * stream that follows the server's status; `kilo.core/generation` uses the
  * same connection.
  *
- * `disposeInstance` releases the running server's instance for a directory
+ * `disposeInstance` evicts the running server's location for a directory
  * so a worktree can be removed (decision 54); a stopped server holds no
- * instance, so it does nothing then rather than starting one.
+ * location, so it does nothing then rather than starting one.
  *
  * Storage: the v2 line keeps its own `<storage>/agent-v2` folder (see
  * `storage.ts`).
@@ -150,7 +137,7 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
 export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Promise<void> {
 	const storageDirectory = mainHost(sdk).storage.dir;
 	const directories = agentDirectories(storageDirectory);
-	const disposeInstance = options.disposeInstance ?? createInstanceDisposer();
+	const evictLocation = options.evictLocation ?? createLocationEvictor();
 	const consent = () => sdk.domainObjects.get(KernelDataCollection)?.getState();
 	let disposed = false;
 	let configRestartRequested = false;
@@ -202,7 +189,6 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 		signedIn,
 		declinedSignIns,
 		stampOfChat: (chatId) => conversations.stampOf(chatId),
-		kiloAgentExternalClients: path.join(directories.stateDirectory, KILO_AGENT_EXTERNAL_APPS_FILE),
 		...(options.originExternalClients
 			? { originExternalClients: options.originExternalClients }
 			: {}),
@@ -251,7 +237,7 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 			disposeInstance: async ({ directory }) => {
 				if (!server.isRunning) return;
 				const connection = await server.ensureRunning();
-				await disposeInstance(connection, directory);
+				await evictLocation(connection, directory);
 			},
 			userConfigFile: () => resolveGlobalConfigFile(options.userConfigDirectory),
 		},
@@ -280,12 +266,6 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 	const serverEnv = trackServerEnv(sdk, { contributedEnv });
 	const { mcpServers, agentExtensions } = trackKiloExtensions(sdk, { configuration });
 
-	const applyConsent = (allowed: boolean) =>
-		server
-			.setTelemetryEnabled(allowed)
-			.catch((error) =>
-				sdk.logger.warn(`Could not update Kilo's telemetry setting: ${errorMessage(error)}`),
-			);
 	const step = async (label: string, run: () => Promise<unknown>) => {
 		try {
 			await run();
@@ -321,18 +301,10 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 	sdk.extensions.implement(KernelService, CONFIG_SYNC, {
 		start: async () => {
 			try {
-				await step("Applying telemetry consent", () => applyConsent(consent()?.allowed === true));
-				await step("Removing legacy Kilo config plugins", () =>
-					removeLegacyKiloConfigPlugins(directories.configDirectory),
-				);
 				await step("Applying MCP servers", () => mcpServers.reconcile());
 				await step("Applying agent extensions", () => agentExtensions.reconcile());
 				await step("Applying AI providers", () => providers.reconcile());
 				await step("Applying server environment", () => serverEnv.reconcile());
-				// Kilo's `suggest` tool has no UI here; left on it blocks the turn.
-				await step("Disabling Kilo's suggest tool", () =>
-					kiloConfig.setPermissionEntry(OWN_SOURCE_ID, "suggest", "deny"),
-				);
 				await gateway.firstStart;
 				await step("Registering the agent tools", registerToolEndpoint);
 			} finally {
@@ -360,17 +332,9 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 		},
 	});
 
-	let lastAllowed = consent()?.allowed;
-	const stopConsent = sdk.domainObjects.get(KernelDataCollection)?.subscribe((next) => {
-		if (next.allowed === lastAllowed) return;
-		lastAllowed = next.allowed;
-		void applyConsent(next.allowed);
-	});
-
 	sdk.onDispose(() => {
 		disposed = true;
 		clearTimeout(restartTimer);
-		stopConsent?.();
 		providers.dispose();
 		serverEnv.dispose();
 		mcpServers.dispose();

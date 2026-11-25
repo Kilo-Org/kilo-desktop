@@ -8,8 +8,6 @@ import type { ExternalClientsSettings } from "./external-clients.js";
 
 export type PersistedExternalClients = ExternalClientsSettings & {
 	importedFromOrigin: boolean;
-	/** kilo.agent's saved apps were adopted (or there were none). */
-	importedFromKiloAgent: boolean;
 };
 
 const originSettingsSchema = z.object({
@@ -26,10 +24,6 @@ const originSettingsSchema = z.object({
 			}),
 		)
 		.default([]),
-});
-
-const kiloAgentSettingsSchema = originSettingsSchema.extend({
-	importedFromOrigin: z.boolean().default(false),
 });
 
 type SavedSettings = z.output<typeof originSettingsSchema>;
@@ -57,30 +51,6 @@ function merged(store: KvStore<PersistedExternalClients>, saved: SavedSettings) 
 				.map(({ lastUsedAt, ...client }) => (lastUsedAt ? { ...client, lastUsedAt } : client)),
 		],
 	};
-}
-
-/**
- * Adopts kilo.agent's saved external AI apps (its `external-clients` kv
- * file, moved into kilo.core's storage with the rest of its folder) once,
- * with whether it had already adopted origin's. A missing file counts as
- * adopted; an unreadable one is retried next launch.
- */
-export async function importKiloAgentExternalClients(
-	store: KvStore<PersistedExternalClients>,
-	file: string,
-): Promise<void> {
-	if (store.get("importedFromKiloAgent")) return;
-	const raw = await readSaved(file);
-	if (raw === undefined) {
-		store.set({ importedFromKiloAgent: true });
-		return;
-	}
-	const saved = kiloAgentSettingsSchema.parse(JSON.parse(raw));
-	store.set({
-		...merged(store, saved),
-		importedFromOrigin: store.get("importedFromOrigin") || saved.importedFromOrigin,
-		importedFromKiloAgent: true,
-	});
 }
 
 /**

@@ -156,19 +156,11 @@ describe("the conversation store", () => {
 		});
 	});
 
-	describe("statuses read on (re)connect", () => {
-		it("stamp workingSince for busy chats and ignore idle unknown ones", () => {
+	describe("the chats running a turn, read on (re)connect", () => {
+		it("stamp workingSince for chats running a turn", () => {
 			const { store } = storeAt();
 
-			store.hydrateActivity(
-				{
-					statuses: {
-						byChat: { "ses-1": { type: "busy" }, "ses-2": { type: "idle" } },
-						complete: true,
-					},
-				},
-				store.epoch,
-			);
+			store.hydrateActivity({ active: new Set(["ses-1"]) }, store.epoch);
 
 			expect(store.chats["ses-1"]?.activity).toMatchObject({ status: "busy", workingSince: NOW });
 			expect(store.chats["ses-2"]).toBeUndefined();
@@ -176,7 +168,7 @@ describe("the conversation store", () => {
 
 		it("keep the original workingSince when repeated while busy", () => {
 			const { store, setNow } = storeAt();
-			const busy = { statuses: { byChat: { "ses-1": { type: "busy" } }, complete: true } };
+			const busy = { active: new Set(["ses-1"]) };
 			store.hydrateActivity(busy, store.epoch);
 
 			setNow(NOW + 60_000);
@@ -185,15 +177,12 @@ describe("the conversation store", () => {
 			expect(store.chats["ses-1"]?.activity.workingSince).toBe(NOW);
 		});
 
-		it("settle working chats the server no longer lists as working", () => {
+		it("settle working chats the server no longer lists as running", () => {
 			const { store } = storeAt();
 			store.apply(status("ses-1", "busy"));
 			store.apply(status("ses-2", "busy"));
 
-			store.hydrateActivity(
-				{ statuses: { byChat: { "ses-1": { type: "idle" } }, complete: true } },
-				store.epoch,
-			);
+			store.hydrateActivity({ active: new Set() }, store.epoch);
 
 			expect(store.chats["ses-1"]?.activity).toMatchObject({
 				status: "idle",
@@ -203,14 +192,14 @@ describe("the conversation store", () => {
 			expect(store.chats["ses-2"]?.activity.status).toBe("idle");
 		});
 
-		it("leave unlisted working chats alone when the read was partial or raced", () => {
+		it("leave unlisted working chats alone when the read failed or raced", () => {
 			const { store } = storeAt();
 			store.apply(status("ses-1", "busy"));
 			const since = store.epoch;
 			store.apply(status("ses-2", "busy"));
 
-			store.hydrateActivity({ statuses: { byChat: {}, complete: false } }, store.epoch);
-			store.hydrateActivity({ statuses: { byChat: {}, complete: true } }, since);
+			store.hydrateActivity({}, store.epoch);
+			store.hydrateActivity({ active: new Set() }, since);
 
 			expect(store.chats["ses-1"]?.activity.status).toBe("busy");
 			expect(store.chats["ses-2"]?.activity.status).toBe("busy");
@@ -222,10 +211,7 @@ describe("the conversation store", () => {
 			store.apply(status("ses-1", "busy"));
 			store.apply(status("ses-1", "idle"));
 
-			store.hydrateActivity(
-				{ statuses: { byChat: { "ses-1": { type: "busy" } }, complete: true } },
-				since,
-			);
+			store.hydrateActivity({ active: new Set(["ses-1"]) }, since);
 
 			expect(store.chats["ses-1"]?.activity).toMatchObject({ status: "idle", completedAt: NOW });
 		});
@@ -235,29 +221,13 @@ describe("the conversation store", () => {
 			store.apply(status("ses-1", "busy"));
 			store.apply(status("ses-1", "idle"));
 
-			store.hydrateActivity(
-				{ statuses: { byChat: { "ses-1": { type: "busy" } }, complete: true } },
-				store.epoch,
-			);
+			store.hydrateActivity({ active: new Set(["ses-1"]) }, store.epoch);
 
 			expect(store.chats["ses-1"]?.activity).toMatchObject({
 				status: "busy",
 				workingSince: NOW,
 				completedAt: undefined,
 			});
-		});
-	});
-
-	it("settles everything when the server goes away", () => {
-		const { store } = storeAt();
-		store.apply(status("ses-1", "busy"));
-		store.apply(asked("permission", "p", "ses-1"));
-
-		store.resetActivity();
-
-		expect(store.chats["ses-1"]?.activity).toMatchObject({
-			status: "idle",
-			pendingPermissionIds: [],
 		});
 	});
 });

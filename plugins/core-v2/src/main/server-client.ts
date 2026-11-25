@@ -2,6 +2,7 @@ import { OpenCode } from "@kilocode/client";
 import { Definition as Settings } from "@opencode/schema/kilocode/settings";
 
 import type { ServerConnection } from "../contracts";
+import { kiloConfigWrites, type ConfigWriteQueue } from "./config-writes";
 
 export type KiloV2Client = ReturnType<typeof OpenCode.make>;
 
@@ -97,7 +98,29 @@ export interface GlobalSettings {
 	write(set: Readonly<Record<string, SettingsValue>>): Promise<void>;
 }
 
-export function globalSettings(client: KiloV2Client, directory: string): GlobalSettings {
+/**
+ * The global settings, their writes run through `writes`, the queue Desktop's
+ * own edits of the same file (`KiloConfigManager`) share, so neither loses the other's.
+ */
+export function serializedSettings(
+	settings: GlobalSettings,
+	writes: ConfigWriteQueue,
+): GlobalSettings {
+	return {
+		read: () => settings.read(),
+		write: (set) => writes.run(() => settings.write(set)),
+	};
+}
+
+export function globalSettings(
+	client: KiloV2Client,
+	directory: string,
+	writes: ConfigWriteQueue = kiloConfigWrites,
+): GlobalSettings {
+	return serializedSettings(settingsRpc(client, directory), writes);
+}
+
+function settingsRpc(client: KiloV2Client, directory: string): GlobalSettings {
 	const settings = client.rpc(Settings);
 	return {
 		async read() {

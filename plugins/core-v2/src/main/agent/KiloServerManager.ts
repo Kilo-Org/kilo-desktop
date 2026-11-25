@@ -290,10 +290,6 @@ function isUnauthorized(error: unknown): boolean {
  * (`KILO_CLI_VERSION`); a server reporting another version fails to start. A
  * developer's own CLI (`KILO_CODE_CLI_PATH`) may be any version.
  *
- * **Telemetry.** Kilo v2 has no telemetry sink yet, and no setting or route to
- * turn one off, so Desktop's data-collection preference has nothing to reach
- * in the server; `setTelemetryEnabled` only records it.
- *
  * **Status emission contract.** `#setStatus` is gated by `isEqual`, so
  * callers observe exactly one `onStatusChange` per REAL transition. That means
  * structurally-identical consecutive writes are intentionally not re-emitted
@@ -396,11 +392,6 @@ export class KiloServerManager {
 
 	get isRunning(): boolean {
 		return this.#connection !== undefined;
-	}
-
-	/** Kilo v2 has no telemetry to switch, so Desktop's preference stops here. */
-	setTelemetryEnabled(_enabled: boolean): Promise<void> {
-		return Promise.resolve();
 	}
 
 	/**

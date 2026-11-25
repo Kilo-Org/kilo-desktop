@@ -1,9 +1,9 @@
 import type { KiloConfigurationState } from "./types.js";
 import type {
-	KiloConfigEntry,
 	KiloConfigManager,
 	KiloConfigMutationOutcome,
-	KiloEntrySection,
+	KiloConfigSection,
+	KiloConfigSections,
 } from "./KiloConfigManager.js";
 import type { KiloPluginConfig, KiloPluginMutationOutcome } from "./KiloPluginConfig.js";
 import type { KiloSkillConfig, KiloSkillMutationOutcome } from "./KiloSkillConfig.js";
@@ -56,7 +56,7 @@ interface Part {
 
 /**
  * Owns serialized, source-scoped Kilo desired state: each source declares
- * everything it puts into Kilo (config `mcp`, `agent` and `command` entries,
+ * everything it puts into Kilo (config `mcp.servers`, `agents` and `commands` entries,
  * Desktop-managed Kilo plugins, linked skills) and this brings Kilo in line,
  * through each kind's own ownership adapter, so other sources and the user's
  * own config are never touched. Additions run before pruning, so a
@@ -89,15 +89,16 @@ export class KiloConfiguration {
 
 	#parts(sourceId: string, desired: KiloConfigurationState): readonly Part[] {
 		const { kiloConfig, pluginConfig, skillConfig } = this.#options;
-		const entries = (
-			section: KiloEntrySection,
+		const entries = <TSection extends KiloConfigSection>(
+			section: TSection,
 			label: string,
-			values: Readonly<Record<string, KiloConfigEntry>>,
+			values: Readonly<Record<string, KiloConfigSections[TSection]>>,
 		): Part => ({
 			label,
 			setVerb: "set",
 			desired: values,
-			set: (id, value) => kiloConfig.setEntry(section, sourceId, id, value as KiloConfigEntry),
+			set: (id, value) =>
+				kiloConfig.setEntry(section, sourceId, id, value as KiloConfigSections[TSection]),
 			listOwned: () => kiloConfig.listOwnedEntryIds(section, sourceId),
 			remove: (id) => kiloConfig.removeEntry(section, sourceId, id),
 		});
@@ -118,9 +119,9 @@ export class KiloConfiguration {
 				listOwned: () => skillConfig.listOwnedSkillIds(sourceId),
 				remove: (id) => skillConfig.remove(sourceId, id),
 			},
-			entries("mcp", "MCP server", desired.mcpEntries),
-			entries("agent", "agent", desired.agents),
-			entries("command", "command", desired.commands),
+			entries("mcp.servers", "MCP server", desired.mcpServers),
+			entries("agents", "agent", desired.agents),
+			entries("commands", "command", desired.commands),
 		];
 	}
 

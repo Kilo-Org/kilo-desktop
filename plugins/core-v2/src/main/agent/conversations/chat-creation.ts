@@ -4,6 +4,8 @@ import {
 	type PermissionRule,
 	type WorkspaceFolderStamp,
 } from "../../../contracts";
+import { permissionRulesFromContract } from "../contract-adapters";
+import type { KiloPermissionRule } from "../kilo-config-types";
 
 /**
  * Kilo's per-chat sandbox stamp. Kilo resolves a chat's sandbox from this
@@ -19,12 +21,12 @@ export const SANDBOX_DISABLED_SESSION_METADATA = {
 /** Lets the agent reach a workspace's other folders (the primary is the chat's directory). */
 export function buildWorkspacePermissionRules(
 	folders: readonly WorkspaceFolderStamp[],
-): PermissionRule[] {
+): KiloPermissionRule[] {
 	return folders
 		.filter((folder) => !folder.isPrimary)
 		.flatMap(({ path }) => [
-			{ permission: "external_directory", pattern: path, action: "allow" as const },
-			{ permission: "external_directory", pattern: `${path}/*`, action: "allow" as const },
+			{ action: "external_directory", resource: path, effect: "allow" as const },
+			{ action: "external_directory", resource: `${path}/*`, effect: "allow" as const },
 		]);
 }
 
@@ -40,7 +42,7 @@ export interface ChatPermissionInput {
 	readonly approvals: ReadonlyMap<string, ToolApprovalOutcome>;
 	/** Tool wire names `kilo.core/chat-config` turned off. */
 	readonly disableTools: readonly string[];
-	/** Rules `kilo.core/chat-config` added. */
+	/** Rules `kilo.core/chat-config` added, in the contract's shape. */
 	readonly chatPermissions?: readonly PermissionRule[];
 }
 
@@ -50,8 +52,9 @@ export interface ChatPermissionInput {
  * `approval`, or an `ask` answer) and one per tool that is denied (a `reject`
  * answer, or turned off). Kilo applies the last matching rule, so a
  * contributed rule never loosens a tool that asks, and denials come last.
+ * The contract's rules (chat config's, the tools') become Kilo's here.
  */
-export function chatPermissionRules(input: ChatPermissionInput): PermissionRule[] {
+export function chatPermissionRules(input: ChatPermissionInput): KiloPermissionRule[] {
 	const denied = new Set(input.disableTools);
 	for (const tool of input.tools) {
 		if (input.approvals.get(tool.key) === "reject") denied.add(toolWireName(tool.key));
@@ -66,8 +69,8 @@ export function chatPermissionRules(input: ChatPermissionInput): PermissionRule[
 	).filter((rule) => !denied.has(rule.permission));
 	return [
 		...buildWorkspacePermissionRules(input.workspaceFolders),
-		...(input.chatPermissions ?? []),
-		...asking,
-		...[...denied].map((permission) => ({ permission, pattern: "*", action: "deny" as const })),
+		...permissionRulesFromContract(input.chatPermissions ?? []),
+		...permissionRulesFromContract(asking),
+		...[...denied].map((action) => ({ action, resource: "*", effect: "deny" as const })),
 	];
 }

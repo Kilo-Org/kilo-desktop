@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-
 import { mainHost, type PluginSdk } from "@kilo-desktop/kernel";
 
 import type { ServerConnection } from "../../contracts";
@@ -84,44 +81,18 @@ export function createKiloModelsClient(
 				credentials.map((credential) => client.credential.remove({ credentialID: credential.id })),
 			);
 		},
-		async disposeInstances() {
+		async reloadLocation() {
 			await client.location.reload();
 		},
 	};
 }
 
-/** A predecessor's saved JSON: null when absent or corrupt (nothing to adopt); other failures throw (retried). */
-async function readSavedJson(sdk: PluginSdk, file: string): Promise<unknown> {
-	let raw: string;
-	try {
-		raw = await readFile(file, "utf8");
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-		throw error;
-	}
-	try {
-		return JSON.parse(raw) as unknown;
-	} catch (error) {
-		sdk.logger.warn(`Saved model preferences in ${file} are unreadable`, error);
-		return null;
-	}
-}
-
-/**
- * Production wiring: the real Kilo SDK client, the host's network for the
- * gateway catalog, and the predecessors' preference files beside kilo.core's
- * storage directory (`../kilo.chat` kv, origin's `../kilo-ui`).
- */
+/** Production wiring: the real Kilo SDK client and the host's network for the gateway catalog. */
 export function productionModelsOptions(sdk: PluginSdk): ModelsOptions {
 	const host = mainHost(sdk);
-	const sibling = (...segments: string[]) => path.join(host.storage.dir, "..", ...segments);
 	return {
 		createClient: createKiloModelsClient,
 		fetch: (input, init) => host.net.fetch(input, init),
-		savedPreferences: {
-			kiloChat: () => readSavedJson(sdk, sibling("kilo.chat", "model-preferences.json")),
-			origin: () => readSavedJson(sdk, sibling("kilo-ui", "model-preferences.json")),
-		},
 		env: process.env,
 	};
 }

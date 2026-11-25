@@ -23,27 +23,6 @@ describe("KiloPluginConfig", () => {
 		await rm(tempDirectory, { recursive: true, force: true });
 	});
 
-	it("lets a kernel plugin take over the file origin's short source id installed", async () => {
-		const config = new KiloPluginConfig(pluginDirectory);
-		await config.install("notebook", "notebooks", sourcePath);
-
-		await expect(config.listOwnedPluginIds("kilo.notebook")).resolves.toEqual(["notebooks"]);
-		await expect(config.install("kilo.notebook", "notebooks", sourcePath)).resolves.toEqual({
-			kind: "written",
-			reason: "updated",
-		});
-		await expect(
-			readFile(path.join(pluginDirectory, "anaconda-notebooks", "index.js"), "utf8"),
-		).resolves.toMatch(/^\/\/ Kilo Desktop managed plugin: kilo\.notebook\/notebooks\n/);
-		await expect(config.install("kilo.other", "notebooks", sourcePath)).resolves.toMatchObject({
-			kind: "skipped-error",
-		});
-		await expect(config.remove("kilo.notebook", "notebooks")).resolves.toEqual({
-			kind: "removed",
-			reason: "explicit",
-		});
-	});
-
 	it("installs, updates, and removes a Desktop-owned Kilo plugin", async () => {
 		const config = new KiloPluginConfig(pluginDirectory);
 

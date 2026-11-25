@@ -25,7 +25,7 @@ export interface LostForksDeps {
 	readonly holds: ForkHolds;
 	readonly unfinished: UnfinishedForks;
 	/** Deletes an unfinished fork while it is hidden; one that can't be deleted stays unfinished. */
-	discard(client: KiloChatClient, directory: string, id: string): Promise<void>;
+	discard(client: KiloChatClient, id: string): Promise<void>;
 	/** Republishes the chats after a hold is released. */
 	republish(): void;
 	warn(message: string): void;
@@ -121,12 +121,12 @@ export class LostForks {
 			this.#waiting.delete(search);
 			if (fork) {
 				try {
-					this.#deps.unfinished.add({ id: fork.id, directory: search.directory });
+					this.#deps.unfinished.add({ id: fork.id });
 				} catch (error) {
 					// Still remembered (so hidden) for this run.
 					this.#deps.warn(`Could not record the unfinished fork ${fork.id}: ${errorText(error)}`);
 				}
-				discards.push(this.#deps.discard(client, search.directory, fork.id));
+				discards.push(this.#deps.discard(client, fork.id));
 			}
 			search.hold.release();
 			released = true;

@@ -58,7 +58,7 @@ const CONNECTION: ServerConnection = {
 class FakeKiloAccount implements KiloAccountClient {
 	authenticated = false;
 	profileResult: KiloProfile | Error = PROFILE;
-	readonly disposed = vi.fn(async () => {});
+	readonly reloaded = vi.fn(async () => {});
 	readonly organizations: (string | null)[] = [];
 	#approve: (() => void) | undefined;
 	#reject: ((error: Error) => void) | undefined;
@@ -71,13 +71,13 @@ class FakeKiloAccount implements KiloAccountClient {
 		if (this.profileResult instanceof Error) throw this.profileResult;
 		return this.profileResult;
 	}
-	async authorize() {
+	async connectOAuth() {
 		return {
 			url: "https://app.kilo.ai/device",
 			instructions: "Enter code: ABCD-1234",
 		};
 	}
-	callback(signal: AbortSignal) {
+	oauthCompleted(signal: AbortSignal) {
 		return new Promise<void>((resolve, reject) => {
 			this.#approve = resolve;
 			this.#reject = reject;
@@ -101,7 +101,7 @@ class FakeKiloAccount implements KiloAccountClient {
 		if (this.profileResult instanceof Error) return;
 		this.profileResult = { ...this.profileResult, currentOrgId: organizationId };
 	}
-	dispose = this.disposed;
+	reloadLocation = this.reloaded;
 }
 
 afterEach(() => {
@@ -366,7 +366,7 @@ describe("signing in to Kilo", () => {
 		});
 		expect(kernel.kernelSdk.context.get(SIGNED_IN_KEY)).toBe(true);
 		await vi.waitFor(() => expect(focusMain).toHaveBeenCalled());
-		expect(account.disposed).toHaveBeenCalled();
+		expect(account.reloaded).toHaveBeenCalled();
 		await vi.waitFor(() => expect(events(tracked)).toContain("kilo.core/logged-in"));
 		expect(tracked.find(({ key }) => key === "kilo.core/logged-in")).toMatchObject({
 			name: "Logged In",
@@ -376,7 +376,7 @@ describe("signing in to Kilo", () => {
 
 	it("shows the browser's user code, not the poll secret in the instructions", async () => {
 		const account = new FakeKiloAccount();
-		account.authorize = async () => ({
+		account.connectOAuth = async () => ({
 			url: "https://app.kilo.ai/device-auth?code=WXYZ-1234",
 			instructions: "Open https://app.kilo.ai/device-auth and enter code: 04jF-r2ARIPUwnvoNxQJ8oY1",
 		});
@@ -396,7 +396,7 @@ describe("signing in to Kilo", () => {
 	it("shares one flow between concurrent sign-ins", async () => {
 		const { kernel, account } = await boot();
 		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(false));
-		const authorize = vi.spyOn(account, "authorize");
+		const connectOAuth = vi.spyOn(account, "connectOAuth");
 
 		const first = accountOf(kernel).methods.signIn(undefined);
 		const second = accountOf(kernel).methods.signIn(undefined);
@@ -409,7 +409,7 @@ describe("signing in to Kilo", () => {
 			{ signedIn: true },
 			{ signedIn: true },
 		]);
-		expect(authorize).toHaveBeenCalledOnce();
+		expect(connectOAuth).toHaveBeenCalledOnce();
 	});
 
 	it("cancels a sign-in so a later approval can't land", async () => {
@@ -464,7 +464,7 @@ describe("signing in to Kilo", () => {
 
 	it("says sign-in failed when the CLI gives no reason", async () => {
 		const account = new FakeKiloAccount();
-		account.authorize = async () => {
+		account.connectOAuth = async () => {
 			throw {};
 		};
 		const { kernel } = await boot({ account });

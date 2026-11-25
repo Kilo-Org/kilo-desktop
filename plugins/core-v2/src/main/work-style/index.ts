@@ -24,7 +24,7 @@ export type { CreateKiloWorkStyleClient, KiloWorkStyleClient } from "./apply-wor
  *
  * On Kilo v2 the rules are the ordered `permissions` list of Desktop's own
  * global config (`KILO2_CONFIG_DIR`), and `conflicts` reports permission
- * actions (`shell`, `edit`, …) rather than v1's permission keys.
+ * actions (`shell`, `edit`, …).
  *
  * Review first replaces the rules of the preset's actions and remembers, for this
  * session only, what they held before; switching back to High autonomy

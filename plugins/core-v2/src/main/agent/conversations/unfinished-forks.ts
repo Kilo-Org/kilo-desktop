@@ -2,7 +2,6 @@ import type { PluginStorage } from "@kilo-desktop/kernel";
 
 export interface UnfinishedFork {
 	readonly id: string;
-	readonly directory: string;
 }
 
 interface Persisted extends Record<string, unknown> {

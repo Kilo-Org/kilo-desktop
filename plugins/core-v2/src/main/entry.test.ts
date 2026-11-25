@@ -43,11 +43,11 @@ const PROFILE: KiloProfile = {
 const signedInAccount: KiloAccountClient = {
 	authStatus: async () => ({ authenticated: true }),
 	profile: async () => PROFILE,
-	authorize: async () => ({ url: "https://app.kilo.ai/device" }),
-	callback: async () => {},
+	connectOAuth: async () => ({ url: "https://app.kilo.ai/device" }),
+	oauthCompleted: async () => {},
 	signOut: async () => {},
 	setOrganization: async () => {},
-	dispose: async () => {},
+	reloadLocation: async () => {},
 };
 
 afterEach(cleanUpAgents);

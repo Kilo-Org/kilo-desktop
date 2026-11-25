@@ -9,6 +9,11 @@ import { parse } from "jsonc-parser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getKiloCliArtifact } from "./cli-distribution/artifacts.js";
+import {
+	agentFromContract,
+	commandFromContract,
+	providerEntryFromContract,
+} from "./contract-adapters.js";
 import { KILO_V2_CONFIG_FILENAME, KiloConfigManager } from "./KiloConfigManager.js";
 import { KiloServerManager } from "./KiloServerManager.js";
 import { reconcileWebMcpRelayConfig } from "./webmcp-relay-config.js";
@@ -82,36 +87,52 @@ describe.skipIf(!kiloExecutable)("Desktop's Kilo config on the bundled kilo2", (
 	it("reads every entry Desktop writes as v2 config, unchanged", async () => {
 		const config = new KiloConfigManager(configDirectory);
 		await reconcileWebMcpRelayConfig({ configDirectory, kiloConfig: config });
-		await config.setMcpEntry("acme.tools", "acme", {
+		await config.setEntry("mcp.servers", "acme.tools", "acme", {
 			type: "local",
 			command: ["/opt/acme/bin/mcp", "--stdio"],
 			environment: { ACME_HOME: "/opt/acme" },
-			enabled: true,
 		});
-		await config.replaceProviderEntry("local-inference", "kilo-desktop-model-server", {
-			npm: "@ai-sdk/openai-compatible",
-			name: "Local model server",
-			options: {
-				baseURL: "http://127.0.0.1:43123/v1",
-				headers: { Authorization: "Bearer {env:KILO_DESKTOP_LLAMA_KEY}" },
-			},
-			models: {
-				"qwen-7b": { name: "Qwen 7B", modalities: { input: ["text"], output: ["text"] } },
-			},
-		});
-		await config.setEntry("agent", "acme.notebook", "analyst", {
-			description: "Analyses notebooks",
-			prompt: "You analyse notebooks.",
-			mode: "subagent",
-			model: "kilo/acme/fast",
-		});
-		await config.setEntry("command", "acme.notebook", "analyse", {
-			template: "Analyse $ARGUMENTS",
-			description: "Analyse a notebook",
-			agent: "analyst",
-			subtask: true,
-		});
-		await config.setPermissionEntry("kilo.core", "suggest", "deny");
+		// The local model server's entry, as kilo.core's ai-provider contract gives it.
+		await config.setEntry(
+			"providers",
+			"local-inference",
+			"kilo-desktop-model-server",
+			providerEntryFromContract({
+				npm: "@ai-sdk/openai-compatible",
+				name: "Local model server",
+				options: {
+					baseURL: "http://127.0.0.1:43123/v1",
+					headers: { Authorization: "Bearer {env:KILO_DESKTOP_LLAMA_KEY}" },
+				},
+				models: {
+					"qwen-7b": { name: "Qwen 7B", modalities: { input: ["text"], output: ["text"] } },
+				},
+			}),
+		);
+		await config.setEntry(
+			"agents",
+			"acme.notebook",
+			"analyst",
+			agentFromContract({
+				type: "agent",
+				description: "Analyses notebooks",
+				prompt: "You analyse notebooks.",
+				mode: "subagent",
+				model: { aiProviderId: "kilo", modelId: "acme/fast" },
+			}),
+		);
+		await config.setEntry(
+			"commands",
+			"acme.notebook",
+			"analyse",
+			commandFromContract({
+				type: "command",
+				template: "Analyse $ARGUMENTS",
+				description: "Analyse a notebook",
+				agent: "analyst",
+				subtask: true,
+			}),
+		);
 		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
 		const text = await readFile(filePath, "utf8");
 		const written = parse(text) as Record<string, unknown>;
@@ -128,13 +149,7 @@ describe.skipIf(!kiloExecutable)("Desktop's Kilo config on the bundled kilo2", (
 			(entry) => entry.type === "document" && entry.path === filePath,
 		);
 
-		expect(Object.keys(written).toSorted()).toEqual([
-			"agents",
-			"commands",
-			"mcp",
-			"permissions",
-			"providers",
-		]);
+		expect(Object.keys(written).toSorted()).toEqual(["agents", "commands", "mcp", "providers"]);
 		expect(document).toMatchObject({ type: "document" });
 		expect(document && "info" in document ? document.info : undefined).toEqual(
 			parse(substituteEnv(text)),

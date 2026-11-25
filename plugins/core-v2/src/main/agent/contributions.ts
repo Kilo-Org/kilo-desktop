@@ -6,13 +6,18 @@ import {
 	AgentExtension,
 	AiProviderPoint,
 	McpServer,
-	modelKey,
 	ServerEnv,
 	type AgentExtensionConfig,
-	type McpServerEntry,
 } from "../../contracts";
+import {
+	agentFromContract,
+	commandFromContract,
+	mcpServerFromContract,
+	providerEntryFromContract,
+} from "./contract-adapters";
 import type { ContributedEnvManager } from "./ContributedEnvManager";
-import type { KiloConfigEntry, KiloConfigManager } from "./KiloConfigManager";
+import type { KiloAgent, KiloCommand, KiloMcpServer } from "./kilo-config-types";
+import type { KiloConfigManager } from "./KiloConfigManager";
 import type { KiloConfiguration } from "./KiloConfiguration";
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -94,7 +99,7 @@ export function trackContributions<TPoint extends AnyExtensionPoint>(
 export function trackAiProviders(
 	sdk: PluginSdk,
 	options: {
-		readonly kiloConfig: Pick<KiloConfigManager, "setProviderEntry" | "removeProviderEntry">;
+		readonly kiloConfig: Pick<KiloConfigManager, "setEntry" | "removeEntry">;
 		readonly contributedEnv: ContributedEnvManager;
 		readonly onConfigChanged: () => void;
 	},
@@ -104,8 +109,13 @@ export function trackAiProviders(
 		const aiProviderId = contribution.metadata.aiProviderId;
 		const config = removed ? undefined : contribution.implementation?.read();
 		const outcome = config
-			? await options.kiloConfig.setProviderEntry(contribution.pluginId, aiProviderId, config.entry)
-			: await options.kiloConfig.removeProviderEntry(contribution.pluginId, aiProviderId);
+			? await options.kiloConfig.setEntry(
+					"providers",
+					contribution.pluginId,
+					aiProviderId,
+					providerEntryFromContract(config.entry),
+				)
+			: await options.kiloConfig.removeEntry("providers", contribution.pluginId, aiProviderId);
 		if (outcome.kind === "written" || outcome.kind === "removed") options.onConfigChanged();
 		else if (outcome.kind === "skipped-error" || outcome.reason !== "up-to-date")
 			sdk.logger.warn(`Did not write AI provider "${aiProviderId}": ${outcome.reason}.`);
@@ -157,13 +167,13 @@ function hasUnresolvedResources(value: unknown): boolean {
 }
 
 /**
- * A static `kilo.core/mcp-server` contribution as Kilo's `mcp` entry. The
+ * A static `kilo.core/mcp-server` contribution as Kilo's `mcp.servers` entry. The
  * kernel has already put the contributor's own resources folder in place of
  * `${resources}`; one still there means its host had no assets to resolve it
  * with, so the server is skipped rather than written broken.
  */
 export function staticMcpEntry(metadata: Contribution<typeof McpServer>["metadata"]): {
-	entry?: McpServerEntry;
+	entry?: KiloMcpServer;
 	problem?: string;
 } {
 	if (!metadata.command) return { problem: "it names no command and implements no source" };
@@ -173,7 +183,6 @@ export function staticMcpEntry(metadata: Contribution<typeof McpServer>["metadat
 			type: "local",
 			command: [metadata.command, ...metadata.args],
 			...(metadata.env ? { environment: { ...metadata.env } } : {}),
-			enabled: true,
 		},
 	};
 }
@@ -182,15 +191,14 @@ export function staticMcpEntry(metadata: Contribution<typeof McpServer>["metadat
 export type AgentExtensionEffect =
 	| { readonly plugin: string }
 	| { readonly skill: string }
-	| { readonly agent: KiloConfigEntry }
-	| { readonly command: KiloConfigEntry }
+	| { readonly agent: KiloAgent }
+	| { readonly command: KiloCommand }
 	| { readonly problem: string };
 
 /**
- * An agent extension as Kilo takes it, in the field names of Kilo's config
- * schema (`agent` and `command` entries, models as `<provider>/<model>`); a
- * Kilo plugin (its v2 build's folder, `v2Path`) or a skill is at an absolute
- * path, which the kernel made by resolving `${resources}`.
+ * An agent extension as Kilo v2 takes it: `agents` and `commands` entries,
+ * or a Kilo plugin (its v2 build's folder, `v2Path`) or a skill at an
+ * absolute path, which the kernel made by resolving `${resources}`.
  */
 export function agentExtensionOf(metadata: AgentExtensionConfig): AgentExtensionEffect {
 	if (hasUnresolvedResources(metadata)) return { problem: UNRESOLVED_RESOURCES };
@@ -212,37 +220,22 @@ export function agentExtensionOf(metadata: AgentExtensionConfig): AgentExtension
 			return { skill: metadata.path };
 		}
 		case "agent":
-			return {
-				agent: {
-					description: metadata.description,
-					prompt: metadata.prompt,
-					mode: metadata.mode,
-					...(metadata.model ? { model: modelKey(metadata.model) } : {}),
-				},
-			};
+			return { agent: agentFromContract(metadata) };
 		case "command":
-			return {
-				command: {
-					template: metadata.template,
-					...(metadata.description !== undefined ? { description: metadata.description } : {}),
-					...(metadata.agent !== undefined ? { agent: metadata.agent } : {}),
-					...(metadata.model ? { model: modelKey(metadata.model) } : {}),
-					...(metadata.subtask !== undefined ? { subtask: metadata.subtask } : {}),
-				},
-			};
+			return { command: commandFromContract(metadata) };
 	}
 }
 
 interface SourceState {
-	readonly mcpEntries: Map<string, McpServerEntry>;
-	readonly agents: Map<string, KiloConfigEntry>;
-	readonly commands: Map<string, KiloConfigEntry>;
+	readonly mcpServers: Map<string, KiloMcpServer>;
+	readonly agents: Map<string, KiloAgent>;
+	readonly commands: Map<string, KiloCommand>;
 	readonly plugins: Map<string, string>;
 	readonly skills: Map<string, string>;
 }
 
 const emptySourceState = (): SourceState => ({
-	mcpEntries: new Map(),
+	mcpServers: new Map(),
 	agents: new Map(),
 	commands: new Map(),
 	plugins: new Map(),
@@ -292,7 +285,7 @@ export function trackKiloExtensions(
 	const write = (pluginId: string) => {
 		const state = stateOf(pluginId);
 		return options.configuration.set(pluginId, {
-			mcpEntries: Object.fromEntries(state.mcpEntries),
+			mcpServers: Object.fromEntries(state.mcpServers),
 			agents: Object.fromEntries(state.agents),
 			commands: Object.fromEntries(state.commands),
 			plugins: Object.fromEntries(state.plugins),
@@ -301,15 +294,18 @@ export function trackKiloExtensions(
 	};
 
 	const mcpServers = trackContributions(sdk, McpServer, async (contribution, removed) => {
-		const { mcpEntries } = stateOf(contribution.pluginId);
-		const entry = removed ? undefined : mcpEntryOf(contribution);
-		if (entry) mcpEntries.set(contribution.id, entry);
-		else mcpEntries.delete(contribution.id);
+		const { mcpServers } = stateOf(contribution.pluginId);
+		const entry = removed ? undefined : mcpServerOf(contribution);
+		if (entry) mcpServers.set(contribution.id, entry);
+		else mcpServers.delete(contribution.id);
 		await write(contribution.pluginId);
 	});
 
-	function mcpEntryOf(contribution: Contribution<typeof McpServer>): McpServerEntry | undefined {
-		if (contribution.implementation) return contribution.implementation.read();
+	function mcpServerOf(contribution: Contribution<typeof McpServer>): KiloMcpServer | undefined {
+		if (contribution.implementation) {
+			const entry = contribution.implementation.read();
+			return entry && mcpServerFromContract(entry);
+		}
 		const { entry, problem } = staticMcpEntry(contribution.metadata);
 		if (problem) warnOnce(`Skipped MCP server "${contribution.key}": ${problem}.`);
 		return entry;

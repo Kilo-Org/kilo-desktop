@@ -9,26 +9,26 @@ import type {
 	GenerateTextParams,
 } from "../../main/agent/conversations/kilo-chat-client";
 import type { PendingRequest } from "../../main/agent/conversations/store";
-import type { PermissionRequest, PermissionRule } from "../../contracts";
+import type { KiloPermissionRule } from "../../main/agent/kilo-config-types";
+import type { PermissionRequest } from "../../contracts";
 import { kiloEvent } from "./kilo-events";
 
+/** A call that changed something; `directory` is the location, for the calls that take one. */
 export interface Write {
 	readonly call: string;
-	readonly directory: string;
+	readonly directory?: string;
 	readonly args: readonly unknown[];
 }
 
 /** The Kilo server's chats: what kilo.core can list, change and hear about, recorded. */
 export class FakeKiloChats implements KiloChatClient {
 	chats: ChatInfo[] = [];
-	statusMap: Record<string, { type: string }> = {};
+	/** The chats running a turn, server-wide. */
+	active = new Set<string>();
 	permissions: PendingRequest[] = [];
 	questions: PendingRequest[] = [];
 	/** Per directory, overriding the defaults above. */
-	byDirectory: Record<
-		string,
-		{ statuses?: Record<string, { type: string }>; permissions?: PendingRequest[] }
-	> = {};
+	byDirectory: Record<string, { permissions?: PendingRequest[] }> = {};
 	failList = false;
 	failWrites = false;
 	/** Calls (as recorded in `writes`, or `getPermission`) that fail with "offline". */
@@ -38,7 +38,7 @@ export class FakeKiloChats implements KiloChatClient {
 	/** Forks are made without announcing `session.created` (as when the stream drops with the reply). */
 	quietForks = false;
 	/** Each chat's stored permission rules. */
-	permissionsById: Record<string, readonly PermissionRule[]> = {};
+	permissionsById: Record<string, readonly KiloPermissionRule[]> = {};
 	readonly writes: Write[] = [];
 	readonly reads: string[] = [];
 	/** Settle HTTP separately from push(session.drained), including failures arriving after abort. */
@@ -67,9 +67,9 @@ export class FakeKiloChats implements KiloChatClient {
 		this.reads.push(`get ${id}`);
 		return this.chats.find((chat) => chat.id === id);
 	}
-	async statuses(directory?: string) {
-		this.reads.push(`statuses ${directory ?? "-"}`);
-		return directory ? (this.byDirectory[directory]?.statuses ?? {}) : this.statusMap;
+	async activeChats() {
+		this.reads.push("active");
+		return new Set(this.active);
 	}
 	async pendingPermissions(directory?: string) {
 		this.reads.push(`permissions ${directory ?? "-"}`);
@@ -109,15 +109,16 @@ export class FakeKiloChats implements KiloChatClient {
 		this.chats.push(info);
 		return info;
 	}
-	async updateChat(directory: string, id: string, patch: object) {
-		this.#write("update", directory, [id, patch]);
+	async updateChat(id: string, patch: object) {
+		this.#write("update", undefined, [id, patch]);
 		await this.#gates.get("update");
 	}
 	/** Like the server: the stamp is cloned, the rules are not, and `session.forked` comes first. */
-	async forkChat(directory: string, id: string, messageId: string) {
-		this.#write("fork", directory, [id, messageId]);
+	async forkChat(id: string, messageId: string) {
+		this.#write("fork", undefined, [id, messageId]);
 		const source = this.chats.find((chat) => chat.id === id);
 		if (!source) throw new Error(`Session not found: ${id}`);
+		const directory = source.directory;
 		const info: ChatInfo = {
 			id: `ses_fork_${++this.#forked}`,
 			title: `${source.title} (fork #1)`,
@@ -134,12 +135,12 @@ export class FakeKiloChats implements KiloChatClient {
 		if (this.loseForkReply) throw new Error("connection reset");
 		return info;
 	}
-	async recordForkHandoff(directory: string, id: string) {
-		this.#write("handoff", directory, [id]);
+	async recordForkHandoff(id: string, directory: string) {
+		this.#write("handoff", undefined, [id, directory]);
 		await this.#gates.get("handoff");
 	}
-	async getChatPermission(directory: string, id: string) {
-		this.reads.push(`permission ${directory} ${id}`);
+	async getChatPermissions(id: string) {
+		this.reads.push(`permissions of ${id}`);
 		if (this.failing.has("getPermission")) throw new Error("offline");
 		return this.permissionsById[id] ?? [];
 	}
@@ -157,8 +158,8 @@ export class FakeKiloChats implements KiloChatClient {
 		);
 		return release;
 	}
-	async deleteChat(directory: string, id: string) {
-		this.#write("delete", directory, [id]);
+	async deleteChat(id: string) {
+		this.#write("delete", undefined, [id]);
 		this.chats = this.chats.filter((chat) => chat.id !== id);
 	}
 	/** What `generateBranchName` answers. */
@@ -173,19 +174,19 @@ export class FakeKiloChats implements KiloChatClient {
 	failPrompt = false;
 
 	async generateText(params: GenerateTextParams) {
-		this.#write("generateText", "", [params]);
+		this.#write("generateText", undefined, [params]);
 		if (this.failPrompt) throw new Error("model unavailable");
 		const answer = this.textAnswers.length > 1 ? this.textAnswers.shift()! : this.textAnswers[0]!;
 		return typeof answer === "function" ? answer(params) : answer;
 	}
-	async prompt(directory: string, id: string, params: ChatPromptParams) {
-		this.#write("prompt", directory, [id, params]);
+	async prompt(id: string, params: ChatPromptParams) {
+		this.#write("prompt", undefined, [id, params]);
 	}
-	async command(directory: string, id: string, params: ChatCommandParams) {
-		this.#write("command", directory, [id, params]);
+	async command(id: string, params: ChatCommandParams) {
+		this.#write("command", undefined, [id, params]);
 	}
-	async abortChat(directory: string, id: string) {
-		this.#write("abort", directory, [id]);
+	async abortChat(id: string) {
+		this.#write("abort", undefined, [id]);
 	}
 	drainChat(directory: string, id: string, token: string, signal: AbortSignal): Promise<void> {
 		return new Promise((resolve, reject) => {
@@ -200,14 +201,14 @@ export class FakeKiloChats implements KiloChatClient {
 		return this.permissionRequestsByDirectory[directory] ?? [];
 	}
 
-	async replyPermission(directory: string, ...args: unknown[]) {
-		this.#write("replyPermission", directory, args);
+	async replyPermission(...args: unknown[]) {
+		this.#write("replyPermission", undefined, args);
 	}
-	async replyQuestion(directory: string, ...args: unknown[]) {
-		this.#write("replyQuestion", directory, args);
+	async replyQuestion(...args: unknown[]) {
+		this.#write("replyQuestion", undefined, args);
 	}
-	async rejectQuestion(directory: string, ...args: unknown[]) {
-		this.#write("rejectQuestion", directory, args);
+	async rejectQuestion(...args: unknown[]) {
+		this.#write("rejectQuestion", undefined, args);
 	}
 
 	/** The server announces a change. */
@@ -229,9 +230,9 @@ export class FakeKiloChats implements KiloChatClient {
 		this.#wake?.();
 	}
 
-	#write(call: string, directory: string, args: readonly unknown[]) {
+	#write(call: string, directory: string | undefined, args: readonly unknown[]) {
 		if (this.failWrites || this.failing.has(call)) throw new Error("offline");
-		this.writes.push({ call, directory, args });
+		this.writes.push({ call, ...(directory !== undefined ? { directory } : {}), args });
 	}
 }
 

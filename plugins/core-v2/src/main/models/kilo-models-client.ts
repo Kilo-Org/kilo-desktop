@@ -15,8 +15,8 @@ export interface KiloModelsClient {
 	updateSettings(set: KiloSettingsPatch): Promise<void>;
 	setApiKey(aiProviderId: string, key: string): Promise<void>;
 	removeApiKey(aiProviderId: string): Promise<void>;
-	/** Disposes the server's instances so they reload AI providers and config. */
-	disposeInstances(): Promise<void>;
+	/** Reloads the server's location so it picks up AI providers and config. */
+	reloadLocation(): Promise<void>;
 }
 
 export type CreateKiloModelsClient = (connection: ServerConnection) => KiloModelsClient;

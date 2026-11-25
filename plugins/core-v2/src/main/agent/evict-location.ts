@@ -1,7 +1,7 @@
 import type { ServerConnection } from "../../contracts";
 import { createServerClient } from "../server-client";
 
-export type InstanceDisposer = (connection: ServerConnection, directory: string) => Promise<void>;
+export type LocationEvictor = (connection: ServerConnection, directory: string) => Promise<void>;
 
 /**
  * Shuts down the Kilo v2 server's location for one directory, which stops the
@@ -14,9 +14,9 @@ export type InstanceDisposer = (connection: ServerConnection, directory: string)
  * `location.shutdown` event comes first), and succeeds for a directory with no
  * location loaded, so nothing needs to wait on the event stream.
  */
-export function createInstanceDisposer(
+export function createLocationEvictor(
 	options: { fetch?: typeof globalThis.fetch } = {},
-): InstanceDisposer {
+): LocationEvictor {
 	return async (connection, directory) => {
 		const client = createServerClient(connection, options.fetch ?? globalThis.fetch);
 		await client.debug.location.evict({ location: { directory } });

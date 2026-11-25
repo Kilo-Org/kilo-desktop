@@ -22,16 +22,14 @@ export interface PendingRequest {
 
 /** What the server said about activity on (re)connect; `complete` is false when a read failed. */
 export interface ActivitySnapshot {
-	readonly statuses?: {
-		readonly byChat: Readonly<Record<string, { readonly type: string }>>;
-		readonly complete: boolean;
-	};
+	/** The chats running a turn, server-wide. */
+	readonly active?: ReadonlySet<string>;
 	readonly permissions?: {
 		readonly requests: readonly PendingRequest[];
 		readonly complete: boolean;
 	};
 	readonly questions?: { readonly requests: readonly PendingRequest[]; readonly complete: boolean };
-	/** Where each chat's status or prompt was read. */
+	/** Where each chat's prompt was read. */
 	readonly directories?: Readonly<Record<string, string>>;
 }
 
@@ -49,7 +47,7 @@ const isWorking = (activity: ChatActivity) =>
  * deleted or renamed meanwhile, a turn that finished, a prompt answered (the
  * answered ids are remembered until a clean read). A read whose epoch is
  * current replaces what it covers; one that raced, or that could only reach
- * some directories, is merged instead.
+ * some locations, is merged instead.
  */
 export class ConversationStore {
 	#chats: ChatRecords = {};
@@ -155,7 +153,7 @@ export class ConversationStore {
 		if (snapshot.questions) {
 			next = this.#withPending(next, "pendingQuestionIds", snapshot.questions, raced);
 		}
-		if (snapshot.statuses) next = this.#withStatuses(next, snapshot.statuses, raced);
+		if (snapshot.active) next = this.#withActive(next, snapshot.active, raced);
 		for (const [id, directory] of Object.entries(snapshot.directories ?? {})) {
 			const record = next[id];
 			if (record && record.directory !== directory) next[id] = { ...record, directory };
@@ -212,22 +210,18 @@ export class ConversationStore {
 		return next;
 	}
 
-	#withStatuses(
-		next: Record<string, ChatRecord>,
-		read: NonNullable<ActivitySnapshot["statuses"]>,
-		raced: boolean,
-	) {
+	#withActive(next: Record<string, ChatRecord>, active: ReadonlySet<string>, raced: boolean) {
 		const now = this.now();
-		const apply = (chatId: string, type: string) => {
-			const activity = applyHydratedStatus(next[chatId]?.activity, type, now, {
+		const apply = (chatId: string, working: boolean) => {
+			const activity = applyHydratedStatus(next[chatId]?.activity, working, now, {
 				skipBusyIfCompleted: raced,
 			});
 			if (activity) next[chatId] = { ...(next[chatId] ?? {}), activity };
 		};
-		for (const [chatId, status] of Object.entries(read.byChat)) apply(chatId, status.type);
-		if (read.complete && !raced) {
+		for (const chatId of active) apply(chatId, true);
+		if (!raced) {
 			for (const [chatId, record] of Object.entries(next)) {
-				if (isWorking(record.activity) && !(chatId in read.byChat)) apply(chatId, "idle");
+				if (isWorking(record.activity) && !active.has(chatId)) apply(chatId, false);
 			}
 		}
 		return next;

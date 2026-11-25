@@ -16,7 +16,7 @@ import type { KiloModelsClient } from "./kilo-models-client";
 /**
  * Changes to AI providers in Kilo: keys go to Kilo's credential store, custom
  * providers to the user's global settings,
- * and every change ends by disposing the server's instances so they reload.
+ * and every change ends by reloading the server's location.
  * A failed credential change stops before the config is touched.
  */
 
@@ -32,7 +32,7 @@ export async function connectAiProvider(
 	apiKey: string,
 ): Promise<void> {
 	await client.setApiKey(aiProviderId, apiKey.trim());
-	await client.disposeInstances();
+	await client.reloadLocation();
 }
 
 /** Removes the stored key, and the provider's config entry when it is a custom one. */
@@ -45,7 +45,7 @@ export async function disconnectAiProvider(
 	const custom = isRecord(entry) && isCustomProviderPackage(entry.package);
 	await client.removeApiKey(aiProviderId);
 	if (custom) await client.updateSettings({ providers: { [aiProviderId]: null } });
-	await client.disposeInstances();
+	await client.reloadLocation();
 }
 
 export async function saveCustomAiProvider(
@@ -64,7 +64,7 @@ export async function saveCustomAiProvider(
 	await client.updateSettings({
 		providers: { [id]: withCustomProviderDeletions(existing, entry.value) },
 	});
-	await client.disposeInstances();
+	await client.reloadLocation();
 }
 
 /** The custom provider as saved, its stored key masked; null when it isn't a custom provider. */

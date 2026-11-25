@@ -4,14 +4,14 @@ import type { AccountState, DeviceSignInState, KiloProfile } from "../../contrac
 export interface KiloAccountClient {
 	authStatus(): Promise<{ readonly authenticated: boolean }>;
 	profile(): Promise<KiloProfile>;
-	/** Starts device sign-in; the server opens the browser itself. */
-	authorize(): Promise<{ readonly url: string; readonly instructions?: string | undefined }>;
+	/** Starts Kilo's device sign-in (`integration.oauth.connect`); the server opens the browser itself. */
+	connectOAuth(): Promise<{ readonly url: string; readonly instructions?: string | undefined }>;
 	/** Resolves once the person approves in the browser. */
-	callback(signal: AbortSignal): Promise<void>;
+	oauthCompleted(signal: AbortSignal): Promise<void>;
 	signOut(): Promise<void>;
 	setOrganization(organizationId: string | null): Promise<void>;
-	/** Reloads the CLI's instance so it picks up new credentials. */
-	dispose(): Promise<void>;
+	/** Reloads the server's location so it picks up new credentials. */
+	reloadLocation(): Promise<void>;
 }
 
 export const DEVICE_CODE_LIFETIME_SECONDS = 900;
@@ -128,7 +128,7 @@ export class AccountService {
 		this.#abandonSignIn();
 		await client.signOut().catch(() => undefined);
 		this.#options.onSignedOut();
-		await client.dispose().catch(() => undefined);
+		await client.reloadLocation().catch(() => undefined);
 		this.#set({ signedIn: false, profile: null, profileError: null, organizationError: null });
 		await this.#read(client);
 	}
@@ -139,7 +139,7 @@ export class AccountService {
 		this.#set({ switchingOrganization: true, organizationError: null });
 		try {
 			await client.setOrganization(organizationId);
-			await client.dispose().catch(() => undefined);
+			await client.reloadLocation().catch(() => undefined);
 		} catch (error) {
 			this.#set({
 				organizationError: {
@@ -162,7 +162,7 @@ export class AccountService {
 		const current = () => attempt === this.#attempt;
 		this.#set({ deviceSignIn: { status: "initiating" } });
 		try {
-			const { url, instructions } = await client.authorize();
+			const { url, instructions } = await client.connectOAuth();
 			if (!current()) return { signedIn: false };
 			const code = deviceUserCode({ url, instructions });
 			this.#set({
@@ -173,12 +173,12 @@ export class AccountService {
 					expiresIn: DEVICE_CODE_LIFETIME_SECONDS,
 				},
 			});
-			await client.callback(abort.signal);
+			await client.oauthCompleted(abort.signal);
 			if (!current()) return { signedIn: false };
 			// Approval happens in the browser; bring the person back to see it finish.
 			this.#options.focusApp();
 			this.#set({ deviceSignIn: { status: "finishing" } });
-			await client.dispose().catch(() => undefined);
+			await client.reloadLocation().catch(() => undefined);
 			await this.#read(client);
 			if (!current()) return { signedIn: false };
 			this.#set({ deviceSignIn: IDLE });

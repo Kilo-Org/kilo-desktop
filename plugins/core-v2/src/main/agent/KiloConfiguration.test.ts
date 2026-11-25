@@ -13,7 +13,7 @@ import { KiloSkillConfig } from "./KiloSkillConfig.js";
 import type { KiloConfigurationState } from "./types.js";
 
 const NOTHING: KiloConfigurationState = {
-	mcpEntries: {},
+	mcpServers: {},
 	agents: {},
 	commands: {},
 	plugins: {},
@@ -43,8 +43,8 @@ describe("KiloConfiguration", () => {
 		);
 
 	const everything: KiloConfigurationState = {
-		mcpEntries: { tools: { type: "local", command: ["tools"] } },
-		agents: { reviewer: { description: "Reviews", prompt: "Review.", mode: "subagent" } },
+		mcpServers: { tools: { type: "local", command: ["tools"] } },
+		agents: { reviewer: { description: "Reviews", system: "Review.", mode: "subagent" } },
 		commands: { review: { template: "Review $ARGUMENTS" } },
 		plugins: {},
 		skills: {},
@@ -84,7 +84,7 @@ describe("KiloConfiguration", () => {
 		await configuration.set("acme.tools", everything);
 
 		expect(await readConfig()).toEqual({
-			mcp: { servers: everything.mcpEntries },
+			mcp: { servers: everything.mcpServers },
 			agents: { reviewer: { description: "Reviews", system: "Review.", mode: "subagent" } },
 			commands: everything.commands,
 		});
@@ -104,7 +104,7 @@ describe("KiloConfiguration", () => {
 		await configuration.set("acme.tools", everything);
 		await configuration.set("acme.other", {
 			...NOTHING,
-			agents: { other: { description: "Other", prompt: "Other.", mode: "all" } },
+			agents: { other: { description: "Other", system: "Other.", mode: "all" } },
 		});
 		onChanged.mockClear();
 

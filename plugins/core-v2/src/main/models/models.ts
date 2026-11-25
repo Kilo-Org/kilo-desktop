@@ -25,7 +25,7 @@ import {
 } from "./ai-provider-mutations";
 import { fetchGatewayModelDetails, GATEWAY_CATALOG_FRESH_MS } from "./gateway-catalog";
 import type { CreateKiloModelsClient, KiloModelsClient } from "./kilo-models-client";
-import { openModelPreferences, type SavedPreferenceSources } from "./preferences";
+import { openModelPreferences } from "./preferences";
 import { presentEnvNames } from "./present-env";
 
 /**
@@ -66,8 +66,6 @@ export interface ModelsOptions {
 	readonly createClient: CreateKiloModelsClient;
 	/** Reads Kilo's public gateway catalog. */
 	readonly fetch: typeof globalThis.fetch;
-	/** The predecessors' saved preferences, adopted once. */
-	readonly savedPreferences?: SavedPreferenceSources;
 	/** The environment `presentEnv` checks. */
 	readonly env?: NodeJS.ProcessEnv;
 	readonly now?: () => number;
@@ -105,11 +103,7 @@ function accountKey(state: AccountState, previous: AccountKey | undefined): Acco
 export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Promise<void> {
 	const now = options.now ?? Date.now;
 	const emptyListRetryMs = options.emptyListRetryMs ?? 1_000;
-	const preferences = await openModelPreferences(
-		mainHost(sdk).storage,
-		options.savedPreferences ?? {},
-		sdk.logger,
-	);
+	const preferences = openModelPreferences(mainHost(sdk).storage);
 
 	let gatewayRead: Promise<void> | undefined;
 	let reading: Promise<void> | undefined;

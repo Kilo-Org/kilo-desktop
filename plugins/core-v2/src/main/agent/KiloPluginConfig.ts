@@ -23,20 +23,9 @@ function ownershipMarker(sourceId: string, pluginId: string): string {
 	return `// Kilo Desktop managed plugin: ${sourceId}/${pluginId}\n`;
 }
 
-/**
- * Origin named a plugin's source by its short id (`notebook`); kernel plugins
- * contribute as `kilo.notebook`, which adopts the files origin installed.
- */
-function originSourceId(sourceId: string): string | undefined {
-	return sourceId.startsWith("kilo.") ? sourceId.slice("kilo.".length) : undefined;
-}
-
 function isOwnedBy(contents: Buffer, sourceId: string, pluginId: string): boolean {
-	const origin = originSourceId(sourceId);
-	return [sourceId, ...(origin ? [origin] : [])].some((owner) => {
-		const marker = ownershipMarker(owner, pluginId);
-		return contents.toString("utf8", 0, Buffer.byteLength(marker)) === marker;
-	});
+	const marker = ownershipMarker(sourceId, pluginId);
+	return contents.toString("utf8", 0, Buffer.byteLength(marker)) === marker;
 }
 
 async function readIfPresent(filePath: string): Promise<Buffer | undefined> {

@@ -1,4 +1,5 @@
 import type { ServerConnection, UserConfigFile } from "../../contracts";
+import type { KiloAgent, KiloCommand, KiloMcpServer } from "./kilo-config-types";
 
 export type KiloServerConnection = ServerConnection;
 
@@ -14,16 +15,14 @@ export type KiloServerStatus =
 			readonly detail?: string;
 	  };
 
-type KiloConfigEntries = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
-
 /** One source's complete Kilo configuration, each part keyed by its name in Kilo. */
 export interface KiloConfigurationState {
-	/** Kilo config `mcp` entries. */
-	readonly mcpEntries: KiloConfigEntries;
-	/** Kilo config `agent` entries. */
-	readonly agents: KiloConfigEntries;
-	/** Kilo config `command` entries. */
-	readonly commands: KiloConfigEntries;
+	/** Kilo config `mcp.servers` entries. */
+	readonly mcpServers: Readonly<Record<string, KiloMcpServer>>;
+	/** Kilo config `agents` entries. */
+	readonly agents: Readonly<Record<string, KiloAgent>>;
+	/** Kilo config `commands` entries. */
+	readonly commands: Readonly<Record<string, KiloCommand>>;
 	/** Desktop-managed Kilo plugin modules, by absolute path. */
 	readonly plugins: Readonly<Record<string, string>>;
 	/** Skill folders (holding `SKILL.md`), by absolute path. */

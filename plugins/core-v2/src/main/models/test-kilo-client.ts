@@ -67,7 +67,7 @@ export function createFakeKiloClient(
 				fake.calls.remove.push(aiProviderId);
 				fake.calls.order.push("remove");
 			},
-			disposeInstances: async () => {
+			reloadLocation: async () => {
 				fake.calls.dispose += 1;
 			},
 		},

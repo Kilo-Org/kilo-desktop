@@ -15,7 +15,6 @@ export const CONNECTION: KiloServerConnection = {
 export class FakeServer implements AgentServerManager {
 	status: KiloServerStatus = { status: "stopped" };
 	readonly spawns: Record<string, string>[] = [];
-	readonly telemetry: boolean[] = [];
 	readonly endpoints: unknown[] = [];
 	readonly restart = vi.fn(async () => {
 		await this.stop();
@@ -47,9 +46,6 @@ export class FakeServer implements AgentServerManager {
 	}
 	async stop() {
 		this.#set({ status: "stopped" });
-	}
-	async setTelemetryEnabled(enabled: boolean) {
-		this.telemetry.push(enabled);
 	}
 	contributedEnvChangedSinceSpawn() {
 		return (

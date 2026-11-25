@@ -1,30 +1,21 @@
 import path from "node:path";
 
 import type { KiloLogger } from "./KiloServerManager.js";
+import type { KiloMcpServer } from "./kilo-config-types.js";
 import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 
 /**
  * Reconciles the Desktop-owned `mcp.servers.desktop` entry in Desktop's Kilo config.
  * The entry points Kilo at the in-process Streamable HTTP endpoint
  * (`KiloToolEndpoint`). Generic JSONC mutation and ownership tracking live
- * in `KiloConfigManager`; this module only builds the entry and recognizes the
- * stdio relay entries that earlier builds wrote, so they are migrated.
+ * in `KiloConfigManager`; this module only builds the entry.
  */
 
 export const MCP_ENTRY_NAME = "desktop";
-/** kilo.agent wrote the entry first; config ownership is persisted, so the id stays. */
-export const MCP_ENTRY_SOURCE_ID = "kilo.agent";
-const STALE_WEBMCP_RELAY_ENTRY_NAMES = ["anaconda-desktop-relay"] as const;
+/** The source id of kilo.core's own entries in the app-owned Kilo config. */
+export const MCP_ENTRY_SOURCE_ID = "kilo.core";
 
 export type WebMcpChannel = "development" | "preview" | "stable";
-
-/** Stdio relay ids that earlier (v1) builds wrote into the `desktop` MCP entry, one per channel. */
-const LEGACY_STDIO_RELAY_IDS = new Set([
-	"kilo-desktop",
-	"kilo-desktop-preview",
-	"kilo-desktop-dev",
-	"anaconda-agentic-desktop",
-]);
 
 export function webMcpChannelFromStorageDir(storageDir: string): WebMcpChannel {
 	const profile = path.basename(path.dirname(path.dirname(storageDir)));
@@ -37,14 +28,8 @@ export function webMcpChannelFromStorageDir(storageDir: string): WebMcpChannel {
 export const WEBMCP_ENDPOINT_URL_ENV = "KILO_DESKTOP_WEBMCP_URL";
 export const WEBMCP_ENDPOINT_TOKEN_ENV = "KILO_DESKTOP_WEBMCP_TOKEN";
 
-/** The entry in Kilo v2's own shape (`mcp.servers.desktop`). */
-export type WebMcpRelayEntry = Readonly<{
-	type: "remote";
-	url: string;
-	oauth: false;
-	headers: Readonly<Record<string, string>>;
-	codemode: false;
-}>;
+/** The `mcp.servers.desktop` entry. */
+export type WebMcpRelayEntry = Extract<KiloMcpServer, { type: "remote" }>;
 
 const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
 	type: "remote",
@@ -57,23 +42,13 @@ const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
 	codemode: false,
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-/** The stdio relay child (`webmcp-local-relay` run as Node) written by earlier builds. */
-function isLegacyStdioRelayEntry(entry: Record<string, unknown>): boolean {
-	const command = entry.command;
-	if (!Array.isArray(command)) return false;
-	const tokens = command.map(String);
-	if (!tokens.some((token) => token.includes("webmcp-local-relay"))) return false;
-	const relayId = tokens[tokens.indexOf("--relay-id") + 1];
-	return relayId !== undefined && LEGACY_STDIO_RELAY_IDS.has(relayId);
-}
-
+/** Desktop's entry, recognised by its endpoint URL so an unowned copy (its sidecar lost) is adopted. */
 export function isDesktopWebMcpRelayEntry(entry: unknown): boolean {
-	if (!isRecord(entry)) return false;
-	return entry.url === DESKTOP_WEBMCP_ENTRY.url || isLegacyStdioRelayEntry(entry);
+	return (
+		typeof entry === "object" &&
+		entry !== null &&
+		(entry as { url?: unknown }).url === DESKTOP_WEBMCP_ENTRY.url
+	);
 }
 
 export interface ReconcileWebMcpRelayConfigOptions {
@@ -82,7 +57,7 @@ export interface ReconcileWebMcpRelayConfigOptions {
 	readonly enabled?: boolean;
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
 	/** Shares the registration's serialized writer with runtime MCP updates. */
-	readonly kiloConfig?: Pick<KiloConfigManager, "setMcpEntry" | "removeMcpEntry">;
+	readonly kiloConfig?: Pick<KiloConfigManager, "setEntry" | "removeEntry">;
 }
 
 export type WebMcpRelayConfigOutcome =
@@ -119,33 +94,21 @@ export async function reconcileWebMcpRelayConfig(
 	const logger = options.logger ?? { info() {}, warn() {}, error() {} };
 	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(options.configDirectory, logger);
 
+	const adopt = { adoptExisting: isDesktopWebMcpRelayEntry };
 	if (options.enabled === false) {
-		for (const staleName of STALE_WEBMCP_RELAY_ENTRY_NAMES) {
-			// Sequential: every removal edits the same config file.
-			// react-doctor-disable-next-line react-doctor/async-await-in-loop
-			await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, staleName, {
-				adoptExisting: isDesktopWebMcpRelayEntry,
-			});
-		}
 		return mapRemovalOutcome(
-			await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, {
-				adoptExisting: isDesktopWebMcpRelayEntry,
-			}),
+			await kiloConfig.removeEntry("mcp.servers", MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, adopt),
 		);
 	}
 
 	const entry = DESKTOP_WEBMCP_ENTRY;
-	for (const staleName of STALE_WEBMCP_RELAY_ENTRY_NAMES) {
-		// Sequential: every removal edits the same config file.
-		// react-doctor-disable-next-line react-doctor/async-await-in-loop
-		await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, staleName, {
-			adoptExisting: isDesktopWebMcpRelayEntry,
-		});
-	}
-
-	const outcome = await kiloConfig.setMcpEntry(MCP_ENTRY_SOURCE_ID, MCP_ENTRY_NAME, entry, {
-		adoptExisting: isDesktopWebMcpRelayEntry,
-	});
+	const outcome = await kiloConfig.setEntry(
+		"mcp.servers",
+		MCP_ENTRY_SOURCE_ID,
+		MCP_ENTRY_NAME,
+		entry,
+		adopt,
+	);
 	if (outcome.kind !== "written") return outcome;
 	logger.info(`Initialized the Desktop WebMCP entry (${outcome.reason}).`);
 	return { ...outcome, entry };

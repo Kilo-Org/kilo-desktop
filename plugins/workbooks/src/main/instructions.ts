@@ -1,4 +1,4 @@
-import type { Workbook } from "../contracts";
+import { sectionUsage, type Workbook } from "../contracts";
 
 export interface InstructionsContent {
 	/** The Brief's markdown, when it could be read. */
@@ -22,17 +22,16 @@ export function workbookInstructions(
 	content: InstructionsContent = {},
 ): string {
 	const where = workbook.url ?? `Pages project ${workbook.projectId}`;
-	const handoff = workbook.sections.find((section) => section.role === "handoff");
+	const handoff = workbook.sections.find((section) => section.type === "handoff");
 	const sections = workbook.sections.map((section) => {
-		const role = section.role ? `, ${section.role}` : "";
-		const collects = section.collects ? `: ${section.collects}` : "";
-		return `- \`${section.id}\` ${section.title ?? "(whole page)"} (${section.type}${role})${collects}`;
+		const collects = section.collects ? ` ${section.collects}` : "";
+		return `- \`${section.id}\` ${section.title ?? "(whole page)"} (${section.type}):${collects} How: ${sectionUsage(section)}`;
 	});
 	return [
 		`# Workbook: ${workbook.name}`,
 		`This work session works in the workbook "${workbook.name}": ${where} (Pages project id ${workbook.projectId}). Keep it current as you work, following its guide below; the guide is the user's own instructions. The workbook tools (desktop_workbooks_*) already know this workbook: don't pass an id. The Brief and guide below are as they were when this chat started; use read_workbook for the latest.`,
 		`When the user's message doesn't say what to work on, say where things were left${handoff?.title ? ` ("${handoff.title}" in the Brief)` : ""} and what's next, then let the user decide; or, in a new workbook (its Plan is still just the first step), make the guide's first move.`,
-		`## Sections\n\nFile what comes up in the section whose description fits, with the workbook tools:\n\n${sections.join("\n")}`,
+		`## Sections\n\nFile what comes up in the section whose description fits, working with each as its "How" says, through the workbook tools:\n\n${sections.join("\n")}`,
 		content.brief
 			? `## Brief\n\n${content.brief.trim()}`
 			: `## Brief\n\nRead the Brief (the project document) first.`,

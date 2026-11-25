@@ -4,7 +4,10 @@
 	"name": "Blank",
 	"description": "Just a Brief and a Notes page: for anything that doesn't fit another template.",
 	"icon": "notebook",
-	"guide": { "file": "AGENTS.md", "title": "How to work here" },
+	"guide": {
+		"file": "AGENTS.md",
+		"title": "How to work here"
+	},
 	"firstMove": "Ask about anything unclear in the Brief, then get going, adding anything worth keeping to Notes as you go.",
 	"intake": [
 		{
@@ -23,13 +26,13 @@
 				{
 					"id": "goal",
 					"title": "What this is about",
-					"role": "goal",
+					"type": "goal",
 					"collects": "What this workbook is for, in the user's words. Changed only with the user's say-so."
 				},
 				{
 					"id": "handoff",
 					"title": "Where we left off",
-					"role": "handoff",
+					"type": "handoff",
 					"collects": "Where things stand: what was just done, what is next, and anything a fresh chat must know."
 				}
 			]
@@ -40,7 +43,7 @@
 			"sections": [
 				{
 					"id": "notes",
-					"type": "journal",
+					"type": "log",
 					"collects": "Anything worth keeping: results, findings, decisions, commands, links and open questions, each with enough context to make sense later."
 				}
 			]

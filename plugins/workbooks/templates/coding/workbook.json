@@ -4,7 +4,10 @@
 	"name": "Coding",
 	"description": "Build or change software in small, verifiable increments: plan, decide, build, review.",
 	"icon": "code",
-	"guide": { "file": "AGENTS.md", "title": "How to work here" },
+	"guide": {
+		"file": "AGENTS.md",
+		"title": "How to work here"
+	},
 	"firstMove": "Refine the Brief (ask about anything missing, propose acceptance criteria and constraints), then draft the Plan as small steps, and stop for the user to confirm before building.",
 	"intake": [
 		{
@@ -28,39 +31,47 @@
 				{
 					"id": "goal",
 					"title": "Goal",
-					"role": "goal",
+					"type": "goal",
 					"collects": "What should be true when this is done, in the user's words. Changed only with the user's say-so."
 				},
 				{
 					"id": "handoff",
 					"title": "Where we left off",
-					"role": "handoff",
+					"type": "handoff",
 					"history": "change-log",
 					"note": "The latest change only; the full history, newest first, is on the Change Log page.",
 					"collects": "Where the work stands: what was just done, what is next, any (you) tasks waiting on the user, and anything a fresh chat must know."
 				},
 				{
+					"id": "activity",
+					"title": "Who's working on what",
+					"type": "activity",
+					"note": "Kept up to date by the workbook tools.",
+					"collects": "Who is working in this workbook right now, and on what."
+				},
+				{
 					"id": "questions",
 					"title": "Open questions",
 					"type": "questions",
-					"collects": "Things only the user can decide. When one is answered, record the decision and the question goes."
+					"collects": "Things only the user can decide. When one is answered, record the decision and the question goes.",
+					"answersTo": "decisions"
 				},
 				{
 					"id": "context",
 					"title": "Context and links",
-					"type": "text",
+					"type": "notes",
 					"collects": "Where things are: the issue, upstream references, entry points in the code, the branch and PR once they exist, local tools and environments."
 				},
 				{
 					"id": "constraints",
 					"title": "Constraints and non-goals",
-					"type": "checklist",
+					"type": "todo",
 					"collects": "Limits the work must respect, and what is deliberately out of scope. The agent proposes them; the user confirms."
 				},
 				{
 					"id": "criteria",
 					"title": "Acceptance criteria",
-					"type": "checklist",
+					"type": "todo",
 					"collects": "Conditions that prove the goal is met, written as what will be true. The agent proposes them; the user confirms."
 				}
 			]
@@ -72,9 +83,10 @@
 				{
 					"id": "plan",
 					"title": "Steps",
-					"role": "plan",
+					"type": "plan",
 					"requires": ["tasks-ticked", "link-or-reason"],
-					"collects": "The work, in order. Each step is sized for one chat and ends in one commit; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you).",
+					"collects": "The work, in order, each step sized for one chat; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you).",
+					"instructions": "Each step ends in one commit: once its tasks are ticked, verify it (tests, lint, type checks), commit it on its own with the step in the message, and mark it done with the commit as its link.",
 					"starter": [
 						{
 							"title": "Refine the Brief and draft this Plan",
@@ -95,7 +107,7 @@
 			"sections": [
 				{
 					"id": "follow-ups",
-					"type": "checklist",
+					"type": "todo",
 					"collects": "Out-of-scope work noticed along the way, never done in the current change. You decide what happens to each one: make it a Plan step, move it to a tracker or another workbook, or drop it."
 				}
 			]
@@ -107,14 +119,14 @@
 				{
 					"id": "decisions",
 					"title": "Decisions",
-					"type": "journal",
+					"type": "log",
 					"fields": ["why", "rejected?"],
 					"collects": "Choices the user made or confirmed, never the agent's own suggestion until confirmed. A reversal is a new decision that supersedes the old one."
 				},
 				{
 					"id": "findings",
 					"title": "Findings",
-					"type": "journal",
+					"type": "log",
 					"fields": ["evidence", "status?"],
 					"collects": "Facts learned while working, with how we know; for a gap or limitation, its status and the step that handles it. A wrong one is superseded, never deleted."
 				}
@@ -126,7 +138,7 @@
 			"sections": [
 				{
 					"id": "change-log",
-					"type": "journal",
+					"type": "log",
 					"order": "newest-first",
 					"collects": "Every handoff, newest first: what was done, what is next, any (you) tasks."
 				}

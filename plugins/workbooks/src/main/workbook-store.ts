@@ -157,11 +157,10 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 				};
 				const read = async (section: WorkbookSectionRef | undefined) =>
 					section ? sectionMarkdown(await pageOf(section), section.heading) : "";
-				const withRole = (role: string) =>
-					workbook.sections.find((section) => section.role === role);
+				const only = (type: string) => workbook.sections.find((section) => section.type === type);
 				const [handoff, plan, questions] = await Promise.all([
-					read(withRole("handoff")),
-					read(withRole("plan")),
+					read(only("handoff")),
+					read(only("plan")),
 					Promise.all(
 						workbook.sections.filter((section) => section.type === "questions").map(read),
 					),

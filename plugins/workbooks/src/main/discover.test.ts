@@ -60,20 +60,21 @@ describe("matchSections", () => {
 
 		expect(matched.guidePageId).toBe("g");
 		expect(summary(matched.sections)).toEqual([
-			["goal", "text", undefined, "Goal"],
-			["handoff", "journal", undefined, "Where we left off"],
+			["goal", "goal", undefined, "Goal"],
+			["handoff", "handoff", undefined, "Where we left off"],
+			["activity", "activity", undefined, "Who's working on what"],
 			["questions", "questions", undefined, "Open questions"],
-			["context", "text", undefined, "Context and links"],
-			["constraints", "checklist", undefined, "Constraints and non-goals"],
-			["criteria", "checklist", undefined, "Acceptance criteria"],
-			["plan", "steps", "p", "Steps"],
-			["follow-ups", "checklist", "u", undefined],
-			["decisions", "journal", "r", "Decisions"],
-			["findings", "journal", "r", "Findings"],
-			["change-log", "journal", "c", undefined],
+			["context", "notes", undefined, "Context and links"],
+			["constraints", "todo", undefined, "Constraints and non-goals"],
+			["criteria", "todo", undefined, "Acceptance criteria"],
+			["plan", "plan", "p", "Steps"],
+			["follow-ups", "todo", "u", undefined],
+			["decisions", "log", "r", "Decisions"],
+			["findings", "log", "r", "Findings"],
+			["change-log", "log", "c", undefined],
 		]);
 		expect(matched.sections.find((section) => section.id === "handoff")).toMatchObject({
-			role: "handoff",
+			type: "handoff",
 			history: "change-log",
 		});
 	});
@@ -84,6 +85,7 @@ describe("matchSections", () => {
 		expect(matched.sections.map((section) => section.id)).toEqual([
 			"goal",
 			"handoff",
+			"activity",
 			"questions",
 			"context",
 			"constraints",
@@ -134,9 +136,9 @@ describe("discoverWorkbooks", () => {
 			url: `https://pages.test/project/${made}`,
 			backend: { kind: "pages-mcp", server: "pages" },
 		});
-		expect(found[0]!.sections.slice(6)).toMatchObject([
+		expect(found[0]!.sections.slice(7)).toMatchObject([
 			{ id: "plan", heading: "Steps" },
-			{ id: "follow-ups", type: "checklist" },
+			{ id: "follow-ups", type: "todo" },
 		]);
 		expect(found[0]!.guidePageId).toEqual(expect.any(String));
 		expect(Date.parse(found[0]!.createdAt)).not.toBeNaN();
@@ -150,7 +152,7 @@ describe("discoverWorkbooks", () => {
 		const projectId = pages.addProject("Clock", "Workbook · Coding (coding)", ["Plan"]);
 		const known = {
 			guidePageId: "guide",
-			sections: [{ id: "plan", title: "Steps", type: "steps" as const, pageId: "p" }],
+			sections: [{ id: "plan", title: "Steps", type: "plan" as const, pageId: "p" }],
 		};
 
 		const [found] = await discoverWorkbooks(pages, {

@@ -27,7 +27,7 @@ describe("createWorkbookContent", () => {
 		expect(created.url).toBe(`https://pages.test/project/${created.projectId}`);
 		const brief = pages.markdown(project.documentId);
 		expect(brief).toMatch(
-			/^## Goal\n\n_What should be true[^\n]*_\n\nFix the bug in the Kilo server\n\n## Where we left off\n\n_The latest change only;[^\n]*_\n\n- Nothing yet\.\n\n## Open questions/,
+			/^## Goal\n\n_What should be true[^\n]*_\n\nFix the bug in the Kilo server\n\n## Where we left off\n\n_The latest change only;[^\n]*_\n\n- Nothing yet\.\n\n## Who's working on what\n\n_Kept up to date by the workbook tools\._\n\n- Nobody right now\.\n\n## Open questions/,
 		);
 		expect(brief).toContain("## Context and links\n\n_Where things are:");
 		expect(brief).toContain("_Not given yet._");
@@ -45,65 +45,27 @@ describe("createWorkbookContent", () => {
 			.map((page) => page.id);
 		expect(guide).toBe(created.guidePageId);
 		expect(
-			created.sections.map(({ id, type, role, pageId, heading }) => ({
-				id,
-				type,
-				role,
-				pageId,
-				heading,
-			})),
+			created.sections.map(({ id, type, pageId, heading }) => [id, type, pageId, heading]),
 		).toEqual([
-			{ id: "goal", type: "text", role: "goal", pageId: undefined, heading: "Goal" },
-			{
-				id: "handoff",
-				type: "journal",
-				role: "handoff",
-				pageId: undefined,
-				heading: "Where we left off",
-			},
-			{
-				id: "questions",
-				type: "questions",
-				role: undefined,
-				pageId: undefined,
-				heading: "Open questions",
-			},
-			{
-				id: "context",
-				type: "text",
-				role: undefined,
-				pageId: undefined,
-				heading: "Context and links",
-			},
-			{
-				id: "constraints",
-				type: "checklist",
-				role: undefined,
-				pageId: undefined,
-				heading: "Constraints and non-goals",
-			},
-			{
-				id: "criteria",
-				type: "checklist",
-				role: undefined,
-				pageId: undefined,
-				heading: "Acceptance criteria",
-			},
-			{ id: "plan", type: "steps", role: "plan", pageId: plan, heading: "Steps" },
-			{
-				id: "follow-ups",
-				type: "checklist",
-				role: undefined,
-				pageId: followUps,
-				heading: undefined,
-			},
-			{ id: "decisions", type: "journal", role: undefined, pageId: record, heading: "Decisions" },
-			{ id: "findings", type: "journal", role: undefined, pageId: record, heading: "Findings" },
-			{ id: "change-log", type: "journal", role: undefined, pageId: changeLog, heading: undefined },
+			["goal", "goal", undefined, "Goal"],
+			["handoff", "handoff", undefined, "Where we left off"],
+			["activity", "activity", undefined, "Who's working on what"],
+			["questions", "questions", undefined, "Open questions"],
+			["context", "notes", undefined, "Context and links"],
+			["constraints", "todo", undefined, "Constraints and non-goals"],
+			["criteria", "todo", undefined, "Acceptance criteria"],
+			["plan", "plan", plan, "Steps"],
+			["follow-ups", "todo", followUps, undefined],
+			["decisions", "log", record, "Decisions"],
+			["findings", "log", record, "Findings"],
+			["change-log", "log", changeLog, undefined],
 		]);
+		expect(created.sections.find((section) => section.id === "questions")).toMatchObject({
+			answersTo: "decisions",
+		});
 		expect(created.sections.find((section) => section.id === "plan")).toMatchObject({
 			requires: ["tasks-ticked", "link-or-reason"],
-			collects: expect.stringContaining("one commit"),
+			instructions: expect.stringContaining("Each step ends in one commit"),
 		});
 		expect(created.sections.find((section) => section.id === "handoff")).toMatchObject({
 			history: "change-log",
@@ -112,7 +74,7 @@ describe("createWorkbookContent", () => {
 			[
 				"## Steps",
 				"",
-				"_The work, in order. Each step is sized for one chat and ends in one commit; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you)._",
+				"_The work, in order, each step sized for one chat; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you)._",
 				"",
 				"- [ ] **1. Refine the Brief and draft this Plan**: the first agent's job.",
 				"  - [ ] Propose acceptance criteria and constraints in the Brief",

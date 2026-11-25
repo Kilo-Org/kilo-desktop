@@ -47,8 +47,7 @@ const input = (overrides: Partial<AddWorkbookInput> = {}): AddWorkbookInput => (
 		{
 			id: "plan",
 			title: "Steps",
-			type: "steps",
-			role: "plan",
+			type: "plan",
 			pageId: "page-plan",
 			heading: "Steps",
 		},
@@ -166,7 +165,7 @@ describe("creating a workbook", () => {
 		});
 		expect(created.id).toBe(created.projectId);
 		expect(pages.projects.get(created.projectId)?.description).toBe("Workbook · Coding (coding)");
-		expect(created.sections).toHaveLength(11);
+		expect(created.sections).toHaveLength(12);
 		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
 	});
 

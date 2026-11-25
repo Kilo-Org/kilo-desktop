@@ -1,5 +1,9 @@
 import type { WorkbookProgress } from "../contracts";
-import { NOTE_LINE, QUESTION_LINE, stepParts } from "./items";
+import { stepParts } from "./inserts/plan";
+import { openQuestions } from "./inserts/questions";
+
+export { handoffEntries } from "./inserts/handoff";
+export { openQuestions };
 
 /** Plan steps from the plan section's markdown, with the status their suffix and checkbox say. */
 export function planSteps(markdown: string): WorkbookProgress["steps"] {
@@ -7,15 +11,6 @@ export function planSteps(markdown: string): WorkbookProgress["steps"] {
 		const step = stepParts(line);
 		return step ? [{ number: step.number, title: step.title, status: step.status }] : [];
 	});
-}
-
-/** The handoff section's entries (its markdown, without its note or the placeholder). */
-export function handoffEntries(markdown: string): string[] {
-	return markdown
-		.split("\n")
-		.filter((line) => /^\s*- /.test(line) && !NOTE_LINE.test(line.trim()))
-		.map((line) => line.replace(/^\s*- /, "").trim())
-		.filter((line) => line && line !== "Nothing yet.");
 }
 
 /** The tasks under the plan's steps: its indented lines. */
@@ -34,11 +29,6 @@ export function openTasks(markdown: string): number {
 /** Unticked review comments filed as tasks: `- [ ] **file or area**: …`. */
 export function openReviewTasks(markdown: string): number {
 	return markdown.split("\n").filter((line) => /^\s*- \[ \] \*\*[^*]+\*\*:/.test(line)).length;
-}
-
-/** Open questions: bold-led bullets ending in "?". */
-export function openQuestions(markdown: string): number {
-	return markdown.split("\n").filter((line) => QUESTION_LINE.test(line.trim())).length;
 }
 
 /** What to suggest working on next: the step in progress, else the first not done. */

@@ -1,13 +1,13 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
 import {
-	sectionType,
 	type TemplatePage,
 	type TemplateSection,
 	type WorkbookSectionRef,
 	type WorkbookTemplate,
 } from "../contracts";
-import { sectionNote, stepLine, taskLine } from "./items";
+import { INSERT_IMPLEMENTATIONS } from "./inserts";
+import { sectionNote } from "./inserts/helpers";
 import type { PagesToolCaller } from "./pages-tools";
 
 export interface NewWorkbookContent {
@@ -44,10 +44,9 @@ export function sectionRef(
 	section: TemplateSection,
 	where: { pageId?: string },
 ): WorkbookSectionRef {
-	const { starter: _, type: __, ...rest } = section;
+	const { starter: _, ...rest } = section;
 	return {
 		...rest,
-		type: sectionType(section),
 		...(where.pageId ? { pageId: where.pageId } : {}),
 		...(section.title ? { heading: section.title } : {}),
 	};
@@ -56,7 +55,7 @@ export function sectionRef(
 /**
  * A new page's markdown: its intro, then each section's heading (none for a
  * whole-page section), the line saying what belongs there, and what it starts
- * with: an intake answer, starter steps, or the handoff's placeholder.
+ * with: an intake answer, or what its insert starts with (a plan's starter steps, the handoff's placeholder).
  */
 export function renderPage(
 	template: WorkbookTemplate,
@@ -70,17 +69,8 @@ export function renderPage(
 		const note = sectionNote(section);
 		if (note) parts.push(note);
 		if (filled.has(section.id)) parts.push(values[section.id]?.trim() || NOT_GIVEN);
-		if (section.starter?.length) {
-			parts.push(
-				section.starter
-					.flatMap((step, index) => [
-						stepLine(index + 1, step.title, step.intent),
-						...step.tasks.map((task) => taskLine(task)),
-					])
-					.join("\n"),
-			);
-		}
-		if (section.role === "handoff") parts.push("- Nothing yet.");
+		const starter = INSERT_IMPLEMENTATIONS[section.type].starter?.(section);
+		if (starter) parts.push(starter);
 	}
 	return parts.join("\n\n");
 }

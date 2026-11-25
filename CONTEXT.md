@@ -43,7 +43,7 @@ plugins/          Bundled plugins, in layers: kernel → kilo.core → kilo.shel
 ├── shell/        @kilo-desktop/plugin-shell kilo.shell: the window and everything the user sees of kilo.core
 ├── terminal/     @kilo-desktop/plugin-terminal kilo.terminal: terminal panes — interactive shells (node-pty) in a work session's folder, drawn in an embedded frame
 ├── work-sessions/ @kilo-desktop/plugin-work-sessions kilo.work-sessions: workspaces, work sessions and their panes, and everything the user sees of them
-├── workbooks/    @kilo-desktop/plugin-workbooks kilo.workbooks: workbooks — what chats learn and decide about a piece of work, kept outside any one chat in sections of fixed types and roles, created from workbook templates (prototype, behind the `workbooks` flag)
+├── workbooks/    @kilo-desktop/plugin-workbooks kilo.workbooks: workbooks — what chats learn and decide about a piece of work, kept outside any one chat in pre-printed sections ("inserts") combined by templates, created from workbook templates (prototype, behind the `workbooks` flag)
 └── workspace-board/ @kilo-desktop/plugin-workspace-board kilo.workspace-board: the workspace board — work sessions organised into named columns, a detachable work sessions view of kilo.work-sessions
 ```
 

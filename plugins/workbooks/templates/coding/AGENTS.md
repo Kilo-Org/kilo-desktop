@@ -17,21 +17,16 @@ Refine the Brief: ask about anything missing, and propose acceptance criteria an
 
 File information the moment it appears, in the section whose description fits. Never leave something worth keeping only in the chat, and never write notes about the chat instead of the thing itself.
 
-Use the workbook tools (`desktop_workbooks_*`): they know which workbook this chat is on, write each section's format, and check its rules. `read_workbook` lists the sections and what each collects.
+Use the workbook tools (`desktop_workbooks_*`). Each section comes with what belongs in it and how to work with it; `read_workbook` lists them.
 
-- Record a decision only once the user has made or confirmed it. A reversal is a new decision that supersedes the old one (`add_item` with `supersedes`).
-- A finding that turns out wrong is superseded, never deleted.
-- When the user answers an open question, use `answer_question` and record the decision in Decisions.
+- Record a decision only once the user has made or confirmed it.
 - Work that belongs to no step is either a new step (in scope, worth a commit) or a follow-up. A task is part of its step and has no commit of its own.
-- Re-cutting the Plan (renaming, reordering, splitting, dropping steps) uses `edit_step`, `move_step`, `add_item` and `remove_item`; steps are renumbered for you.
-- The Goal changes only when the user asks.
 
 ## Working on a plan step
 
 1. Mark it in progress before starting, so other agents can see it is taken.
-2. Keep changes to that step. Tick its tasks as you go, and add any it turns out to need; anything outside it goes to Follow-ups.
-3. When its tasks are ticked (or moved to Follow-ups), verify it (tests, lint, type checks as the repository requires), then **commit it as its own commit**, one commit per plan step, with the step in the message.
-4. Then mark it done with the result and the commit link (or why there is no commit), and record any decisions or findings made along the way.
+2. Keep changes to that step; add any tasks it turns out to need, and put anything outside it in Follow-ups.
+3. Finish it as the Plan's instructions say (one commit per step), and record any decisions or findings made along the way.
 
 A review comment on a finished step reopens it with a new task, or becomes a new step.
 
@@ -44,4 +39,4 @@ People and other agents may be editing at the same time.
 
 ## Before your context runs out, or when you stop
 
-Hand off with `hand_off`: what was done, what is next, any `(you)` tasks waiting on the user, and anything a fresh chat must know. It replaces **Where we left off** and adds the entry to the **Change Log**. Then tell the user the workbook is current and it is safe to start a new chat.
+Hand off, then tell the user the workbook is current and it is safe to start a new chat.

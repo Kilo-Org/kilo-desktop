@@ -5,11 +5,9 @@ import { createPluginHost, type PluginHost } from "@kilo-desktop/kernel/testing/
 
 import manifest from "../../plugin.json";
 import {
-	SECTION_TYPES,
 	WORKBOOKS_DEFINITIONS,
 	WorkbookTemplatePoint,
 	WorkbookTemplates,
-	sectionType,
 	templateSections,
 	type WorkbookTemplateInput,
 } from "../contracts";
@@ -53,7 +51,7 @@ const home = {
 	id: "home",
 	title: "Brief",
 	home: true,
-	sections: [{ id: "dish", title: "Dish", role: "goal" as const }],
+	sections: [{ id: "dish", title: "Dish", type: "goal" as const }],
 };
 
 const recipe: WorkbookTemplateInput = {
@@ -69,11 +67,11 @@ const recipe: WorkbookTemplateInput = {
 			id: "kitchen",
 			title: "Kitchen",
 			sections: [
-				{ id: "method", title: "Method", role: "plan", requires: ["tasks-ticked"] },
+				{ id: "method", title: "Method", type: "plan", requires: ["tasks-ticked"] },
 				{
 					id: "tweaks",
 					title: "Tweaks",
-					type: "journal",
+					type: "log",
 					collects: "Changes tried, and how they turned out.",
 				},
 			],
@@ -81,7 +79,14 @@ const recipe: WorkbookTemplateInput = {
 		{
 			id: "shopping",
 			title: "Shopping list",
-			sections: [{ id: "shopping", type: "checklist", collects: "What to buy." }],
+			sections: [{ id: "shopping", type: "todo", collects: "What to buy." }],
+		},
+		{
+			id: "dish-page",
+			title: "The recipe",
+			sections: [
+				{ id: "recipe", type: "output", history: "tweaks", collects: "The current best version." },
+			],
 		},
 	],
 };
@@ -125,27 +130,22 @@ describe("workbook templates", () => {
 			"Change Log",
 		]);
 		expect(
-			templateSections(coding).map(({ page, section }) => [
-				page.id,
-				section.id,
-				sectionType(section),
-				section.role,
-			]),
+			templateSections(coding).map(({ page, section }) => [page.id, section.id, section.type]),
 		).toEqual([
-			["home", "goal", "text", "goal"],
-			["home", "handoff", "journal", "handoff"],
-			["home", "questions", "questions", undefined],
-			["home", "context", "text", undefined],
-			["home", "constraints", "checklist", undefined],
-			["home", "criteria", "checklist", undefined],
-			["plan", "plan", "steps", "plan"],
-			["follow-ups", "follow-ups", "checklist", undefined],
-			["record", "decisions", "journal", undefined],
-			["record", "findings", "journal", undefined],
-			["change-log", "change-log", "journal", undefined],
+			["home", "goal", "goal"],
+			["home", "handoff", "handoff"],
+			["home", "activity", "activity"],
+			["home", "questions", "questions"],
+			["home", "context", "notes"],
+			["home", "constraints", "todo"],
+			["home", "criteria", "todo"],
+			["plan", "plan", "plan"],
+			["follow-ups", "follow-ups", "todo"],
+			["record", "decisions", "log"],
+			["record", "findings", "log"],
+			["change-log", "change-log", "log"],
 		]);
 		for (const { section } of templateSections(coding)) {
-			expect(SECTION_TYPES).toContain(sectionType(section));
 			expect(section.collects).toEqual(expect.any(String));
 		}
 		expect(templates.getState().issues).toEqual([]);
@@ -157,12 +157,10 @@ describe("workbook templates", () => {
 		const blank = await host.invoke(WorkbookTemplates, "get", { id: "blank" });
 
 		expect(blank.name).toBe("Blank");
-		expect(
-			templateSections(blank).map(({ section }) => [section.id, sectionType(section)]),
-		).toEqual([
-			["goal", "text"],
-			["handoff", "journal"],
-			["notes", "journal"],
+		expect(templateSections(blank).map(({ section }) => [section.id, section.type])).toEqual([
+			["goal", "goal"],
+			["handoff", "handoff"],
+			["notes", "log"],
 		]);
 		await expect
 			.poll(() => templates.getState().templates[1]?.fields)
@@ -197,24 +195,25 @@ describe("workbook templates", () => {
 				throws: () => {
 					throw new Error("can't read it");
 				},
-				untyped: () => withKitchen("untyped", [{ id: "tips", title: "Tips" }]),
+				untyped: () => withKitchen("untyped", [{ id: "tips", title: "Tips", type: "journal" }]),
 				twice: () =>
 					withKitchen("twice", [
-						{ id: "tips", title: "Tips", type: "journal" },
-						{ id: "tips", title: "More", type: "journal" },
+						{ id: "tips", title: "Tips", type: "log" },
+						{ id: "tips", title: "More", type: "log" },
 					]),
 				clashing: () =>
 					withKitchen("clashing", [
-						{ id: "method", title: "Method", type: "journal", role: "plan" },
+						{ id: "method", title: "Method", type: "plan" },
+						{ id: "more", title: "More", type: "plan" },
 					]),
 				misruled: () =>
 					withKitchen("misruled", [
-						{ id: "tips", title: "Tips", type: "journal", requires: ["link-or-reason"] },
+						{ id: "tips", title: "Tips", type: "log", requires: ["link-or-reason"] },
 					]),
 				untitled: () =>
 					withKitchen("untitled", [
-						{ id: "tips", type: "journal" },
-						{ id: "more", title: "More", type: "journal" },
+						{ id: "tips", type: "log" },
+						{ id: "more", title: "More", type: "log" },
 					]),
 				goalless: () => ({
 					...recipe,
@@ -224,14 +223,14 @@ describe("workbook templates", () => {
 							id: "home",
 							title: "Brief",
 							home: true,
-							sections: [{ id: "dish", title: "Dish", type: "text" }],
+							sections: [{ id: "dish", title: "Dish", type: "notes" }],
 						},
 					],
 				}),
 				history: () =>
 					withKitchen("history", [
-						{ id: "where", title: "Where", role: "handoff", history: "method" },
-						{ id: "method", title: "Method", role: "plan" },
+						{ id: "where", title: "Where", type: "handoff", history: "method" },
+						{ id: "method", title: "Method", type: "plan" },
 					]),
 			}),
 		);
@@ -254,13 +253,13 @@ describe("workbook templates", () => {
 		expect(messages[0]).toContain("pages");
 		expect(messages[1]).toContain('"coding" is already taken');
 		expect(messages[2]).toBe("can't read it");
-		expect(messages[3]).toContain('section "tips" needs a type or a role');
+		expect(messages[3]).toContain("Invalid option");
 		expect(messages[4]).toContain('section "tips" appears more than once');
-		expect(messages[5]).toContain("the plan role is a steps section");
-		expect(messages[6]).toContain('"requires" is for steps sections');
+		expect(messages[5]).toContain("only one section can be a plan");
+		expect(messages[6]).toContain('"requires" is for plan sections');
 		expect(messages[7]).toContain('section "tips" needs a title');
-		expect(messages[8]).toContain("a section needs the goal role");
-		expect(messages[9]).toContain('its history "method" must be a journal section');
+		expect(messages[8]).toContain("a template needs a goal section");
+		expect(messages[9]).toContain('its history "method" must be a log section');
 		expect(templates.getState().templates.map((template) => template.id)).toEqual([
 			"coding",
 			"blank",

@@ -146,6 +146,13 @@
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
+				},
+				{
+					"id": "set_activity",
+					"title": "Say what you're working on",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
 				}
 			],
 			"kilo.work-sessions/work-session-action": [
@@ -172,7 +179,8 @@
 						"kilo.workbooks/supersede",
 						"kilo.workbooks/answer_question",
 						"kilo.workbooks/write_section",
-						"kilo.workbooks/hand_off"
+						"kilo.workbooks/hand_off",
+						"kilo.workbooks/set_activity"
 					],
 					"standalone": true,
 					"when": {

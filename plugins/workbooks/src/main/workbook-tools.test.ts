@@ -5,9 +5,9 @@ import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts"
 
 import { SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
 import { bootWorkbooks } from "../test/hosts";
-import { withStatus } from "./items";
+import { withStatus } from "./inserts/plan";
 import { sectionMarkdown } from "./section-scope";
-import { replaceBodyEdits } from "./workbook-writer";
+import { WorkbookWriter, replaceBodyEdits } from "./workbook-writer";
 
 const hosts: PluginHost[] = [];
 
@@ -63,7 +63,7 @@ describe("workbook tools", () => {
 		const on = await boot();
 		await expect
 			.poll(() => on.tools().filter((tool) => tool.pluginId === "kilo.workbooks").length)
-			.toBe(12);
+			.toBe(13);
 
 		const off = await boot({ flag: false });
 		expect(off.tools().filter((tool) => tool.pluginId === "kilo.workbooks")).toEqual([]);
@@ -81,21 +81,21 @@ describe("workbook tools", () => {
 		const sections = brief.sections as {
 			id: string;
 			type: string;
-			role?: string;
 			collects?: string;
 		}[];
-		expect(sections.map((entry) => [entry.id, entry.type, entry.role])).toEqual([
-			["goal", "text", "goal"],
-			["handoff", "journal", "handoff"],
-			["questions", "questions", undefined],
-			["context", "text", undefined],
-			["constraints", "checklist", undefined],
-			["criteria", "checklist", undefined],
-			["plan", "steps", "plan"],
-			["follow-ups", "checklist", undefined],
-			["decisions", "journal", undefined],
-			["findings", "journal", undefined],
-			["change-log", "journal", undefined],
+		expect(sections.map((entry) => [entry.id, entry.type])).toEqual([
+			["goal", "goal"],
+			["handoff", "handoff"],
+			["activity", "activity"],
+			["questions", "questions"],
+			["context", "notes"],
+			["constraints", "todo"],
+			["criteria", "todo"],
+			["plan", "plan"],
+			["follow-ups", "todo"],
+			["decisions", "log"],
+			["findings", "log"],
+			["change-log", "log"],
 		]);
 		expect(sections.find((entry) => entry.id === "findings")).toMatchObject({
 			collects: expect.stringContaining("Facts learned"),
@@ -175,7 +175,7 @@ describe("workbook tools", () => {
 		);
 		await expect(
 			call("set_status", { item: "2", status: "done", result: "shipped" }),
-		).rejects.toThrow("needs its link");
+		).rejects.toThrow("needs a link to what it produced");
 		await expect(
 			call("set_status", { item: "2", status: "done", result: "shipped", link: "abc123" }),
 		).rejects.toThrow("Step 2 still has open tasks: Code");
@@ -260,7 +260,7 @@ describe("workbook tools", () => {
 		);
 	});
 
-	it("keep journals: entries with their fields, newest first where the section says, superseded never deleted", async () => {
+	it("keep logs: entries with their fields, newest first where the section says, superseded never deleted", async () => {
 		const { call, section } = await boot();
 
 		await expect(call("add_item", { section: "decisions", text: "Use SSE" })).rejects.toThrow(
@@ -312,14 +312,14 @@ describe("workbook tools", () => {
 			call("supersede", { section: "findings", item: "telemetry", by: "x" }),
 		).rejects.toThrow('Nothing in Findings matches "telemetry"');
 		await expect(call("supersede", { section: "plan", item: "1", by: "x" })).rejects.toThrow(
-			"isn't a journal",
+			"Plan steps aren't superseded",
 		);
 		await expect(call("remove_item", { section: "findings", item: "telemetry" })).rejects.toThrow(
 			"supersede it instead",
 		);
 	});
 
-	it("keep checklists, on their own page or under a heading, and file questions until they're answered", async () => {
+	it("keep todo lists, on their own page or under a heading, and file questions until they're answered", async () => {
 		const { call, section, host, workbook } = await boot();
 
 		await call("add_item", { section: "follow-ups", text: "Dark mode", detail: "asked for" });
@@ -352,7 +352,6 @@ describe("workbook tools", () => {
 		await expect(
 			call("answer_question", {
 				question: "branch",
-				recordIn: "decisions",
 				text: "The v2 reference is origin/v2",
 				fields: { why: "its AGENTS.md says so" },
 			}),
@@ -364,7 +363,7 @@ describe("workbook tools", () => {
 		expect(section("decisions")).toContain("The v2 reference is origin/v2");
 		await expect(
 			call("answer_question", { question: "windows", recordIn: "follow-ups", text: "No" }),
-		).rejects.toThrow("journal section");
+		).rejects.toThrow("log section");
 		await call("answer_question", { question: "windows" });
 		await expect(
 			host.invoke(Workbooks, "progress", { workbookId: workbook.id }),
@@ -395,11 +394,137 @@ describe("workbook tools", () => {
 		});
 		expect(section("goal")).toMatch(/^_[^\n]*_\n\nFix the bug for good$/);
 		await expect(call("write_section", { section: "plan", markdown: "x" })).rejects.toThrow(
-			"holds items",
+			"The plan holds steps",
 		);
 		await expect(call("add_item", { section: "context", text: "x" })).rejects.toThrow(
 			"write_section",
 		);
+	});
+
+	it("build an output from parts: add, revise, rewrite, noting each change in its history log", async () => {
+		const { call, host, pages } = await boot();
+		const projectId = pages.addProject("Curry", "", ["Recipe", "Changes"]);
+		const [recipe, changes] = pages.pagesOf(projectId).map((entry) => entry.id);
+		const workbook = await host.invoke(Workbooks, "add", {
+			workspaceId: null,
+			name: "Curry",
+			templateId: "recipe",
+			backend: { kind: "pages-mcp", server: "pages" },
+			projectId,
+			sections: [
+				{
+					id: "recipe",
+					type: "output",
+					pageId: recipe!,
+					history: "changes",
+					collects: "The recipe.",
+				},
+				{ id: "changes", type: "log", pageId: changes!, order: "newest-first" },
+			],
+		});
+		const own = { workbookId: workbook.id };
+
+		await call("add_item", {
+			section: "recipe",
+			text: "Ingredients",
+			detail: "- 2 onions",
+			...own,
+		});
+		await call("add_item", {
+			section: "recipe",
+			text: "Method",
+			detail: "1. Fry the onions.",
+			...own,
+		});
+		await expect(
+			call("add_item", { section: "recipe", text: "method", detail: "x", ...own }),
+		).rejects.toThrow('already has "method"');
+		await expect(
+			call("write_section", {
+				section: "recipe",
+				part: "Ingredients",
+				markdown: "- 3 onions",
+				...own,
+			}),
+		).rejects.toThrow("Say what changed in recipe");
+		await call("write_section", {
+			section: "recipe",
+			part: "ingredients",
+			markdown: "- 3 onions\n- 1 chilli",
+			change: "More onion, added chilli",
+			...own,
+		});
+		await call("write_section", {
+			section: "recipe",
+			part: "Serves",
+			markdown: "4",
+			change: "Added servings",
+			...own,
+		});
+
+		expect(pages.markdown(recipe!)).toBe(
+			"## Ingredients\n\n- 3 onions\n- 1 chilli\n\n## Method\n\n1. Fry the onions.\n\n## Serves\n\n4",
+		);
+		expect(pages.markdown(changes!).split("\n")).toEqual([
+			`- **recipe updated.** Added servings. (${today()})`,
+			`- **recipe updated.** More onion, added chilli. (${today()})`,
+			`- **recipe updated.** Added Method. (${today()})`,
+			`- **recipe updated.** Added Ingredients. (${today()})`,
+		]);
+		await call("write_section", {
+			section: "recipe",
+			markdown: "## All\n\nNew",
+			change: "Reshaped",
+			...own,
+		});
+		expect(pages.markdown(recipe!)).toBe("## All\n\nNew");
+		const read = await call("read_workbook", own);
+		expect((read.sections as { id: string; usage: string }[])[0]!.usage).toContain(
+			"Build the result here",
+		);
+		await expect(
+			call("write_section", { section: "context", part: "x", markdown: "y" }),
+		).rejects.toThrow("has no parts");
+	});
+
+	it("show who is working on what: plan steps and set_activity update it, finishing and handing off clear it", async () => {
+		const { call, section } = await boot();
+		const own = (doing?: string) => (doing ? { doing } : {});
+
+		expect(section("activity")).toBe(
+			"_Kept up to date by the workbook tools._\n\n- Nobody right now.",
+		);
+		await call("set_status", { item: "1", status: "in_progress" });
+		expect(section("activity")).toMatch(
+			/^_Kept up to date by the workbook tools\._\n\n- \*\*Chat chat\*\*: working on step 1, Refine the Brief and draft this Plan \(since \d{4}-\d{2}-\d{2} \d{2}:\d{2}\)$/,
+		);
+		await call("set_status", { item: "1", status: "blocked", reason: "waiting on the user" });
+		expect(section("activity")).toContain(
+			"blocked on step 1, Refine the Brief and draft this Plan: waiting on the user",
+		);
+		await call("set_activity", own("reviewing PR #42"));
+		expect(section("activity")).toContain("- **Chat chat**: reviewing PR #42 (since ");
+		await call("hand_off", { title: "Paused", text: "Next: step 1." });
+		expect(section("activity")).toBe(
+			"_Kept up to date by the workbook tools._\n\n- Nobody right now.",
+		);
+		await expect(call("add_item", { section: "activity", text: "x" })).rejects.toThrow(
+			"set_activity",
+		);
+	});
+
+	it("drop activity left behind by an agent that stopped without handing off", async () => {
+		const { call, section, pages, workbook } = await boot();
+		await call("set_activity", { doing: "something long ago" });
+		const later = new Date(Date.now() + 13 * 3_600_000);
+
+		await new WorkbookWriter(pages, workbook, today, () => later).setActivity(
+			"Other",
+			"fresh work",
+		);
+
+		expect(section("activity")).not.toContain("something long ago");
+		expect(section("activity")).toContain("- **Other**: fresh work (since ");
 	});
 
 	it("hand off: replace Where we left off, keeping its note, and log each entry newest first", async () => {
@@ -415,7 +540,7 @@ describe("workbook tools", () => {
 
 		expect(brief()).toMatch(
 			new RegExp(
-				`## Where we left off\\n\\n_The latest change only;[^\\n]*_\\n\\n- \\*\\*Step 3 done\\.\\*\\* Next: step 4\\. \\(${today()}\\)\\n\\n## Open questions`,
+				`## Where we left off\\n\\n_The latest change only;[^\\n]*_\\n\\n- \\*\\*Step 3 done\\.\\*\\* Next: step 4\\. \\(${today()}\\)\\n\\n## Who's working on what`,
 			),
 		);
 		expect(brief()).not.toContain("Nothing yet.");
@@ -477,9 +602,7 @@ describe("workbooks whose pages differ from their template", () => {
 			templateId: "custom",
 			backend: { kind: "pages-mcp", server: "pages" },
 			projectId,
-			sections: [
-				{ id: "tasks", title: "Tasks", type: "checklist", pageId: plan!, heading: "Tasks" },
-			],
+			sections: [{ id: "tasks", title: "Tasks", type: "todo", pageId: plan!, heading: "Tasks" }],
 		});
 
 		await call("add_item", { section: "tasks", text: "First", workbookId: bare.id });
@@ -488,7 +611,7 @@ describe("workbooks whose pages differ from their template", () => {
 		expect(pages.markdown(plan!)).toBe("## Tasks\n\n- [ ] First\n- [ ] Second");
 	});
 
-	it("say which sections there are, and which role is missing", async () => {
+	it("say which sections there are, and which insert is missing", async () => {
 		const { call, host, workbook } = await boot();
 		const { id: _, createdAt: __, lastUsedAt: ___, usedIn: ____, ...reference } = workbook;
 		const bare = await host.invoke(Workbooks, "add", {
@@ -496,7 +619,7 @@ describe("workbooks whose pages differ from their template", () => {
 			projectId: "prj_bare",
 			workspaceId: null,
 			name: "Bare",
-			sections: [{ id: "notes", type: "journal", pageId: workbook.guidePageId! }],
+			sections: [{ id: "notes", type: "log", pageId: workbook.guidePageId! }],
 		});
 
 		await expect(call("add_task", { step: "1", text: "x", workbookId: bare.id })).rejects.toThrow(

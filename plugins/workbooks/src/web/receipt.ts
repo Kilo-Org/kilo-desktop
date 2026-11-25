@@ -51,6 +51,9 @@ export function receiptText(
 				: `Answered: ${text(args.question)}${args.recordIn ? ` → ${text(args.recordIn)}` : ""}`;
 		case "write_section":
 			return isError ? `Couldn't write ${text(args.section)}` : `Wrote ${text(args.section)}`;
+		case "set_activity":
+			if (isError) return "Couldn't update activity";
+			return args.doing ? `Activity: ${text(args.doing)}` : "Cleared activity";
 		case "hand_off":
 			return isError ? "Couldn't update Where we left off" : "Updated Where we left off";
 		default:

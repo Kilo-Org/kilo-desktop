@@ -44,6 +44,7 @@ Adapted from the [assistant-ui](https://github.com/assistant-ui/assistant-ui)
 component registry.
 
 - `src/web/thread/attachment.tsx`, `markdown-text.tsx`, `tooltip-icon-button.tsx` and parts of `messages.tsx` ← the registry's `attachment`, `markdown-text`, `tooltip-icon-button` and `thread` components
+- `react-opencode/src/*` (forked, then modified) ← `packages/react-opencode/src/*` at tag `@assistant-ui/react-opencode@0.2.17` (commit `c67168eef015da3885ee22d4f6aae4f624a681b5`); its licence is also in `react-opencode/LICENSE`
 
 License: MIT. Copyright (c) 2026 AgentbaseAI Inc.
 

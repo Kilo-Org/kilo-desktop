@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OpenCodeQuestionRequest } from "@assistant-ui/react-opencode";
+import type { OpenCodeQuestionRequest } from "@kilo-desktop/react-opencode";
 
 import { encodeAnswersFromFormData } from "./opencode-question-card";
 

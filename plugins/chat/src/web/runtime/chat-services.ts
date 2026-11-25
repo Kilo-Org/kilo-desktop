@@ -3,7 +3,7 @@ import {
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeEventSourceLike,
 	type OpenCodeEventSubscriber,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";

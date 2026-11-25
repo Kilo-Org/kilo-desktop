@@ -1,4 +1,4 @@
-import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
+import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createEventBatcher, EVENT_BATCH_INTERVAL_MS } from "./event-batcher";

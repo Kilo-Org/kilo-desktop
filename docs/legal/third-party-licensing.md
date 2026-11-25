@@ -100,3 +100,11 @@ markdown file-link detection (kilo.files) and the page loading progress
 kilo.terminal and kilo.shell. All are credited under t3code's MIT license in
 the packages' notices. Shared shadcn/ui stock components are shadcn's, not
 t3code's.
+
+**assistant-ui's `react-opencode`.** kilo.chat's chat runtime
+(`plugins/chat/react-opencode`) is a fork of `@assistant-ui/react-opencode`
+0.2.17 (MIT), taken from assistant-ui's repository at tag
+`@assistant-ui/react-opencode@0.2.17`. Upstream's `LICENSE` is kept in the
+package, and the fork is credited in kilo.chat's notices. It ships compiled
+into the renderer bundle like the rest of kilo.chat; the npm package no longer
+ships.

@@ -87,7 +87,6 @@ export default defineConfig({
 						"@assistant-ui/react",
 						"@assistant-ui/react-lexical",
 						"@assistant-ui/react-markdown",
-						"@assistant-ui/react-opencode",
 						"@kilocode/sdk/v2/client",
 						"@lexical/react/LexicalComposerContext",
 						"lexical",

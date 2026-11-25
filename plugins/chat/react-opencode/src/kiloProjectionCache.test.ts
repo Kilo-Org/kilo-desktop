@@ -4,12 +4,11 @@ import {
 	projectOpenCodeThreadRepository,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "./index";
 import { describe, expect, it } from "vitest";
 
 /*
- * Projection cache in the pnpm patch (plugins/chat/patches/
- * @assistant-ui__react-opencode@0.2.17.patch): a streamed token re-projects
+ * Projection cache in Desktop's fork (requirement in docs/kilo-v2.md): a streamed token re-projects
  * only the message it changed. Every other message keeps its ThreadMessage,
  * so its components skip the render; that keeps a token's cost flat as the
  * session grows.

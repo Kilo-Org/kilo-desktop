@@ -17,7 +17,7 @@ type RevertPendingValue = {
  * after it dim until the revert lands.
  *
  * Concurrency invariant: `pendingId` can only be set by `RevertToHereButton`.
- * While it is set, `thread.isRunning` is true — the patched controller
+ * While it is set, `thread.isRunning` is true — the forked controller
  * dispatches `run.reverting` for both `revert` and `unrevert`, and
  * `isOpenCodeStateRunning` includes `"reverting"` — which disables the
  * row-restore buttons, the Revert-to-here button itself, and the undo
@@ -26,7 +26,7 @@ type RevertPendingValue = {
  *
  * Clearing channel: `pendingId` is cleared either here (when `boundaryId`
  * matches the clicked message) or in the click handler on HTTP error or
- * boundary mismatch. The patched controller throws when the REST response
+ * boundary mismatch. The forked controller throws when the REST response
  * carries no data, so a resolved `extras.revert()` guarantees that the
  * `session.updated` dispatch already happened synchronously — the boundary
  * lands before this provider re-renders and clears `pendingId` in the same

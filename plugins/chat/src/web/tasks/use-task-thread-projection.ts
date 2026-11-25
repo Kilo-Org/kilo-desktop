@@ -1,4 +1,4 @@
-import { useOpenCodeThreadState } from "@assistant-ui/react-opencode";
+import { useOpenCodeThreadState } from "@kilo-desktop/react-opencode";
 
 import { projectTaskThread } from "./task-projection";
 

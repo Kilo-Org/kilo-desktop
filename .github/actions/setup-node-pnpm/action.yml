@@ -169,7 +169,7 @@ runs:
           echo "apps/*/node_modules"
           echo "packages/*/node_modules"
           echo "plugins/*/node_modules"
-          echo "plugins/chat/opencode-sdk-compat/node_modules"
+          echo "plugins/chat/react-opencode/node_modules"
           echo "examples/*/node_modules"
           echo "e2e/node_modules"
           echo "EOF"

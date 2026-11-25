@@ -5,7 +5,7 @@ import {
 	projectOpenCodeThreadMessages,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "./index";
 
 /**
  * Parity with kilo-vscode (`snapshotProgress` / `isRenderable`): the Kilo

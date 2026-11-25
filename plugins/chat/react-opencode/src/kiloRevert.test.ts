@@ -5,7 +5,7 @@ import {
 	type OpencodeClient,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "./index";
 import { describe, expect, it, vi } from "vitest";
 
 const serverMessage = (
@@ -50,8 +50,7 @@ const stateWithMessages = (
 });
 
 /*
- * `applyRevertVisibility` in the pnpm patch (plugins/chat/patches/
- * @assistant-ui__react-opencode@0.2.17.patch) filters reverted messages with
+ * `applyRevertVisibility` in Desktop's fork (requirement in docs/kilo-v2.md) filters reverted messages with
  * `message.id < revert.messageID` — plain string comparison.  This is safe
  * because the OpenCode server generates message IDs via
  * `Identifier.ascending("message")`: `msg_` + 12-char big-endian timestamp hex
@@ -64,7 +63,7 @@ const stateWithMessages = (
  * The desktop renderer's own index-based `deriveRevertedUserRows` /
  * `useIsAfterPendingBoundary` diverge intentionally: they also serve
  * local/test runtimes with non-monotonic IDs.  A pending revert requires a
- * real OpenCode session, so non-monotonic IDs never reach the patch filter.
+ * real OpenCode session, so non-monotonic IDs never reach the fork's filter.
  */
 describe("projectOpenCodeThreadMessages revert filtering", () => {
 	it("hides the boundary message and everything after it while a revert is pending", () => {
@@ -154,7 +153,7 @@ describe("projectOpenCodeThreadMessages revert filtering", () => {
 		// ("returns rows for ids at and after the boundary using messageOrder
 		// index, not lexicographic comparison"), which returns only "aaa-2".
 		// Ecosystem parity decision: keep lexicographic comparison to match kilo
-		// TUI and VSCode webview.  If the patch is ever changed to index-based
+		// TUI and VSCode webview.  If the fork is ever changed to index-based
 		// filtering this test fails and forces a conscious decision.
 		const state = stateWithMessages(
 			[

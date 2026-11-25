@@ -4,12 +4,11 @@ import {
 	reduceOpenCodeThreadState,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
-} from "@assistant-ui/react-opencode";
+} from "./index";
 import { describe, expect, it } from "vitest";
 
 /*
- * Stop status in the pnpm patch (plugins/chat/patches/
- * @assistant-ui__react-opencode@0.2.17.patch): a stopped turn projects as
+ * Stop status in Desktop's fork (requirement in docs/kilo-v2.md): a stopped turn projects as
  * `incomplete/cancelled` so the transcript says "You stopped" instead of
  * "Worked for" or an error banner.
  */

@@ -1,5 +1,5 @@
 import type { ThreadMessage } from "@assistant-ui/react";
-import type { OpenCodeThreadState } from "@assistant-ui/react-opencode";
+import type { OpenCodeThreadState } from "@kilo-desktop/react-opencode";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;

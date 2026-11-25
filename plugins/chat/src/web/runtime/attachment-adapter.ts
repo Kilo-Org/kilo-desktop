@@ -1,5 +1,5 @@
 import type { PendingAttachment } from "@assistant-ui/react";
-import { OpenCodeAttachmentAdapter } from "@assistant-ui/react-opencode";
+import { OpenCodeAttachmentAdapter } from "@kilo-desktop/react-opencode";
 
 /**
  * OpenCode's attachments, each file read when it is added rather than when

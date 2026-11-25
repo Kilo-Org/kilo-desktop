@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type {
 	OpenCodePermissionRequest,
 	OpenCodeQuestionRequest,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 
 import { isPlanFollowupRequest } from "../plan/plan-followup";
 import { usePendingInteractions } from "./PendingInteractionsContext";

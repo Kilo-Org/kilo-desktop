@@ -330,7 +330,49 @@ model, a `read` tool call) that `golden-turn.test.ts` re-records on every run.
 - Errors decode as tagged objects (`_tag`, `message`, fields) for declared
   statuses; an undeclared status is a `ClientError` (`UnexpectedStatus`).
 
-## Chat renderer (kilo.chat and `@assistant-ui/react-opencode`)
+## Chat renderer (kilo.chat and its react-opencode fork)
+
+Since step 8 the runtime is Desktop's own source package
+`@kilo-desktop/react-opencode` (`plugins/chat/react-opencode`): upstream
+`@assistant-ui/react-opencode@0.2.17` (assistant-ui `c67168ee`) with the old
+pnpm patch applied as source. The patch, the `@opencode-ai/sdk` override and the
+`opencode-sdk-compat` shim are gone; it still uses `@kilocode/sdk` (v1) until
+steps 9–12 rewrite it on `@kilocode/client`.
+
+- Two patch behaviours existed only in the shipped `dist`, not the patch's
+  `src` diff, and were ported by hand: synthetic text shows only while its step
+  runs (with `Initializing snapshot` as `opencode-snapshot-progress`), and a
+  user message's synthetic text is hidden.
+- The fork now goes through the React Compiler (renderer builds and kilo.chat's
+  browser tests). `openCodeExtras.use(…)` is a hook the compiler doesn't
+  recognise, so `useOpenCodePermissions` / `useOpenCodeQuestions` opt out with
+  `"use no memo"`; the compiler skips `useOpenCodeRuntime.ts` on its own. Keep
+  this in mind while rewriting it.
+
+### Patch behaviours: requirements for the v2 rewrite
+
+What Desktop's former patch added to upstream, as requirements rather than code
+to port. Steps 9–12 keep each one on v2 or record a decision to drop it; tick
+each off as its step lands. "Where" is the fork's file today, "Guarded by" the
+tests that pin it (port them to v2 with the behaviour).
+
+| #   | Requirement                                                                                                                        | Where (fork)                                              | Guarded by                                                            | v2 step / note                                                                  |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| R1  | Pluggable backend: global and per-session clients, an injected event subscriber (kilo.chat owns the one stream)                    | `types.ts` `OpenCodeRuntimeBackend`, `useOpenCodeRuntime` | `OpenCodeThreadController.test.ts`                                    | 10, 12: one `@kilocode/client` and one `/api/event` stream                      |
+| R2  | History paging: newest 50, then older pages on demand                                                                              | `OpenCodeThreadController`, `openCodeThreadState`         | `OpenCodeThreadController.test.ts`, `openCodeThreadState.test.ts`     | 10: `message.list` cursors (`cursor.next` goes older in `desc`)                 |
+| R3  | Status sync on load and reconnect, ignoring a reply older than a newer one                                                         | `OpenCodeThreadController`                                | `OpenCodeThreadController.test.ts` (reconnect cases)                  | 10: `session.active` + execution events; no `session.status`                    |
+| R4  | A running thread stays attached when hidden; a hidden idle thread marks itself stale and reloads when shown                        | `OpenCodeThreadController`, `useOpenCodeRuntime`          | `kiloReattach.test.ts`, `useOpenCodeControllerState.browser.test.tsx` | 10                                                                              |
+| R5  | Revert and unrevert applied from the REST response; reverted messages hidden by id order                                           | `openCodeThreadState`, projection                         | `kiloRevert.test.ts`                                                  | 10: `session.revert.stage/commit/clear`, `session.revert.staged` events         |
+| R6  | Human permission approvals reply as interactive                                                                                    | `OpenCodeThreadController.replyToPermission`              | `kiloPermissionInteractive.test.ts`                                   | 11: v2 reply is `{ decision, message }`; likely drop the flag (record it)       |
+| R7  | MCP App registry: local apps and `mcpApp` metadata stamp `mcp.app` on tool calls                                                   | `openCodeMessageProjection` (`setLocalMcpApps`)           | kilo.chat `mcp-apps/*` tests                                          | 12: hidden until v2 has MCP resource routes (decision)                          |
+| R8  | A stopped, unfinished or halted-between-steps turn projects as `incomplete/cancelled` ("You stopped")                              | projection (`endsBetweenSteps`)                           | `kiloStopStatus.test.ts`                                              | 9: from `idle { outcome: "interrupted" }` and `session.execution.interrupted`   |
+| R9  | Stable step grouping (tool calls and reasoning under their step)                                                                   | projection (`parentId`)                                   | `openCodeMessageProjection.test.ts`                                   | 9: one assistant message per step                                               |
+| R10 | Hidden background and synthetic messages; synthetic text shows only while its step runs; synthetic text in user messages is hidden | projection                                                | `kiloSnapshotProgress.test.ts`, `openCodeMessageProjection.test.ts`   | 9: v2 `synthetic` messages are their own type                                   |
+| R11 | Projection cache: a streamed token re-projects only the message it touched                                                         | `createOpenCodeProjectionCache`                           | `kiloProjectionCache.test.ts`                                         | 9                                                                               |
+| R12 | Snapshot progress shown as an `opencode-snapshot-progress` data part                                                               | projection                                                | `kiloSnapshotProgress.test.ts`                                        | 9: v2 publishes no snapshot progress note; likely drop (record it)              |
+| R13 | Client-side message queue (pause, reorder, edit, steer), replaceable by the host                                                   | `openCodeMessageQueue`, `messageQueue.create`             | kilo.chat `prompt-queues.test.ts`, `composer-extras.browser.test.tsx` | 10: Desktop's main-process queue stays (decision); fork's built-in queue can go |
+| R14 | One runtime that switches from the optimistic new thread to the live one without remounting                                        | `useOpenCodeRuntime`                                      | kilo.chat `agent-pane.browser.test.tsx` (first send)                  | 10                                                                              |
+| R15 | Session titles mirrored into the thread list, without echoing them back                                                            | `useOpenCodeRuntime`, `openCodeThreadListAdapter`         | kilo.chat chat-pane tests                                             | 10: follow `session.renamed`                                                    |
 
 | v1                                                           | v2                                                                                                                 | Status  |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------- |

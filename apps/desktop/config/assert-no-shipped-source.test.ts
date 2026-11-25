@@ -46,7 +46,7 @@ const workspacePackageNames = [
 	"@kilo-desktop/plugin-terminal",
 	"@kilo-desktop/plugin-workspaces",
 	"@kilo-desktop/ui",
-	"@opencode-ai/sdk",
+	"@third-party/shim",
 ];
 
 function check(buildPath: string): Promise<void> {
@@ -100,12 +100,12 @@ describe("assertNoShippedSource", () => {
 	it("rejects source in workspace packages deployed under a non-workspace scope", async () => {
 		const buildPath = makeBuildPath([
 			...cleanBuild,
-			"node_modules/@opencode-ai/sdk/package.json",
-			"node_modules/@opencode-ai/sdk/src/v2/client.ts",
+			"node_modules/@third-party/shim/package.json",
+			"node_modules/@third-party/shim/src/v2/client.ts",
 		]);
 
 		await expect(check(buildPath)).rejects.toThrow(
-			path.join("@opencode-ai", "sdk", "src", "v2", "client.ts"),
+			path.join("@third-party", "shim", "src", "v2", "client.ts"),
 		);
 	});
 

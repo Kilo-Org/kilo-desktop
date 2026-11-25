@@ -53,7 +53,7 @@ const PUBLISHED_SHAPE = /^@kilo-desktop\/(?:kernel|ui|plugin-[\w-]+)$/;
 const PRIVATE_LIBRARIES = {
 	"@kilo-desktop/git-client": "@kilo-desktop/plugin-git",
 	"@kilo-desktop/pane-layout": "@kilo-desktop/plugin-work-sessions",
-	"@opencode-ai/sdk": "@kilo-desktop/plugin-chat",
+	"@kilo-desktop/react-opencode": "@kilo-desktop/plugin-chat",
 };
 const BUILTINS = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
 

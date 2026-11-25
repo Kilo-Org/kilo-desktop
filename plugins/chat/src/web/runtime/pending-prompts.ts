@@ -2,7 +2,7 @@ import {
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeEventSourceLike,
 	type OpenCodeServerEvent,
-} from "@assistant-ui/react-opencode";
+} from "@kilo-desktop/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;

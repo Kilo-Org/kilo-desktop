@@ -33,13 +33,13 @@ function makePackage(nodeModules: string, packageName: string, files: string[] =
 }
 
 // Mirrors the real workspace: scoped plugins, a package published under a
-// third-party name (the opencode SDK shim), and one that is never deployed.
+// third-party name, and one that is never deployed.
 const workspacePackageNames = [
 	"@kilo-desktop/kernel",
 	"@kilo-desktop/e2e",
 	"@kilo-desktop/plugin-notebook",
 	"@kilo-desktop/plugin-workspaces",
-	"@opencode-ai/sdk",
+	"@third-party/shim",
 ];
 
 function prune(nodeModules: string): Promise<void> {
@@ -175,10 +175,10 @@ describe("pruneProductionDependencies", () => {
 	});
 
 	it("prunes workspace packages deployed under a non-workspace scope", async () => {
-		// The opencode SDK shim is a workspace package published as
-		// `@opencode-ai/sdk`, so scope alone cannot identify our packages.
+		// A workspace package published as `@third-party/shim`: scope alone
+		// cannot identify our packages.
 		const nodeModules = makeNodeModules();
-		const shim = makePackage(nodeModules, "@opencode-ai/sdk", [
+		const shim = makePackage(nodeModules, "@third-party/shim", [
 			"src/v2/client.ts",
 			"tsconfig.json",
 		]);

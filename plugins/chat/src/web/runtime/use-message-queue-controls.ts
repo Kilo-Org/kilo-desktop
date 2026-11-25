@@ -1,5 +1,5 @@
 import { useAuiState } from "@assistant-ui/react";
-import type { OpenCodeMessageQueueControls } from "@assistant-ui/react-opencode";
+import type { OpenCodeMessageQueueControls } from "@kilo-desktop/react-opencode";
 
 const CONTROL_METHODS = [
 	"pause",
@@ -13,7 +13,7 @@ const CONTROL_METHODS = [
 ] as const satisfies readonly (keyof OpenCodeMessageQueueControls)[];
 
 /**
- * Duck-types the queue controls the patched OpenCode runtime publishes on
+ * Duck-types the queue controls the forked OpenCode runtime publishes on
  * `thread.extras.messageQueue`. Non-OpenCode and test runtimes have none, so
  * the queue shelf falls back to send-now/delete only.
  */

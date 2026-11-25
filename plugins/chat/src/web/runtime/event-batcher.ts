@@ -1,4 +1,4 @@
-import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
+import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode";
 
 /*
  * Delivers the window's streamed tokens in batches, at most one per frame.

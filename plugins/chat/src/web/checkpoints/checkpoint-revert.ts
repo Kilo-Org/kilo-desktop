@@ -1,7 +1,7 @@
 import { type useAui, useAuiState, type ThreadMessage } from "@assistant-ui/react";
-import type { OpenCodeServerMessage } from "@assistant-ui/react-opencode";
+import type { OpenCodeServerMessage } from "@kilo-desktop/react-opencode";
 import type { CreateAttachment } from "@assistant-ui/core";
-import type { SnapshotFileDiff } from "@opencode-ai/sdk/v2/client";
+import type { SnapshotFileDiff } from "@kilocode/sdk/v2/client";
 
 import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { userPromptText } from "./retry-failed-prompt";
@@ -31,7 +31,7 @@ export const useRevertWorkspace = ():
 
 /**
  * Raw `session.summary.diffs` array by reference — safe for `Object.is` because
- * the patched runtime replaces `state.session` only on `session.updated` /
+ * the forked runtime replaces `state.session` only on `session.updated` /
  * `history.loaded`, never on streaming deltas. Callers filter/sum during
  * render; deriving here would re-render on every store update.
  */

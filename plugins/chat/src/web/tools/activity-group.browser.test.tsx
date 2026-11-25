@@ -25,7 +25,7 @@ vi.mock("@assistant-ui/react", () => ({
 	useScrollLock: () => () => undefined,
 }));
 
-vi.mock("@assistant-ui/react-opencode", () => ({
+vi.mock("@kilo-desktop/react-opencode", () => ({
 	useOpenCodeQuestions: () => [],
 	useOpenCodePermissions: () => ({ pending: runtime.permissions, reply: vi.fn() }),
 	projectOpenCodeThreadMessages: () => [],

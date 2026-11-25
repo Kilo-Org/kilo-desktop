@@ -1,4 +1,4 @@
-import { setLocalMcpApps } from "@assistant-ui/react-opencode";
+import { setLocalMcpApps } from "@kilo-desktop/react-opencode";
 
 import type { McpAppImplementation } from "../../contracts";
 
@@ -15,7 +15,7 @@ let hostable: ReadonlyMap<string, HostableMcpApp> = new Map();
  * The window's hostable MCP Apps by tool name (the names Kilo calls them by).
  * Remote servers may advertise `_meta.ui` too, but chat only frames widgets
  * contributed here, so nothing else reserves an empty frame. The projection
- * (patched react-opencode) also stamps `mcp.app` on these tools' calls, for
+ * (the react-opencode fork) also stamps `mcp.app` on these tools' calls, for
  * Desktop tools whose wire calls carry no `_meta.ui`.
  */
 export function setHostableMcpApps(apps: ReadonlyMap<string, HostableMcpApp>): void {

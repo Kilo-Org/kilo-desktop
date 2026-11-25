@@ -1,36 +1,47 @@
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { getKiloCliArtifact } from "./cli-distribution/artifacts.js";
 import { kiloInlineConfigContent } from "./kilo-inline-config.js";
+import { bundledKiloExecutable } from "../../test/agent/kilo-executable.js";
 
 const KILO_TIMEOUT_MS = 90_000;
-
-function bundledKiloExecutable(): string | undefined {
-	try {
-		const artifact = getKiloCliArtifact();
-		const packageJson = createRequire(import.meta.url).resolve(
-			`${artifact.packageName}/package.json`,
-		);
-		const executable = path.join(path.dirname(packageJson), "bin", artifact.executable);
-		return existsSync(executable) ? executable : undefined;
-	} catch {
-		return undefined;
-	}
-}
 
 const kiloExecutable = bundledKiloExecutable();
 
 interface PermissionRule {
-	readonly permission: string;
-	readonly pattern: string;
 	readonly action: string;
+	readonly resource: string;
+	readonly effect: string;
+}
+
+interface AgentInfo {
+	readonly id: string;
+	readonly permissions: readonly PermissionRule[];
+}
+
+/**
+ * Kilo v2's `Wildcard.match` (`packages/core/src/util/wildcard.ts`): `*` is any
+ * run of characters, `?` one character, and a trailing ` *` is optional, so
+ * `"tar *"` also matches a bare `tar`.
+ */
+function matches(pattern: string, value: string): boolean {
+	let escaped = pattern
+		.replace(/[.+^${}()|[\]\\]/g, "\\$&")
+		.replace(/\*/g, ".*")
+		.replace(/\?/g, ".");
+	if (escaped.endsWith(" .*")) escaped = `${escaped.slice(0, -3)}( .*)?`;
+	return new RegExp(`^${escaped}$`, "s").test(value);
+}
+
+/** What Kilo v2 decides for a shell command: the last rule that matches wins. */
+function shellEffect(agent: AgentInfo, command: string): string | undefined {
+	return agent.permissions.findLast(
+		(rule) => matches(rule.action, "shell") && matches(rule.resource, command),
+	)?.effect;
 }
 
 describe.skipIf(!kiloExecutable)("Desktop's inline config in the bundled Kilo CLI", () => {
@@ -41,7 +52,7 @@ describe.skipIf(!kiloExecutable)("Desktop's inline config in the bundled Kilo CL
 		home = await mkdtemp(path.join(tmpdir(), "kilo-inline-config-"));
 		project = path.join(home, "project");
 		await mkdir(project);
-		await writeUserConfig({ permission: { bash: "allow" } });
+		await writeUserConfig({ permissions: [{ action: "shell", resource: "*", effect: "allow" }] });
 	});
 
 	afterEach(async () => {
@@ -49,13 +60,14 @@ describe.skipIf(!kiloExecutable)("Desktop's inline config in the bundled Kilo CL
 	});
 
 	async function writeUserConfig(config: object): Promise<void> {
-		const directory = path.join(home, ".config", "kilo");
+		const directory = path.join(home, ".config", "kilo2");
 		await mkdir(directory, { recursive: true });
-		await writeFile(path.join(directory, "kilo.json"), JSON.stringify(config));
+		await writeFile(path.join(directory, "kilo2.json"), JSON.stringify(config));
 	}
 
-	function kilo(args: readonly string[], inlineConfig: string) {
-		return execa(kiloExecutable!, args, {
+	/** The agents Kilo resolves in the project, with every config layer applied. */
+	async function resolvedAgents(inlineConfig: string): Promise<AgentInfo[]> {
+		const result = await execa(kiloExecutable!, ["debug", "agents", "--standalone"], {
 			cwd: project,
 			reject: false,
 			timeout: KILO_TIMEOUT_MS,
@@ -71,56 +83,21 @@ describe.skipIf(!kiloExecutable)("Desktop's inline config in the bundled Kilo CL
 				XDG_CACHE_HOME: path.join(home, "cache"),
 				KILO_DISABLE_AUTOUPDATE: "true",
 				KILO_DISABLE_MODELS_FETCH: "true",
-				KILO_DISABLE_LSP_DOWNLOAD: "true",
 				KILO_CONFIG_CONTENT: inlineConfig,
 			},
 		});
+		expect(result.exitCode, result.stderr).toBe(0);
+		return JSON.parse(result.stdout.slice(result.stdout.indexOf("["))) as AgentInfo[];
 	}
 
-	// `kilo debug agent --tool` runs a tool and rejects it only when a rule
-	// denies it (asks proceed), so the archive rules are turned into denies to
-	// observe, through Kilo's own bash parser and evaluator, which rule wins.
-	function runBash(command: string) {
-		const inlineConfig = kiloInlineConfigContent([], "https://api.kilo.ai").replaceAll(
-			'"ask"',
-			'"deny"',
-		);
-		return kilo(
-			[
-				"debug",
-				"agent",
-				"code",
-				"--tool",
-				"bash",
-				"--params",
-				JSON.stringify({ command, description: "test" }),
-			],
-			inlineConfig,
-		);
-	}
+	it("makes archive commands ask over a user's shell allow, and leaves other commands allowed", async () => {
+		const agents = await resolvedAgents(kiloInlineConfigContent([], "https://api.kilo.ai"));
+		const code = agents.find((agent) => agent.id === "code");
 
-	it("applies the archive rules to a tar extraction into Kilo's config directory, over a user's bash allow", async () => {
-		const extraction = await runBash("tar -xf payload.tar -C ~/.config/kilo");
-		expect(extraction.exitCode).not.toBe(0);
-		expect(extraction.stdout).not.toContain('"result"');
-
-		const echo = await runBash("echo still-allowed");
-		expect(echo.exitCode).toBe(0);
-		expect(echo.stdout).toContain("still-allowed");
-	});
-
-	it("keeps a user's scalar bash allow instead of replacing it with Kilo's default table", async () => {
-		const result = await kilo(
-			["debug", "agent", "code"],
-			kiloInlineConfigContent([], "https://api.kilo.ai"),
-		);
-		expect(result.exitCode).toBe(0);
-		const agent = JSON.parse(result.stdout.slice(result.stdout.indexOf("{"))) as {
-			permission: PermissionRule[];
-		};
-		const bashCatchAll = agent.permission.filter(
-			(rule) => rule.permission === "bash" && rule.pattern === "*",
-		);
-		expect(bashCatchAll.at(-1)?.action).toBe("allow");
+		expect(code).toBeDefined();
+		expect(shellEffect(code!, "tar -xf payload.tar -C ~/.config/kilo2")).toBe("ask");
+		expect(shellEffect(code!, "tar")).toBe("ask");
+		expect(shellEffect(code!, "gunzip payload.gz")).toBe("ask");
+		expect(shellEffect(code!, "echo still-allowed")).toBe("allow");
 	});
 });

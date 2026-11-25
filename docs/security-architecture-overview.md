@@ -2,13 +2,13 @@
 
 ## Document metadata
 
-| Field            | Value                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code |
-| Document version | 1.4                                                                                        |
-| Document owner   | Kilo engineering                                                                           |
-| Codebase version | General review: 0195dc5b (2026-11-10); notebook helper update: 2026-11-13                  |
-| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes          |
+| Field            | Value                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code     |
+| Document version | 1.5                                                                                            |
+| Document owner   | Kilo engineering                                                                               |
+| Codebase version | General review: 0195dc5b (2026-11-10); notebook helper update: 2026-11-13; Kilo v2: 2026-11-25 |
+| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes              |
 
 ## Version history
 
@@ -19,6 +19,7 @@
 | 1.2     | 2026-11-09 | Targeted update: frames in application windows have no peer-to-peer (WebRTC) networking or application bridge, and agent-generated pages stay in the frame they were delivered to. |
 | 1.3     | 2026-11-10 | Feature flags: a signed-in Anaconda account's identifier and email join feature-flag evaluation as a linked account.                                                               |
 | 1.4     | 2026-11-13 | Clarified notebook daemon identity verification while moving the embedded runtime to its stable release channel.                                                                   |
+| 1.5     | 2026-11-25 | Agent runtime moves to the Kilo v2 CLI: the application owns its server process, which exits with the application, and Kilo v2 keeps its data and credentials apart from Kilo v1.  |
 
 ## Maintainer agent update prompt
 
@@ -67,7 +68,7 @@ Kilo Desktop is a local application. Customer work happens on the customer's mac
 
 - **Electron shell.** A privileged main process hosts the application. Application windows run sandboxed, context-isolated renderers without Node.js access, and reach privileged operations through a narrow bridge that the main process verifies and validates.
 - **Plugin kernel.** Product features are bundled, first-party plugins on a product-agnostic kernel. Plugins interact through the kernel's declared commands, extension points, and shared objects, and reach host capabilities through permissions declared in their manifests. Application plugins are bundled at build time; marketplace items extend the agent, not the application.
-- **Agent runtime.** Agentic work is performed by the bundled Kilo CLI, which runs as a local process. It holds the user's Kilo account and model-provider credentials, talks to the model providers and MCP servers the user configures, and calls tools the application offers through an authenticated local endpoint.
+- **Agent runtime.** Agentic work is performed by the bundled Kilo CLI (the Kilo v2 release line), which runs as a local process the application starts and which exits with the application. It holds the user's Kilo account and model-provider credentials, talks to the model providers and MCP servers the user configures, and calls tools the application offers through an authenticated local endpoint.
 - **Local helper processes.** Bundled helpers manage Python environments, execute notebooks, and optionally serve models on the device; terminals run interactive shells.
 - **Embedded content.** Remote web pages, agent-generated pages, MCP-supplied interfaces, and embedded tool interfaces are rendered in isolated guest views or frames on dedicated origins.
 - **External services.** The Kilo platform, model providers, Anaconda services, package channels, update distribution, product analytics, crash reporting, feature flags, websites the user opens, and MCP servers the user configures.
@@ -130,7 +131,7 @@ flowchart LR
 | Renderer windows        | Application UI for the bundled plugins                                                           | Sandboxed and context-isolated, without Node.js; content security policy; reach privileged operations through the kernel bridge          |
 | Embedded content        | Browser pane, agent-generated pages, MCP-supplied interfaces, terminal and notebook interfaces   | Isolated guest views or frames on dedicated origins with their own content policies                                                      |
 | Main process and kernel | Kernel, host capabilities, plugin main-process code, agent-tool endpoint                         | Privileged; verifies callers, validates calls, enforces declared permissions                                                             |
-| Kilo CLI                | Agent runtime: chats, model calls, MCP servers, Kilo credentials                                 | Local process reached over an authenticated loopback channel; runs agent actions with the user's privileges                              |
+| Kilo CLI                | Agent runtime: chats, model calls, MCP servers, Kilo credentials                                 | Local process owned by the application, reached over an authenticated loopback channel; runs agent actions with the user's privileges    |
 | Other helper processes  | Environment management, notebook execution, local model serving, terminals, developer tools      | Separate operating-system processes over standard I/O, local sockets, or authenticated loopback channels                                 |
 | Local stores            | Per-plugin storage, CLI data, shared Anaconda credentials, browser session, environments, models | Data at rest on the user's machine, protected by operating-system account permissions                                                    |
 | External services       | Platform, model, package, update, operational, MCP, and web destinations                         | Explicit outbound trust boundaries; TLS for platform and vendor services, and the configured transport for customer-configured endpoints |
@@ -213,7 +214,7 @@ Local helper channels are authenticated rather than trusted by address. The appl
 
 | Credential                        | Holder                                                                                                                                                                                                       |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Kilo account credentials          | Held by the Kilo CLI in its own credential store, shared with other Kilo clients                                                                                                                             |
+| Kilo account credentials          | Held by the Kilo CLI in its own credential store, shared with other Kilo v2 clients and kept apart from Kilo v1's                                                                                            |
 | Model-provider API keys           | Stored through the Kilo CLI; the provider settings page lets the user view or replace a stored key                                                                                                           |
 | Anaconda API key                  | Stored in the Anaconda credential store shared with the Anaconda CLI and conda, in a file or the operating-system keychain according to the shared Anaconda configuration (`Production validation required`) |
 | Helper and agent-tool credentials | Generated per launch; tokens for paired external apps are stored as hashes until the user revokes them                                                                                                       |
@@ -354,7 +355,7 @@ sequenceDiagram
 | Embedded content isolation    | Separate browser session for remote pages; sandboxed frames for agent-generated pages and MCP-supplied interfaces, without peer-to-peer networking; dedicated origins and content policies for embedded interfaces |
 | IPC hardening                 | Sender verification, transport-derived callers, schema validation, declared permissions, and explicit caller checks on sensitive methods                                                                           |
 | Process hardening             | Single-instance lock; Electron fuses that prevent running as Node.js and enforce application archive integrity; packaged builds refuse debugging flags                                                             |
-| Local channel security        | Loopback listeners with per-launch credentials by default; standard I/O where possible; helper identity verification on shared sockets                                                                             |
+| Local channel security        | Loopback listeners with per-launch credentials by default; standard I/O where possible, including tying the agent runtime's lifetime to the application's; helper identity verification on shared sockets          |
 | Agent controls                | Validated application tools; per-tool approval policies; user-controlled permission configuration and auto-approve; application-supplied approval rules for shell commands the CLI cannot otherwise constrain      |
 | Path authorization            | Workspace-folder authorization for file browsing, editing, and git operations (a clone for a new workspace goes only into a folder that does not exist yet); plugin storage confined to each plugin's directory    |
 | Secret handling               | Kilo credentials kept in the CLI; caller-restricted release of credentials, with main-process-only credentials withheld from windows; per-launch helper credentials; logging conventions that exclude credentials  |

@@ -5,9 +5,9 @@ import type { KiloServerConnection, KiloServerStatus } from "../../main/agent/ty
 
 export const CONNECTION: KiloServerConnection = {
 	baseUrl: "http://127.0.0.1:4321",
-	username: "kilo",
+	username: "opencode",
 	password: "secret",
-	version: "7.8.17",
+	version: "0.0.0-v2-239",
 	globalDirectory: "/home",
 };
 
@@ -15,7 +15,6 @@ export const CONNECTION: KiloServerConnection = {
 export class FakeServer implements AgentServerManager {
 	status: KiloServerStatus = { status: "stopped" };
 	readonly spawns: Record<string, string>[] = [];
-	readonly telemetry: boolean[] = [];
 	readonly endpoints: unknown[] = [];
 	readonly restart = vi.fn(async () => {
 		await this.stop();
@@ -47,9 +46,6 @@ export class FakeServer implements AgentServerManager {
 	}
 	async stop() {
 		this.#set({ status: "stopped" });
-	}
-	async setTelemetryEnabled(enabled: boolean) {
-		this.telemetry.push(enabled);
 	}
 	contributedEnvChangedSinceSpawn() {
 		return (

@@ -5,9 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import { kiloInlineConfigContent } from "./kilo-inline-config.js";
 
-const ARCHIVE_COMMANDS_ASK = {
-	"bash*": { "tar *": "ask", "unzip *": "ask", "gzip *": "ask", "gunzip *": "ask" },
-};
+const ARCHIVE_COMMANDS_ASK = [
+	{ action: "shell", resource: "tar *", effect: "ask" },
+	{ action: "shell", resource: "unzip *", effect: "ask" },
+	{ action: "shell", resource: "gzip *", effect: "ask" },
+	{ action: "shell", resource: "gunzip *", effect: "ask" },
+];
 
 describe("Kilo inline config", () => {
 	it("passes plugins to Kilo as file URLs alongside the pinned indexing base", () => {
@@ -15,15 +18,15 @@ describe("Kilo inline config", () => {
 
 		expect(JSON.parse(kiloInlineConfigContent([file], "https://api.kilo.ai"))).toEqual({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
-			permission: ARCHIVE_COMMANDS_ASK,
-			plugin: [pathToFileURL(file).href],
+			permissions: ARCHIVE_COMMANDS_ASK,
+			plugins: [pathToFileURL(file).href],
 		});
 	});
 
 	it("pins the kilo indexing base even when there are no managed plugin files", () => {
 		expect(JSON.parse(kiloInlineConfigContent([], "https://api.kilo.ai"))).toEqual({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
-			permission: ARCHIVE_COMMANDS_ASK,
+			permissions: ARCHIVE_COMMANDS_ASK,
 		});
 	});
 

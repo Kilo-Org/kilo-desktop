@@ -105,7 +105,7 @@ describe("the agent tool gateway", () => {
 		expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
 		expect(endpoint.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 		const config = parse(
-			await readFile(path.join(storage, "agent/runtime/config/kilo/kilo.jsonc"), "utf8"),
+			await readFile(path.join(storage, "agent/runtime/config/kilo2/kilo.jsonc"), "utf8"),
 		) as Record<string, Record<string, unknown>>;
 		expect(config.mcp?.desktop).toEqual({
 			type: "remote",

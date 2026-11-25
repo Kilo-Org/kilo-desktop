@@ -16,11 +16,11 @@ or semantics), **missing** (no v2 equivalent; see [Gaps](#gaps)).
 
 ## Packages and versions
 
-| Package                  | Use                                                       | Version                                |
-| ------------------------ | --------------------------------------------------------- | -------------------------------------- |
-| `@kilocode/client`       | HTTP + SSE client (`OpenCode.make`), typed `client.rpc()` | catalog `kilo-v2` (now `0.0.0-v2-239`) |
-| `@kilocode/schema`       | Wire types and Kilo RPC definitions (`kilocode/*`)        | catalog `kilo-v2`                      |
-| `@kilocode/cli-<target>` | `kilo2` binary per platform                               | `kilo-v2` tag; staged in step 3        |
+| Package                  | Use                                                            | Version                                |
+| ------------------------ | -------------------------------------------------------------- | -------------------------------------- |
+| `@kilocode/client`       | HTTP + SSE client (`OpenCode.make`), typed `client.rpc()`      | catalog `kilo-v2` (now `0.0.0-v2-239`) |
+| `@kilocode/schema`       | Wire types and Kilo RPC definitions (`kilocode/*`)             | catalog `kilo-v2`                      |
+| `@kilocode/cli-<target>` | `kilo2` binary per platform, staged by kilo.core's `fetch-cli` | catalog `kilo-v2`                      |
 
 - Desktop tracks the `kilo-v2` dist-tag. The lockfile fixes each build;
   `pnpm update "@kilocode/*"` moves it forward. Runtime version checks accept
@@ -75,6 +75,25 @@ or semantics), **missing** (no v2 equivalent; see [Gaps](#gaps)).
 | `KILO_EXPERIMENTAL_MCP_APPS`                                                                      | none                                                                                        | missing | See MCP Apps.                                                                                                  |
 | `KILO_TREE_SITTER_WASM_DIR`, `NO_PROXY`, `KILO_DESKTOP_WEBMCP_*`                                  | same                                                                                        | same    | `{env:…}` substitution still works in config.                                                                  |
 | `instance.dispose` + `server.instance.disposed`                                                   | `debug.location.evict({ location })` (204 after disposal) or `location.reload()`            | changed | No event wait needed.                                                                                          |
+
+**What Desktop does** (`KiloServerManager.ts`):
+
+- Spawns `kilo2 serve --hostname 127.0.0.1 --port <n> --stdio --cors <origin>`
+  with stdin piped and held open; stopping closes stdin and only signals the
+  process group when the server hasn't exited.
+- Probes `GET /api/info` with Basic `opencode:<password>`. Any v2 build that
+  answers with a version is accepted; a v1 server fails the probe (404).
+- Passes `KILO_SERVER_PASSWORD`, `KILO_CLIENT=desktop`, `KILO_PLATFORM`,
+  `KILOCODE_FEATURE`, `KILO_MACHINE_ID`, `KILO_API_URL`,
+  `KILO_TREE_SITTER_WASM_DIR`, `KILO_CONFIG_CONTENT` and
+  `KILO2_CONFIG=<app config dir>/kilo2.jsonc` (Desktop's layer over the user's
+  global config; `KILO2_CONFIG_DIR` would replace it). Inherited `KILO2_*` and
+  `OPENCODE_*` variables are dropped.
+- Keeps Kilo's data and cache roots inherited, so chats and credentials are
+  shared with the Kilo v2 CLI and VS Code; state goes under kilo.core's storage.
+- A plugin module in the old v1 shape (`{ id, server }`) is skipped by v2
+  without failing the server or the location, so Desktop's managed plugins stay
+  in the inline config until they are ported.
 
 ## Config (`KiloConfigManager`, inline config, WebMCP relay)
 

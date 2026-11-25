@@ -9,8 +9,9 @@ import { managedKiloPluginDirectory } from "./managed-kilo-plugins";
  * - `agent/` is Kilo's XDG state root (`XDG_STATE_HOME`), what kilo.agent's
  *   whole storage directory used to be;
  * - `agent/runtime/` is the server's working directory, with the app-owned
- *   Kilo config (`config/kilo/kilo.jsonc` and its ownership sidecar) and
- *   Desktop's managed Kilo plugins (`kilo-plugins/`);
+ *   Kilo v2 config (`config/kilo2/`, see `DESKTOP_KILO_CONFIG_FILE`) and
+ *   Desktop's managed Kilo plugins (`kilo-plugins/`). Kilo v1's `config/kilo/`
+ *   beside it is no longer read;
  * - `agent/external-clients.json` is kilo.agent's saved external AI apps,
  *   adopted once into kilo.core's `agent-external-apps` kv namespace.
  */
@@ -35,7 +36,7 @@ export function agentDirectories(storageDirectory: string): AgentDirectories {
 	const runtimeDirectory = path.join(stateDirectory, "runtime");
 	return {
 		runtimeDirectory,
-		configDirectory: path.join(runtimeDirectory, "config", "kilo"),
+		configDirectory: path.join(runtimeDirectory, "config", "kilo2"),
 		managedPluginDirectory: managedKiloPluginDirectory(runtimeDirectory),
 		stateDirectory,
 	};

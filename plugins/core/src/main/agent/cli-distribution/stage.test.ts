@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { KILO_CLI_VERSION, type KiloCliArtifact } from "./artifacts.js";
+import type { KiloCliArtifact } from "./artifacts.js";
 import { stageKiloCli } from "./stage.js";
 
 const temporaryDirectories: string[] = [];
@@ -14,7 +14,7 @@ const artifact: KiloCliArtifact = {
 	packageName: "@kilocode/cli-test",
 	platform: "linux",
 	arch: "x64",
-	executable: "kilo",
+	executable: "kilo2",
 };
 
 afterEach(async () => {
@@ -23,18 +23,21 @@ afterEach(async () => {
 	);
 });
 
-async function createInstalledPackage(): Promise<{ root: string; packageDirectory: string }> {
+async function createInstalledPackage(
+	version = "0.0.0-v2-239",
+): Promise<{ root: string; packageDirectory: string }> {
 	const root = await mkdtemp(path.join(os.tmpdir(), "kilo-cli-stage-test-"));
 	temporaryDirectories.push(root);
 	const packageDirectory = path.join(root, "package");
 	await mkdir(path.join(packageDirectory, "bin", "tree-sitter"), { recursive: true });
-	await writeFile(
-		path.join(packageDirectory, "package.json"),
-		JSON.stringify({ version: KILO_CLI_VERSION }),
-	);
-	await writeFile(path.join(packageDirectory, "bin", "kilo"), "binary");
+	await writeInstalledVersion(packageDirectory, version);
+	await writeFile(path.join(packageDirectory, "bin", "kilo2"), "binary");
 	await writeFile(path.join(packageDirectory, "bin", "tree-sitter", "tree-sitter.wasm"), "wasm");
 	return { root, packageDirectory };
+}
+
+async function writeInstalledVersion(packageDirectory: string, version: string): Promise<void> {
+	await writeFile(path.join(packageDirectory, "package.json"), JSON.stringify({ version }));
 }
 
 async function permissionBits(filePath: string): Promise<number> {
@@ -42,21 +45,36 @@ async function permissionBits(filePath: string): Promise<number> {
 }
 
 describe("stageKiloCli", () => {
-	it("copies an installed native package into executable resources", async () => {
-		const { root, packageDirectory } = await createInstalledPackage();
+	it("copies an installed native package into executable resources, recording its version", async () => {
+		const { root, packageDirectory } = await createInstalledPackage("0.0.0-v2-239");
 		const resourceRoot = path.join(root, "resources");
 
 		const result = await stageKiloCli({ resourceRoot, artifact, packageDirectory });
 
-		expect(result.staged).toBe(true);
-		expect(await readFile(path.join(result.targetDirectory, "bin", "kilo"), "utf8")).toBe("binary");
+		expect(result).toMatchObject({ staged: true, version: "0.0.0-v2-239" });
+		expect(await readFile(path.join(result.targetDirectory, "bin", "kilo2"), "utf8")).toBe(
+			"binary",
+		);
 		expect(
 			JSON.parse(await readFile(path.join(result.targetDirectory, "staged.json"), "utf8")),
 		).toEqual({
-			version: KILO_CLI_VERSION,
+			version: "0.0.0-v2-239",
 			packageName: artifact.packageName,
 			target: artifact.target,
 		});
+	});
+
+	it("keeps a stage of the installed version and replaces one of another version", async () => {
+		const { root, packageDirectory } = await createInstalledPackage("0.0.0-v2-239");
+		const resourceRoot = path.join(root, "resources");
+		await stageKiloCli({ resourceRoot, artifact, packageDirectory });
+
+		const unchanged = await stageKiloCli({ resourceRoot, artifact, packageDirectory });
+		await writeInstalledVersion(packageDirectory, "0.0.0-v2-240");
+		const updated = await stageKiloCli({ resourceRoot, artifact, packageDirectory });
+
+		expect(unchanged).toMatchObject({ staged: false, version: "0.0.0-v2-239" });
+		expect(updated).toMatchObject({ staged: true, version: "0.0.0-v2-240" });
 	});
 
 	// Linux packages install resources as root for a different runtime user, so

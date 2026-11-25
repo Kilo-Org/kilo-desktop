@@ -1,49 +1,50 @@
 import { pathToFileURL } from "node:url";
 
-type PermissionAction = "allow" | "ask" | "deny";
+interface PermissionRule {
+	readonly action: string;
+	readonly resource: string;
+	readonly effect: "allow" | "ask" | "deny";
+}
 
 /**
- * Kilo's built-in bash table allows these archive commands, yet it never
- * checks where they write: `tar -xf x.tar -C ~/.config/kilo` can drop a
- * `kilo.json` that allows every tool, with no prompt. Until the
- * CLI resolves their destinations, Desktop makes them ask.
+ * Kilo's built-in shell rules allow these archive commands, yet it never
+ * checks where they write: `tar -xf x.tar -C ~/.config/kilo2` can drop a
+ * `kilo2.json` that allows every tool, with no prompt. Until the CLI resolves
+ * their destinations, Desktop makes them ask.
  *
- * The rules sit under `bash*`, not `bash`: Kilo deep-merges inline config, so
- * an object under `bash` would replace a user's scalar `"bash": "allow"`
- * (which Kilo writes for existing users) and drop them back to Kilo's default
- * table. `bash*` is a separate key that still matches the `bash` permission,
- * and Kilo evaluates the last matching rule, so these rules come after the
- * defaults and every user or project `bash` rule. `"tar *"` also matches a
- * bare `tar`. A per-agent `agent.<name>.permission` rule and an "always
- * allow" answer to the prompt still take precedence.
+ * Kilo v2 concatenates permission rules from every config layer and applies
+ * the last rule that matches. Inline config loads after the user and project
+ * layers (only admin-managed settings come later), so these rules come after
+ * the built-in defaults and every user or project `shell` rule. `"tar *"`
+ * also matches a bare `tar`.
+ * An "always allow" answer to the prompt still takes precedence.
  */
-const ARCHIVE_COMMAND_PERMISSION: Readonly<Record<string, Record<string, PermissionAction>>> = {
-	"bash*": { "tar *": "ask", "unzip *": "ask", "gzip *": "ask", "gunzip *": "ask" },
-};
+const ARCHIVE_COMMAND_RULES: readonly PermissionRule[] = ["tar", "unzip", "gzip", "gunzip"].map(
+	(command) => ({ action: "shell", resource: `${command} *`, effect: "ask" }),
+);
 
 /**
- * Desktop's inline Kilo config, passed as `KILO_CONFIG_CONTENT`. Kilo
- * deep-merges it after the global, project and `KILO_CONFIG_DIR` configs, so
- * its values win over theirs.
+ * Desktop's inline Kilo config, passed as `KILO_CONFIG_CONTENT`, in Kilo v2's
+ * config keys. Kilo loads it after the global, `KILO2_CONFIG` and project
+ * configs, so its values win over theirs.
  *
- * - Pins the embedder origin, so a project `.kilo/kilo.json` cannot repoint
+ * - Pins the embedder origin, so a project `.kilo2/kilo2.json` cannot repoint
  *   it. The chat/model-list origin is steered by `KILO_API_URL`, not pinned
- *   here: the CLI derives those paths from `provider.kilo.options.baseURL` in
- *   a way no single value serves correctly.
+ *   here.
  * - Loads Desktop's managed plugins (see `managed-kilo-plugins.ts`).
- * - Makes archive commands ask (see `ARCHIVE_COMMAND_PERMISSION`).
+ * - Makes archive commands ask (see `ARCHIVE_COMMAND_RULES`).
  */
 export function kiloInlineConfigContent(pluginFiles: readonly string[], baseUrl: string): string {
 	const config: {
 		indexing: { kilo: { baseUrl: string } };
-		permission: typeof ARCHIVE_COMMAND_PERMISSION;
-		plugin?: string[];
+		permissions: readonly PermissionRule[];
+		plugins?: string[];
 	} = {
 		indexing: { kilo: { baseUrl } },
-		permission: ARCHIVE_COMMAND_PERMISSION,
+		permissions: ARCHIVE_COMMAND_RULES,
 	};
 	if (pluginFiles.length > 0) {
-		config.plugin = pluginFiles.map((file) => pathToFileURL(file).href);
+		config.plugins = pluginFiles.map((file) => pathToFileURL(file).href);
 	}
 	return JSON.stringify(config);
 }

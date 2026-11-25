@@ -56,8 +56,6 @@ export interface AgentServerManager {
 	/** Restarts in place, keeping the address and credentials. */
 	restart(): Promise<KiloServerConnection>;
 	stop(): Promise<void>;
-	/** Restarts a running CLI that can't be told to opt out, so an opt-out always applies. */
-	setTelemetryEnabled(enabled: boolean): Promise<void>;
 	contributedEnvChangedSinceSpawn(): boolean;
 	webMcpEndpointChangedSinceSpawn(): boolean;
 	dispose(): void;
@@ -130,10 +128,9 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * when the running server's env differs). Writes are owned per contributing
  * plugin, so one plugin can never overwrite another's entries or the user's.
  *
- * Telemetry consent comes from `kernel/data-collection`: applied before the
- * first spawn and synced to the running CLI on change. The server manager
- * restarts a CLI that won't accept an opt-out, so a failed sync never leaves
- * it collecting.
+ * Kilo v2 collects no CLI telemetry, so `kernel/data-collection` consent has
+ * nothing to sync to the server; only its installation id is passed, as the
+ * gateway's machine id.
  *
  * Agent tools reach Kilo as its `mcp.desktop` entry, pointing at the tool
  * gateway's endpoint through env vars set at every spawn; config-sync waits
@@ -288,12 +285,6 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 	const serverEnv = trackServerEnv(sdk, { contributedEnv });
 	const { mcpServers, agentExtensions } = trackKiloExtensions(sdk, { configuration });
 
-	const applyConsent = (allowed: boolean) =>
-		server
-			.setTelemetryEnabled(allowed)
-			.catch((error) =>
-				sdk.logger.warn(`Could not update Kilo's telemetry setting: ${errorMessage(error)}`),
-			);
 	const step = async (label: string, run: () => Promise<unknown>) => {
 		try {
 			await run();
@@ -329,7 +320,6 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 	sdk.extensions.implement(KernelService, CONFIG_SYNC, {
 		start: async () => {
 			try {
-				await step("Applying telemetry consent", () => applyConsent(consent()?.allowed === true));
 				await step("Removing legacy Kilo config plugins", () =>
 					removeLegacyKiloConfigPlugins(directories.configDirectory),
 				);
@@ -368,17 +358,9 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 		},
 	});
 
-	let lastAllowed = consent()?.allowed;
-	const stopConsent = sdk.domainObjects.get(KernelDataCollection)?.subscribe((next) => {
-		if (next.allowed === lastAllowed) return;
-		lastAllowed = next.allowed;
-		void applyConsent(next.allowed);
-	});
-
 	sdk.onDispose(() => {
 		disposed = true;
 		clearTimeout(restartTimer);
-		stopConsent?.();
 		providers.dispose();
 		serverEnv.dispose();
 		mcpServers.dispose();

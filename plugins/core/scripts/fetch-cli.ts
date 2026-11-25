@@ -1,5 +1,5 @@
 /**
- * Stages the pinned Kilo CLI into this plugin's `resources/kilo/`.
+ * Stages the installed Kilo v2 CLI (`kilo2`) into this plugin's `resources/kilo/`.
  *
  * Windows signing is an optional host seam: when Azure Key Vault env vars are
  * set, we load `apps/desktop/config/windows-sign.js` from the monorepo root
@@ -8,7 +8,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { KILO_CLI_VERSION, stageKiloCli } from "../src/main/agent/cli-distribution/index.js";
+import { stageKiloCli } from "../src/main/agent/cli-distribution/index.js";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const workspaceRoot = path.resolve(pluginRoot, "../..");
@@ -41,6 +41,6 @@ const result = await stageKiloCli({
 
 console.log(
 	result.staged
-		? `Staged ${result.artifact.packageName}@${KILO_CLI_VERSION} for ${result.artifact.target}.`
-		: `Kilo CLI ${KILO_CLI_VERSION} is already staged for ${result.artifact.target}.`,
+		? `Staged ${result.artifact.packageName}@${result.version} for ${result.artifact.target}.`
+		: `Kilo CLI ${result.version} is already staged for ${result.artifact.target}.`,
 );

@@ -13,7 +13,7 @@ import {
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { getKiloCliArtifact, KILO_CLI_VERSION, type KiloCliArtifact } from "./artifacts.js";
+import { getKiloCliArtifact, type KiloCliArtifact } from "./artifacts.js";
 
 interface CliDistributionManifest {
 	readonly version: string;
@@ -30,6 +30,8 @@ export interface StageKiloCliOptions {
 
 export interface StageKiloCliResult {
 	readonly artifact: KiloCliArtifact;
+	/** The CLI version now staged: the installed package's, which the lockfile fixes. */
+	readonly version: string;
 	readonly staged: boolean;
 	readonly targetDirectory: string;
 }
@@ -67,22 +69,22 @@ function resolvePackageDirectory(packageName: string): string {
 	}
 }
 
+async function installedVersion(packageDirectory: string, packageName: string): Promise<string> {
+	const installed = JSON.parse(
+		await readFile(path.join(packageDirectory, "package.json"), "utf8"),
+	) as { version?: unknown };
+	if (typeof installed.version !== "string" || !installed.version) {
+		throw new Error(`Kilo CLI package ${packageName} has no version. Run pnpm install.`);
+	}
+	return installed.version;
+}
+
 async function stageArtifact(
 	stagingDirectory: string,
+	manifest: CliDistributionManifest,
 	artifact: KiloCliArtifact,
 	packageDirectory: string,
 ): Promise<void> {
-	const installed = JSON.parse(
-		await readFile(path.join(packageDirectory, "package.json"), "utf8"),
-	) as {
-		version?: string;
-	};
-	if (installed.version !== KILO_CLI_VERSION) {
-		throw new Error(
-			`Kilo CLI version mismatch: expected ${KILO_CLI_VERSION}, got ${installed.version ?? "unknown"}.`,
-		);
-	}
-
 	await cp(path.join(packageDirectory, "bin"), path.join(stagingDirectory, "bin"), {
 		recursive: true,
 	});
@@ -91,15 +93,7 @@ async function stageArtifact(
 	}
 	await writeFile(
 		path.join(stagingDirectory, "staged.json"),
-		`${JSON.stringify(
-			{
-				version: KILO_CLI_VERSION,
-				packageName: artifact.packageName,
-				target: artifact.target,
-			} satisfies CliDistributionManifest,
-			null,
-			2,
-		)}\n`,
+		`${JSON.stringify(manifest, null, 2)}\n`,
 	);
 }
 
@@ -125,20 +119,24 @@ async function replaceStaging(targetDirectory: string, stagedDirectory: string):
 }
 
 async function collectExecutables(directory: string): Promise<string[]> {
-	const result: string[] = [];
-	for (const entry of await readdir(directory, { withFileTypes: true })) {
-		const entryPath = path.join(directory, entry.name);
-		if (entry.isDirectory()) result.push(...(await collectExecutables(entryPath)));
-		else if (entry.isFile() && entry.name.toLowerCase().endsWith(".exe")) result.push(entryPath);
-	}
-	return result;
+	const entries = await readdir(directory, { withFileTypes: true });
+	const found = await Promise.all(
+		entries.map(async (entry): Promise<string[]> => {
+			const entryPath = path.join(directory, entry.name);
+			if (entry.isDirectory()) return collectExecutables(entryPath);
+			return entry.isFile() && entry.name.toLowerCase().endsWith(".exe") ? [entryPath] : [];
+		}),
+	);
+	return found.flat();
 }
 
 export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageKiloCliResult> {
 	const artifact = options.artifact ?? getKiloCliArtifact();
 	const targetDirectory = path.join(options.resourceRoot, artifact.target);
+	const packageDirectory =
+		options.packageDirectory ?? resolvePackageDirectory(artifact.packageName);
 	const manifest: CliDistributionManifest = {
-		version: KILO_CLI_VERSION,
+		version: await installedVersion(packageDirectory, artifact.packageName),
 		packageName: artifact.packageName,
 		target: artifact.target,
 	};
@@ -148,11 +146,7 @@ export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageK
 	if (staged) {
 		const stagedDirectory = await mkdtemp(path.join(options.resourceRoot, ".staging-"));
 		try {
-			await stageArtifact(
-				stagedDirectory,
-				artifact,
-				options.packageDirectory ?? resolvePackageDirectory(artifact.packageName),
-			);
+			await stageArtifact(stagedDirectory, manifest, artifact, packageDirectory);
 			await replaceStaging(targetDirectory, stagedDirectory);
 		} finally {
 			await rm(stagedDirectory, { recursive: true, force: true });
@@ -166,9 +160,11 @@ export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageK
 
 	if (artifact.platform === "win32" && options.signExecutable) {
 		for (const executable of await collectExecutables(path.join(targetDirectory, "bin"))) {
+			// One at a time: each call drives the external code-signing service.
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			await options.signExecutable(executable);
 		}
 	}
 
-	return { artifact, staged, targetDirectory };
+	return { artifact, version: manifest.version, staged, targetDirectory };
 }

@@ -3,14 +3,12 @@ import path from "node:path";
 
 import type { KiloGlobalConfigFile } from "./types.js";
 
-/** Mirrors the Kilo CLI's `globalConfigFile()` candidate order. */
-const GLOBAL_CONFIG_CANDIDATES = [
-	"kilo.jsonc",
-	"kilo.json",
-	"opencode.jsonc",
-	"opencode.json",
-	"config.json",
-] as const;
+/**
+ * Mirrors Kilo v2's global write candidates (`KiloConfigFiles.writeCandidates`):
+ * the file it reads last, so the one that wins, comes first. v1's `kilo.json(c)`
+ * is never read by v2.
+ */
+const GLOBAL_CONFIG_CANDIDATES = ["kilo2.jsonc", "kilo2.json"] as const;
 
 async function isFile(filePath: string): Promise<boolean> {
 	try {
@@ -21,8 +19,8 @@ async function isFile(filePath: string): Promise<boolean> {
 }
 
 /**
- * The user's global Kilo config file: the first existing candidate, or the
- * file Kilo would create (`kilo.jsonc`) when none exists yet.
+ * The user's global Kilo config file: the first existing candidate, or
+ * `kilo2.jsonc` (the file Kilo reads last) when none exists yet.
  */
 export async function resolveGlobalConfigFile(directory: string): Promise<KiloGlobalConfigFile> {
 	for (const name of GLOBAL_CONFIG_CANDIDATES) {

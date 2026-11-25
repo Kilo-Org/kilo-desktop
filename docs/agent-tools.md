@@ -4,7 +4,7 @@
 > kilo.core's tool gateway in the main process.
 
 Every tool a plugin contributes to `kilo.core/tool` and implements in its **main** entry is served
-over MCP to the bundled `kilo serve` and, when the user allows it, to external AI apps such as
+over MCP to the bundled `kilo2 serve` and, when the user allows it, to external AI apps such as
 Cursor, Claude Code, VS Code or `mcp-inspector`. Nothing outside the app's plugins can add, rename
 or shadow a tool: the list comes only from the kernel's extension registry.
 
@@ -40,7 +40,7 @@ Related code:
 │   chat + its stamp                  only `external` tools                       │
 └──────┼──────────────────────────────┼───────────────────────────────────────────┘
        ▼ MCP Streamable HTTP          ▼ MCP Streamable HTTP
-   kilo serve (mcp.desktop)        Cursor · Claude Code · VS Code · mcp-inspector · …
+   kilo2 serve (mcp.desktop)       Cursor · Claude Code · VS Code · mcp-inspector · …
 ```
 
 Both endpoints reject any request with an `Origin` header (browsers always send one, MCP clients
@@ -110,7 +110,7 @@ A signed-out person who answers kilo.chat's sign-in card with "Not now" declines
 plugin (`Chats.declineSignInTools` on `kilo.core/chats`): that plugin's `requiresSignIn` tools
 leave both lists, with a `tools/list_changed`, until they sign in or the app restarts.
 
-- **Kilo** reaches tools with a per-start token only `kilo serve` receives. Consent for mutating
+- **Kilo** reaches tools with a per-start token only `kilo2 serve` receives. Consent for mutating
   tools is Kilo's permission rules, set when kilo.core creates a chat: an `ask` rule per
   `approval: "ask"` tool (`toolPermissionRules`), and per tool whatever `kilo.core/tool-approval`
   answers (`ask`, or `reject` for a deny rule). Tool wire names that `kilo.core/chat-config` turns
@@ -126,7 +126,7 @@ leave both lists, with a `tools/list_changed`, until they sign in or the app res
 ## 4. Kilo endpoint
 
 `KiloToolEndpoint` (over the generic `McpHttpServer`) adapts Node `http` to the MCP SDK's
-Web-standard Streamable HTTP transport. Every `kilo serve` restart opens new sessions, so each
+Web-standard Streamable HTTP transport. Every `kilo2 serve` restart opens new sessions, so each
 session gets its own server; beyond 32 sessions the least recently used one is closed and its
 client re-initializes.
 
@@ -182,7 +182,7 @@ out a token).
 - 🔒 Only plugins can contribute tools, through the kernel's extension registry in main. No socket
   accepts tool producers.
 - 🔒 Both endpoints are loopback-only, bearer-protected and reject browser requests.
-- 🔒 The Kilo token is per start and passed only through `kilo serve`'s environment.
+- 🔒 The Kilo token is per start and passed only through `kilo2 serve`'s environment.
 - 🔒 External access is flag-gated and off by default; tokens are per app, revocable, stored as
   hashes; only kilo.core and kilo.shell's settings can pair or change it.
 - 🔒 External apps never receive Kilo caller context, so session-bound tools refuse them.

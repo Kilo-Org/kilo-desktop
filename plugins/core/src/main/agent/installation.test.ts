@@ -6,7 +6,7 @@ import { resolveKiloInstallation } from "./installation.js";
 
 describe("resolveKiloInstallation", () => {
 	it("uses the first injected resource root containing the target binary", () => {
-		const developmentExecutable = path.join("/development", "darwin-arm64", "bin", "kilo");
+		const developmentExecutable = path.join("/development", "darwin-arm64", "bin", "kilo2");
 		expect(
 			resolveKiloInstallation({
 				resourceRoots: ["/packaged", "/development"],

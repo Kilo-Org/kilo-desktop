@@ -15,6 +15,12 @@ catalog:
   # `pnpm update "@kilocode/*"` moves it forward. See docs/kilo-v2.md.
   "@kilocode/client": kilo-v2
   "@kilocode/schema": kilo-v2
+  # The kilo2 binary per desktop target, staged by kilo.core's fetch-cli.
+  "@kilocode/cli-darwin-arm64": kilo-v2
+  "@kilocode/cli-linux-arm64": kilo-v2
+  "@kilocode/cli-linux-x64-baseline": kilo-v2
+  "@kilocode/cli-windows-arm64": kilo-v2
+  "@kilocode/cli-windows-x64-baseline": kilo-v2
   "@playwright/test": 1.65.1
   # Every Sentry package must resolve to the exact @sentry/core pinned by
   # @sentry/electron, so the repo carries a single core.

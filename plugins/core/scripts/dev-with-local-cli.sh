@@ -2,8 +2,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # dev-with-local-cli.sh
 #
-# Build the Kilo CLI from a local checkout and launch the Desktop app pointing
-# at the freshly-built binary. Useful for testing CLI changes end-to-end without
+# Build the Kilo v2 CLI (`kilo2`, kilocode's `v2` branch) from a local checkout
+# and launch the Desktop app pointing at the freshly-built binary. Useful for testing CLI changes end-to-end without
 # publishing a release.
 #
 # All options can be passed as CLI flags or environment variables. CLI flags take
@@ -13,7 +13,7 @@
 # ── Defaults (tweak these for your setup) ─────────────────────────────────────
 
 DEFAULT_KILO_SRC="$HOME/src/kilocode"
-DEFAULT_KILO_ENV="KILO_EXPERIMENTAL_MCP_APPS=true"
+DEFAULT_KILO_ENV=""
 DEFAULT_BUN="$(command -v bun 2>/dev/null || echo "$HOME/.bun/bin/bun")"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
-Build the Kilo CLI from a local source tree and launch the Kilo Desktop
+Build the Kilo v2 CLI from a local source tree and launch the Kilo Desktop
 with the custom binary. Skips the normal prestart plugin-asset preparation
 since the CLI binary is provided directly.
 
@@ -45,9 +45,8 @@ Examples:
   # Point at a different kilocode checkout
   ./plugins/core/scripts/dev-with-local-cli.sh --src ~/forks/kilocode
 
-  # Pass multiple experimental flags
-  ./plugins/core/scripts/dev-with-local-cli.sh \\
-    --env "KILO_EXPERIMENTAL_MCP_APPS=true KILO_EXPERIMENTAL=true"
+  # Pass extra env vars to the CLI process
+  ./plugins/core/scripts/dev-with-local-cli.sh --env "KILO_DISABLE_MODELS_FETCH=true"
 
   # Skip build, just launch with the last-built binary
   ./plugins/core/scripts/dev-with-local-cli.sh --skip-build
@@ -94,14 +93,14 @@ WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET="darwin-arm64" ;;
   Darwin-x86_64) TARGET="darwin-x64"   ;;
-  Linux-x86_64)  TARGET="linux-x64-baseline" ;;
+  Linux-x86_64)  TARGET="linux-x64" ;;
   Linux-aarch64) TARGET="linux-arm64" ;;
   *)
     echo "error: unsupported platform $(uname -s)-$(uname -m)" >&2
     exit 1 ;;
 esac
 
-BUILT_BINARY="$KILO_SRC/packages/opencode/dist/@kilocode/cli-$TARGET/bin/kilo"
+BUILT_BINARY="$KILO_SRC/packages/kilo-cli/dist/cli-$TARGET/bin/kilo2"
 
 # ── Build step ────────────────────────────────────────────────────────────────
 
@@ -113,7 +112,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
     exit 1
   fi
 
-  if [[ ! -d "$KILO_SRC/packages/opencode" ]]; then
+  if [[ ! -d "$KILO_SRC/packages/kilo-cli" ]]; then
     echo "error: Kilo source not found at '$KILO_SRC'" >&2
     echo "  Pass --src /path/to/kilocode" >&2
     exit 1
@@ -125,7 +124,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
   fi
 
   echo "==> Building Kilo CLI from $KILO_SRC ..."
-  "$BUN" run --cwd "$KILO_SRC/packages/opencode" script/build.ts --single --skip-install
+  "$BUN" run --cwd "$KILO_SRC/packages/kilo-cli" script/build.ts --single --skip-install
   echo "==> Built: $BUILT_BINARY"
 else
   echo "==> Skipping build (--skip-build)"

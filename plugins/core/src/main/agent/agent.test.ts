@@ -34,7 +34,7 @@ afterEach(async () => {
 	await cleanUpAgents();
 });
 
-const CONFIG_FILE = "agent/runtime/config/kilo/kilo.jsonc";
+const CONFIG_FILE = "agent/runtime/config/kilo2/kilo.jsonc";
 
 /** A plugin contributing an AI provider it can change later. */
 function aiProviderContributor(id: string, initial: AiProviderConfig | undefined) {
@@ -114,7 +114,7 @@ describe("the Kilo server", () => {
 		await kernel.windowShown();
 
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
-		expect(serverOf(kernel).getState()).toEqual({ status: "ready", version: "7.8.17" });
+		expect(serverOf(kernel).getState()).toEqual({ status: "ready", version: CONNECTION.version });
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
 		expect(config).toMatchObject({ permission: { suggest: "deny" } });
 	});
@@ -208,16 +208,6 @@ describe("the Kilo server", () => {
 		await kernel.stop();
 
 		expect(server.status.status).toBe("stopped");
-	});
-});
-
-describe("telemetry consent", () => {
-	it("applies consent before the first start and follows changes", async () => {
-		const { server, consent } = await boot();
-
-		consent.setState({ ...consent.state, allowed: false });
-
-		await eventually(() => expect(server.telemetry).toEqual([true, false]));
 	});
 });
 
@@ -484,7 +474,7 @@ describe("agent extensions", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const configFile = path.join(storage, CONFIG_FILE);
 		const pluginFile = path.join(storage, "agent/runtime/kilo-plugins/anaconda-notebooks.js");
-		const skillLink = path.join(storage, "agent/runtime/config/kilo/skills/review");
+		const skillLink = path.join(storage, "agent/runtime/config/kilo2/skills/review");
 
 		expect(await readJsonc(configFile)).toMatchObject({
 			mcp: {
@@ -531,7 +521,7 @@ describe("agent extensions", () => {
 	it("leaves the user's own agent of the same name alone", async () => {
 		const notebook = await notebookPlugin();
 		const storage = await tempDir();
-		await mkdir(path.join(storage, "agent/runtime/config/kilo"), { recursive: true });
+		await mkdir(path.join(storage, "agent/runtime/config/kilo2"), { recursive: true });
 		await writeFile(
 			path.join(storage, CONFIG_FILE),
 			JSON.stringify({ agent: { analyst: { prompt: "Mine." } } }),
@@ -573,14 +563,14 @@ describe("the user's config file", () => {
 		const { kernel, storage } = await boot();
 
 		await expect(serverOf(kernel).methods.userConfigFile(undefined)).resolves.toEqual({
-			path: path.join(storage, "user-config", "kilo.jsonc"),
+			path: path.join(storage, "user-config", "kilo2.jsonc"),
 			exists: false,
 		});
 	});
 });
 
 describe("kilo.agent's storage", () => {
-	it("is adopted once, so the app-owned config and Kilo's state survive the upgrade", async () => {
+	it("is adopted once, so Kilo's state and the paired external apps survive the upgrade", async () => {
 		const root = await tempDir();
 		const storage = path.join(root, "plugins", "kilo.core");
 		const legacy = path.join(root, "plugins", "kilo.agent");
@@ -612,8 +602,6 @@ describe("kilo.agent's storage", () => {
 		const { kernel } = await boot([], { storage });
 
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
-		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).toMatchObject({ mcp: { mine: { command: ["mine"] } } });
 		await expect(readFile(path.join(storage, "agent/kilo/model.json"), "utf8")).resolves.toBe("{}");
 		await expect(readFile(path.join(legacy, "external-clients.json"))).rejects.toThrow();
 		expect(kernel.kernelSdk.domainObjects.get(ExternalApps)!.getState()).toMatchObject({

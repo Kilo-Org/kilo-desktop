@@ -2,8 +2,11 @@ import type { AccountState, DeviceSignInState, KiloProfile } from "../../contrac
 
 /** The Kilo CLI's account API, reached through the running server. */
 export interface KiloAccountClient {
+	/** Whether credentials are stored; says nothing about whether Kilo still accepts them. */
 	authStatus(): Promise<{ readonly authenticated: boolean }>;
 	profile(): Promise<KiloProfile>;
+	/** Whether Kilo refuses the stored credentials. */
+	signInRefused(): Promise<boolean>;
 	/** Starts device sign-in; the server opens the browser itself. */
 	authorize(): Promise<{ readonly url: string; readonly instructions?: string | undefined }>;
 	/** Resolves once the person approves in the browser. */
@@ -22,6 +25,7 @@ export const INITIAL_ACCOUNT: AccountState = {
 	signedIn: null,
 	profile: null,
 	profileError: null,
+	signInExpired: false,
 	deviceSignIn: IDLE,
 	organizationError: null,
 	refreshing: false,
@@ -75,6 +79,11 @@ export interface AccountServiceOptions {
  * dropped the credentials (a 401), which is the same outcome. A failed
  * organisation switch stays in `organizationError` until the next switch (or
  * until the server goes away).
+ *
+ * `authStatus` only says credentials are stored, so a failed profile read is
+ * checked further: if Kilo refuses the credentials they are removed and the
+ * account reads signed out with `signInExpired`, which the next successful
+ * read clears. Any other failure stays a `profileError` the person can retry.
  */
 export class AccountService {
 	readonly #options: AccountServiceOptions;
@@ -216,14 +225,41 @@ export class AccountService {
 			return;
 		}
 		try {
-			this.#set({ signedIn: true, profile: await client.profile(), profileError: null });
+			const profile = await client.profile();
+			this.#set({ signedIn: true, profile, profileError: null, signInExpired: false });
 		} catch (error) {
+			if (await this.#refused(client)) {
+				await this.#signOutRefused(client);
+				return;
+			}
 			this.#set({
 				signedIn: true,
 				profile: null,
 				profileError: errorMessage(error, "Could not load your Kilo account"),
 			});
 		}
+	}
+
+	/**
+	 * Whether a failed profile read means Kilo refuses the credentials, not a
+	 * passing failure. Not while a device sign-in may be storing new ones: the
+	 * refused credentials are about to be replaced, and removing them could
+	 * remove the new ones.
+	 */
+	async #refused(client: KiloAccountClient): Promise<boolean> {
+		const status = this.#state.deviceSignIn.status;
+		if (status === "initiating" || status === "waiting") return false;
+		return client.signInRefused().catch(() => false);
+	}
+
+	/**
+	 * Refused credentials leave Kilo with no models at all, where none would
+	 * still list the free ones, so they are removed rather than kept.
+	 */
+	async #signOutRefused(client: KiloAccountClient): Promise<void> {
+		await client.signOut().catch(() => undefined);
+		await client.dispose().catch(() => undefined);
+		this.#set({ signedIn: false, profile: null, profileError: null, signInExpired: true });
 	}
 
 	#set(patch: Partial<AccountState>): void {

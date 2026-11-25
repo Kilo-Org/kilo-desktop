@@ -60,6 +60,8 @@ export const accountStateSchema = z.object({
 	profile: profileSchema.nullable(),
 	/** Signed in, but the profile could not be read. */
 	profileError: z.string().nullable(),
+	/** Kilo stopped accepting the sign-in, so it was signed out; cleared by the next sign-in. */
+	signInExpired: z.boolean(),
 	deviceSignIn: deviceSignInSchema,
 	/** The last organisation switch that failed, until the next switch. */
 	organizationError: z

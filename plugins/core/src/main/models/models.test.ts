@@ -56,6 +56,7 @@ const SIGNED_OUT: AccountState = {
 	signedIn: false,
 	profile: null,
 	profileError: null,
+	signInExpired: false,
 	deviceSignIn: { status: "idle" },
 	organizationError: null,
 	refreshing: false,

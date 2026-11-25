@@ -18,6 +18,8 @@ export interface KiloAccountView {
 	readonly signedIn: boolean | null;
 	readonly profile: KiloProfile | null;
 	readonly profileError: string | null;
+	/** Signed out because Kilo stopped accepting the sign-in. */
+	readonly signInExpired: boolean;
 	readonly deviceSignIn: DeviceSignInState;
 	readonly organizationError: AccountState["organizationError"];
 	readonly refreshing: boolean;
@@ -36,6 +38,7 @@ const UNAVAILABLE: AccountState = {
 	signedIn: null,
 	profile: null,
 	profileError: null,
+	signInExpired: false,
 	deviceSignIn: { status: "idle" },
 	organizationError: null,
 	refreshing: false,
@@ -72,6 +75,7 @@ export function useKiloAccount(): KiloAccountView {
 		signedIn: state.signedIn,
 		profile: state.signedIn ? state.profile : null,
 		profileError: state.profileError,
+		signInExpired: state.signInExpired,
 		deviceSignIn: state.deviceSignIn,
 		organizationError: state.organizationError,
 		refreshing: state.refreshing,

@@ -62,6 +62,7 @@ export function KiloAccountPanel() {
 								showDeviceAuth,
 								signedIn,
 								profileFailed,
+								expired: auth.signInExpired,
 								email,
 							})}
 						</span>
@@ -116,12 +117,14 @@ function kiloDescription(input: {
 	showDeviceAuth: boolean;
 	signedIn: boolean;
 	profileFailed: boolean;
+	expired: boolean;
 	email: string | undefined;
 }): string {
 	if (input.unavailableMessage) return input.unavailableMessage;
 	if (input.showDeviceAuth) return "Finish connecting your Kilo account.";
 	if (input.profileFailed) return "Your account is connected, but its profile could not be loaded.";
 	if (input.signedIn) return `Signed in as ${input.email ?? "your Kilo account"}`;
+	if (input.expired) return "Your sign-in has expired. Sign in again.";
 	return "Not signed in.";
 }
 

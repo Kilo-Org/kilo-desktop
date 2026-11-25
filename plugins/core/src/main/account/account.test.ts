@@ -57,6 +57,8 @@ const CONNECTION: ServerConnection = {
 /** The Kilo CLI's account API: what the app can read and do through the server. */
 class FakeKiloAccount implements KiloAccountClient {
 	authenticated = false;
+	/** Kilo refuses the stored sign-in (it no longer accepts the credential). */
+	refused = false;
 	profileResult: KiloProfile | Error = PROFILE;
 	readonly disposed = vi.fn(async () => {});
 	readonly organizations: (string | null)[] = [];
@@ -70,6 +72,9 @@ class FakeKiloAccount implements KiloAccountClient {
 	async profile() {
 		if (this.profileResult instanceof Error) throw this.profileResult;
 		return this.profileResult;
+	}
+	async signInRefused() {
+		return this.authenticated && this.refused;
 	}
 	async authorize() {
 		return {
@@ -235,7 +240,7 @@ describe("the Kilo account", () => {
 		expect(kernel.kernelSdk.context.get(SIGNED_IN_KEY)).toBe(true);
 	});
 
-	it("reports a profile that cannot be read", async () => {
+	it("reports a profile that cannot be read, keeping the sign-in Kilo still accepts", async () => {
 		const account = new FakeKiloAccount();
 		account.authenticated = true;
 		account.profileResult = new Error("Kilo API unavailable");
@@ -246,9 +251,31 @@ describe("the Kilo account", () => {
 				signedIn: true,
 				profile: null,
 				profileError: "Kilo API unavailable",
+				signInExpired: false,
 			}),
 		);
+		expect(account.authenticated).toBe(true);
 		expect(identityOf(kernel).getState().primary).toBeNull();
+	});
+
+	it("signs out a sign-in Kilo no longer accepts, and says it expired", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		account.refused = true;
+		account.profileResult = new Error("Bad Request");
+		const { kernel } = await boot({ account });
+
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState()).toMatchObject({
+				signedIn: false,
+				signInExpired: true,
+				profile: null,
+				profileError: null,
+			}),
+		);
+		expect(account.authenticated).toBe(false);
+		expect(account.disposed).toHaveBeenCalled();
+		expect(kernel.kernelSdk.context.get(SIGNED_IN_KEY)).toBe(false);
 	});
 
 	it("treats an unreadable sign-in status as signed out", async () => {
@@ -475,6 +502,30 @@ describe("signing in to Kilo", () => {
 		expect(accountOf(kernel).getState().deviceSignIn).toEqual({
 			status: "error",
 			error: "Sign-in failed",
+		});
+	});
+
+	it("clears an expired sign-in once signed in again", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		account.refused = true;
+		account.profileResult = new Error("Bad Request");
+		const { kernel } = await boot({ account });
+		await vi.waitFor(() => expect(accountOf(kernel).getState().signInExpired).toBe(true));
+		account.refused = false;
+		account.profileResult = PROFILE;
+
+		const signingIn = accountOf(kernel).methods.signIn(undefined);
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState().deviceSignIn.status).toBe("waiting"),
+		);
+		account.approve();
+
+		await expect(signingIn).resolves.toEqual({ signedIn: true });
+		expect(accountOf(kernel).getState()).toMatchObject({
+			signedIn: true,
+			signInExpired: false,
+			profile: PROFILE,
 		});
 	});
 

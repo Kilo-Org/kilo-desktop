@@ -6,6 +6,8 @@ import type { KiloAccountClient } from "./account-service";
 const KILO_PROVIDER = "kilo";
 /** Kilo's device sign-in method for its own provider. */
 const DEVICE_METHOD = 0;
+/** How Kilo reports a catalog it refused to list for the stored credentials. */
+const REFUSED = new Set(["unauthorized", "unauthenticated"]);
 
 /** The account API of a running Kilo server, through its SDK. */
 export function createKiloAccountClient(connection: ServerConnection): KiloAccountClient {
@@ -27,6 +29,15 @@ export function createKiloAccountClient(connection: ServerConnection): KiloAccou
 		async profile() {
 			const { data } = await client.kilo.profile({ directory }, options);
 			return data as KiloProfile;
+		},
+		// The profile route reports every failure alike; the model catalog keeps why it failed.
+		// Only an organisation's catalog does: a personal one falls back to the free models,
+		// and the catalog is only fetched again when the server reloads.
+		async signInRefused() {
+			const { data } = await client.provider.list({ directory }, options);
+			return data.failures.some(
+				(failure) => failure.providerID === KILO_PROVIDER && REFUSED.has(failure.kind),
+			);
 		},
 		async authorize() {
 			const { data } = await client.provider.oauth.authorize(

@@ -18,7 +18,6 @@ import {
 	toV2Agent,
 	toV2Command,
 	toV2McpServer,
-	toV2PermissionRule,
 	toV2Provider,
 	type V2Translation,
 } from "./kilo-v2-config-entries.js";
@@ -477,7 +476,7 @@ export class KiloConfigManager {
 	}
 
 	/**
-	 * Owns the `{ action: <v2 tool name>, resource: "*", effect }` rule; a
+	 * Owns the `{ action: <the server's tool name>, resource: "*", effect }` rule; a
 	 * user-authored rule for the same tool is left alone unless it already says the same.
 	 */
 	setPermissionEntry(
@@ -576,7 +575,7 @@ export class KiloConfigManager {
 		if (!toolName.trim()) return { kind: "skipped-error", reason: "permission tool name is empty" };
 		const loaded = await this.#load("permission");
 		if ("error" in loaded) return { kind: "skipped-error", reason: loaded.error };
-		const rule = toV2PermissionRule(toolName, effect);
+		const rule = { action: toolName, resource: "*", effect };
 		const rules = readValue(loaded.root, [PERMISSIONS_KEY]);
 		const list = Array.isArray(rules) ? rules : [];
 		// Desktop's rule for a tool is the first rule for that tool on every resource.

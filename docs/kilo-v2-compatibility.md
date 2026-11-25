@@ -265,10 +265,10 @@ Changes desktop absorbs in the v2 plugin copies (no decision needed):
 
 - New message model and events: the v2 react-opencode copy is a new adapter
   over `session.*` events and the tagged message union.
-- Renamed tools and permission vocabulary mapped onto today's payloads
-  (`shell` → `bash`, `patch` → `apply_patch`, `subagent` → `task`,
-  `resources` → `patterns`, `interactive` for the removed flags), or the
-  renderers learn both.
+- Renamed tools and permission vocabulary: the v2 copies use v2's own names
+  (`shell`, `patch`, `subagent`, `resources`) end to end; only config entries
+  contributed in kilo.core's contract shape (agents' `permission` keys, MCP
+  servers, providers) are converted when written to the v2 config.
 - Questions through Forms; permissions with `decision`; saved "always"
   overriding session `ask` rules.
 - Config writes through `kilocode.settings` in v2 keys; sign-in through

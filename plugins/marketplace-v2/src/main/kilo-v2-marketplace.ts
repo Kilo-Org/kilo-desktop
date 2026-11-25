@@ -7,8 +7,8 @@ import {
 } from "../contracts/index";
 
 /**
- * Kilo v2's Marketplace in the v1 shapes kilo.marketplace's snapshot, install
- * review and settings page use, so those stay as they were.
+ * Kilo v2's Marketplace as kilo.marketplace's contract items, MCP statuses and
+ * installs, for its snapshot, install review and settings page.
  *
  * v2 serves the catalog, installs and removals through the
  * `kilocode.marketplace` RPC (one list per kind; installs keyed by registry,
@@ -20,7 +20,7 @@ import {
  * v2's catalog hides MCP configuration templates; its `preview` renders the
  * entry an install will write. Each MCP option's preview, with every
  * parameter left as its `{{key}}` placeholder (secrets come back redacted),
- * becomes the v1 item's `content`, so the install dialog shows what v2 writes
+ * becomes the contract item's `content`, so the install dialog shows what v2 writes
  * and the reviewed-content check binds to it. Previews are local and cheap.
  */
 
@@ -155,7 +155,7 @@ const isHttpUrl = (value: string | undefined): value is string => {
 const placeholders = (parameters: readonly V2Parameter[]) =>
 	Object.fromEntries(parameters.map((parameter) => [parameter.key, `{{${parameter.key}}}`]));
 
-const v1Parameters = (parameters: readonly V2Parameter[]) =>
+const itemParameters = (parameters: readonly V2Parameter[]) =>
 	parameters.map(({ key, name, placeholder, optional }) => ({
 		key,
 		name,
@@ -163,8 +163,8 @@ const v1Parameters = (parameters: readonly V2Parameter[]) =>
 		...(placeholder ? { placeholder } : {}),
 	}));
 
-/** A v2 MCP status as v1's; v2's `pending` (still connecting) has no v1 counterpart. */
-export function toV1McpStatus(status: { status: string; error?: string }): MarketplaceMcpStatus {
+/** A v2 MCP status as the contract's; v2's `pending` (still connecting) has no contract counterpart. */
+export function toMcpStatus(status: { status: string; error?: string }): MarketplaceMcpStatus {
 	switch (status.status) {
 		case "connected":
 		case "disabled":
@@ -193,7 +193,7 @@ export class KiloV2Marketplace {
 		]);
 		const items = (
 			await Promise.all(
-				catalogs.flatMap((catalog) => catalog.items).map((item) => this.#toV1Item(item, directory)),
+				catalogs.flatMap((catalog) => catalog.items).map((item) => this.#toItem(item, directory)),
 			)
 		).flatMap((item) => (item ? [item] : []));
 		const refs = (scope: V2Scope) =>
@@ -216,7 +216,7 @@ export class KiloV2Marketplace {
 		};
 	}
 
-	async #toV1Item(item: V2Item, directory: string): Promise<MarketplaceItem | undefined> {
+	async #toItem(item: V2Item, directory: string): Promise<MarketplaceItem | undefined> {
 		if (item.kind === "plugin") return undefined;
 		this.#registries.set(`${item.kind}:${item.id}`, item.registry);
 		const base = {
@@ -247,7 +247,7 @@ export class KiloV2Marketplace {
 				...base,
 				type: "mcp",
 				url: isHttpUrl(item.url) ? item.url : CATALOG_FALLBACK_URL,
-				...(item.parameters.length > 0 ? { parameters: v1Parameters(item.parameters) } : {}),
+				...(item.parameters.length > 0 ? { parameters: itemParameters(item.parameters) } : {}),
 				content: await this.#mcpContent(item, directory),
 			};
 		}
@@ -275,7 +275,7 @@ export class KiloV2Marketplace {
 			item.options.map(async (option) => ({
 				name: option.name,
 				content: await preview(option),
-				...(option.parameters.length > 0 ? { parameters: v1Parameters(option.parameters) } : {}),
+				...(option.parameters.length > 0 ? { parameters: itemParameters(option.parameters) } : {}),
 				...(option.prerequisites.length > 0 ? { prerequisites: [...option.prerequisites] } : {}),
 			})),
 		);
@@ -370,7 +370,7 @@ export class KiloV2Marketplace {
 
 	async mcpStatuses(directory: string): Promise<Record<string, MarketplaceMcpStatus>> {
 		const servers = await this.#api.mcpServers(directory);
-		return Object.fromEntries(servers.map((server) => [server.name, toV1McpStatus(server.status)]));
+		return Object.fromEntries(servers.map((server) => [server.name, toMcpStatus(server.status)]));
 	}
 
 	/**

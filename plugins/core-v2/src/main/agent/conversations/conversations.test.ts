@@ -15,7 +15,8 @@ import {
 	ToolApproval,
 } from "../../../contracts";
 import { bootAgent, cleanUpAgents, eventually, tempDir } from "../../../test/agent/boot";
-import { desktopChat, FakeKiloChats, rawChat } from "../../../test/agent/fake-kilo-chats";
+import { desktopChat, FakeKiloChats } from "../../../test/agent/fake-kilo-chats";
+import { kiloEvent } from "../../../test/agent/kilo-events";
 import { FakeServer } from "../../../test/agent/fake-server";
 import { withWorktreeBranch } from ".";
 import type { CreateChatParams, GenerateTextParams } from "./kilo-chat-client";
@@ -97,10 +98,16 @@ async function boot(
 	};
 }
 
-const status = (sessionID: string, type: string) => ({
-	type: "session.status",
-	properties: { sessionID, status: { type } },
-});
+const status = (sessionID: string, type: "busy" | "idle") =>
+	kiloEvent(type === "busy" ? "session.execution.started" : "session.execution.succeeded", {
+		sessionID,
+	});
+const failed = (sessionID: string, message: string) =>
+	kiloEvent("session.execution.failed", { sessionID, error: { type: "APIError", message } });
+const drained = (sessionID: string, token: string) =>
+	kiloEvent("rpc.kilocode.session-drain.drained", { sessionID, token });
+const permissionAsked = (id: string, sessionID: string) =>
+	kiloEvent("permission.asked", { id, sessionID, action: "shell", resources: [] });
 
 describe("chat work completion", () => {
 	it.each(["ses_child", "ses_a"])(
@@ -121,19 +128,14 @@ describe("chat work completion", () => {
 			expect(request).toMatchObject({ directory: "/projects/app", id: "ses_a" });
 			request.resolve();
 			await conversations.methods.abort({ id: stopped });
-			chats.push({ type: "session.drain.interrupted", properties: { sessionID: stopped } });
-			chats.push({
-				type: "session.error",
-				properties: { sessionID: stopped, error: { name: "MessageAbortedError" } },
-			});
+			chats.push(
+				kiloEvent("session.execution.interrupted", { sessionID: stopped, reason: "user" }),
+			);
 			chats.push(status("ses_child", "idle"));
 			await eventually(() => expect(state().chats.ses_child?.activity.status).toBe("idle"));
 			expect(completed).toEqual([]);
 
-			chats.push({
-				type: "session.drained",
-				properties: { sessionID: "ses_a", token: request.token },
-			});
+			chats.push(drained("ses_a", request.token));
 			await eventually(() => expect(completed).toEqual(["ses_a"]));
 			expect(chats.drainRequests).toHaveLength(1);
 		},
@@ -155,13 +157,10 @@ describe("chat work completion", () => {
 			chats.push(status("ses_a", "busy"));
 			chats.push(status("ses_a", "idle"));
 		}
-		const ack = { type: "session.drained", properties: { sessionID: "ses_a", token: first.token } };
+		const ack = drained("ses_a", first.token);
 		chats.push(ack);
 		chats.push(ack);
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Finished" })) },
-		});
+		chats.announce("session.renamed", desktopChat("ses_a", { title: "Finished" }));
 		await eventually(() => expect(state().chats.ses_a?.title).toBe("Finished"));
 		expect(events.filter((event) => event === "turn-ended ses_a")).toHaveLength(3);
 		expect(chats.drainRequests).toHaveLength(1);
@@ -180,20 +179,14 @@ describe("chat work completion", () => {
 		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
 		const first = chats.drainRequests[0]!;
 		chats.push(status("ses_a", "busy"));
-		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Still working" })) },
-		});
+		chats.push(drained("ses_a", first.token));
+		chats.announce("session.renamed", desktopChat("ses_a", { title: "Still working" }));
 		await eventually(() => expect(state().chats.ses_a?.title).toBe("Still working"));
 		expect(completed).toEqual([]);
 		expect(first.signal.aborted).toBe(true);
 		chats.push(status("ses_a", "idle"));
 		await eventually(() => expect(chats.drainRequests).toHaveLength(2));
-		chats.push({
-			type: "session.drained",
-			properties: { sessionID: "ses_a", token: chats.drainRequests[1]!.token },
-		});
+		chats.push(drained("ses_a", chats.drainRequests[1]!.token));
 		await eventually(() => expect(completed).toEqual(["ses_a"]));
 	});
 
@@ -212,14 +205,7 @@ describe("chat work completion", () => {
 			const request = chats.drainRequests[0]!;
 			if (cause === "turn error" || cause === "late error") {
 				if (cause === "turn error") chats.push(status("ses_a", "busy"));
-				chats.push({
-					type: "session.error",
-					properties: {
-						sessionID: "ses_a",
-						error: { name: "APIError", data: { message: "Failed" } },
-					},
-				});
-				chats.push(status("ses_a", "idle"));
+				chats.push(failed("ses_a", "Failed"));
 			} else if (cause === "deletion") {
 				await conversations.methods.delete({ id: "ses_a" });
 			} else if (cause === "server stop") {
@@ -231,10 +217,7 @@ describe("chat work completion", () => {
 				request.reject(new Error("drain refused"));
 			}
 			await eventually(() => expect(request.signal.aborted).toBe(true));
-			chats.push({
-				type: "session.drained",
-				properties: { sessionID: "ses_a", token: request.token },
-			});
+			chats.push(drained("ses_a", request.token));
 			if (cause === "server stop") {
 				await kernel.kernelSdk.domainObjects
 					.get(KernelServices)!
@@ -242,10 +225,7 @@ describe("chat work completion", () => {
 				await whenReady();
 			}
 			if (cause !== "disposal") {
-				chats.push({
-					type: "session.updated",
-					properties: { info: rawChat(desktopChat("ses_marker", { title: "Observed" })) },
-				});
+				chats.announce("session.renamed", desktopChat("ses_marker", { title: "Observed" }));
 				await eventually(() => expect(state().chats.ses_marker?.title).toBe("Observed"));
 			}
 			expect(completed).toEqual([]);
@@ -277,7 +257,7 @@ describe("chat work completion", () => {
 		await eventually(() => expect(chats.subscriptions).toBe(2));
 		expect(first.signal.aborted).toBe(true);
 		expect(chats.drainRequests).toHaveLength(1);
-		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
+		chats.push(drained("ses_a", first.token));
 		releaseHydration();
 		await eventually(() => expect(chats.drainRequests).toHaveLength(2));
 		const second = chats.drainRequests[1]!;
@@ -285,18 +265,12 @@ describe("chat work completion", () => {
 		expect(second.token).not.toBe(first.token);
 		second.resolve();
 		first.reject(new Error("old transport failed"));
-		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Reconnected" })) },
-		});
+		chats.push(drained("ses_a", first.token));
+		chats.announce("session.renamed", desktopChat("ses_a", { title: "Reconnected" }));
 		await eventually(() => expect(state().chats.ses_a?.title).toBe("Reconnected"));
 		expect(completed).toEqual([]);
 		expect(second.signal.aborted).toBe(false);
-		chats.push({
-			type: "session.drained",
-			properties: { sessionID: "ses_a", token: second.token },
-		});
+		chats.push(drained("ses_a", second.token));
 		await eventually(() => expect(completed).toEqual(["ses_a"]));
 	});
 });
@@ -344,28 +318,21 @@ describe("following the server's chats", () => {
 		const { state, whenReady, events } = await boot({ chats });
 		await whenReady();
 
-		chats.push({ type: "session.created", properties: { info: rawChat(desktopChat("ses_b")) } });
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Renamed", updatedAt: 300 })) },
-		});
+		chats.announce("session.created", desktopChat("ses_b"));
+		chats.announce("session.renamed", desktopChat("ses_a", { title: "Renamed", updatedAt: 300 }));
 		chats.push(status("ses_a", "busy"));
-		chats.push({ type: "permission.asked", properties: { id: "per_1", sessionID: "ses_a" } });
-		chats.push({
-			type: "permission.replied",
-			properties: { requestID: "per_1", sessionID: "ses_a" },
-		});
-		chats.push({ type: "question.asked", properties: { id: "que_1", sessionID: "ses_a" } });
-		chats.push({
-			type: "question.rejected",
-			properties: { requestID: "que_1", sessionID: "ses_a" },
-		});
-		chats.push({
-			type: "session.error",
-			properties: { sessionID: "ses_a", error: { name: "APIError", data: { message: "Down" } } },
-		});
-		chats.push(status("ses_a", "idle"));
-		chats.push({ type: "session.deleted", properties: { info: rawChat(desktopChat("ses_b")) } });
+		chats.push(permissionAsked("per_1", "ses_a"));
+		chats.push(
+			kiloEvent("permission.replied", { requestID: "per_1", sessionID: "ses_a", reply: "once" }),
+		);
+		chats.push(
+			kiloEvent("form.created", {
+				form: { id: "que_1", sessionID: "ses_a", title: "Q", fields: [] },
+			}),
+		);
+		chats.push(kiloEvent("form.cancelled", { id: "que_1", sessionID: "ses_a" }));
+		chats.push(failed("ses_a", "Down"));
+		chats.push(kiloEvent("session.deleted", { sessionID: "ses_b" }));
 
 		await eventually(() => expect(events).toContain("deleted ses_b"));
 		expect(state().chats.ses_b).toBeUndefined();
@@ -391,11 +358,7 @@ describe("following the server's chats", () => {
 		const { state, whenReady, events } = await boot({ chats });
 		await whenReady();
 		chats.push(status("ses_a", "busy"));
-		chats.push({
-			type: "session.status",
-			properties: { sessionID: "ses_far", status: { type: "busy" } },
-			directory: "/projects/other",
-		});
+		chats.push(kiloEvent("session.execution.started", { sessionID: "ses_far" }, "/projects/other"));
 		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
 		const listed = chats.listCalls;
 
@@ -458,7 +421,7 @@ describe("following the server's chats", () => {
 		await whenReady();
 		chats.chats.push(desktopChat("ses_sub", { parentId: "ses_a", metadata: {} }));
 
-		chats.push({ type: "permission.asked", properties: { id: "per_1", sessionID: "ses_sub" } });
+		chats.push(permissionAsked("per_1", "ses_sub"));
 
 		await eventually(() => expect(state().chats.ses_sub).toBeDefined());
 		expect(state().chats.ses_sub).toMatchObject({
@@ -487,7 +450,7 @@ describe("following the server's chats", () => {
 			return lookups === 1 ? new Promise(() => {}) : getChat(id);
 		};
 
-		chats.push({ type: "permission.asked", properties: { id: "per_1", sessionID: "ses_sub" } });
+		chats.push(permissionAsked("per_1", "ses_sub"));
 		await eventually(() => expect(lookups).toBe(1));
 		chats.end();
 
@@ -527,7 +490,7 @@ function shapingPlugin(options: {
 						instructions: [
 							`Chat ${context.chatId} of ${context.workSessionId}/${context.workspaceId} in ${context.directory}`,
 						],
-						permissions: [{ permission: "bash", pattern: "*conda install*", action: "ask" }],
+						permissions: [{ permission: "shell", pattern: "*conda install*", action: "ask" }],
 					}),
 				});
 				sdk.extensions.implement(ChatConfigPoint, "broken", {
@@ -591,7 +554,7 @@ describe("creating chats", () => {
 			permission: [
 				{ permission: "external_directory", pattern: "/projects/lib", action: "allow" },
 				{ permission: "external_directory", pattern: "/projects/lib/*", action: "allow" },
-				{ permission: "bash", pattern: "*conda install*", action: "ask" },
+				{ permission: "shell", pattern: "*conda install*", action: "ask" },
 				{ permission: "desktop_acme_tools_deploy", pattern: "*", action: "ask" },
 				{ permission: "desktop_notebook_open", pattern: "*", action: "deny" },
 				{ permission: "desktop_acme_tools_wipe", pattern: "*", action: "deny" },
@@ -618,7 +581,7 @@ describe("creating chats", () => {
 		const params = chats.writes[0]?.args[0] as CreateChatParams;
 		expect(params.metadata?.["kilo-desktop"]).toEqual({});
 		const asked = params.permission?.filter(
-			(rule) => rule.action === "ask" && rule.permission !== "bash",
+			(rule) => rule.action === "ask" && rule.permission !== "shell",
 		);
 		expect(asked).toHaveLength(3);
 	});
@@ -654,7 +617,7 @@ describe("creating chats", () => {
 		).resolves.toEqual({
 			instructions: ["Chat ses_a of wses_1/null in /a"],
 			disableTools: ["desktop_notebook_open"],
-			permissions: [{ permission: "bash", pattern: "*conda install*", action: "ask" }],
+			permissions: [{ permission: "shell", pattern: "*conda install*", action: "ask" }],
 		});
 	});
 
@@ -664,7 +627,7 @@ describe("creating chats", () => {
 		const request = (id: string, chatId: string) => ({
 			id,
 			chatId,
-			permission: "bash",
+			permission: "shell",
 			patterns: ["ls"],
 			metadata: { skillShell: true },
 		});
@@ -691,7 +654,7 @@ describe("creating chats", () => {
 				patterns: ["*"],
 				metadata: {},
 			},
-			{ id: "per_2", chatId: "ses_a", permission: "bash", patterns: ["ls"], metadata: {} },
+			{ id: "per_2", chatId: "ses_a", permission: "shell", patterns: ["ls"], metadata: {} },
 		];
 		const { conversations, whenReady } = await boot({ chats, plugins: [shapingPlugin({})] });
 		await whenReady();
@@ -835,10 +798,13 @@ describe("acting on chats", () => {
 				[
 					"ses_a",
 					{
-						parts,
+						text: "Fix the login",
+						files: [
+							{ uri: "data:image/png;base64,AAAA", name: "a.png" },
+							{ uri: "file:///projects/a/notes.txt" },
+						],
 						agent: "code",
-						model: { providerID: "acme", modelID: "fast-1" },
-						variant: "high",
+						model: { providerID: "acme", id: "fast-1", variant: "high" },
 						system: "Primary folder: /projects/a",
 					},
 				],
@@ -852,7 +818,7 @@ describe("acting on chats", () => {
 						command: "review",
 						arguments: "the diff",
 						agent: "code",
-						model: { providerID: "acme", modelID: "fast-1" },
+						model: { providerID: "acme", id: "fast-1" },
 					},
 				],
 			],
@@ -916,7 +882,7 @@ describe("one structured answer", () => {
 		expect(chats.writes).toHaveLength(1);
 		expect(chats.writes[0]?.call).toBe("generateText");
 		const params = chats.writes[0]?.args[0] as GenerateTextParams;
-		expect(params.model).toEqual({ providerID: "kilo", modelID: "fast", variant: "low" });
+		expect(params.model).toEqual({ providerID: "kilo", id: "fast", variant: "low" });
 		expect(params.prompt).toContain(request.system);
 		expect(params.prompt).toContain(JSON.stringify(request.schema));
 		expect(params.prompt).toContain(request.prompt);
@@ -1034,32 +1000,26 @@ describe("worktree branch naming", () => {
 		await whenReady();
 		const sent: unknown[] = [];
 		conversations.on("user-message", (message) => sent.push(message));
-		const userMessage = (id: string, sessionID: string, role = "user") => ({
-			type: "message.updated",
-			properties: {
+		const enqueued = (inboxID: string, sessionID: string, type: string, payload: object) =>
+			kiloEvent("session.inbox.enqueued", {
 				sessionID,
-				info: { id, sessionID, role, model: { providerID: "kilo", modelID: "fast" } },
-			},
-		});
-		const textPart = (messageID: string, text: string, extra: object = {}) => ({
-			type: "message.part.updated",
-			properties: {
-				sessionID: "ses_a",
-				part: { id: `prt_${text}`, messageID, sessionID: "ses_a", type: "text", text, ...extra },
-			},
-		});
+				inboxID,
+				item: { type, payload, delivery: "steer" },
+			});
+		const model = { providerID: "kilo", id: "fast" };
 
-		chats.push(userMessage("msg_1", "ses_a"));
-		chats.push(textPart("msg_1", "context", { synthetic: true }));
-		chats.push(textPart("msg_1", "fix the login bug"));
-		chats.push(textPart("msg_1", "again"));
-		chats.push(userMessage("msg_1", "ses_a"));
-		chats.push(userMessage("msg_2", "ses_a", "assistant"));
-		chats.push(textPart("msg_2", "answer"));
-		chats.push(userMessage("msg_3", "ses_cli"));
-		chats.push(textPart("msg_3", "elsewhere"));
-		chats.push(userMessage("msg_4", "ses_a"));
-		chats.push(textPart("msg_4", "and the logout"));
+		chats.push(enqueued("msg_0", "ses_a", "synthetic", { text: "context" }));
+		chats.push(
+			enqueued("msg_1", "ses_a", "user", { text: "fix the login bug", selection: { model } }),
+		);
+		chats.push(
+			enqueued("msg_1", "ses_a", "user", { text: "fix the login bug", selection: { model } }),
+		);
+		chats.push(enqueued("msg_2", "ses_a", "user", { text: "  " }));
+		chats.push(enqueued("msg_3", "ses_cli", "user", { text: "elsewhere" }));
+		chats.push(
+			enqueued("msg_4", "ses_a", "user", { text: "and the logout", selection: { model } }),
+		);
 
 		await eventually(() => expect(sent).toHaveLength(2));
 		expect(sent).toEqual([
@@ -1229,7 +1189,7 @@ describe("forking chats", () => {
 	it("deletes a fork whose permission rules can't be applied, never listing it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.failing.add("update");
 		const { conversations, whenReady, state, events } = await boot({ chats });
 		await whenReady();
@@ -1254,7 +1214,7 @@ describe("forking chats", () => {
 	it("never lists a fork whose rules failed and whose deletion failed too, even once re-read", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.failing.add("update");
 		chats.failing.add("delete");
 		const { conversations, whenReady, state, events } = await boot({ chats });
@@ -1275,7 +1235,7 @@ describe("forking chats", () => {
 	it("deletes a fork it couldn't delete before once the chat list is read again", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.failing.add("update");
 		chats.failing.add("delete");
 		const { conversations, whenReady, state } = await boot({ chats });
@@ -1300,7 +1260,7 @@ describe("forking chats", () => {
 	it("tries deleting it again on the next read when a retry fails too", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.failing.add("update");
 		chats.failing.add("delete");
 		const { conversations, whenReady, state, events } = await boot({ chats });
@@ -1324,7 +1284,7 @@ describe("forking chats", () => {
 	it("deletes a fork it couldn't record as unfinished, never listing it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		const { conversations, whenReady, state, events, failingStorage } = await boot({ chats });
 		await whenReady();
 		failingStorage.add("unfinished-forks");
@@ -1346,7 +1306,7 @@ describe("forking chats", () => {
 	it("never lists a fork it couldn't record as unfinished or delete, and deletes it on a later read", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.failing.add("delete");
 		const { conversations, whenReady, state, events, failingStorage } = await boot({ chats });
 		await whenReady();
@@ -1374,7 +1334,7 @@ describe("forking chats", () => {
 	it("deletes a fork the server made though its reply was lost, never listing it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.loseForkReply = true;
 		const { conversations, whenReady, state, events } = await boot({ chats });
 		await whenReady();
@@ -1429,7 +1389,7 @@ describe("forking chats", () => {
 		await eventually(() => expect(chats.writes.map(({ call }) => call)).toEqual(["fork"]));
 		const other = stamped("ses_other");
 		chats.chats.push(other);
-		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
+		chats.announce("session.created", other);
 		release();
 		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
 
@@ -1446,10 +1406,15 @@ describe("forking chats", () => {
 		const { conversations, whenReady, state, events } = await boot({ chats });
 		await whenReady();
 		chats.failList = true;
+		const release = chats.hold("fork");
 
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await eventually(() => expect(chats.writes.map(({ call }) => call)).toContain("fork"));
+		// The stream is in order: once this lands, the fork's `session.forked` has been read.
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		release();
+		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
 
 		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
 			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
@@ -1471,7 +1436,7 @@ describe("forking chats", () => {
 			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
 		).rejects.toMatchObject({ code: "UNAVAILABLE" });
 		const created = chats.chats.find(({ id }) => id === "ses_fork_1")!;
-		chats.push({ type: "session.created", properties: { info: rawChat(created) } });
+		chats.announce("session.created", created);
 		chats.push(status("ses_a", "busy"));
 		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
 		expect(state().chats.ses_fork_1).toBeUndefined();
@@ -1505,7 +1470,7 @@ describe("forking chats", () => {
 			createdAt: 700,
 		};
 		chats.chats.push(elsewhere);
-		chats.push({ type: "session.created", properties: { info: rawChat(elsewhere) } });
+		chats.announce("session.created", elsewhere);
 		release();
 		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
 
@@ -1553,7 +1518,7 @@ describe("forking chats", () => {
 		// The server commits the fork after the request failed and the first read missed it.
 		const late = { ...stamped("ses_late"), title: "Chat ses_a (fork #1)" };
 		chats.chats.push(late);
-		chats.push({ type: "session.created", properties: { info: rawChat(late) } });
+		chats.announce("session.created", late);
 
 		await eventually(() =>
 			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
@@ -1576,7 +1541,7 @@ describe("forking chats", () => {
 		).rejects.toMatchObject({ code: "UNAVAILABLE" });
 		const other = stamped("ses_other");
 		chats.chats.push(other);
-		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
+		chats.announce("session.created", other);
 
 		await eventually(() => expect(state().chats.ses_other).toBeDefined());
 		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
@@ -1598,7 +1563,7 @@ describe("forking chats", () => {
 		await reread(chats);
 		const other = stamped("ses_other");
 		chats.chats.push(other);
-		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
+		chats.announce("session.created", other);
 
 		await eventually(() => expect(state().chats.ses_other).toBeDefined());
 	});
@@ -1606,7 +1571,7 @@ describe("forking chats", () => {
 	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		chats.failing.add("update");
 		chats.failing.add("delete");
 		const { conversations, whenReady } = await boot({ chats });
@@ -1627,7 +1592,7 @@ describe("forking chats", () => {
 	it("leaves a fork still being made to its own fork call when the list is read meanwhile", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		const release = chats.hold("update");
 		const { conversations, whenReady, state } = await boot({ chats });
 		await whenReady();
@@ -1647,7 +1612,7 @@ describe("forking chats", () => {
 	it("deletes a fork the app stopped making midway, after it starts again", async () => {
 		const before = new FakeKiloChats();
 		before.chats = [stamped("ses_a")];
-		before.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		before.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		before.hold("update");
 		const first = await boot({ chats: before });
 		await first.whenReady();
@@ -1700,7 +1665,7 @@ describe("forking chats", () => {
 	it("lists the fork only once its permission rules are applied", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.permissionsById.ses_a = [{ permission: "shell", pattern: "*", action: "ask" }];
 		const release = chats.hold("update");
 		const { conversations, whenReady, state, events } = await boot({ chats });
 		await whenReady();

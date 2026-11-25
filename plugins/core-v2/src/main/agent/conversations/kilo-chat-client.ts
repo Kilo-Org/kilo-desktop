@@ -1,23 +1,22 @@
-import type { SessionInfo } from "@kilocode/client";
+import type {
+	ModelRef as KiloModelRef,
+	OpenCodeEvent,
+	PermissionRule as KiloPermissionRule,
+	SessionInfo,
+} from "@kilocode/client";
 import { Definition as BranchName } from "@opencode/schema/kilocode/branch-name";
 import { Definition as SessionDrain } from "@opencode/schema/kilocode/session-drain";
 
 import type { PermissionRequest, ServerConnection, PermissionRule } from "../../../contracts";
-import { readChatInfo, type ChatInfo, type KiloEvent } from "./activity";
+import { readChatInfo, type ChatInfo } from "./activity";
 import { forkHandoffText } from "./fork-handoff";
 import { callRpc, createServerClient, type KiloV2Client } from "../../server-client";
-import { normalizeV2Action, type V2PermissionRule } from "../kilo-v2-config-entries";
 import type { PendingRequest } from "./store";
-import { toV1Session, translateEvent } from "./v2-chat-events";
 
 export interface CreateChatParams {
 	readonly title?: string;
 	readonly agent?: string;
-	readonly model?: {
-		readonly providerID: string;
-		readonly id: string;
-		readonly variant?: string | undefined;
-	};
+	readonly model?: KiloModelRef;
 	/** This app's stamp; chats without one are never listed (throwaway chats). */
 	readonly metadata?: Readonly<Record<string, unknown>>;
 	readonly permission?: readonly PermissionRule[];
@@ -25,18 +24,14 @@ export interface CreateChatParams {
 
 export interface GenerateTextParams {
 	readonly prompt: string;
-	readonly model?: {
-		readonly providerID: string;
-		readonly modelID: string;
-		readonly variant?: string | undefined;
-	};
+	readonly model?: KiloModelRef;
 }
 
 export interface ChatPromptParams {
-	readonly parts: readonly Readonly<Record<string, unknown>>[];
+	readonly text: string;
+	readonly files?: readonly { readonly uri: string; readonly name?: string }[];
 	readonly agent?: string | undefined;
-	readonly model?: { readonly providerID: string; readonly modelID: string } | undefined;
-	readonly variant?: string | undefined;
+	readonly model?: KiloModelRef | undefined;
 	readonly system?: string | undefined;
 }
 
@@ -44,8 +39,7 @@ export interface ChatCommandParams {
 	readonly command: string;
 	readonly arguments: string;
 	readonly agent?: string | undefined;
-	readonly model?: { readonly providerID: string; readonly modelID: string } | undefined;
-	readonly variant?: string | undefined;
+	readonly model?: KiloModelRef | undefined;
 }
 
 /**
@@ -63,7 +57,7 @@ export interface KiloChatClient {
 	pendingQuestions(directory?: string): Promise<PendingRequest[]>;
 	permissionRequests(directory: string): Promise<PermissionRequest[]>;
 	/** The server's global event stream, until `signal` aborts or the server ends it. */
-	events(signal: AbortSignal): AsyncIterable<KiloEvent>;
+	events(signal: AbortSignal): AsyncIterable<OpenCodeEvent>;
 	createChat(directory: string, params: CreateChatParams): Promise<ChatInfo>;
 	/**
 	 * A new root chat in `directory` with the messages strictly before
@@ -137,44 +131,21 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-/** Prompt parts as v2 takes them: one text, and files by URI. */
-function promptInput(parts: ChatPromptParams["parts"]) {
-	const text = parts
-		.filter((part) => part.type === "text" && typeof part.text === "string")
-		.map((part) => part.text as string)
-		.join("\n");
-	const files = parts.flatMap((part) =>
-		part.type === "file" && typeof part.url === "string"
-			? [
-					{
-						uri: part.url,
-						...(typeof part.filename === "string" ? { name: part.filename } : {}),
-					},
-				]
-			: [],
-	);
-	return { text, ...(files.length > 0 ? { files } : {}) };
-}
-
 /** Per-turn system text has no v2 field; it goes in as a note the next turn reads, starting no reply. */
 function systemNote(system: string): string {
 	return `<system-reminder>\n${system}\n</system-reminder>`;
 }
 
-/** A chat permission rule (v1 shape, as the contracts hold it) as a v2 rule. */
-function toV2Rule(rule: PermissionRule): V2PermissionRule {
-	return {
-		action: normalizeV2Action(rule.permission),
-		resource: rule.pattern,
-		effect: rule.action,
-	};
+/** kilo.core's permission rule as the server's; both name permissions as the server does. */
+function kiloRule(rule: PermissionRule): KiloPermissionRule {
+	return { action: rule.permission, resource: rule.pattern, effect: rule.action };
 }
 
-function toV1Rule(rule: V2PermissionRule): PermissionRule {
+function chatRule(rule: KiloPermissionRule): PermissionRule {
 	return { permission: rule.action, pattern: rule.resource, action: rule.effect };
 }
 
-const sameRule = (left: V2PermissionRule, right: V2PermissionRule) =>
+const sameRule = (left: KiloPermissionRule, right: KiloPermissionRule) =>
 	left.action === right.action && left.resource === right.resource && left.effect === right.effect;
 
 /**
@@ -209,30 +180,11 @@ export function createKiloChatClient(
 
 	async function switchTo(
 		sessionID: string,
-		params: {
-			agent?: string | undefined;
-			model?: ChatPromptParams["model"];
-			variant?: string | undefined;
-		},
+		params: { readonly agent?: string | undefined; readonly model?: KiloModelRef | undefined },
 	) {
 		if (params.agent) await client.session.switchAgent({ sessionID, agent: params.agent });
-		if (params.model) {
-			await client.session.switchModel({
-				sessionID,
-				model: {
-					providerID: params.model.providerID,
-					id: params.model.modelID,
-					...(params.variant ? { variant: params.variant } : {}),
-				},
-			});
-		}
+		if (params.model) await client.session.switchModel({ sessionID, model: params.model });
 	}
-
-	const toInfo = (session: SessionInfo) => {
-		const info = readChatInfo(toV1Session(session));
-		if (!info) throw new Error("The Kilo server returned an unreadable chat.");
-		return info;
-	};
 
 	return {
 		async listChats() {
@@ -247,11 +199,11 @@ export function createKiloChatClient(
 				for (const row of page.data) rows.set(row.id, row);
 				cursor = page.data.length === LIST_PAGE_SIZE ? (page.cursor.next ?? undefined) : undefined;
 			} while (cursor);
-			return [...rows.values()].flatMap((row) => readChatInfo(toV1Session(row)) ?? []);
+			return [...rows.values()].map(readChatInfo);
 		},
 		async getChat(sessionID) {
 			const session = await readSession(sessionID);
-			return session ? readChatInfo(toV1Session(session)) : undefined;
+			return session ? readChatInfo(session) : undefined;
 		},
 		async statuses(directory) {
 			// v2 lists running sessions once for the whole server.
@@ -281,7 +233,7 @@ export function createKiloChatClient(
 			// The provider owns reconnect hydration and drain-token rotation.
 			for await (const event of client.event.subscribe({ signal })) {
 				if (signal.aborted) return;
-				for (const translated of await translateEvent(event, readSession)) yield translated;
+				yield event;
 			}
 		},
 		async createChat(directory, params) {
@@ -289,27 +241,19 @@ export function createKiloChatClient(
 				location: { directory },
 				...(params.title ? { title: params.title } : {}),
 				...(params.agent ? { agent: params.agent } : {}),
-				...(params.model
-					? {
-							model: {
-								providerID: params.model.providerID,
-								id: params.model.id,
-								...(params.model.variant ? { variant: params.model.variant } : {}),
-							},
-						}
-					: {}),
+				...(params.model ? { model: params.model } : {}),
 				...(params.metadata ? { metadata: { ...params.metadata } as never } : {}),
-				...(params.permission ? { permissions: params.permission.map(toV2Rule) } : {}),
+				...(params.permission ? { permissions: params.permission.map(kiloRule) } : {}),
 			});
-			return toInfo(session);
+			return readChatInfo(session);
 		},
 		async updateChat(_directory, sessionID, patch) {
-			// v2 replaces the rules; v1 appended them. A rule already there is not repeated.
-			let permissions: V2PermissionRule[] | undefined;
+			// The server replaces the rules; kilo.core appends them. A rule already there is not repeated.
+			let permissions: KiloPermissionRule[] | undefined;
 			if (patch.permission !== undefined) {
 				const current = (await client.session.get({ sessionID })).permissions ?? [];
 				const added = patch.permission
-					.map(toV2Rule)
+					.map(kiloRule)
 					.filter((rule) => !current.some((existing) => sameRule(existing, rule)));
 				permissions = [...current, ...added];
 			}
@@ -322,7 +266,7 @@ export function createKiloChatClient(
 			});
 		},
 		async forkChat(_directory, sessionID, messageID) {
-			return toInfo(await client.session.fork({ sessionID, before: messageID }));
+			return readChatInfo(await client.session.fork({ sessionID, before: messageID }));
 		},
 		async recordForkHandoff(directory, sessionID) {
 			await client.session.synthetic({
@@ -332,7 +276,7 @@ export function createKiloChatClient(
 			});
 		},
 		async getChatPermission(_directory, sessionID) {
-			return ((await client.session.get({ sessionID })).permissions ?? []).map(toV1Rule);
+			return ((await client.session.get({ sessionID })).permissions ?? []).map(chatRule);
 		},
 		async generateBranchName(directory, sessionID, params) {
 			const { branch } = await callRpc(client, directory, (options) =>
@@ -354,15 +298,7 @@ export function createKiloChatClient(
 		async generateText(params) {
 			const { text } = await client.experimental.generate.text({
 				prompt: params.prompt,
-				...(params.model
-					? {
-							model: {
-								providerID: params.model.providerID,
-								id: params.model.modelID,
-								...(params.model.variant ? { variant: params.model.variant } : {}),
-							},
-						}
-					: {}),
+				...(params.model ? { model: params.model } : {}),
 			});
 			return text;
 		},
@@ -375,7 +311,11 @@ export function createKiloChatClient(
 					resume: false,
 				});
 			}
-			await client.session.prompt({ sessionID, ...promptInput(params.parts) });
+			await client.session.prompt({
+				sessionID,
+				text: params.text,
+				...(params.files ? { files: [...params.files] } : {}),
+			});
 		},
 		async command(_directory, sessionID, params) {
 			await switchTo(sessionID, params);

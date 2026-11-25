@@ -15,8 +15,8 @@ import { createKiloModelsClient } from "./production";
 const kiloExecutable = bundledKiloExecutable();
 
 async function aiProviders(client: KiloModelsClient) {
-	const [list, config] = await Promise.all([client.listAiProviders(), client.readGlobalConfig()]);
-	return mapAiProviderList({ list, config, contributed: new Set() });
+	const [answers, settings] = await Promise.all([client.listAiProviders(), client.readSettings()]);
+	return mapAiProviderList({ answers, settings, contributed: new Set() });
 }
 
 describe.skipIf(!kiloExecutable)("AI providers and models on the bundled kilo2", () => {
@@ -84,11 +84,11 @@ describe.skipIf(!kiloExecutable)("AI providers and models on the bundled kilo2",
 		await disconnectAiProvider(client, "mycustom");
 		const removed = await aiProviders(client);
 		expect(removed.aiProviders.mycustom).toBeUndefined();
-		await expect(client.readGlobalConfig()).resolves.toEqual({ provider: {} });
+		expect((await client.readSettings()).providers).not.toHaveProperty("mycustom");
 	});
 
 	it("saves the chosen model in the global config", async () => {
-		await client.updateGlobalConfig({ model: "kilo/kilo-auto/free" });
-		await expect(client.readGlobalConfig()).resolves.toEqual({ model: "kilo/kilo-auto/free" });
+		await client.updateSettings({ model: "kilo/kilo-auto/free" });
+		await expect(client.readSettings()).resolves.toMatchObject({ model: "kilo/kilo-auto/free" });
 	});
 });

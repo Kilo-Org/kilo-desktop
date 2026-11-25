@@ -5,6 +5,8 @@ import {
 	type PluginSdk,
 	type PluginStorage,
 } from "@kilo-desktop/kernel";
+import type { OpenCodeEvent } from "@kilocode/client";
+import { Definition as SessionDrain } from "@opencode/schema/kilocode/session-drain";
 
 import {
 	buildKiloDesktopSessionMetadata,
@@ -29,8 +31,8 @@ import {
 	diffChats,
 	lineageOf,
 	publishChats,
+	sessionChangedBy,
 	type ChatRecord,
-	type KiloEvent,
 } from "./activity";
 import {
 	chatPermissionRules,
@@ -44,7 +46,7 @@ import { LostForks } from "./lost-forks";
 import { UnfinishedForks, type UnfinishedFork } from "./unfinished-forks";
 import type { KiloChatClient } from "./kilo-chat-client";
 import { UserMessageTracker } from "./user-messages";
-import { wireModel, wireParts } from "./wire";
+import { kiloModel, kiloPrompt } from "./wire";
 import { ConversationStore, type ActivitySnapshot, type PendingRequest } from "./store";
 
 export { createKiloChatClient, type KiloChatClient } from "./kilo-chat-client";
@@ -78,6 +80,8 @@ export interface ConversationsService {
 }
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
+/** The drain RPC's acknowledgement on the stream, carrying the token the call was given. */
+const DRAINED = `rpc.${SessionDrain.id}.drained`;
 /** Bounds the ancestor walk for nested subagents (and any malformed parent cycle). */
 const MAX_LINEAGE_DEPTH = 8;
 
@@ -312,7 +316,7 @@ export function provideConversations(
 				),
 			delete: async ({ id }) => {
 				await write(id, "delete the chat", (client, directory) => client.deleteChat(directory, id));
-				applyLive({ type: "session.deleted", properties: { info: { id } } });
+				removeLive(id);
 			},
 			prompt: async (input, caller) => {
 				promptersOnly(caller);
@@ -325,7 +329,7 @@ export function provideConversations(
 								arguments: command.arguments,
 								...options,
 							})
-						: client.prompt(directory, chatId, { parts: wireParts(input.parts), ...options }),
+						: client.prompt(directory, chatId, { ...kiloPrompt(input.parts), ...options }),
 				);
 			},
 			abort: ({ id }) =>
@@ -434,7 +438,7 @@ export function provideConversations(
 			return;
 		}
 		unfinishedForks.remove(id);
-		store.apply({ type: "session.deleted", properties: { info: { id } } });
+		store.remove(id);
 	}
 
 	/** Every chat seen so far, as the server described it. */
@@ -579,13 +583,27 @@ export function provideConversations(
 		}
 	}
 
-	function applyLive(event: KiloEvent): boolean {
-		const deletedId =
-			event.type === "session.deleted"
-				? (event.properties.info as { id?: string } | undefined)?.id
-				: undefined;
-		const deleted = deletedId ? provider.state.chats[deletedId] : undefined;
+	/** A live event applied, reading again the session it changed; true when the chats changed. */
+	async function applyLive(client: KiloChatClient, event: OpenCodeEvent): Promise<boolean> {
+		const changed = sessionChangedBy(event);
+		if (changed) {
+			const info = await client.getChat(changed).catch((error: unknown) => {
+				sdk.logger.warn(`Could not read the changed Kilo chat ${changed}: ${errorText(error)}`);
+				return undefined;
+			});
+			if (!info || !store.applyInfo(info, event.location?.directory)) return false;
+			publish({ activity: true });
+			return true;
+		}
+		if (event.type === "session.deleted") return removeLive(event.data.sessionID);
 		if (!store.apply(event)) return false;
+		publish({ activity: true });
+		return true;
+	}
+
+	function removeLive(id: string): boolean {
+		const deleted = provider.state.chats[id];
+		if (!store.remove(id)) return false;
 		publish({ activity: true, deleted });
 		return true;
 	}
@@ -681,11 +699,12 @@ export function provideConversations(
 					for (const id of drains.keys()) requestDrain(id);
 				}
 				const message = userMessages.observe(event);
-				if (applyLive(event) && ready) void resolveLineage(client, signal, true);
-				if (event.type === "session.drained") {
-					const id = event.properties.sessionID;
+				if ((await applyLive(client, event)) && ready) void resolveLineage(client, signal, true);
+				if (signal.aborted) return;
+				if (event.type === DRAINED) {
+					const { sessionID: id, token } = event.data as { sessionID?: unknown; token?: unknown };
 					const request = typeof id === "string" ? drains.get(id) : undefined;
-					if (typeof id === "string" && request && request.token === event.properties.token) {
+					if (typeof id === "string" && request && request.token === token) {
 						cancelDrain(id);
 						const chat = provider.state.chats[id];
 						if (
@@ -700,11 +719,7 @@ export function provideConversations(
 					}
 				}
 				if (message && ready && provider.state.chats[message.chatId]) {
-					const { model, ...rest } = message;
-					provider.emit("user-message", {
-						...rest,
-						...(model ? { model: { aiProviderId: model.providerID, modelId: model.modelID } } : {}),
-					});
+					provider.emit("user-message", message);
 				}
 			}
 		} finally {
@@ -792,7 +807,7 @@ export function provideConversations(
 					return;
 				}
 				unfinishedForks.remove(id);
-				store.apply({ type: "session.deleted", properties: { info: { id } } });
+				store.remove(id);
 			});
 			publish({ activity: ready });
 		})().finally(() => {
@@ -836,8 +851,7 @@ export function provideConversations(
 function promptOptions(input: PromptChatInput) {
 	return {
 		...(input.agent ? { agent: input.agent } : {}),
-		...(input.model ? { model: wireModel(input.model) } : {}),
-		...(input.model?.variant ? { variant: input.model.variant } : {}),
+		...(input.model ? { model: kiloModel(input.model) } : {}),
 		...(input.system !== undefined ? { system: input.system } : {}),
 	};
 }

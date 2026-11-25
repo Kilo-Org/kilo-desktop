@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { ChatInfo, KiloEvent } from "./activity";
+import { kiloEvent } from "../../../test/agent/kilo-events";
+import type { ChatInfo } from "./activity";
 import { ConversationStore } from "./store";
 
 const NOW = 1_700_000_000_000;
@@ -18,18 +19,16 @@ function info(id: string, overrides: Partial<ChatInfo> = {}): ChatInfo {
 	};
 }
 
-const status = (sessionID: string, type: string): KiloEvent => ({
-	type: "session.status",
-	properties: { sessionID, status: { type } },
-});
-const asked = (kind: "permission" | "question", id: string, sessionID: string): KiloEvent => ({
-	type: `${kind}.asked`,
-	properties: { id, sessionID },
-});
-const replied = (requestID: string, sessionID: string): KiloEvent => ({
-	type: "permission.replied",
-	properties: { requestID, sessionID },
-});
+const status = (sessionID: string, type: "busy" | "idle") =>
+	kiloEvent(type === "busy" ? "session.execution.started" : "session.execution.succeeded", {
+		sessionID,
+	});
+const asked = (kind: "permission" | "question", id: string, sessionID: string) =>
+	kind === "permission"
+		? kiloEvent("permission.asked", { id, sessionID, action: "shell", resources: [] })
+		: kiloEvent("form.created", { form: { id, sessionID, title: "Q", fields: [] } });
+const replied = (requestID: string, sessionID: string) =>
+	kiloEvent("permission.replied", { requestID, sessionID, reply: "once" });
 
 function storeAt(now = NOW) {
 	let clock = now;
@@ -42,7 +41,9 @@ describe("the conversation store", () => {
 		const { store } = storeAt();
 
 		expect(store.apply(status("ses-1", "busy"))).toBe(true);
-		expect(store.apply({ type: "message.updated", properties: {} })).toBe(false);
+		expect(store.apply(kiloEvent("session.text.delta", { sessionID: "ses-1", delta: "x" }))).toBe(
+			false,
+		);
 		expect(store.epoch).toBe(1);
 	});
 
@@ -72,14 +73,9 @@ describe("the conversation store", () => {
 		const { store } = storeAt();
 		store.replaceRoots([info("deleted"), info("renamed")], store.epoch);
 		const since = store.epoch;
-		store.apply({ type: "session.created", properties: { info: rawInfo("fresh") } });
-		store.apply({ type: "session.deleted", properties: { info: { id: "deleted" } } });
-		store.apply({
-			type: "session.updated",
-			properties: {
-				info: rawInfo("renamed", { title: "New", time: { created: 10, updated: 99 } }),
-			},
-		});
+		store.applyInfo(info("fresh"));
+		store.apply(kiloEvent("session.deleted", { sessionID: "deleted" }));
+		store.applyInfo(info("renamed", { title: "New", updatedAt: 99 }));
 
 		store.replaceRoots([info("deleted"), info("renamed", { title: "Old" })], since);
 
@@ -265,14 +261,3 @@ describe("the conversation store", () => {
 		});
 	});
 });
-
-function rawInfo(id: string, overrides: Record<string, unknown> = {}) {
-	return {
-		id,
-		title: `Chat ${id}`,
-		directory: "/repo",
-		metadata: { "kilo-desktop": {} },
-		time: { created: 10, updated: 20 },
-		...overrides,
-	};
-}

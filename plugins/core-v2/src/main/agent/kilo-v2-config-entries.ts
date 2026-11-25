@@ -46,16 +46,12 @@ function unknownKeys(input: Json, known: ReadonlySet<string>, prefix = ""): stri
 		.map((key) => `${prefix}${key}`);
 }
 
-/** v1 permission/tool keys under their v2 tool action names (kilocode `normalizeAction`). */
-export function normalizeV2Action(action: string): string {
+/** A contributed agent's v1 permission keys under v2's tool action names (kilocode `normalizeAction`). */
+function v2Action(action: string): string {
 	if (action === "write" || action === "patch" || action === "apply_patch") return "edit";
 	if (action === "task") return "subagent";
 	if (action === "bash") return "shell";
 	return action;
-}
-
-export function toV2PermissionRule(tool: string, effect: V2PermissionEffect): V2PermissionRule {
-	return { action: normalizeV2Action(tool), resource: "*", effect };
 }
 
 function isEffect(value: unknown): value is V2PermissionEffect {
@@ -67,7 +63,7 @@ function permissionRules(value: unknown): V2PermissionRule[] | undefined {
 	if (isEffect(value)) return [{ action: "*", resource: "*", effect: value }];
 	if (!isRecord(value)) return undefined;
 	return Object.entries(value).flatMap(([tool, rule]): V2PermissionRule[] => {
-		const action = normalizeV2Action(tool);
+		const action = v2Action(tool);
 		if (isEffect(rule)) return [{ action, resource: "*", effect: rule }];
 		if (!isRecord(rule)) return [];
 		return Object.entries(rule).flatMap(([resource, effect]) =>

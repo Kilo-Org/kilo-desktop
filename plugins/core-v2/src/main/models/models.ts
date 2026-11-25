@@ -263,15 +263,19 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 		const client = await connectClient().finally(() => {
 			connecting = false;
 		});
-		const [list, config] = await Promise.all([client.listAiProviders(), client.readGlobalConfig()]);
-		if (list.all.length === 0 && emptyListReads < EMPTY_LIST_RETRIES) {
+		const [answers, settings] = await Promise.all([
+			client.listAiProviders(),
+			client.readSettings(),
+		]);
+		const knowsNone = answers.integrations.length === 0 && answers.providers.length === 0;
+		if (knowsNone && emptyListReads < EMPTY_LIST_RETRIES) {
 			emptyListReads += 1;
 			clearTimeout(emptyListTimer);
 			emptyListTimer = setTimeout(readAutomatically, emptyListRetryMs);
 			return;
 		}
 		emptyListReads = 0;
-		const mapped = mapAiProviderList({ list, config, contributed: contributedAiProviders() });
+		const mapped = mapAiProviderList({ answers, settings, contributed: contributedAiProviders() });
 		models.update(({ configuredModel: _previous, ...state }) => ({
 			...state,
 			ready: true,

@@ -58,14 +58,14 @@ describe("a new chat's permission rules", () => {
 				approvals: new Map([["kilo.terminal/open", "reject"]]),
 				disableTools: [],
 				chatPermissions: [
-					{ permission: "bash", pattern: "*conda install*", action: "ask" },
+					{ permission: "shell", pattern: "*conda install*", action: "ask" },
 					{ permission: "desktop_environments_conda_envs_create", pattern: "*", action: "allow" },
 				],
 			}),
 		).toEqual([
 			{ permission: "external_directory", pattern: "/lib", action: "allow" },
 			{ permission: "external_directory", pattern: "/lib/*", action: "allow" },
-			{ permission: "bash", pattern: "*conda install*", action: "ask" },
+			{ permission: "shell", pattern: "*conda install*", action: "ask" },
 			{ permission: "desktop_environments_conda_envs_create", pattern: "*", action: "allow" },
 			{ permission: "desktop_environments_conda_envs_create", pattern: "*", action: "ask" },
 			{ permission: "desktop_terminal_open", pattern: "*", action: "deny" },

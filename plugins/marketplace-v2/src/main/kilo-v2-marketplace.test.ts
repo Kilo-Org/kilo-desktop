@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { FakeV2Marketplace } from "../test/fake-v2-marketplace";
-import { KiloV2Marketplace, toV1McpStatus } from "./kilo-v2-marketplace";
+import { KiloV2Marketplace, toMcpStatus } from "./kilo-v2-marketplace";
 
 describe("KiloV2Marketplace", () => {
 	it("renders an MCP without options as one configuration, its parameters as placeholders", async () => {
@@ -74,11 +74,11 @@ describe("KiloV2Marketplace", () => {
 		);
 	});
 
-	it("maps v2's MCP statuses onto v1's", () => {
-		expect(toV1McpStatus({ status: "connected" })).toEqual({ status: "connected" });
-		expect(toV1McpStatus({ status: "needs_auth", error: "x" })).toEqual({ status: "needs_auth" });
-		expect(toV1McpStatus({ status: "pending" })).toMatchObject({ status: "failed" });
-		expect(toV1McpStatus({ status: "failed", error: "boom" })).toEqual({
+	it("maps v2's MCP statuses onto the contract's", () => {
+		expect(toMcpStatus({ status: "connected" })).toEqual({ status: "connected" });
+		expect(toMcpStatus({ status: "needs_auth", error: "x" })).toEqual({ status: "needs_auth" });
+		expect(toMcpStatus({ status: "pending" })).toMatchObject({ status: "failed" });
+		expect(toMcpStatus({ status: "failed", error: "boom" })).toEqual({
 			status: "failed",
 			error: "boom",
 		});

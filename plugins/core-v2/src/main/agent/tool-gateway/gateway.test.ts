@@ -18,7 +18,7 @@ import {
 	tempDir,
 	type BootOptions,
 } from "../../../test/agent/boot";
-import { desktopChat, FakeKiloChats, rawChat } from "../../../test/agent/fake-kilo-chats";
+import { desktopChat, FakeKiloChats } from "../../../test/agent/fake-kilo-chats";
 import type { FakeServer } from "../../../test/agent/fake-server";
 import type { KiloToolEndpointConnection } from "./kilo-tool-endpoint";
 import {
@@ -177,10 +177,7 @@ describe("the agent tool gateway", () => {
 		const { server, kernel } = await boot([tools.registration], { chats });
 		const listed = kernel.kernelSdk.domainObjects.get(Chats)!;
 		await vi.waitFor(() => expect(listed.getState().ready).toBe(true));
-		chats.push({
-			type: "session.created",
-			properties: { info: rawChat(desktopChat("ses_sub", { parentId: "ses_a", metadata: {} })) },
-		});
+		chats.announce("session.created", desktopChat("ses_sub", { parentId: "ses_a", metadata: {} }));
 		await vi.waitFor(() => expect(listed.getState().chats.ses_sub).toBeDefined());
 		const client = await connect(spawnedEndpoint(server).url, spawnedEndpoint(server).token);
 

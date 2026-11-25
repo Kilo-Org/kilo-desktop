@@ -3,12 +3,13 @@ import type { AddressInfo } from "node:net";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import type { OpenCodeEvent } from "@kilocode/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { bundledKiloExecutable, startRealKilo2, type RealKilo2 } from "../../../test/real-kilo2";
 import { createServerClient } from "../../server-client";
 import { createInstanceDisposer } from "../dispose-instance";
-import type { KiloEvent } from "./activity";
+import { chatOf } from "./activity";
 import { createKiloChatClient, type KiloChatClient } from "./kilo-chat-client";
 
 const kiloExecutable = bundledKiloExecutable();
@@ -28,7 +29,7 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 	let server: RealKilo2;
 	let kilo: KiloChatClient;
 	let project: string;
-	let events: KiloEvent[];
+	let events: OpenCodeEvent[];
 	let stream: AbortController;
 
 	beforeEach(async () => {
@@ -56,13 +57,7 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 	});
 
 	const types = (chatId: string) =>
-		events
-			.filter(
-				(event) =>
-					event.properties.sessionID === chatId ||
-					(event.properties.info as { id?: string })?.id === chatId,
-			)
-			.map((event) => event.type);
+		events.filter((event) => chatOf(event) === chatId).map((event) => event.type);
 
 	it("creates, lists, renames, archives, restores and deletes chats, announcing each", async () => {
 		const chat = await kilo.createChat(project, {
@@ -86,9 +81,9 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 			.poll(() => types(chat.id))
 			.toEqual([
 				"session.created",
-				"session.updated",
-				"session.updated",
-				"session.updated",
+				"session.renamed",
+				"session.archived",
+				"session.unarchived",
 				"session.deleted",
 			]);
 	});
@@ -96,19 +91,14 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 	it("runs a prompt as a turn that ends with the server's error, announcing the person's message", async () => {
 		const chat = await kilo.createChat(project, {});
 
-		await kilo.prompt(project, chat.id, { parts: [{ type: "text", text: "Fix it" }] });
+		await kilo.prompt(project, chat.id, { text: "Fix it" });
 
-		await expect.poll(() => types(chat.id)).toContain("session.error");
-		expect(events.find((event) => event.type === "message.updated")).toMatchObject({
-			properties: { info: { sessionID: chat.id, role: "user" } },
+		await expect.poll(() => types(chat.id)).toContain("session.execution.failed");
+		expect(events.find((event) => event.type === "session.inbox.enqueued")).toMatchObject({
+			data: { sessionID: chat.id, item: { type: "user", payload: { text: "Fix it" } } },
 		});
-		expect(events.find((event) => event.type === "message.part.updated")).toMatchObject({
-			properties: { part: { type: "text", text: "Fix it" } },
-		});
-		const statuses = events
-			.filter((event) => event.type === "session.status" && event.properties.sessionID === chat.id)
-			.map((event) => (event.properties.status as { type: string }).type);
-		expect(statuses).toEqual(["busy", "idle"]);
+		const executions = types(chat.id).filter((type) => type.startsWith("session.execution."));
+		expect(executions).toEqual(["session.execution.started", "session.execution.failed"]);
 		await expect(kilo.statuses()).resolves.toEqual({});
 	});
 
@@ -118,8 +108,8 @@ describe.skipIf(!kiloExecutable)("the chat client on the bundled kilo2", () => {
 		await kilo.drainChat(project, chat.id, "tok_1", new AbortController().signal);
 
 		await expect
-			.poll(() => events.find((event) => event.type === "session.drained"))
-			.toMatchObject({ properties: { sessionID: chat.id, token: "tok_1" } });
+			.poll(() => events.find((event) => event.type === "rpc.kilocode.session-drain.drained"))
+			.toMatchObject({ data: { sessionID: chat.id, token: "tok_1" } });
 	});
 
 	it("reads no pending prompts in a quiet project", async () => {

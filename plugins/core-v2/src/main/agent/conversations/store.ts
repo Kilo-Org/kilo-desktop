@@ -1,14 +1,18 @@
+import type { OpenCodeEvent } from "@kilocode/client";
+
 import {
+	applyChatEvent,
+	applyChatInfo,
 	applyHydratedStatus,
-	applyKiloEvent,
+	chatOf,
 	IDLE,
+	removeChat,
 	resetActivity,
 	sameInfo,
 	type ChatActivity,
 	type ChatInfo,
 	type ChatRecord,
 	type ChatRecords,
-	type KiloEvent,
 } from "./activity";
 
 export interface PendingRequest {
@@ -35,12 +39,6 @@ type PendingKey = "pendingPermissionIds" | "pendingQuestionIds";
 
 const isWorking = (activity: ChatActivity) =>
 	activity.status === "busy" || activity.status === "retry";
-
-const chatIdOf = (event: KiloEvent): string | undefined => {
-	const id =
-		event.properties.sessionID ?? (event.properties.info as { id?: unknown } | undefined)?.id;
-	return typeof id === "string" ? id : undefined;
-};
 
 /**
  * Every chat the Kilo server has mentioned and its activity, as live events
@@ -73,22 +71,34 @@ export class ConversationStore {
 		return this.#epoch;
 	}
 
-	apply(event: KiloEvent): boolean {
+	/** A live event from the server's stream; false when it changes nothing. */
+	apply(event: OpenCodeEvent): boolean {
+		const chatId = chatOf(event);
+		return chatId ? this.#live(chatId, applyChatEvent(this.#chats, event, this.now())) : false;
+	}
+
+	/** A chat read again because a live event changed it; `directory` is where the event came from. */
+	applyInfo(info: ChatInfo, directory?: string): boolean {
+		return this.#live(info.id, applyChatInfo(this.#chats, info, directory));
+	}
+
+	/** A chat deleted on the server, live. */
+	remove(chatId: string): boolean {
+		return this.#live(chatId, removeChat(this.#chats, chatId));
+	}
+
+	#live(chatId: string, after: ChatRecords): boolean {
 		const before = this.#chats;
-		const after = applyKiloEvent(before, event, this.now());
 		if (after === before) return false;
-		const chatId = chatIdOf(event);
 		this.#epoch += 1;
-		if (chatId) {
-			this.#touched.set(chatId, this.#epoch);
-			for (const key of ["pendingPermissionIds", "pendingQuestionIds"] as const) {
-				const was = before[chatId]?.activity[key] ?? [];
-				const now = after[chatId]?.activity[key] ?? [];
-				// Pending id lists hold a few entries; a Set would cost more.
-				// react-doctor-disable-next-line react-doctor/js-set-map-lookups
-				for (const id of was) if (!now.includes(id)) this.#cleared[key].add(id);
-				for (const id of now) this.#cleared[key].delete(id);
-			}
+		this.#touched.set(chatId, this.#epoch);
+		for (const key of ["pendingPermissionIds", "pendingQuestionIds"] as const) {
+			const was = before[chatId]?.activity[key] ?? [];
+			const now = after[chatId]?.activity[key] ?? [];
+			// Pending id lists hold a few entries; a Set would cost more.
+			// react-doctor-disable-next-line react-doctor/js-set-map-lookups
+			for (const id of was) if (!now.includes(id)) this.#cleared[key].add(id);
+			for (const id of now) this.#cleared[key].delete(id);
 		}
 		this.#chats = after;
 		return true;

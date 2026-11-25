@@ -3,7 +3,7 @@ import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 import { Generation } from "../../../contracts";
 import type { ConversationsService } from "./index";
 import { generateStructured, StructuredAnswerError } from "./structured-generation";
-import { wireModel } from "./wire";
+import { kiloModel } from "./wire";
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -31,14 +31,7 @@ export function provideGeneration(sdk: PluginSdk, chats: ConversationsService): 
 					serverCall("get an answer", () =>
 						client.generateText({
 							prompt: text,
-							...(model
-								? {
-										model: {
-											...wireModel(model),
-											...(model.variant ? { variant: model.variant } : {}),
-										},
-									}
-								: {}),
+							...(model ? { model: kiloModel(model) } : {}),
 						}),
 					);
 				try {
@@ -55,7 +48,7 @@ export function provideGeneration(sdk: PluginSdk, chats: ConversationsService): 
 				const branch = await serverCall("name the branch", () =>
 					client.generateBranchName(directory, chatId, {
 						prompt,
-						...(model ? wireModel(model) : {}),
+						...(model ? { providerID: model.aiProviderId, modelID: model.modelId } : {}),
 					}),
 				);
 				return { branch };

@@ -51,7 +51,7 @@ async function standInModel(
 	return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`, prompts };
 }
 
-const MODEL = { providerID: "standin", modelID: "m" };
+const MODEL = { providerID: "standin", id: "m" };
 
 describe.skipIf(!kiloExecutable)("generation on the bundled kilo2", () => {
 	let model: Awaited<ReturnType<typeof standInModel>>;
@@ -72,7 +72,7 @@ describe.skipIf(!kiloExecutable)("generation on the bundled kilo2", () => {
 		server = await startRealKilo2(kiloExecutable!);
 		const client = createServerClient(server.connection);
 		await globalSettings(client, server.connection.globalDirectory).write({
-			model: `${MODEL.providerID}/${MODEL.modelID}`,
+			model: `${MODEL.providerID}/${MODEL.id}`,
 			providers: {
 				standin: {
 					name: "Stand-in",
@@ -118,7 +118,8 @@ describe.skipIf(!kiloExecutable)("generation on the bundled kilo2", () => {
 
 		const branch = await kilo.generateBranchName(project, chat.id, {
 			prompt: "Fix the login bug",
-			...MODEL,
+			providerID: MODEL.providerID,
+			modelID: MODEL.id,
 		});
 
 		expect(branch).toBe("fix-login");

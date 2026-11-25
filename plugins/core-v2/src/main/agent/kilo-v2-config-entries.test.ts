@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	normalizeV2Action,
-	toV2Agent,
-	toV2Command,
-	toV2McpServer,
-	toV2PermissionRule,
-	toV2Provider,
-} from "./kilo-v2-config-entries.js";
+import { toV2Agent, toV2Command, toV2McpServer, toV2Provider } from "./kilo-v2-config-entries.js";
 
 describe("Kilo v2 config entries", () => {
 	describe("MCP servers", () => {
@@ -243,18 +236,19 @@ describe("Kilo v2 config entries", () => {
 	});
 
 	describe("permissions", () => {
-		it("names tools the way v2 does", () => {
-			expect(
-				["bash", "write", "patch", "apply_patch", "task", "suggest"].map(normalizeV2Action),
-			).toEqual(["shell", "edit", "edit", "edit", "subagent", "suggest"]);
-		});
-
-		it("makes a rule for every resource", () => {
-			expect(toV2PermissionRule("bash", "deny")).toEqual({
-				action: "shell",
-				resource: "*",
-				effect: "deny",
+		it("names a contributed agent's tools the way v2 does", () => {
+			const tools = ["bash", "write", "patch", "apply_patch", "task", "suggest"];
+			const { entry } = toV2Agent({
+				permission: Object.fromEntries(tools.map((tool) => [tool, "ask"])),
 			});
+			expect((entry.permissions as { action: string }[]).map(({ action }) => action)).toEqual([
+				"shell",
+				"edit",
+				"edit",
+				"edit",
+				"subagent",
+				"suggest",
+			]);
 		});
 	});
 });

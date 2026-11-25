@@ -1,20 +1,28 @@
+import type { ModelRef as KiloModelRef } from "@kilocode/client";
+
 import type { ModelRef, PromptChatInput } from "../../../contracts";
 
-/** A model as the Kilo server's prompt endpoints name it. */
-export function wireModel(model: ModelRef): { providerID: string; modelID: string } {
-	return { providerID: model.aiProviderId, modelID: model.modelId };
+/** A model, and the variant chosen for it, as Kilo names it. */
+export function kiloModel(
+	model: ModelRef & { readonly variant?: string | undefined },
+): KiloModelRef {
+	return {
+		providerID: model.aiProviderId,
+		id: model.modelId,
+		...(model.variant ? { variant: model.variant } : {}),
+	};
 }
 
-/** Prompt parts in the server's shape: text, and files by URL. */
-export function wireParts(parts: PromptChatInput["parts"]): Record<string, unknown>[] {
-	return parts.map((part) =>
-		part.type === "text"
-			? { type: "text", text: part.text }
-			: {
-					type: "file",
-					mime: part.mime,
-					url: part.url,
-					...(part.filename !== undefined ? { filename: part.filename } : {}),
-				},
+/** A prompt as Kilo takes it: one text, and files by URI. */
+export function kiloPrompt(parts: PromptChatInput["parts"]): {
+	text: string;
+	files?: { uri: string; name?: string }[];
+} {
+	const text = parts.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n");
+	const files = parts.flatMap((part) =>
+		part.type === "file"
+			? [{ uri: part.url, ...(part.filename !== undefined ? { name: part.filename } : {}) }]
+			: [],
 	);
+	return { text, ...(files.length > 0 ? { files } : {}) };
 }

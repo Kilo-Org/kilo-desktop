@@ -7,7 +7,7 @@ import {
 	saveCustomAiProvider,
 } from "./ai-provider-mutations";
 import { MASKED_API_KEY } from "./custom-ai-provider";
-import { createFakeKiloClient } from "./test-kilo-client";
+import { createFakeKiloClient, providerAnswers } from "./test-kilo-client";
 
 const custom = {
 	aiProviderId: "my-provider",
@@ -37,24 +37,24 @@ describe("disconnectAiProvider", () => {
 	it("deletes a custom provider's entry with a null sentinel", async () => {
 		const fake = createFakeKiloClient({
 			config: {
-				provider: {
+				providers: {
 					vllm: {
-						npm: "@ai-sdk/openai-compatible",
+						package: "@ai-sdk/openai-compatible",
 						name: "vLLM",
-						options: { baseURL: "http://127.0.0.1:8000/v1" },
+						settings: { baseURL: "http://127.0.0.1:8000/v1" },
 					},
 				},
 			},
 		});
 		await disconnectAiProvider(fake.client, "vllm");
 		expect(fake.calls.remove).toEqual(["vllm"]);
-		expect(fake.calls.update).toEqual([{ provider: { vllm: null } }]);
+		expect(fake.calls.update).toEqual([{ providers: { vllm: null } }]);
 		expect(fake.calls.dispose).toBe(1);
 	});
 
 	it("keeps the custom entry when removing the key fails", async () => {
 		const fake = createFakeKiloClient({
-			config: { provider: { vllm: { npm: "@ai-sdk/openai-compatible" } } },
+			config: { providers: { vllm: { package: "@ai-sdk/openai-compatible" } } },
 		});
 		fake.client.removeApiKey = async () => {
 			throw new Error("credential store unavailable");
@@ -73,11 +73,11 @@ describe("saveCustomAiProvider", () => {
 		await saveCustomAiProvider(fake.client, { ...custom, apiKey: " sk-test " });
 		expect(fake.calls.update).toEqual([
 			{
-				provider: {
+				providers: {
 					"my-provider": {
-						npm: "@ai-sdk/openai-compatible",
+						package: "@ai-sdk/openai-compatible",
 						name: "My Provider",
-						options: { baseURL: "https://example.com/v1" },
+						settings: { baseURL: "https://example.com/v1" },
 						models: { "model-1": { name: "Model One" } },
 					},
 				},
@@ -104,9 +104,9 @@ describe("saveCustomAiProvider", () => {
 	it("keeps the stored key when the key is omitted or masked, and nulls removed models", async () => {
 		const fake = createFakeKiloClient({
 			config: {
-				provider: {
+				providers: {
 					"my-provider": {
-						npm: "@ai-sdk/openai-compatible",
+						package: "@ai-sdk/openai-compatible",
 						models: { gone: { name: "Gone" }, "model-1": { name: "Old" } },
 					},
 				},
@@ -115,7 +115,7 @@ describe("saveCustomAiProvider", () => {
 		await saveCustomAiProvider(fake.client, custom);
 		await saveCustomAiProvider(fake.client, { ...custom, apiKey: MASKED_API_KEY });
 
-		const patch = fake.calls.update[0]?.provider?.["my-provider"] as {
+		const patch = fake.calls.update[0]?.providers?.["my-provider"] as {
 			models: Record<string, unknown>;
 		};
 		expect(patch.models["model-1"]).toEqual({ name: "Model One" });
@@ -146,19 +146,16 @@ describe("readCustomAiProvider", () => {
 	it("reads a custom provider back, masking its stored key", async () => {
 		const fake = createFakeKiloClient({
 			config: {
-				provider: {
+				providers: {
 					vllm: {
-						npm: "@ai-sdk/openai-compatible",
+						package: "@ai-sdk/openai-compatible",
 						name: "vLLM",
-						options: { baseURL: "http://127.0.0.1:8000/v1" },
+						settings: { baseURL: "http://127.0.0.1:8000/v1" },
 						models: { llama: { name: "Llama" } },
 					},
 				},
 			},
-			list: {
-				all: [{ id: "vllm", name: "vLLM", source: "config", key: "sk", models: {} }],
-				connected: ["vllm"],
-			},
+			list: providerAnswers([{ id: "vllm", name: "vLLM", connections: ["key"] }]),
 		});
 		await expect(readCustomAiProvider(fake.client, "vllm")).resolves.toEqual({
 			aiProviderId: "vllm",

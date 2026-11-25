@@ -1,4 +1,5 @@
 import type { DomainObjectEventName, DomainObjectEventPayload } from "@kilo-desktop/kernel";
+import type { OpenCodeEvent, SessionInfo } from "@kilocode/client";
 
 import {
 	hasKiloDesktopSessionMetadata,
@@ -23,7 +24,7 @@ import {
 export type ChatActivityState = ChatActivity;
 export type { ChatActivity };
 
-/** A Kilo session as the server reports it (list rows, `session.*` event info). */
+/** A Kilo session as the conversations area reads it; its directory is its location's. */
 export interface ChatInfo {
 	readonly id: string;
 	readonly title: string;
@@ -44,27 +45,14 @@ export interface ChatRecord {
 
 export type ChatRecords = Readonly<Record<string, ChatRecord>>;
 
-/** One event from the server's global stream. */
-export interface KiloEvent {
-	readonly type: string;
-	readonly properties: Readonly<Record<string, unknown>>;
-	readonly directory?: string | undefined;
-}
-
 export const IDLE: ChatActivity = {
 	status: "idle",
 	pendingPermissionIds: [],
 	pendingQuestionIds: [],
 };
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
-
 const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
-
-const asNumber = (value: unknown): number | undefined =>
-	typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 const asStatus = (value: unknown): ChatStatus | undefined =>
 	value === "busy" || value === "retry" || value === "idle" ? value : undefined;
@@ -75,23 +63,16 @@ export function needsAttention(activity: ChatActivity): boolean {
 	return activity.pendingPermissionIds.length > 0 || activity.pendingQuestionIds.length > 0;
 }
 
-/** Reads a Kilo session object; undefined when it isn't one. */
-export function readChatInfo(value: unknown): ChatInfo | undefined {
-	const raw = asRecord(value);
-	const id = asString(raw?.id);
-	const time = asRecord(raw?.time);
-	const createdAt = asNumber(time?.created);
-	if (!raw || !id || createdAt === undefined) return undefined;
-	const archivedAt = asNumber(time?.archived);
+export function readChatInfo(session: SessionInfo): ChatInfo {
 	return {
-		id,
-		title: typeof raw.title === "string" ? raw.title : "",
-		parentId: asString(raw.parentID) ?? null,
-		directory: asString(raw.directory) ?? null,
-		metadata: raw.metadata ?? null,
-		createdAt,
-		updatedAt: asNumber(time?.updated) ?? createdAt,
-		...(archivedAt !== undefined ? { archivedAt } : {}),
+		id: session.id,
+		title: session.title ?? "",
+		parentId: session.parentID ?? null,
+		directory: session.location.directory,
+		metadata: session.metadata ?? null,
+		createdAt: session.time.created,
+		updatedAt: session.time.updated,
+		...(session.time.archived !== undefined ? { archivedAt: session.time.archived } : {}),
 	};
 }
 
@@ -106,14 +87,6 @@ export function sameInfo(a: ChatInfo | undefined, b: ChatInfo): boolean {
 		a.archivedAt === b.archivedAt &&
 		JSON.stringify(a.metadata) === JSON.stringify(b.metadata)
 	);
-}
-
-function readError(value: unknown): ChatError | undefined {
-	const error = asRecord(value);
-	const name = asString(error?.name);
-	if (!name || name === "MessageAbortedError") return undefined;
-	const message = asString(asRecord(error?.data)?.message) ?? asString(error?.message) ?? name;
-	return { name, message };
 }
 
 function withRecord(
@@ -167,83 +140,107 @@ function applyStatus(chats: ChatRecords, chatId: string, status: ChatStatus, now
 	});
 }
 
+/**
+ * The session an event changes the fields of (its title, metadata, archive
+ * state, location, rules), or a new one (created, forked): v2 sends these as
+ * small events, so the session is read again.
+ */
+export function sessionChangedBy(event: OpenCodeEvent): string | undefined {
+	switch (event.type) {
+		case "session.created":
+		case "session.forked":
+		case "session.renamed":
+		case "session.metadata.updated":
+		case "session.archived":
+		case "session.unarchived":
+		case "session.moved":
+		case "session.permissions":
+			return event.data.sessionID;
+		default:
+			return undefined;
+	}
+}
+
+/** The chat an event is about, if any. */
+export function chatOf(event: OpenCodeEvent): string | undefined {
+	if (event.type === "form.created") return asString(event.data.form.sessionID);
+	const data = event.data as { readonly sessionID?: unknown };
+	return asString(data.sessionID);
+}
+
 /** One server event applied; the same object back when it changes nothing. */
-export function applyKiloEvent(chats: ChatRecords, event: KiloEvent, now: number): ChatRecords {
-	const properties = event.properties;
-	const chatId = asString(properties.sessionID);
+export function applyChatEvent(chats: ChatRecords, event: OpenCodeEvent, now: number): ChatRecords {
+	const chatId = chatOf(event);
+	if (!chatId) return chats;
 	const next = applyToActivity(chats, event, chatId, now);
-	const remembered = chatId ?? asString(asRecord(properties.info)?.id);
-	if (!event.directory || !remembered || !next[remembered]) return next;
-	const directory = event.directory;
-	return withRecord(next, remembered, (record) =>
+	return rememberDirectory(next, chatId, event.location?.directory);
+}
+
+/** A chat's info read from the server, and the directory the event that asked for it came from. */
+export function applyChatInfo(
+	chats: ChatRecords,
+	info: ChatInfo,
+	directory?: string | undefined,
+): ChatRecords {
+	const next = withRecord(chats, info.id, (record) =>
+		sameInfo(record.info, info) ? null : { ...record, info },
+	);
+	return rememberDirectory(next, info.id, directory);
+}
+
+export function removeChat(chats: ChatRecords, chatId: string): ChatRecords {
+	if (!(chatId in chats)) return chats;
+	const { [chatId]: _deleted, ...rest } = chats;
+	return rest;
+}
+
+function rememberDirectory(chats: ChatRecords, chatId: string, directory: string | undefined) {
+	if (!directory || !chats[chatId]) return chats;
+	return withRecord(chats, chatId, (record) =>
 		record.directory === directory ? null : { ...record, directory },
 	);
 }
 
 function applyToActivity(
 	chats: ChatRecords,
-	event: KiloEvent,
-	chatId: string | undefined,
+	event: OpenCodeEvent,
+	chatId: string,
 	now: number,
 ): ChatRecords {
-	const properties = event.properties;
 	switch (event.type) {
 		case "permission.asked":
-		case "permission.v2.asked":
-			return chatId
-				? withActivity(chats, chatId, addPending("pendingPermissionIds", asString(properties.id)))
-				: chats;
+			return withActivity(chats, chatId, addPending("pendingPermissionIds", event.data.id));
 		case "permission.replied":
-		case "permission.v2.replied":
-			return chatId
-				? withActivity(
-						chats,
-						chatId,
-						removePending("pendingPermissionIds", asString(properties.requestID)),
-					)
-				: chats;
-		case "question.asked":
-		case "question.v2.asked":
-			return chatId
-				? withActivity(chats, chatId, addPending("pendingQuestionIds", asString(properties.id)))
-				: chats;
-		case "question.replied":
-		case "question.v2.replied":
-		case "question.rejected":
-		case "question.v2.rejected":
-			return chatId
-				? withActivity(
-						chats,
-						chatId,
-						removePending("pendingQuestionIds", asString(properties.requestID)),
-					)
-				: chats;
+			return withActivity(
+				chats,
+				chatId,
+				removePending("pendingPermissionIds", event.data.requestID),
+			);
+		case "form.created":
+			return withActivity(chats, chatId, addPending("pendingQuestionIds", event.data.form.id));
+		case "form.replied":
+		case "form.cancelled":
+			return withActivity(chats, chatId, removePending("pendingQuestionIds", event.data.id));
+		case "session.execution.started":
+			return applyStatus(chats, chatId, "busy", now);
+		case "session.retry.scheduled":
+			return applyStatus(chats, chatId, "retry", now);
 		case "session.status": {
-			const status = asStatus(asRecord(properties.status)?.type);
-			return chatId && status ? applyStatus(chats, chatId, status, now) : chats;
+			const status = asStatus(event.data.status.type);
+			return status ? applyStatus(chats, chatId, status, now) : chats;
 		}
 		case "session.idle":
-			return chatId ? applyStatus(chats, chatId, "idle", now) : chats;
-		case "session.error": {
-			const error = readError(properties.error);
-			return chatId && error
-				? withActivity(chats, chatId, (activity) => ({ ...activity, lastError: error }))
-				: chats;
+		case "session.execution.succeeded":
+		case "session.execution.interrupted":
+			return applyStatus(chats, chatId, "idle", now);
+		case "session.execution.failed": {
+			const { type, message } = event.data.error;
+			const lastError: ChatError = { name: type, message: message || type };
+			const failed = withActivity(chats, chatId, (activity) => ({ ...activity, lastError }));
+			return applyStatus(failed, chatId, "idle", now);
 		}
-		case "session.created":
-		case "session.updated": {
-			const info = readChatInfo(properties.info);
-			if (!info) return chats;
-			return withRecord(chats, info.id, (record) =>
-				sameInfo(record.info, info) ? null : { ...record, info },
-			);
-		}
-		case "session.deleted": {
-			const id = chatId ?? asString(asRecord(properties.info)?.id);
-			if (!id || !(id in chats)) return chats;
-			const { [id]: _deleted, ...rest } = chats;
-			return rest;
-		}
+		case "session.deleted":
+			return removeChat(chats, chatId);
 		default:
 			return chats;
 	}

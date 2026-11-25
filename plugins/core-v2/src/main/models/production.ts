@@ -4,10 +4,14 @@ import path from "node:path";
 import { mainHost, type PluginSdk } from "@kilo-desktop/kernel";
 
 import type { ServerConnection } from "../../contracts";
-import { createServerClient, globalSettings, pluginsListed, toKiloError } from "../server-client";
+import {
+	createServerClient,
+	globalSettings,
+	pluginsListed,
+	toKiloError,
+	type SettingsValue,
+} from "../server-client";
 import type { KiloModelsClient } from "./kilo-models-client";
-import { toV1GlobalConfig, toV2SettingsPatch } from "./kilo-v2-provider-config";
-import { toKiloProviderList } from "./kilo-v2-provider-list";
 import type { ModelsOptions } from "./models";
 
 /**
@@ -42,24 +46,24 @@ export function createKiloModelsClient(
 					client.model.list({ location }),
 					client.model.default({ location }),
 				]);
-				return toKiloProviderList({
+				return {
 					integrations: integrations.data,
 					providers: providers.data,
 					models: models.data,
 					defaultModel: defaultModel.data,
-				});
+				};
 			} catch (error) {
 				throw toKiloError(error);
 			}
 		},
-		async readGlobalConfig() {
-			return toV1GlobalConfig(await settings.read());
+		async readSettings() {
+			return settings.read();
 		},
-		async updateGlobalConfig(patch) {
-			await settings.write(toV2SettingsPatch(patch));
+		async updateSettings(set) {
+			await settings.write(set as Readonly<Record<string, SettingsValue>>);
 		},
 		async setApiKey(aiProviderId, key) {
-			// v2 keeps every key it is given; v1 replaced the stored one, so the older keys go.
+			// Kilo keeps every key it is given; a provider has one key here, so the older keys go.
 			const previous = await credentialsOf(aiProviderId);
 			// `credential.create`, not `integration.connect.key`: a new custom provider's
 			// integration only exists once its config entry, written after the key, loads.

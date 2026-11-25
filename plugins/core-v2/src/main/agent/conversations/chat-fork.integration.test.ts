@@ -70,7 +70,7 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled kilo2", () => {
 	it("copies the messages before the fork point, the stamp and the rules", async () => {
 		const rules: PermissionRule[] = [
 			{ permission: "external_directory", pattern: "/projects/lib", action: "allow" },
-			{ permission: "bash", pattern: "*", action: "ask" },
+			{ permission: "shell", pattern: "*", action: "ask" },
 		];
 		const stamp = { "kilo-desktop": { workSessionId: "wses_1" } };
 		const source = await kilo.createChat(project, { metadata: stamp, permission: rules });
@@ -81,16 +81,12 @@ describe.skipIf(!kiloExecutable)("forking a chat in the bundled kilo2", () => {
 
 		expect(fork).toMatchObject({ parentId: null, directory: project, metadata: stamp });
 		await expect.poll(() => texts(fork.id, "user")).toEqual(["Fix the login"]);
-		const v2Rules = [
-			{ permission: "external_directory", pattern: "/projects/lib", action: "allow" },
-			{ permission: "shell", pattern: "*", action: "ask" },
-		];
-		expect(await kilo.getChatPermission(project, source.id)).toEqual(v2Rules);
-		expect(await kilo.getChatPermission(project, fork.id)).toEqual(v2Rules);
+		expect(await kilo.getChatPermission(project, source.id)).toEqual(rules);
+		expect(await kilo.getChatPermission(project, fork.id)).toEqual(rules);
 
-		// Desktop applies the source's rules again; v2 copied them already, so none repeat.
+		// Desktop applies the source's rules again; the server copied them already, so none repeat.
 		await kilo.updateChat(project, fork.id, { permission: rules });
-		expect(await kilo.getChatPermission(project, fork.id)).toEqual(v2Rules);
+		expect(await kilo.getChatPermission(project, fork.id)).toEqual(rules);
 	});
 
 	it("titles forks as forkedTitle expects, so a lost fork can be found", async () => {

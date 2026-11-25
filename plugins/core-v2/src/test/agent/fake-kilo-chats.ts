@@ -1,4 +1,6 @@
-import type { ChatInfo, KiloEvent } from "../../main/agent/conversations/activity";
+import type { OpenCodeEvent } from "@kilocode/client";
+
+import type { ChatInfo } from "../../main/agent/conversations/activity";
 import type {
 	ChatCommandParams,
 	ChatPromptParams,
@@ -8,6 +10,7 @@ import type {
 } from "../../main/agent/conversations/kilo-chat-client";
 import type { PendingRequest } from "../../main/agent/conversations/store";
 import type { PermissionRequest, PermissionRule } from "../../contracts";
+import { kiloEvent } from "./kilo-events";
 
 export interface Write {
 	readonly call: string;
@@ -49,7 +52,7 @@ export class FakeKiloChats implements KiloChatClient {
 	}[] = [];
 	listCalls = 0;
 	subscriptions = 0;
-	#pending: (KiloEvent | "end")[] = [];
+	#pending: (OpenCodeEvent | "end")[] = [];
 	#wake: (() => void) | undefined;
 	#created = 0;
 	#forked = 0;
@@ -76,9 +79,9 @@ export class FakeKiloChats implements KiloChatClient {
 		this.reads.push(`questions ${directory ?? "-"}`);
 		return directory ? [] : this.questions;
 	}
-	async *events(signal: AbortSignal): AsyncIterable<KiloEvent> {
+	async *events(signal: AbortSignal): AsyncIterable<OpenCodeEvent> {
 		this.subscriptions += 1;
-		yield { type: "server.connected", properties: {} };
+		yield kiloEvent("server.connected");
 		while (!signal.aborted) {
 			const next = this.#pending.shift();
 			if (next === "end") return;
@@ -110,7 +113,7 @@ export class FakeKiloChats implements KiloChatClient {
 		this.#write("update", directory, [id, patch]);
 		await this.#gates.get("update");
 	}
-	/** Like the server: the stamp is cloned, the rules are not, and `session.created` comes first. */
+	/** Like the server: the stamp is cloned, the rules are not, and `session.forked` comes first. */
 	async forkChat(directory: string, id: string, messageId: string) {
 		this.#write("fork", directory, [id, messageId]);
 		const source = this.chats.find((chat) => chat.id === id);
@@ -126,7 +129,7 @@ export class FakeKiloChats implements KiloChatClient {
 		};
 		this.chats.push(info);
 		if (!this.quietForks)
-			this.push({ type: "session.created", properties: { info: rawChat(info) } });
+			this.push(kiloEvent("session.forked", { sessionID: info.id, parentID: id }));
 		await this.#gates.get("fork");
 		if (this.loseForkReply) throw new Error("connection reset");
 		return info;
@@ -208,9 +211,17 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 
 	/** The server announces a change. */
-	push(event: KiloEvent) {
+	push(event: OpenCodeEvent) {
 		this.#pending.push(event);
 		this.#wake?.();
+	}
+	/**
+	 * The server makes or changes `chat` (now what it lists and reads back),
+	 * announcing it with a `type` event (`session.created`, `.renamed`, …) from `directory`.
+	 */
+	announce(type: string, chat: ChatInfo, directory?: string) {
+		this.chats = [...this.chats.filter(({ id }) => id !== chat.id), chat];
+		this.push(kiloEvent(type, { sessionID: chat.id }, directory));
 	}
 	/** The server closes the event stream. */
 	end() {
@@ -235,21 +246,5 @@ export function desktopChat(id: string, overrides: Partial<ChatInfo> = {}): Chat
 		createdAt: 100,
 		updatedAt: 200,
 		...overrides,
-	};
-}
-
-/** The raw `info` of a `session.*` event for a chat. */
-export function rawChat(chat: ChatInfo) {
-	return {
-		id: chat.id,
-		title: chat.title,
-		directory: chat.directory,
-		...(chat.parentId ? { parentID: chat.parentId } : {}),
-		metadata: chat.metadata,
-		time: {
-			created: chat.createdAt,
-			updated: chat.updatedAt,
-			...(chat.archivedAt !== undefined ? { archived: chat.archivedAt } : {}),
-		},
 	};
 }

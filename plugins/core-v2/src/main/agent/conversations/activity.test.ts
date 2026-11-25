@@ -1,19 +1,24 @@
 import { describe, expect, it } from "vitest";
 
+import type { OpenCodeEvent } from "@kilocode/client";
+
 import type { ChatSummary } from "../../../contracts";
+import { kiloEvent, sessionInfo } from "../../../test/agent/kilo-events";
 import {
+	applyChatEvent,
+	applyChatInfo,
 	applyHydratedStatus,
-	applyKiloEvent,
 	chatsAwaitingLineage,
 	diffChats,
 	IDLE,
 	lineageOf,
 	publishChats,
+	readChatInfo,
 	resetActivity,
+	sessionChangedBy,
 	type ChatActivityState,
 	type ChatInfo,
 	type ChatRecords,
-	type KiloEvent,
 } from "./activity";
 
 const NOW = 1_700_000_000_000;
@@ -46,181 +51,197 @@ function records(
 	);
 }
 
-const apply = (chats: ChatRecords, event: KiloEvent, now = NOW) =>
-	applyKiloEvent(chats, event, now);
-const status = (sessionID: string, type: string): KiloEvent => ({
-	type: "session.status",
-	properties: { sessionID, status: { type } },
-});
+const apply = (chats: ChatRecords, event: OpenCodeEvent, now = NOW) =>
+	applyChatEvent(chats, event, now);
+const execution = (sessionID: string, outcome: string, data: Record<string, unknown> = {}) =>
+	kiloEvent(`session.execution.${outcome}`, { sessionID, ...data });
 
 describe("applying Kilo events", () => {
 	it("tracks pending permissions by id and ignores duplicates", () => {
-		const asked = { type: "permission.asked", properties: { id: "perm-1", sessionID: "ses-1" } };
+		const asked = kiloEvent("permission.asked", {
+			id: "per-1",
+			sessionID: "ses-1",
+			action: "shell",
+			resources: ["ls"],
+		});
 		const first = apply({}, asked);
-		expect(first["ses-1"]?.activity.pendingPermissionIds).toEqual(["perm-1"]);
+		expect(first["ses-1"]?.activity.pendingPermissionIds).toEqual(["per-1"]);
 		expect(apply(first, asked)).toBe(first);
 
-		const replied = apply(first, {
-			type: "permission.replied",
-			properties: { sessionID: "ses-1", requestID: "perm-1" },
-		});
+		const replied = apply(
+			first,
+			kiloEvent("permission.replied", { sessionID: "ses-1", requestID: "per-1", reply: "once" }),
+		);
 		expect(replied["ses-1"]?.activity.pendingPermissionIds).toEqual([]);
 	});
 
-	it("tracks v2 permission events", () => {
-		const asked = apply(
-			{},
-			{
-				type: "permission.v2.asked",
-				properties: { id: "perm-9", sessionID: "ses-1" },
-			},
+	it("tracks forms as questions until replied or cancelled", () => {
+		const form = (id: string) =>
+			kiloEvent("form.created", { form: { id, sessionID: "ses-1", title: "Q", fields: [] } });
+		let chats = apply(apply({}, form("frm-1")), form("frm-2"));
+		expect(chats["ses-1"]?.activity.pendingQuestionIds).toEqual(["frm-1", "frm-2"]);
+
+		chats = apply(
+			chats,
+			kiloEvent("form.replied", { id: "frm-1", sessionID: "ses-1", answer: {} }),
 		);
-		const replied = apply(asked, {
-			type: "permission.v2.replied",
-			properties: { sessionID: "ses-1", requestID: "perm-9" },
-		});
-
-		expect(asked["ses-1"]?.activity.pendingPermissionIds).toEqual(["perm-9"]);
-		expect(replied["ses-1"]?.activity.pendingPermissionIds).toEqual([]);
-	});
-
-	it("tracks questions across asked, replied and rejected", () => {
-		let chats = apply(
-			{},
-			{ type: "question.asked", properties: { id: "q-1", sessionID: "ses-1" } },
-		);
-		chats = apply(chats, {
-			type: "question.v2.asked",
-			properties: { id: "q-2", sessionID: "ses-1" },
-		});
-		expect(chats["ses-1"]?.activity.pendingQuestionIds).toEqual(["q-1", "q-2"]);
-
-		chats = apply(chats, {
-			type: "question.replied",
-			properties: { sessionID: "ses-1", requestID: "q-1" },
-		});
-		chats = apply(chats, {
-			type: "question.v2.rejected",
-			properties: { sessionID: "ses-1", requestID: "q-2" },
-		});
+		chats = apply(chats, kiloEvent("form.cancelled", { id: "frm-2", sessionID: "ses-1" }));
 		expect(chats["ses-1"]?.activity.pendingQuestionIds).toEqual([]);
 	});
 
-	it("stamps workingSince on the idle-to-busy edge only", () => {
-		const busy = apply({}, status("ses-1", "busy"));
-		const retry = apply(busy, status("ses-1", "retry"), NOW + 5000);
+	it("stamps workingSince when an execution starts, keeping it through retries", () => {
+		const busy = apply({}, execution("ses-1", "started"));
+		const retry = apply(
+			busy,
+			kiloEvent("session.retry.scheduled", { sessionID: "ses-1" }),
+			NOW + 5,
+		);
 
 		expect(busy["ses-1"]?.activity).toMatchObject({ status: "busy", workingSince: NOW });
 		expect(retry["ses-1"]?.activity).toMatchObject({ status: "retry", workingSince: NOW });
 	});
 
-	it("stamps completedAt on the busy-to-idle edge and clears workingSince", () => {
+	it("stamps completedAt when an execution succeeds or is interrupted", () => {
 		const busy = records({ "ses-1": { activity: { status: "busy", workingSince: NOW - 3000 } } });
 
-		expect(apply(busy, status("ses-1", "idle"))["ses-1"]?.activity).toEqual({
+		expect(apply(busy, execution("ses-1", "succeeded"))["ses-1"]?.activity).toEqual({
 			...IDLE,
 			completedAt: NOW,
 		});
 		expect(
-			apply(busy, { type: "session.idle", properties: { sessionID: "ses-1" } })["ses-1"]?.activity
+			apply(busy, execution("ses-1", "interrupted", { reason: "user" }))["ses-1"]?.activity
 				.completedAt,
 		).toBe(NOW);
 	});
 
-	it("ignores idle for unknown or already idle chats", () => {
+	it("follows the server's session.status and session.idle too", () => {
+		const busy = apply(
+			{},
+			kiloEvent("session.status", { sessionID: "ses-1", status: { type: "busy" } }),
+		);
+		expect(busy["ses-1"]?.activity.status).toBe("busy");
+		expect(
+			apply(busy, kiloEvent("session.idle", { sessionID: "ses-1" }))["ses-1"]?.activity,
+		).toEqual({
+			...IDLE,
+			completedAt: NOW,
+		});
+	});
+
+	it("ignores an execution ending for unknown or already idle chats", () => {
 		const idle = records({ "ses-1": {} });
 
-		expect(apply({}, status("ses-1", "idle"))).toEqual({});
-		expect(apply(idle, { type: "session.idle", properties: { sessionID: "ses-1" } })).toBe(idle);
+		expect(apply({}, execution("ses-1", "succeeded"))).toEqual({});
+		expect(apply(idle, execution("ses-1", "succeeded"))).toBe(idle);
 	});
 
-	it("keeps a turn's error until the next turn starts, but not an abort", () => {
-		let chats = apply({}, status("ses-1", "busy"));
-		chats = apply(chats, {
-			type: "session.error",
-			properties: {
-				sessionID: "ses-1",
-				error: { name: "APIError", data: { message: "Rate limited" } },
-			},
+	it("keeps a failed execution's error until the next execution starts", () => {
+		let chats = apply({}, execution("ses-1", "started"));
+		chats = apply(
+			chats,
+			execution("ses-1", "failed", { error: { type: "provider.no-route", message: "No route" } }),
+		);
+		expect(chats["ses-1"]?.activity).toMatchObject({
+			status: "idle",
+			completedAt: NOW,
+			lastError: { name: "provider.no-route", message: "No route" },
 		});
-		chats = apply(chats, status("ses-1", "idle"));
-		expect(chats["ses-1"]?.activity.lastError).toEqual({
-			name: "APIError",
-			message: "Rate limited",
-		});
-
-		const aborted = apply(chats, {
-			type: "session.error",
-			properties: { sessionID: "ses-1", error: { name: "MessageAbortedError", data: {} } },
-		});
-		expect(aborted).toBe(chats);
-		expect(apply(chats, status("ses-1", "busy"))["ses-1"]?.activity.lastError).toBeUndefined();
+		expect(
+			apply(chats, execution("ses-1", "started"))["ses-1"]?.activity.lastError,
+		).toBeUndefined();
 	});
 
-	it("records chat info from created and updated events, and where events came from", () => {
-		const raw = {
-			id: "ses-1",
-			title: "Fix login",
-			directory: "/repo/project",
-			parentID: "ses-0",
-			metadata: desktop({ workspaceId: "ws-1" }),
-			time: { created: NOW - 100, updated: NOW, archived: NOW },
-		};
-		const created = apply(
-			{},
-			{
-				type: "session.created",
-				properties: { info: raw },
-				directory: "/repo/project",
-			},
+	it("remembers the directory a chat's events came from", () => {
+		const chats = apply({}, execution("ses-1", "started"), NOW);
+		const located = apply(
+			chats,
+			kiloEvent("session.retry.scheduled", { sessionID: "ses-1" }, "/repo/project"),
 		);
 
-		expect(created["ses-1"]).toEqual({
-			info: {
-				id: "ses-1",
-				title: "Fix login",
-				parentId: "ses-0",
-				directory: "/repo/project",
-				metadata: desktop({ workspaceId: "ws-1" }),
-				createdAt: NOW - 100,
-				updatedAt: NOW,
-				archivedAt: NOW,
-			},
-			activity: IDLE,
-			directory: "/repo/project",
-		});
+		expect(located["ses-1"]?.directory).toBe("/repo/project");
 		expect(
-			apply(created, {
-				type: "session.updated",
-				properties: { info: raw },
-				directory: "/repo/project",
-			}),
-		).toBe(created);
-		expect(
-			apply(created, {
-				type: "session.updated",
-				properties: { info: { ...raw, title: "Fix sign-in" } },
-			})["ses-1"]?.info?.title,
-		).toBe("Fix sign-in");
+			apply(located, kiloEvent("session.retry.scheduled", { sessionID: "ses-1" }, "/repo/project")),
+		).toBe(located);
 	});
 
 	it("removes chats on session.deleted", () => {
 		const chats = records({ "ses-1": { info: info("ses-1") }, "ses-2": {} });
 
-		expect(
-			Object.keys(apply(chats, { type: "session.deleted", properties: { info: { id: "ses-1" } } })),
-		).toEqual(["ses-2"]);
+		expect(Object.keys(apply(chats, kiloEvent("session.deleted", { sessionID: "ses-1" })))).toEqual(
+			["ses-2"],
+		);
 	});
 
-	it("ignores unrelated and malformed events", () => {
+	it("ignores events about nothing it tracks", () => {
 		const chats = records({ "ses-1": {} });
 
+		expect(apply(chats, kiloEvent("session.text.delta", { sessionID: "ses-1", delta: "x" }))).toBe(
+			chats,
+		);
+		expect(apply(chats, kiloEvent("server.connected"))).toBe(chats);
 		expect(
-			apply(chats, { type: "message.part.updated", properties: { part: { sessionID: "ses-1" } } }),
+			apply(chats, kiloEvent("session.status", { sessionID: "ses-1", status: { type: "weird" } })),
 		).toBe(chats);
-		expect(apply(chats, { type: "permission.asked", properties: { id: "p" } })).toBe(chats);
-		expect(apply(chats, { type: "session.updated", properties: { info: { id: 3 } } })).toBe(chats);
-		expect(apply(chats, status("ses-1", "weird"))).toBe(chats);
+	});
+});
+
+describe("reading Kilo sessions", () => {
+	it("reads a session as a chat in its location's directory", () => {
+		expect(
+			readChatInfo(
+				sessionInfo("ses-1", {
+					title: "Fix login",
+					parentID: "ses-0",
+					metadata: { "kilo-desktop": { workspaceId: "ws-1" } },
+					location: { directory: "/repo/project" },
+					time: { created: NOW - 100, updated: NOW, archived: NOW },
+				}),
+			),
+		).toEqual({
+			id: "ses-1",
+			title: "Fix login",
+			parentId: "ses-0",
+			directory: "/repo/project",
+			metadata: desktop({ workspaceId: "ws-1" }),
+			createdAt: NOW - 100,
+			updatedAt: NOW,
+			archivedAt: NOW,
+		});
+		expect(readChatInfo(sessionInfo("ses-2"))).toMatchObject({
+			title: "",
+			parentId: null,
+			metadata: null,
+		});
+	});
+
+	it("names the session a created, forked or changed-session event is about", () => {
+		for (const type of [
+			"session.created",
+			"session.forked",
+			"session.renamed",
+			"session.metadata.updated",
+			"session.archived",
+			"session.unarchived",
+			"session.moved",
+			"session.permissions",
+		]) {
+			expect(sessionChangedBy(kiloEvent(type, { sessionID: "ses-1" }))).toBe("ses-1");
+		}
+		expect(sessionChangedBy(execution("ses-1", "started"))).toBeUndefined();
+	});
+
+	it("records a chat's info read again, and where the event came from", () => {
+		const created = applyChatInfo({}, info("ses-1"), "/repo/project");
+
+		expect(created["ses-1"]).toEqual({
+			info: info("ses-1"),
+			activity: IDLE,
+			directory: "/repo/project",
+		});
+		expect(applyChatInfo(created, info("ses-1"), "/repo/project")).toBe(created);
+		expect(
+			applyChatInfo(created, info("ses-1", { title: "Fix sign-in" }))["ses-1"]?.info?.title,
+		).toBe("Fix sign-in");
 	});
 });
 

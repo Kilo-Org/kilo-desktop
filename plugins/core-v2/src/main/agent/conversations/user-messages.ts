@@ -1,65 +1,42 @@
-import type { KiloEvent } from "./activity";
+import type { OpenCodeEvent } from "@kilocode/client";
+
+import type { ModelRef } from "../../../contracts";
 
 export interface UserMessage {
 	readonly chatId: string;
 	readonly messageId: string;
 	readonly text: string;
-	readonly model?: { readonly providerID: string; readonly modelID: string };
+	readonly model?: ModelRef;
 }
 
-/** Bounds the ids remembered per kind; old ones are forgotten first. */
+/** Bounds the ids remembered; old ones are forgotten first. */
 const MAX_REMEMBERED = 500;
 
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
-
-const asString = (value: unknown): string | undefined =>
-	typeof value === "string" && value.length > 0 ? value : undefined;
-
-function remember<T>(map: Map<string, T>, key: string, value: T): void {
-	map.set(key, value);
-	if (map.size > MAX_REMEMBERED) map.delete(map.keys().next().value!);
-}
-
-function readModel(value: unknown): UserMessage["model"] {
-	const model = asRecord(value);
-	const providerID = asString(model?.providerID);
-	const modelID = asString(model?.modelID);
-	return providerID && modelID ? { providerID, modelID } : undefined;
-}
-
 /**
- * Picks the messages people send out of the server's stream: a user message
- * (`message.updated`, role `user`) is announced once, with its first text
- * part the person wrote (the server writes the message before its parts).
- * Messages without such a part are never announced.
+ * Picks the messages people send out of the server's stream: a `user` item
+ * entering a session's inbox (`session.inbox.enqueued`), announced once, with
+ * the model it was sent with when it names one. Synthetic notes, compactions
+ * and moves are never announced, nor a message without text.
  */
 export class UserMessageTracker {
-	readonly #awaitingText = new Map<string, Omit<UserMessage, "text">>();
-	readonly #announced = new Map<string, true>();
+	readonly #announced = new Set<string>();
 
-	observe(event: KiloEvent): UserMessage | undefined {
-		if (event.type === "message.updated") {
-			const info = asRecord(event.properties.info);
-			const messageId = asString(info?.id);
-			const chatId = asString(info?.sessionID);
-			if (info?.role !== "user" || !messageId || !chatId) return undefined;
-			if (this.#announced.has(messageId) || this.#awaitingText.has(messageId)) return undefined;
-			const model = readModel(info.model);
-			remember(this.#awaitingText, messageId, { chatId, messageId, ...(model ? { model } : {}) });
+	observe(event: OpenCodeEvent): UserMessage | undefined {
+		if (event.type !== "session.inbox.enqueued" || event.data.item.type !== "user")
 			return undefined;
+		const { sessionID, inboxID, item } = event.data;
+		const text = item.payload.text;
+		if (!text.trim() || this.#announced.has(inboxID)) return undefined;
+		this.#announced.add(inboxID);
+		if (this.#announced.size > MAX_REMEMBERED) {
+			this.#announced.delete(this.#announced.values().next().value!);
 		}
-		if (event.type !== "message.part.updated") return undefined;
-		const part = asRecord(event.properties.part);
-		const messageId = asString(part?.messageID);
-		if (!part || !messageId || part.type !== "text" || part.synthetic || part.ignored) {
-			return undefined;
-		}
-		const pending = this.#awaitingText.get(messageId);
-		const text = typeof part.text === "string" ? part.text : "";
-		if (!pending || !text.trim()) return undefined;
-		this.#awaitingText.delete(messageId);
-		remember(this.#announced, messageId, true);
-		return { ...pending, text };
+		const model = item.payload.selection?.model;
+		return {
+			chatId: sessionID,
+			messageId: inboxID,
+			text,
+			...(model ? { model: { aiProviderId: model.providerID, modelId: model.id } } : {}),
+		};
 	}
 }

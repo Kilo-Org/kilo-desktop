@@ -1,13 +1,9 @@
+import type { PermissionRule } from "@kilocode/client";
+
 import type { WorkStyle } from "../../contracts";
 
-export type PermissionEffect = "allow" | "ask" | "deny";
-
-/** One rule of Kilo v2's ordered `permissions` list; the last matching rule wins. */
-export interface PermissionRule {
-	readonly action: string;
-	readonly resource: string;
-	readonly effect: PermissionEffect;
-}
+/** Rules of Kilo's ordered `permissions` list; the last matching rule wins. */
+export type { PermissionRule };
 
 const SHELL_ALLOW = [
 	"cat *",

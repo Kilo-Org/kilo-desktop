@@ -184,12 +184,12 @@ describe("KiloConfigManager", () => {
 	it("changes its own permission rule in place, leaving rules around it alone", async () => {
 		const filePath = path.join(configDirectory, KILO_V2_CONFIG_FILENAME);
 		const config = new KiloConfigManager(configDirectory);
-		await config.setPermissionEntry(SOURCE_ONE, "bash", "ask");
+		await config.setPermissionEntry(SOURCE_ONE, "shell", "ask");
 		const userRule = { action: "edit", resource: "*.md", effect: "allow" };
 		const current = parse(await readFile(filePath, "utf8")) as { permissions: unknown[] };
 		await writeFile(filePath, JSON.stringify({ permissions: [...current.permissions, userRule] }));
 
-		await expect(config.setPermissionEntry(SOURCE_ONE, "bash", "deny")).resolves.toEqual({
+		await expect(config.setPermissionEntry(SOURCE_ONE, "shell", "deny")).resolves.toEqual({
 			kind: "written",
 			reason: "updated",
 		});

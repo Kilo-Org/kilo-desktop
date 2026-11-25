@@ -7,10 +7,12 @@ import {
 } from "../../contracts";
 
 /**
- * Custom (OpenAI-compatible) AI providers as entries of Kilo's `provider`
- * config. The contract's `CustomAiProvider` is Kilo-neutral; this converts it
- * to and from the entry shape Kilo reads, and works out the patch Kilo's
- * deep-merging `global.config.update` needs to drop what the user removed.
+ * Custom (OpenAI-compatible) AI providers as entries of Kilo's `providers`
+ * settings (`package`, `settings.baseURL`, `headers`, and models'
+ * `capabilities` and `limit`). The contract's `CustomAiProvider` is
+ * Kilo-neutral; this converts it to and from the entry Kilo reads, and works
+ * out the patch Kilo's deep-merging settings write needs to drop what the
+ * user removed.
  */
 
 export const CUSTOM_PROVIDER_PACKAGES = [
@@ -52,6 +54,13 @@ const modelModalitiesSchema = z.object({
 
 export type ModelModalities = z.infer<typeof modelModalitiesSchema>;
 
+const modelCapabilitiesSchema = modelModalitiesSchema.extend({
+	reasoning: z.object({ supported: z.literal(true) }).optional(),
+});
+
+/** What a custom model can take and give, as Kilo's `capabilities`. */
+export type ModelCapabilities = ModelModalities & { reasoning?: { supported: true } };
+
 /** Kilo's limits; 0 means unknown, as Kilo reads it. */
 const modelLimitSchema = z.object({
 	context: z.number().int().nonnegative(),
@@ -60,9 +69,9 @@ const modelLimitSchema = z.object({
 
 const kiloProviderEntrySchema = z
 	.object({
-		npm: z.enum(CUSTOM_PROVIDER_PACKAGES).default(CUSTOM_PROVIDER_PACKAGE),
+		package: z.enum(CUSTOM_PROVIDER_PACKAGES).default(CUSTOM_PROVIDER_PACKAGE),
 		name: z.string().trim().min(1).max(200),
-		options: z
+		settings: z
 			.object({
 				baseURL: z
 					.string()
@@ -71,17 +80,16 @@ const kiloProviderEntrySchema = z
 					.refine((value) => value.startsWith("http://") || value.startsWith("https://"), {
 						message: INVALID_BASE_URL,
 					}),
-				headers: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
 			})
 			.strict(),
+		headers: z.record(z.string().trim().min(1), z.string().trim().min(1)).optional(),
 		models: z
 			.record(
 				z.string().trim().min(1),
 				z
 					.object({
 						name: z.string().trim().min(1).max(200),
-						reasoning: z.boolean().optional(),
-						modalities: modelModalitiesSchema.optional(),
+						capabilities: modelCapabilitiesSchema.strict().optional(),
 						limit: modelLimitSchema.optional(),
 					})
 					.strict(),
@@ -91,15 +99,15 @@ const kiloProviderEntrySchema = z
 	.strict();
 
 export interface KiloProviderEntry {
-	npm: CustomProviderPackage;
+	package: CustomProviderPackage;
 	name: string;
-	options: { baseURL: string; headers?: Record<string, string> };
+	settings: { baseURL: string };
+	headers?: Record<string, string>;
 	models: Record<
 		string,
 		{
 			name: string;
-			reasoning?: true;
-			modalities?: ModelModalities;
+			capabilities?: ModelCapabilities;
 			limit?: { context: number; output: number };
 		}
 	>;
@@ -139,39 +147,56 @@ function isRecord(value: unknown): value is AnyRecord {
 }
 
 function withoutApiKey(entry: unknown): unknown {
-	if (!isRecord(entry) || !isRecord(entry.options)) return entry;
-	const { apiKey: _secret, ...options } = entry.options;
-	return { ...entry, options };
+	if (!isRecord(entry) || !isRecord(entry.settings)) return entry;
+	const { apiKey: _secret, ...settings } = entry.settings;
+	return { ...entry, settings };
+}
+
+function capabilitiesOf(model: {
+	reasoning?: boolean | undefined;
+	modalities?: ModelModalities | undefined;
+}): ModelCapabilities | undefined {
+	const capabilities: ModelCapabilities = {
+		...(model.reasoning ? { reasoning: { supported: true as const } } : {}),
+		...(model.modalities?.input ? { input: model.modalities.input } : {}),
+		...(model.modalities?.output ? { output: model.modalities.output } : {}),
+	};
+	return Object.keys(capabilities).length > 0 ? capabilities : undefined;
 }
 
 function normalize(entry: z.output<typeof kiloProviderEntrySchema>): KiloProviderEntry {
-	const headers = entry.options.headers
+	const headers = entry.headers
 		? Object.fromEntries(
-				Object.entries(entry.options.headers).map(([key, value]) => [key.trim(), value.trim()]),
+				Object.entries(entry.headers).map(([key, value]) => [key.trim(), value.trim()]),
 			)
 		: undefined;
 	return {
-		npm: entry.npm,
+		package: entry.package,
 		name: entry.name.trim(),
-		options: {
-			baseURL: entry.options.baseURL.trim(),
-			...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
-		},
+		settings: { baseURL: entry.settings.baseURL.trim() },
+		...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
 		models: Object.fromEntries(
-			Object.entries(entry.models).map(([id, model]) => [
-				id.trim(),
-				{
-					name: model.name.trim(),
-					...(model.reasoning ? { reasoning: true as const } : {}),
-					...(model.modalities ? { modalities: model.modalities } : {}),
-					...(model.limit ? { limit: model.limit } : {}),
-				},
-			]),
+			Object.entries(entry.models).map(([id, model]) => {
+				const capabilities = model.capabilities
+					? capabilitiesOf({
+							reasoning: model.capabilities.reasoning?.supported,
+							modalities: model.capabilities,
+						})
+					: undefined;
+				return [
+					id.trim(),
+					{
+						name: model.name.trim(),
+						...(capabilities ? { capabilities } : {}),
+						...(model.limit ? { limit: model.limit } : {}),
+					},
+				];
+			}),
 		),
 	};
 }
 
-/** Validates and normalizes a provider entry; a key in its options never survives. */
+/** Validates and normalizes a provider entry; a key in its settings never survives. */
 export function sanitizeKiloProviderEntry(
 	entry: unknown,
 ): { value: KiloProviderEntry } | { error: string } {
@@ -182,12 +207,22 @@ export function sanitizeKiloProviderEntry(
 	return { value: normalize(result.data) };
 }
 
+/** A model's input and output modalities as an entry holds them. */
+function modalitiesOf(model: unknown): ModelModalities | undefined {
+	if (!isRecord(model) || !isRecord(model.capabilities)) return undefined;
+	const { input, output } = model.capabilities;
+	const parsed = modelModalitiesSchema.safeParse({ input, output });
+	return parsed.success && (parsed.data.input || parsed.data.output) ? parsed.data : undefined;
+}
+
+/** Whether the model takes images as input. */
+function acceptsImages(model: unknown): boolean {
+	return new Set(modalitiesOf(model)?.input ?? []).has("image");
+}
+
 function existingModalities(existing: unknown, modelId: string): ModelModalities | undefined {
 	if (!isRecord(existing) || !isRecord(existing.models)) return undefined;
-	const model = existing.models[modelId];
-	if (!isRecord(model)) return undefined;
-	const parsed = modelModalitiesSchema.safeParse(model.modalities);
-	return parsed.success ? parsed.data : undefined;
+	return modalitiesOf(existing.models[modelId]);
 }
 
 /**
@@ -199,15 +234,15 @@ export function toKiloProviderEntry(
 	provider: z.output<typeof customAiProviderSchema>,
 	existing: unknown,
 ): { value: KiloProviderEntry } | { error: string } {
-	const existingNpm = isRecord(existing) ? existing.npm : undefined;
-	const keptNpm = isCustomProviderPackage(existingNpm) ? existingNpm : CUSTOM_PROVIDER_PACKAGE;
+	const existingPackage = isRecord(existing) ? existing.package : undefined;
+	const keptPackage = isCustomProviderPackage(existingPackage)
+		? existingPackage
+		: CUSTOM_PROVIDER_PACKAGE;
 	return sanitizeKiloProviderEntry({
-		npm: provider.apiFormat ? API_FORMAT_PACKAGES[provider.apiFormat] : keptNpm,
+		package: provider.apiFormat ? API_FORMAT_PACKAGES[provider.apiFormat] : keptPackage,
 		name: provider.name,
-		options: {
-			baseURL: provider.baseUrl,
-			...(provider.headers ? { headers: provider.headers } : {}),
-		},
+		settings: { baseURL: provider.baseUrl },
+		...(provider.headers ? { headers: provider.headers } : {}),
 		models: Object.fromEntries(
 			provider.models.map((model) => {
 				const id = model.modelId.trim();
@@ -217,12 +252,12 @@ export function toKiloProviderEntry(
 						? previous
 						: resolveModalities(previous, model.attachments);
 				const hasLimit = model.contextWindow !== undefined || model.maxOutputTokens !== undefined;
+				const capabilities = capabilitiesOf({ reasoning: model.reasoning, modalities });
 				return [
 					id,
 					{
 						name: model.name,
-						...(model.reasoning ? { reasoning: true } : {}),
-						...(modalities ? { modalities } : {}),
+						...(capabilities ? { capabilities } : {}),
 						...(hasLimit
 							? { limit: { context: model.contextWindow ?? 0, output: model.maxOutputTokens ?? 0 } }
 							: {}),
@@ -254,20 +289,22 @@ export function fromKiloProviderEntry(
 	entry: unknown,
 	hasStoredKey: boolean,
 ): z.output<typeof customAiProviderSchema> | null {
-	if (!isRecord(entry) || !isCustomProviderPackage(entry.npm)) return null;
-	const options = isRecord(entry.options) ? entry.options : {};
+	if (!isRecord(entry) || !isCustomProviderPackage(entry.package)) return null;
+	const settings = isRecord(entry.settings) ? entry.settings : {};
 	const models = isRecord(entry.models) ? entry.models : {};
-	const headers = stringRecord(options.headers);
+	const headers = stringRecord(entry.headers);
 	const candidate: CustomAiProvider = {
 		aiProviderId,
 		name: typeof entry.name === "string" ? entry.name : aiProviderId,
-		baseUrl: typeof options.baseURL === "string" ? options.baseURL : "",
-		apiFormat: apiFormatOf(entry.npm),
+		baseUrl: typeof settings.baseURL === "string" ? settings.baseURL : "",
+		apiFormat: apiFormatOf(entry.package),
 		...(hasStoredKey ? { apiKey: MASKED_API_KEY } : {}),
 		...(headers ? { headers } : {}),
 		models: Object.entries(models).flatMap(([modelId, model]) => {
 			if (!isRecord(model)) return [];
-			const modalities = modelModalitiesSchema.safeParse(model.modalities);
+			const capabilities = isRecord(model.capabilities) ? model.capabilities : {};
+			const reasoning =
+				isRecord(capabilities.reasoning) && capabilities.reasoning.supported === true;
 			const limit = isRecord(model.limit) ? model.limit : {};
 			const contextWindow = positive(limit.context);
 			const maxOutputTokens = positive(limit.output);
@@ -275,10 +312,8 @@ export function fromKiloProviderEntry(
 				{
 					modelId,
 					name: typeof model.name === "string" && model.name.trim() ? model.name : modelId,
-					...(model.reasoning === true ? { reasoning: true } : {}),
-					...(modalities.success && modalities.data.input?.includes("image")
-						? { attachments: true }
-						: {}),
+					...(reasoning ? { reasoning: true } : {}),
+					...(acceptsImages(model) ? { attachments: true } : {}),
 					...(contextWindow ? { contextWindow } : {}),
 					...(maxOutputTokens ? { maxOutputTokens } : {}),
 				},
@@ -289,24 +324,37 @@ export function fromKiloProviderEntry(
 	return parsed.success ? parsed.data : null;
 }
 
-type ProviderPatch = Omit<KiloProviderEntry, "models" | "options"> & {
-	options: Omit<KiloProviderEntry["options"], "headers"> & {
-		headers?: Record<string, string | null> | null;
-	};
-	models: Record<
-		string,
-		null | {
-			name: string;
-			reasoning?: true | null;
-			modalities?: ModelModalities | null;
-			limit?: { context: number; output: number } | null;
-		}
-	>;
+type ModelPatch = {
+	name: string;
+	capabilities?: {
+		reasoning?: { supported: true } | null;
+		input?: ModelModalities["input"] | null;
+		output?: ModelModalities["output"] | null;
+	} | null;
+	limit?: { context: number; output: number } | null;
 };
 
+type ProviderPatch = Omit<KiloProviderEntry, "models" | "headers"> & {
+	headers?: Record<string, string | null> | null;
+	models: Record<string, ModelPatch | null>;
+};
+
+function capabilitiesPatch(
+	before: unknown,
+	after: ModelCapabilities | undefined,
+): ModelPatch["capabilities"] {
+	if (!isRecord(before)) return after;
+	if (!after) return null;
+	const patch: NonNullable<ModelPatch["capabilities"]> = { ...after };
+	for (const key of ["reasoning", "input", "output"] as const) {
+		if (before[key] !== undefined && after[key] === undefined) patch[key] = null;
+	}
+	return patch;
+}
+
 /**
- * Kilo's `global.config.update` deep-merges. Null sentinels delete models,
- * headers and model fields that existed on disk but are gone from the next entry.
+ * Kilo's settings write deep-merges. Null sentinels delete models, headers
+ * and model fields that existed on disk but are gone from the next entry.
  */
 export function withCustomProviderDeletions(
 	existing: unknown,
@@ -315,9 +363,8 @@ export function withCustomProviderDeletions(
 	if (!isRecord(existing)) return next;
 	const oldModels = isRecord(existing.models) ? existing.models : {};
 	const patched: ProviderPatch["models"] = { ...next.models };
-	const oldOptions = isRecord(existing.options) ? existing.options : {};
-	const oldHeaders = isRecord(oldOptions.headers) ? oldOptions.headers : {};
-	const nextHeaders = next.options.headers;
+	const oldHeaders = isRecord(existing.headers) ? existing.headers : {};
+	const nextHeaders = next.headers;
 	const headers = (() => {
 		if (Object.keys(oldHeaders).length === 0) return nextHeaders;
 		if (!nextHeaders || Object.keys(nextHeaders).length === 0) return null;
@@ -333,27 +380,19 @@ export function withCustomProviderDeletions(
 
 	for (const id of Object.keys(oldModels)) {
 		const oldModel = oldModels[id];
-		const newModel = patched[id];
+		const newModel = next.models[id];
 		if (!newModel) {
 			patched[id] = null;
 			continue;
 		}
 		if (!isRecord(oldModel)) continue;
+		const capabilities = capabilitiesPatch(oldModel.capabilities, newModel.capabilities);
 		patched[id] = {
 			...newModel,
-			...(oldModel.reasoning !== undefined && newModel.reasoning === undefined
-				? { reasoning: null }
-				: {}),
-			...(oldModel.modalities !== undefined && newModel.modalities === undefined
-				? { modalities: null }
-				: {}),
+			...(capabilities !== undefined ? { capabilities } : {}),
 			...(oldModel.limit !== undefined && newModel.limit === undefined ? { limit: null } : {}),
 		};
 	}
 
-	return {
-		...next,
-		options: { ...next.options, ...(headers !== undefined ? { headers } : {}) },
-		models: patched,
-	};
+	return { ...next, ...(headers !== undefined ? { headers } : {}), models: patched };
 }

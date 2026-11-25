@@ -150,7 +150,7 @@
 			"kilo.chat/permission-renderer": [
 				{
 					"id": "execute",
-					"permissions": ["notebooks_execute"]
+					"actions": ["notebooks_execute"]
 				}
 			]
 		}

@@ -50,7 +50,7 @@ export function KiloGatewayAccountPanel({
 } = {}) {
 	const auth = useKiloAccount();
 
-	const orgOptions = auth.profile ? buildOrgOptions(auth.profile.profile) : [];
+	const orgOptions = auth.profile ? buildOrgOptions(auth.profile) : [];
 	const currentOrgValue = auth.profile
 		? resolveCurrentOrgValue(auth.profile, orgOptions)
 		: undefined;
@@ -210,7 +210,7 @@ function SignedInView({
 
 			<div className="flex flex-col gap-2">
 				<div className="grid items-start gap-5 sm:grid-cols-2">
-					{profile.balance ? (
+					{profile.balance && profile.balance.balance !== null ? (
 						<section className="min-w-0" data-qa-id="kilo-account-balance">
 							<p className="text-muted-foreground text-xs font-medium">Available balance</p>
 							<div className="mt-1 flex items-center gap-1.5">
@@ -283,7 +283,7 @@ function SignedInView({
 
 				{profile.balance || showSignOut ? (
 					<div className="flex flex-wrap items-center gap-2" data-qa-id="kilo-account-actions">
-						{profile.balance ? (
+						{profile.balance && profile.balance.balance !== null ? (
 							<>
 								<ExternalLink
 									href={KILO_CREDITS_URL}

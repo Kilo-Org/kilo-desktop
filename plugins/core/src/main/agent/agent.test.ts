@@ -347,7 +347,6 @@ describe("MCP servers", () => {
 				type: "local",
 				command: [`${resources}/bin/acme`, "--root", resources],
 				environment: { ACME_HOME: `${resources}/home` },
-				enabled: true,
 			},
 		});
 		expect(config.mcp).not.toHaveProperty("no-command");
@@ -441,7 +440,7 @@ describe("agent extensions", () => {
 									id: "analyst",
 									type: "agent",
 									description: "Analyses notebooks",
-									prompt: "You analyse notebooks.",
+									system: "You analyse notebooks.",
 									model: { aiProviderId: "kilo", modelId: "acme/fast" },
 								},
 								{
@@ -450,7 +449,7 @@ describe("agent extensions", () => {
 									description: "Analyse a notebook",
 									template: "Analyse $ARGUMENTS",
 									agent: "analyst",
-									subtask: true,
+									subagent: true,
 								},
 							],
 						},
@@ -483,7 +482,7 @@ describe("agent extensions", () => {
 			agent: {
 				analyst: {
 					description: "Analyses notebooks",
-					prompt: "You analyse notebooks.",
+					system: "You analyse notebooks.",
 					mode: "subagent",
 					model: "kilo/acme/fast",
 				},
@@ -493,7 +492,7 @@ describe("agent extensions", () => {
 					template: "Analyse $ARGUMENTS",
 					description: "Analyse a notebook",
 					agent: "analyst",
-					subtask: true,
+					subagent: true,
 				},
 			},
 		});

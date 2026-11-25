@@ -113,7 +113,7 @@ export function isMutatingCondaTool(toolName: string): boolean {
 
 /**
  * Whether a permission request is a conda mutation that must stay **per-action**
- * — either one of the gated MCP tools, or a `bash` command that runs a
+ * — either one of the gated MCP tools, or a `shell` command that runs a
  * mutating conda-family CLI (`conda install …`). Both are approved one call at
  * a time: a standing "Always allow" would let a later, possibly injection-
  * driven, call skip this dialog.
@@ -123,7 +123,7 @@ export function isPerActionCondaMutation(
 	patterns: readonly string[],
 ): boolean {
 	if (isMutatingCondaTool(permissionLabel)) return true;
-	return permissionLabel === "bash" && matchesMutatingCondaCli(patterns.join("\n"));
+	return permissionLabel === "shell" && matchesMutatingCondaCli(patterns.join("\n"));
 }
 
 export interface CondaInvocationSummary {

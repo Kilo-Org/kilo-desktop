@@ -83,8 +83,8 @@ export function SignInStep({
 	}
 
 	if (auth.signedIn === true) {
-		const name = auth.profile?.profile.name ?? auth.profile?.profile.email ?? "Kilo";
-		const email = auth.profile?.profile.name ? auth.profile.profile.email : null;
+		const name = auth.profile?.name ?? auth.profile?.email ?? "Kilo";
+		const email = auth.profile?.name ? auth.profile.email : null;
 		return (
 			<div data-qa-id="onboarding-signed-in" className="flex items-center gap-4">
 				<span className="bg-success-surface text-success grid size-10 shrink-0 place-items-center rounded-full">

@@ -1,4 +1,4 @@
-import type { GenerateInput } from "@kilo-desktop/plugin-core/contracts";
+import { modelKey, type GenerateInput, type ModelRef } from "@kilo-desktop/plugin-core/contracts";
 
 export interface CommitMessageInput {
 	readonly directory: string;
@@ -105,5 +105,26 @@ export function createSourceControlWriter(deps: {
 						: null,
 			);
 		},
+	};
+}
+
+/**
+ * The model commit and pull request text is generated with: the one new chats
+ * start with, when the server still offers it. A saved pick the server no
+ * longer lists (removed, or its provider disconnected) leaves the choice to
+ * the server rather than failing the request.
+ */
+export function generationModel(state: {
+	readonly models: Readonly<Record<string, unknown>>;
+	readonly preferences: {
+		readonly preferred?: (ModelRef & { readonly variant: string }) | undefined;
+	};
+}): GenerateInput["model"] {
+	const preferred = state.preferences.preferred;
+	if (!preferred || !(modelKey(preferred) in state.models)) return undefined;
+	return {
+		aiProviderId: preferred.aiProviderId,
+		modelId: preferred.modelId,
+		...(preferred.variant ? { variant: preferred.variant } : {}),
 	};
 }

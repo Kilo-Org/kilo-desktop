@@ -16,8 +16,8 @@ export function isAnacondaEmployee(email: string): boolean {
 export function kernelAccountFor(state: AccountState): AccountInput | null {
 	const profile = state.signedIn ? state.profile : null;
 	if (!profile) return null;
-	const { email, organizations } = profile.profile;
-	const organization = organizations?.find((org) => org.id === profile.currentOrgId);
+	const { email, organizations } = profile;
+	const organization = organizations.find((org) => org.id === profile.organizationId);
 	return {
 		id: email,
 		email,

@@ -86,7 +86,7 @@ export function toolPermissionRules(
 ): PermissionRule[] {
 	return tools
 		.filter((tool) => tool.metadata.approval === "ask")
-		.map((tool) => ({ permission: toolWireName(tool.key), pattern: "*", action: "ask" }));
+		.map((tool) => ({ action: toolWireName(tool.key), resource: "*", effect: "ask" }));
 }
 
 /** Marks a refused call to a `requiresSignIn` tool, so the chat can show a sign-in prompt. */
@@ -121,8 +121,31 @@ export const ToolApproval = defineDecisionExtensionPoint({
 
 // --- What plugins add to Kilo itself ---
 
-/** An entry in Kilo's `mcp` config, in Kilo's own shape. */
-export type McpServerEntry = Readonly<Record<string, unknown>>;
+/** A local MCP server in Kilo v2's config (`Mcp.LocalConfig`): a command Kilo starts. */
+export type LocalMcpServerEntry = {
+	readonly type: "local";
+	/** The executable and its arguments. */
+	readonly command: readonly string[];
+	readonly cwd?: string;
+	readonly environment?: Readonly<Record<string, string>>;
+	readonly disabled?: boolean;
+	/** Offer its tools through Kilo's Code Mode (Kilo's default) rather than directly. */
+	readonly codemode?: boolean;
+};
+
+/** A remote MCP server in Kilo v2's config (`Mcp.RemoteConfig`). */
+export type RemoteMcpServerEntry = {
+	readonly type: "remote";
+	readonly url: string;
+	readonly headers?: Readonly<Record<string, string>>;
+	/** False turns off Kilo's OAuth discovery for it. */
+	readonly oauth?: false | Readonly<Record<string, unknown>>;
+	readonly disabled?: boolean;
+	readonly codemode?: boolean;
+};
+
+/** An entry under Kilo v2's `mcp.servers` config (`Mcp.ServerConfig`). */
+export type McpServerEntry = LocalMcpServerEntry | RemoteMcpServerEntry;
 
 export interface McpServerSource {
 	/** Undefined removes the server. */
@@ -157,16 +180,16 @@ export const agentExtensionSchema = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("kilo-plugin"), path: resourcePathSchema }),
 	/** A skill: a folder holding `SKILL.md` and its supporting files. */
 	z.object({ type: z.literal("skill"), path: resourcePathSchema }),
-	/** An agent, invoked by its contribution id. */
+	/** An agent, invoked by its contribution id (Kilo v2's `Config.Agent`). */
 	z.object({
 		type: z.literal("agent"),
 		description: z.string().min(1),
 		/** Its system prompt. */
-		prompt: z.string().min(1),
+		system: z.string().min(1),
 		mode: z.enum(["primary", "subagent", "all"]).default("subagent"),
 		model: modelRefSchema.optional(),
 	}),
-	/** A slash command, invoked by its contribution id. */
+	/** A slash command, invoked by its contribution id (Kilo v2's `Config.Command`). */
 	z.object({
 		type: z.literal("command"),
 		description: z.string().optional(),
@@ -176,7 +199,7 @@ export const agentExtensionSchema = z.discriminatedUnion("type", [
 		agent: z.string().min(1).optional(),
 		model: modelRefSchema.optional(),
 		/** Runs as a subagent, keeping the chat's context clean. */
-		subtask: z.boolean().optional(),
+		subagent: z.boolean().optional(),
 	}),
 ]);
 export type AgentExtensionConfig = z.output<typeof agentExtensionSchema>;

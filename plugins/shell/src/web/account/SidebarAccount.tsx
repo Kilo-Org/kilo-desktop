@@ -97,7 +97,7 @@ export function SidebarAccount() {
 		);
 	}
 
-	const profile = auth.profile?.profile;
+	const profile = auth.profile;
 	if (auth.signedIn !== true) return null;
 
 	// Profile failed to load: the Account settings page renders the retry/logout

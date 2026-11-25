@@ -37,19 +37,18 @@ import { signInStep, welcomeStep } from "./onboarding/steps";
 import { SidebarAccount } from "./SidebarAccount";
 
 export const PROFILE: KiloProfile = {
-	profile: {
-		email: "ada@example.com",
-		name: "Ada Lovelace",
-		organizations: [{ id: "org-1", name: "Analytical Engines", role: "billing_admin" }],
-		hasPersonalAccount: true,
-	},
+	email: "ada@example.com",
+	name: "Ada Lovelace",
+	organizations: [{ id: "org-1", name: "Analytical Engines", role: "billing_admin" }],
+	hasPersonalAccount: true,
+	organizationId: null,
 	balance: { balance: 12.5 },
 	kiloPass: {
 		currentPeriodBaseCreditsUsd: 20,
 		currentPeriodUsageUsd: 5,
 		currentPeriodBonusCreditsUsd: 0,
+		nextBillingAt: null,
 	},
-	currentOrgId: null,
 };
 
 export const SIGNED_OUT: AccountState = {

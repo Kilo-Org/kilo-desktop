@@ -171,9 +171,9 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				return {
 					id: String(request.id),
 					chatId,
-					permission,
+					action: permission,
 					...(toolKey ? { toolKey } : {}),
-					patterns: (request.patterns as string[] | undefined) ?? [],
+					resources: (request.patterns as string[] | undefined) ?? [],
 					metadata: (request.metadata as Record<string, unknown> | undefined) ?? {},
 				};
 			});
@@ -353,7 +353,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				replyPermission: async (input) => {
 					calls.replyPermission(input);
 					await server.post(`/permission/${input.permissionId}/reply`, directoryOf(input.chatId), {
-						reply: input.reply,
+						reply: input.decision,
 						...(input.message ? { message: input.message } : {}),
 					});
 				},

@@ -1,6 +1,11 @@
 import { createKiloClient } from "@kilocode/sdk/v2/client";
 
-import type { PermissionRequest, ServerConnection, PermissionRule } from "../../../contracts";
+import type {
+	PermissionDecision,
+	PermissionRequest,
+	PermissionRule,
+	ServerConnection,
+} from "../../../contracts";
 import { readChatInfo, type ChatInfo, type KiloEvent } from "./activity";
 import { forkHandoffText } from "./fork-handoff";
 import { listAllSessionPages } from "./session-list-pages";
@@ -117,15 +122,36 @@ export interface KiloChatClient {
 	replyPermission(
 		directory: string,
 		requestId: string,
-		reply: "once" | "always" | "reject",
+		decision: PermissionDecision,
 		message?: string,
-		interactive?: boolean,
 	): Promise<void>;
 	replyQuestion(directory: string, requestId: string, answers: string[][]): Promise<void>;
 	rejectQuestion(directory: string, requestId: string): Promise<void>;
 }
 
 const at = (directory: string | undefined) => (directory ? { directory } : {});
+
+// This client still speaks the v1 server API, whose permission rules are
+// `{ permission, pattern, action }`; Desktop's contracts carry v2's rules.
+// Step 6 of the Kilo v2 migration replaces this client with a v2 one and
+// these two conversions with it.
+interface V1PermissionRule {
+	readonly permission: string;
+	readonly pattern: string;
+	readonly action: PermissionRule["effect"];
+}
+const toV1Rules = (rules: readonly PermissionRule[]): V1PermissionRule[] =>
+	rules.map(({ action, resource, effect }) => ({
+		permission: action,
+		pattern: resource,
+		action: effect,
+	}));
+const fromV1Rules = (rules: readonly V1PermissionRule[]): PermissionRule[] =>
+	rules.map(({ permission, pattern, action }) => ({
+		action: permission,
+		resource: pattern,
+		effect: action,
+	}));
 
 /**
  * A fork replays its whole copied transcript twice on `/global/event`: as the
@@ -173,8 +199,8 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 			return (data ?? []).map(({ id, sessionID, permission, patterns, metadata }) => ({
 				id,
 				chatId: sessionID,
-				permission,
-				patterns: [...(patterns ?? [])],
+				action: permission,
+				resources: [...(patterns ?? [])],
 				metadata: { ...metadata },
 			}));
 		},
@@ -216,7 +242,7 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 							}
 						: {}),
 					...(params.metadata ? { metadata: { ...params.metadata } } : {}),
-					...(params.permission ? { permission: [...params.permission] } : {}),
+					...(params.permission ? { permission: toV1Rules(params.permission) } : {}),
 				},
 				options,
 			);
@@ -231,7 +257,7 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 					// Kilo clears the archive time with null, which its SDK types don't say.
 					...(patch.archived !== undefined ? { time: { archived: patch.archived as number } } : {}),
 					...(patch.metadata !== undefined ? { metadata: { ...patch.metadata } } : {}),
-					...(patch.permission !== undefined ? { permission: [...patch.permission] } : {}),
+					...(patch.permission !== undefined ? { permission: toV1Rules(patch.permission) } : {}),
 				},
 				options,
 			);
@@ -253,7 +279,7 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		},
 		async getChatPermission(directory, sessionID) {
 			const { data } = await client.session.get({ sessionID, directory }, options);
-			return data?.permission ?? [];
+			return fromV1Rules(data?.permission ?? []);
 		},
 		async generateBranchName(directory, sessionID, params) {
 			const { data } = await client.branchName.generate(
@@ -332,14 +358,13 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		async drainChat(directory, sessionID, token, signal) {
 			await client.kilocode.drainSession({ sessionID, directory, token }, { ...options, signal });
 		},
-		async replyPermission(directory, requestID, reply, message, interactive) {
+		async replyPermission(directory, requestID, decision, message) {
 			await client.permission.reply(
 				{
 					requestID,
 					directory,
-					reply,
+					reply: decision,
 					...(message !== undefined ? { message } : {}),
-					...(interactive && reply !== "reject" ? { interactive: true } : {}),
 				},
 				options,
 			);

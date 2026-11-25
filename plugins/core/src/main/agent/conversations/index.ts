@@ -345,14 +345,14 @@ export function provideConversations(
 				return requests
 					.filter((request) => request.chatId === id)
 					.map((request) => {
-						const toolKey = toolKeys.get(request.permission);
+						const toolKey = toolKeys.get(request.action);
 						return toolKey ? { ...request, toolKey } : request;
 					});
 			},
-			replyPermission: async ({ chatId, permissionId, reply, message, interactive }, caller) => {
+			replyPermission: async ({ chatId, permissionId, decision, message }, caller) => {
 				promptAnswerersOnly(caller);
 				await write(chatId, "answer the permission request", (client, directory) =>
-					client.replyPermission(directory, permissionId, reply, message, interactive),
+					client.replyPermission(directory, permissionId, decision, message),
 				);
 			},
 			replyQuestion: async ({ chatId, questionId, answers }, caller) => {

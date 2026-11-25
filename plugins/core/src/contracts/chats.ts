@@ -107,25 +107,39 @@ export const promptChatInputSchema = z.object({
 });
 export type PromptChatInput = z.input<typeof promptChatInputSchema>;
 
-/** A permission request a chat is waiting on, as the server describes it. */
+/** A permission request a chat is waiting on, in Kilo v2's shape (`Permission.Request`). */
 export const permissionRequestSchema = z.object({
 	id: z.string(),
 	chatId: z.string(),
-	/** What is asked for: a tool (`bash`, `edit`, a `kilo.core/tool` by wire name) or `external_directory`. */
-	permission: z.string(),
-	/** The `kilo.core/tool` contribution key when `permission` names one of the app's tools. */
+	/**
+	 * What is asked for: a tool (`shell`, `edit`, a `kilo.core/tool` by wire
+	 * name), a Kilo plugin's action, or `external_directory`.
+	 */
+	action: z.string(),
+	/** The `kilo.core/tool` contribution key when `action` names one of the app's tools. */
 	toolKey: z.string().optional(),
-	patterns: z.array(z.string()),
-	/** The server's flags (`sandboxEscalation`, `configProtected`, `skillShell`…). */
+	/** What the action applies to: a shell command, paths, an id. */
+	resources: z.array(z.string()),
+	/** The resources an "Always allow" answer remembers, when they differ from `resources`. */
+	save: z.array(z.string()).optional(),
+	/** A line the tool wrote for the person. */
+	message: z.string().optional(),
+	/** What the tool attached; `interactive: true` marks a request only a person may answer. */
 	metadata: z.record(z.string(), z.unknown()),
 });
 export type PermissionRequest = z.output<typeof permissionRequestSchema>;
 
-/** A Kilo permission rule, as chats are created with. */
+/** A person's answer to a permission request (`Permission.Reply`). */
+export const permissionDecisionSchema = z.enum(["once", "always", "reject"]);
+export type PermissionDecision = z.output<typeof permissionDecisionSchema>;
+
+/** A Kilo permission rule (`Permission.Rule`); Kilo applies the last rule that matches. */
 export const permissionRuleSchema = z.object({
-	permission: z.string(),
-	pattern: z.string(),
-	action: z.enum(["allow", "ask", "deny"]),
+	/** The action it governs, with `*` wildcards (`shell`, `external_directory`, a tool's wire name). */
+	action: z.string(),
+	/** What the action applies to, with `*` wildcards; a trailing ` *` also matches nothing. */
+	resource: z.string(),
+	effect: z.enum(["allow", "ask", "deny"]),
 });
 export type PermissionRule = z.output<typeof permissionRuleSchema>;
 
@@ -205,14 +219,9 @@ export const Chats = defineDomainObject({
 			z.object({
 				chatId: z.string().min(1),
 				permissionId: z.string().min(1),
-				reply: z.enum(["once", "always", "reject"]),
+				decision: permissionDecisionSchema,
+				/** Sent to the agent with a rejection. */
 				message: z.string().optional(),
-				/**
-				 * The person chose this (not an automatic reply). The server only
-				 * accepts approvals of sensitive requests (skill shells, sandbox
-				 * escalation) that are marked interactive; ignored for `reject`.
-				 */
-				interactive: z.boolean().optional(),
 			}),
 			nothing,
 		),
@@ -269,7 +278,7 @@ export interface ChatConfig {
 	/** Extra system instructions. */
 	readonly instructions?: readonly string[];
 	/**
-	 * Kilo permission rules for the chat (`bash` commands that must ask,
+	 * Kilo permission rules for the chat (`shell` commands that must ask,
 	 * folders to allow). Applied after the workspace's folders and before the
 	 * tools' ask and deny rules.
 	 */

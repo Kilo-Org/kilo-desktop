@@ -173,7 +173,6 @@ export function staticMcpEntry(metadata: Contribution<typeof McpServer>["metadat
 			type: "local",
 			command: [metadata.command, ...metadata.args],
 			...(metadata.env ? { environment: { ...metadata.env } } : {}),
-			enabled: true,
 		},
 	};
 }
@@ -187,8 +186,9 @@ export type AgentExtensionEffect =
 	| { readonly problem: string };
 
 /**
- * An agent extension as Kilo takes it, in the field names of Kilo's config
- * schema (`agent` and `command` entries, models as `<provider>/<model>`); a
+ * An agent extension as Kilo takes it, in the field names of Kilo v2's config
+ * schema (`Config.Agent` and `Config.Command` entries, models as
+ * `<provider>/<model>`); a
  * Kilo plugin or skill is a file or folder at an absolute path, which the
  * kernel made by resolving `${resources}`.
  */
@@ -206,7 +206,7 @@ export function agentExtensionOf(metadata: AgentExtensionConfig): AgentExtension
 			return {
 				agent: {
 					description: metadata.description,
-					prompt: metadata.prompt,
+					system: metadata.system,
 					mode: metadata.mode,
 					...(metadata.model ? { model: modelKey(metadata.model) } : {}),
 				},
@@ -218,7 +218,7 @@ export function agentExtensionOf(metadata: AgentExtensionConfig): AgentExtension
 					...(metadata.description !== undefined ? { description: metadata.description } : {}),
 					...(metadata.agent !== undefined ? { agent: metadata.agent } : {}),
 					...(metadata.model ? { model: modelKey(metadata.model) } : {}),
-					...(metadata.subtask !== undefined ? { subtask: metadata.subtask } : {}),
+					...(metadata.subagent !== undefined ? { subagent: metadata.subagent } : {}),
 				},
 			};
 	}

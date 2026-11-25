@@ -18,7 +18,7 @@ import {
 	AUTO_APPROVE_TOOL_APPROVAL_ID,
 	AutoApprove,
 	CHAT_PLUGIN_ID,
-	neverAutoReplied,
+	needsPerson,
 	type ApprovalMode,
 } from "../../contracts";
 
@@ -174,21 +174,15 @@ export function activateAutoApprove(sdk: PluginSdk): void {
 			const request = await requestOf(handle, chatId, permissionId);
 			// The mode changed while reading: what was decided for it no longer holds.
 			if (generation !== snapshot) return;
-			if (!request || neverAutoReplied(request.metadata)) return;
-			if (auto) {
-				// Skill-shell is answered unheld: the server refuses machine replies, so its card must show.
-				if (request.metadata["skillShell"] !== true) hold(permissionId);
-			} else if (
-				request.metadata["skillShell"] === true ||
-				sdk.context.get(SIGNED_IN_KEY) ||
-				!request.toolKey ||
-				!signInTools().has(request.toolKey)
+			if (!request || needsPerson(request)) return;
+			if (
+				!auto &&
+				(sdk.context.get(SIGNED_IN_KEY) || !request.toolKey || !signInTools().has(request.toolKey))
 			) {
 				return;
-			} else {
-				hold(permissionId);
 			}
-			await handle.methods.replyPermission({ chatId, permissionId, reply: "once" });
+			hold(permissionId);
+			await handle.methods.replyPermission({ chatId, permissionId, decision: "once" });
 		} catch (error) {
 			sdk.logger.warn(`Could not answer permission request ${permissionId} for the person`, error);
 			release(permissionId);

@@ -43,7 +43,7 @@ const selectModels = (state: ModelsState) => state;
 // What the gateway answers for, from kilo.core's account.
 const selectProviderReady = (account: AccountState): CatalogAccount["providerReady"] =>
 	account.connection === "pending" ? undefined : account.connection === "connected";
-const selectOrganizationId = (account: AccountState) => account.profile?.currentOrgId ?? null;
+const selectOrganizationId = (account: AccountState) => account.profile?.organizationId ?? null;
 
 /**
  * The picker's catalog from kilo.core's models, with the gateway's details

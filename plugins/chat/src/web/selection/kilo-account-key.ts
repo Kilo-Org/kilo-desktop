@@ -3,7 +3,7 @@ import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { KiloAccount } from "@kilo-desktop/plugin-core/contracts";
 
 const selectAccountKey = (state: DomainObjectState<typeof KiloAccount>) =>
-	`${state.signedIn ?? "unknown"}:${state.profile?.currentOrgId ?? ""}`;
+	`${state.signedIn ?? "unknown"}:${state.profile?.organizationId ?? ""}`;
 
 /**
  * Who Kilo serves agents for: signing in or out, or switching organization,

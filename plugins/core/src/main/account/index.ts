@@ -158,7 +158,7 @@ export function activateAccount(sdk: PluginSdk, options: AccountOptions): void {
 	sdk.extensions.implement(KernelIdentityProvider, "kilo-account", identity);
 
 	function linkSignedInAccount(state: AccountState): void {
-		const email = state.signedIn ? state.profile?.profile.email : undefined;
+		const email = state.signedIn ? state.profile?.email : undefined;
 		if (!email || !terms.state.accepted) return;
 		if (record.link(accountHash(email))) {
 			terms.emit("linked", { version: KILO_TERMS_VERSION });

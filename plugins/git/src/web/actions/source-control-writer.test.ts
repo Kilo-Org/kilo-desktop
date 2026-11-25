@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { GenerateInput } from "@kilo-desktop/plugin-core/contracts";
 
-import { createSourceControlWriter } from "./source-control-writer";
+import { createSourceControlWriter, generationModel } from "./source-control-writer";
 
 function setup(
 	options: {
@@ -103,5 +103,28 @@ describe("createSourceControlWriter", () => {
 		await expect(writer.generatePullRequest(pullRequestInput)).rejects.toThrow(
 			"did not return valid pull request content",
 		);
+	});
+});
+
+describe("generationModel", () => {
+	const fast = { aiProviderId: "kilo", modelId: "fast" };
+	const state = (preferred?: typeof fast & { variant: string }) => ({
+		models: { "kilo/fast": { ...fast } },
+		preferences: preferred ? { preferred } : {},
+	});
+
+	it("uses the preferred model the server offers, with its variant", () => {
+		expect(generationModel(state({ ...fast, variant: "low" }))).toEqual({
+			...fast,
+			variant: "low",
+		});
+		expect(generationModel(state({ ...fast, variant: "" }))).toEqual(fast);
+	});
+
+	it("leaves the model to the server when the preferred one isn't offered, or none is", () => {
+		expect(
+			generationModel(state({ aiProviderId: "kilo", modelId: "gone", variant: "" })),
+		).toBeUndefined();
+		expect(generationModel(state())).toBeUndefined();
 	});
 });

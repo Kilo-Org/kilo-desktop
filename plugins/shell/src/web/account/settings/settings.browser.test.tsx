@@ -232,7 +232,7 @@ describe("Kilo account panel", () => {
 
 	it("leaves Kilo Pass out for an organization account", async () => {
 		await openAccountPanel({
-			account: { ...SIGNED_IN, profile: { ...PROFILE, currentOrgId: "org-1" } },
+			account: { ...SIGNED_IN, profile: { ...PROFILE, organizationId: "org-1" } },
 		});
 
 		await expect.element(page.getByTestId("kilo-account-balance")).toBeInTheDocument();

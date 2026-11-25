@@ -34,10 +34,12 @@ import { createFakeKiloClient } from "./models/test-kilo-client";
 import { createFakeWorkStyleClient } from "./work-style/test-work-style-client";
 
 const PROFILE: KiloProfile = {
-	profile: { email: "ada@example.com", organizations: [] },
+	email: "ada@example.com",
+	organizations: [],
+	hasPersonalAccount: true,
+	organizationId: null,
 	balance: null,
 	kiloPass: null,
-	currentOrgId: null,
 };
 
 const signedInAccount: KiloAccountClient = {

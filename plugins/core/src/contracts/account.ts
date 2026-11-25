@@ -17,27 +17,36 @@ export const KILO_TERMS_VERSION = "2026-09-29";
 
 export const KILO_TERMS_URL = "https://kilo.ai/terms";
 
-export const organizationSchema = z.object({ id: z.string(), name: z.string(), role: z.string() });
+export const organizationSchema = z.object({
+	id: z.string(),
+	name: z.string(),
+	role: z.string().optional(),
+});
 export type KiloOrganization = z.output<typeof organizationSchema>;
 
+/**
+ * The signed-in account as Kilo v2's gateway reports it: its profile
+ * (`kilocode.gateway.profile`), balance and Kilo Pass, each read on its own.
+ */
 export const profileSchema = z.object({
-	profile: z.object({
-		email: z.string(),
-		name: z.string().optional(),
-		organizations: z.array(organizationSchema).nullish(),
-		selectedOrganizationId: z.string().nullish(),
-		hasPersonalAccount: z.boolean().optional(),
-	}),
-	balance: z.object({ balance: z.number() }).nullable(),
+	email: z.string(),
+	name: z.string().optional(),
+	organizations: z.array(organizationSchema),
+	hasPersonalAccount: z.boolean(),
+	/** The organisation requests use now; null is the personal account. */
+	organizationId: z.string().nullable(),
+	/** Null when it could not be read. */
+	balance: z
+		.object({ balance: z.number().nullable(), isDepleted: z.boolean().optional() })
+		.nullable(),
 	kiloPass: z
 		.object({
 			currentPeriodBaseCreditsUsd: z.number(),
 			currentPeriodUsageUsd: z.number(),
 			currentPeriodBonusCreditsUsd: z.number(),
-			nextBillingAt: z.string().nullable().optional(),
+			nextBillingAt: z.string().nullable(),
 		})
 		.nullable(),
-	currentOrgId: z.string().nullable(),
 });
 export type KiloProfile = z.output<typeof profileSchema>;
 

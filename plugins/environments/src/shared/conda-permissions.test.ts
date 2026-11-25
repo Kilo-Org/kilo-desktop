@@ -42,13 +42,13 @@ describe("mutating conda tool permissions", () => {
 	});
 });
 
-describe("conda CLI (bash) permissions", () => {
+describe("conda CLI (shell) permissions", () => {
 	const rules = buildCondaCliPermissionRules();
-	const patterns = rules.map((rule) => rule.pattern);
+	const patterns = rules.map((rule) => rule.resource);
 
 	it("asks before every mutating conda-family command", () => {
-		expect(rules.every((rule) => rule.permission === "bash")).toBe(true);
-		expect(rules.every((rule) => rule.action === "ask")).toBe(true);
+		expect(rules.every((rule) => rule.action === "shell")).toBe(true);
+		expect(rules.every((rule) => rule.effect === "ask")).toBe(true);
 	});
 
 	it("covers install/create/update/remove for conda, mamba, and micromamba", () => {

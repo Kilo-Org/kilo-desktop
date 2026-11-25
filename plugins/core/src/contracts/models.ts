@@ -220,7 +220,10 @@ export const Models = defineDomainObject({
 
 /** What an AI provider contribution gives Kilo, read whenever its config is reconciled. */
 export interface AiProviderConfig {
-	/** The provider's entry in Kilo's `provider` config, in Kilo's own shape. */
+	/**
+	 * The provider's entry under Kilo v2's `providers` config, in its own shape
+	 * (`Config.Provider`: `name`, `package`, `settings`, `models`…).
+	 */
 	readonly entry: Readonly<Record<string, unknown>>;
 	/**
 	 * Environment the entry refers to (`{env:NAME}`), given to the server

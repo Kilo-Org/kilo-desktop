@@ -23,7 +23,7 @@
  * - Writes are serialised and reads cached by one `JobQueue`, whose progress
  *   events are `conda`'s `job-progress`.
  * - Every chat is created with origin's ask rules for mutating conda-family
- *   commands run through `bash` (`chat-config` permissions); the mutating
+ *   commands run through `shell` (`chat-config` permissions); the mutating
  *   conda tools ask through their own `approval`.
  * - `conda.setup.open` asks kilo.shell's `navigation` to open the settings
  *   section; without kilo.shell it opens nothing.

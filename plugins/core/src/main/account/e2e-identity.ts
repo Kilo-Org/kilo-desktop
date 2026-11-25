@@ -3,10 +3,13 @@ import type { KiloAccountClient } from "./account-service";
 
 /** The account packaged e2e builds report as signed in (origin's test identity). */
 export const E2E_PROFILE: KiloProfile = {
-	profile: { email: "e2e@kilo.dev", name: "E2E", hasPersonalAccount: true },
+	email: "e2e@kilo.dev",
+	name: "E2E",
+	organizations: [],
+	hasPersonalAccount: true,
+	organizationId: null,
 	balance: null,
 	kiloPass: null,
-	currentOrgId: null,
 };
 
 /**

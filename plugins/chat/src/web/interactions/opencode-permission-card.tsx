@@ -50,8 +50,7 @@ async function stillPending(
 /**
  * A permission request waiting on the person, answered through kilo.core's
  * chats (to the chat that asked: a subagent's request goes to its chat). The
- * person's approvals are `interactive`, without which the Kilo server
- * ignores approvals of sensitive requests. The card leaves when the server
+ * card leaves when the server
  * announces the reply on the stream, or when a reply fails and the server no
  * longer lists the request (it was answered while the window wasn't
  * listening).
@@ -83,8 +82,7 @@ export const OpenCodePermissionCard = ({
 			await chats.methods.replyPermission({
 				chatId: request.sessionId,
 				permissionId: request.id,
-				reply: nextReply,
-				interactive: true,
+				decision: nextReply,
 			});
 		} catch (err) {
 			if (settlePermission && !(await stillPending(chats, request))) {
@@ -143,16 +141,17 @@ export const OpenCodePermissionCard = ({
 	const toolKey = toolKeyOf(tools, request.permission);
 	// A bare `*` (a tool-level rule's wildcard) means nothing to the person.
 	const patterns = visiblePermissionPatterns(request.patterns);
-	// Renderers see Kilo's permission name; the label may be a tool's friendlier `metadata.toolName`.
+	// Renderers see Kilo's action name; the label may be a tool's friendlier `metadata.toolName`.
 	const interaction: PermissionInteraction = {
-		permission: request.permission,
+		action: request.permission,
 		...(toolKey ? { toolKey } : {}),
-		patterns,
+		resources: patterns,
+		...(request.always.length > 0 ? { save: request.always } : {}),
 		metadata: request.metadata,
 		args,
 	};
 	const presentation = presentPermission(renderers, interaction);
-	const shownPatterns = presentation.showPatterns ? patterns : [];
+	const shownPatterns = presentation.showResources ? patterns : [];
 	const description = request.metadata["description"];
 	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as
 	// "Allow once". A contribution may withhold it so the request is answered one call at a time.

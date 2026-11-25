@@ -189,8 +189,8 @@ describe.skip("forking a chat in the bundled Kilo CLI", () => {
 	it("copies the messages before the fork point and the stamp, but not the rules", async () => {
 		const kilo = createKiloChatClient(connection);
 		const rules: PermissionRule[] = [
-			{ permission: "external_directory", pattern: "/projects/lib", action: "allow" },
-			{ permission: "bash", pattern: "*", action: "ask" },
+			{ action: "external_directory", resource: "/projects/lib", effect: "allow" },
+			{ action: "shell", resource: "*", effect: "ask" },
 		];
 		const stamp = { "kilo-desktop": { workSessionId: "wses_1" } };
 		const source = await kilo.createChat(project, { metadata: stamp, permission: rules });

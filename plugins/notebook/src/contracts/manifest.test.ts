@@ -94,7 +94,7 @@ describe("kilo.notebook manifest", () => {
 
 	it("details the code-run permission its Kilo plugin asks for, matched on the permission name", () => {
 		expect(contributions("kilo.chat/permission-renderer")).toEqual([
-			{ id: "execute", permissions: ["notebooks_execute"] },
+			{ id: "execute", actions: ["notebooks_execute"] },
 		]);
 	});
 

@@ -60,18 +60,18 @@ export function formatRenewalDate(iso: string): string {
 }
 
 export function buildOrgOptions(
-	profile: KiloProfile["profile"],
+	profile: Pick<KiloProfile, "organizations" | "hasPersonalAccount">,
 	personalLabel = "Personal",
 ): OrgOption[] {
-	const orgs = profile.organizations ?? [];
+	const orgs = profile.organizations;
 	if (orgs.length === 0) return [];
-	const personal = profile.hasPersonalAccount !== false;
+	const personal = profile.hasPersonalAccount;
 	return [
 		...(personal ? [{ value: PERSONAL_ORG_VALUE, label: personalLabel }] : []),
 		...orgs.map((org) => ({
 			value: org.id,
 			label: org.name,
-			description: formatOrganizationRole(org.role),
+			...(org.role ? { description: formatOrganizationRole(org.role) } : {}),
 		})),
 	];
 }
@@ -80,8 +80,8 @@ export function resolveCurrentOrgValue(
 	profile: KiloProfile,
 	options: readonly OrgOption[],
 ): string | undefined {
-	if (profile.currentOrgId) return profile.currentOrgId;
-	if (profile.profile.hasPersonalAccount !== false) return PERSONAL_ORG_VALUE;
+	if (profile.organizationId) return profile.organizationId;
+	if (profile.hasPersonalAccount) return PERSONAL_ORG_VALUE;
 	return options[0]?.value;
 }
 
@@ -90,5 +90,5 @@ export function organizationIdFromValue(value: string): string | null {
 }
 
 export function isPersonalAccount(profile: KiloProfile): boolean {
-	return (profile.currentOrgId ?? null) === null && profile.profile.hasPersonalAccount !== false;
+	return profile.organizationId === null && profile.hasPersonalAccount;
 }

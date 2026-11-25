@@ -29,7 +29,11 @@ import {
 	workingTreeStatsQuery,
 } from "../shared/repository-queries";
 import type { ActionProgress, GitActionKind } from "./action-progress";
-import { createSourceControlWriter, type SourceControlWriter } from "./source-control-writer";
+import {
+	createSourceControlWriter,
+	generationModel,
+	type SourceControlWriter,
+} from "./source-control-writer";
 
 const GITHUB_CLI_INSTALL_URL = "https://cli.github.com/";
 const NON_BLOCKING_TOAST_CLASS = "pointer-events-none [&_button]:pointer-events-auto";
@@ -88,7 +92,7 @@ function showGithubSetupToast(
 	});
 }
 
-/** Commit and pull request text through kilo.core, with the model new chats start with. */
+/** Commit and pull request text through kilo.core, with the model new chats start with (when offered). */
 function useWriter(): SourceControlWriter | null {
 	const generation = useDomainObject(Generation);
 	const models = useDomainObject(Models);
@@ -96,13 +100,8 @@ function useWriter(): SourceControlWriter | null {
 	return createSourceControlWriter({
 		generate: (input) => generation.methods.generate(input),
 		model: () => {
-			const preferred = models?.getState().preferences.preferred;
-			if (!preferred) return undefined;
-			return {
-				aiProviderId: preferred.aiProviderId,
-				modelId: preferred.modelId,
-				...(preferred.variant ? { variant: preferred.variant } : {}),
-			};
+			const state = models?.getState();
+			return state ? generationModel(state) : undefined;
 		},
 	});
 }

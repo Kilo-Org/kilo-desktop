@@ -105,8 +105,7 @@ describe("permission requests", () => {
 		expect(host.agent.calls.replyPermission).toHaveBeenCalledWith({
 			chatId: "ses_a",
 			permissionId: "per_1",
-			reply: "always",
-			interactive: true,
+			decision: "always",
 		});
 		// The server announces the reply on the stream, which the transcript follows.
 		host.server.emit("permission.replied", {
@@ -216,7 +215,7 @@ describe("permission requests", () => {
 		host.server.askPermission("ses_a", { id: "per_auto", permission: "bash", patterns: ["ls"] });
 		await expect
 			.poll(() => host.agent.calls.replyPermission.mock.calls.map(([input]) => input))
-			.toContainEqual(expect.objectContaining({ permissionId: "per_auto", reply: "once" }));
+			.toContainEqual(expect.objectContaining({ permissionId: "per_auto", decision: "once" }));
 		host.server.emit("permission.replied", {
 			sessionID: "ses_a",
 			requestID: "per_auto",
@@ -240,8 +239,8 @@ describe("permission requests", () => {
 				contribution.implementation?.({
 					id: "per_1",
 					chatId: "ses_a",
-					permission: "external_directory",
-					patterns: ["/tmp/*"],
+					action: "external_directory",
+					resources: ["/tmp/*"],
 					metadata,
 				}),
 			);
@@ -347,25 +346,26 @@ describe("permission requests", () => {
 		await expect.element(page.getByTestId("kilo-permission-once")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-permission-always")).not.toBeInTheDocument();
 		expect(seen.at(-1)).toEqual({
-			permission: wireName,
+			action: wireName,
 			toolKey: INSTALL_TOOL,
-			patterns: [],
+			resources: [],
+			save: ["*"],
 			metadata: { channel: "conda-forge" },
 			args: { packages: ["numpy"] },
 		});
 	});
 
-	it("show what permission renderers for a Kilo permission add, matched on its name, not the card's label", async () => {
+	it("show what permission renderers for a Kilo action add, matched on its name, not the card's label", async () => {
 		const host = await showChat(chatWith([reply("Ready.")]), {
 			plugins: [
 				contributor(
-					{ "kilo.chat/permission-renderer": [{ id: "run", permissions: ["acme_execute"] }] },
+					{ "kilo.chat/permission-renderer": [{ id: "run", actions: ["acme_execute"] }] },
 					{
 						web: {
 							activate(sdk) {
 								sdk.extensions.implement(PermissionRenderer, "run", {
 									PermissionDetail: ({ request }: PermissionDetailProps) => (
-										<p data-qa-id="acme-run-detail">{request.permission}</p>
+										<p data-qa-id="acme-run-detail">{request.action}</p>
 									),
 								});
 							},
@@ -388,16 +388,16 @@ describe("permission requests", () => {
 		await expect.element(page.getByTestId("acme-run-detail")).toHaveTextContent("acme_execute");
 	});
 
-	it("hide the request's patterns when a renderer summarizes its metadata instead", async () => {
+	it("hide the request's resources when a renderer summarizes its metadata instead", async () => {
 		const host = await showChat(chatWith([reply("Ready.")]), {
 			plugins: [
 				contributor(
-					{ "kilo.chat/permission-renderer": [{ id: "run", permissions: ["acme_execute"] }] },
+					{ "kilo.chat/permission-renderer": [{ id: "run", actions: ["acme_execute"] }] },
 					{
 						web: {
 							activate(sdk) {
 								sdk.extensions.implement(PermissionRenderer, "run", {
-									showPatterns: () => false,
+									showResources: () => false,
 									PermissionDetail: ({ request }: PermissionDetailProps) => (
 										<p data-qa-id="acme-run-detail">{String(request.metadata["notebook"])}</p>
 									),

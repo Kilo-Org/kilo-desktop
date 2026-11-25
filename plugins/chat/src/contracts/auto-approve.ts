@@ -31,20 +31,28 @@ export const AutoApprove = defineDomainObject({
 	},
 });
 
-function hasFlag(metadata: Readonly<Record<string, unknown>>, key: string): boolean {
-	return metadata[key] === true;
+/** The parts of a permission request that decide whether a machine may answer it. */
+export interface AutoReplyCandidate {
+	readonly action: string;
+	readonly metadata: Readonly<Record<string, unknown>>;
 }
+
+const PERSON_ONLY_ACTIONS: ReadonlySet<string> = new Set([
+	"sandbox_escalation",
+	"browser_sensitive",
+]);
+const PERSON_ONLY_FLAGS = ["interactive", "sandboxEscalation", "browserSensitive"] as const;
 
 /**
- * Skipped by auto-approve. Sandbox escalation is the person's call, and
- * approving a protected-config edit (Kilo's own config and rules) "once" can
- * persist new allow rules that outlive Auto mode, unlike in VS Code.
+ * A request only a person may answer, so auto-approve leaves it, as Kilo v2's
+ * own clients do (`KiloPermission.requiresPerson` and VS Code's
+ * `canAutoApprove`): Kilo plugins mark such requests `interactive: true` (a
+ * sandbox escalation, a sensitive browser step), and those two actions and
+ * their flags count too. Only the literal `true` counts.
  */
-export function neverAutoReplied(metadata: Readonly<Record<string, unknown>>): boolean {
-	return hasFlag(metadata, "sandboxEscalation") || hasFlag(metadata, "configProtected");
-}
-
-/** Prompts a person always sees: the server also ignores machine replies to skill-shell. */
-export function needsPerson(metadata: Readonly<Record<string, unknown>>): boolean {
-	return neverAutoReplied(metadata) || hasFlag(metadata, "skillShell");
+export function needsPerson(request: AutoReplyCandidate): boolean {
+	return (
+		PERSON_ONLY_ACTIONS.has(request.action) ||
+		PERSON_ONLY_FLAGS.some((flag) => request.metadata[flag] === true)
+	);
 }

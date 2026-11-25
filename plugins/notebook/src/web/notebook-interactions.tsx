@@ -123,6 +123,6 @@ export function NotebookExecutionDetail({ request }: PermissionDetailProps) {
 /** The notebook code permission card. */
 export const notebookExecuteInteractions: PermissionRendererImplementation = {
 	PermissionDetail: NotebookExecutionDetail,
-	// The pattern is a session-and-notebook key, kept so "Always allow" lasts for this notebook in this session.
-	showPatterns: () => false,
+	// The resource is a session-and-notebook key, kept so "Always allow" lasts for this notebook in this session.
+	showResources: () => false,
 };

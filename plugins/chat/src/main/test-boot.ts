@@ -56,7 +56,7 @@ export function request(
 	chatId: string,
 	patch: Partial<PermissionRequest> = {},
 ): PermissionRequest {
-	return { id, chatId, permission: "bash", patterns: ["ls"], metadata: {}, ...patch };
+	return { id, chatId, action: "shell", resources: ["ls"], metadata: {}, ...patch };
 }
 
 /**
@@ -68,7 +68,7 @@ export class FakeCore {
 	chats: DomainObjectProvider<typeof Chats> | undefined;
 	sdk: PluginSdk | undefined;
 	readonly requests = new Map<string, PermissionRequest[]>();
-	readonly replies: { chatId: string; permissionId: string; reply: string }[] = [];
+	readonly replies: { chatId: string; permissionId: string; decision: string }[] = [];
 	readonly prompts: PromptChatInput[] = [];
 	readonly aborts: string[] = [];
 	failReplies = false;
@@ -127,9 +127,9 @@ export class FakeCore {
 					if (this.failReads) throw new Error("offline");
 					return this.requests.get(id) ?? [];
 				},
-				replyPermission: ({ chatId, permissionId, reply }) => {
+				replyPermission: ({ chatId, permissionId, decision }) => {
 					if (this.failReplies) throw new Error("refused");
-					this.replies.push({ chatId, permissionId, reply });
+					this.replies.push({ chatId, permissionId, decision });
 				},
 				prompt: async (input) => {
 					await this.promptGate;

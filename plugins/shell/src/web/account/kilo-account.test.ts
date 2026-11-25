@@ -15,15 +15,14 @@ import {
 import type { KiloProfile } from "@kilo-desktop/plugin-core/contracts";
 
 const baseProfile = (overrides: Partial<KiloProfile> = {}): KiloProfile => ({
-	profile: {
-		email: "user@example.com",
-		name: "User",
-		organizations: [
-			{ id: "org-1", name: "Acme", role: "admin" },
-			{ id: "org-2", name: "Beta", role: "member" },
-		],
-		hasPersonalAccount: true,
-	},
+	email: "user@example.com",
+	name: "User",
+	organizations: [
+		{ id: "org-1", name: "Acme", role: "admin" },
+		{ id: "org-2", name: "Beta", role: "member" },
+	],
+	hasPersonalAccount: true,
+	organizationId: null,
 	balance: { balance: 12.5 },
 	kiloPass: {
 		currentPeriodBaseCreditsUsd: 20,
@@ -31,13 +30,12 @@ const baseProfile = (overrides: Partial<KiloProfile> = {}): KiloProfile => ({
 		currentPeriodBonusCreditsUsd: 1,
 		nextBillingAt: "2026-09-01T00:00:00.000Z",
 	},
-	currentOrgId: null,
 	...overrides,
 });
 
 describe("org helpers", () => {
 	it("builds personal + org options", () => {
-		const options = buildOrgOptions(baseProfile().profile);
+		const options = buildOrgOptions(baseProfile());
 		expect(options).toEqual([
 			{ value: PERSONAL_ORG_VALUE, label: "Personal" },
 			{ value: "org-1", label: "Acme", description: "Admin" },
@@ -47,19 +45,19 @@ describe("org helpers", () => {
 
 	it("omits personal when hasPersonalAccount is false", () => {
 		const options = buildOrgOptions({
-			...baseProfile().profile,
+			...baseProfile(),
 			hasPersonalAccount: false,
 		});
 		expect(options.map((o) => o.value)).toEqual(["org-1", "org-2"]);
 	});
 
 	it("returns no options when there are no organizations", () => {
-		expect(buildOrgOptions({ email: "a@b.c", organizations: [] })).toEqual([]);
+		expect(buildOrgOptions({ organizations: [], hasPersonalAccount: true })).toEqual([]);
 	});
 
 	it("resolves the current org value", () => {
-		const profile = baseProfile({ currentOrgId: "org-2" });
-		const options = buildOrgOptions(profile.profile);
+		const profile = baseProfile({ organizationId: "org-2" });
+		const options = buildOrgOptions(profile);
 		expect(resolveCurrentOrgValue(profile, options)).toBe("org-2");
 		expect(resolveCurrentOrgValue(baseProfile(), options)).toBe(PERSONAL_ORG_VALUE);
 	});
@@ -71,7 +69,7 @@ describe("org helpers", () => {
 
 	it("detects the personal account", () => {
 		expect(isPersonalAccount(baseProfile())).toBe(true);
-		expect(isPersonalAccount(baseProfile({ currentOrgId: "org-1" }))).toBe(false);
+		expect(isPersonalAccount(baseProfile({ organizationId: "org-1" }))).toBe(false);
 	});
 });
 

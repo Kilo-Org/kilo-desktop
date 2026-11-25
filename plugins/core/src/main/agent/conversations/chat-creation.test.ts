@@ -12,8 +12,8 @@ describe("a new chat's permission rules", () => {
 				{ path: "/lib", isPrimary: false },
 			]),
 		).toEqual([
-			{ permission: "external_directory", pattern: "/lib", action: "allow" },
-			{ permission: "external_directory", pattern: "/lib/*", action: "allow" },
+			{ action: "external_directory", resource: "/lib", effect: "allow" },
+			{ action: "external_directory", resource: "/lib/*", effect: "allow" },
 		]);
 	});
 
@@ -29,8 +29,8 @@ describe("a new chat's permission rules", () => {
 				disableTools: [],
 			}),
 		).toEqual([
-			{ permission: "desktop_terminal_open", pattern: "*", action: "ask" },
-			{ permission: "desktop_acme_deploy_run", pattern: "*", action: "ask" },
+			{ action: "desktop_terminal_open", resource: "*", effect: "ask" },
+			{ action: "desktop_acme_deploy_run", resource: "*", effect: "ask" },
 		]);
 	});
 
@@ -43,10 +43,10 @@ describe("a new chat's permission rules", () => {
 				disableTools: ["desktop_notebook_open", "desktop_terminal_open"],
 			}),
 		).toEqual([
-			{ permission: "external_directory", pattern: "/lib", action: "allow" },
-			{ permission: "external_directory", pattern: "/lib/*", action: "allow" },
-			{ permission: "desktop_notebook_open", pattern: "*", action: "deny" },
-			{ permission: "desktop_terminal_open", pattern: "*", action: "deny" },
+			{ action: "external_directory", resource: "/lib", effect: "allow" },
+			{ action: "external_directory", resource: "/lib/*", effect: "allow" },
+			{ action: "desktop_notebook_open", resource: "*", effect: "deny" },
+			{ action: "desktop_terminal_open", resource: "*", effect: "deny" },
 		]);
 	});
 
@@ -58,17 +58,17 @@ describe("a new chat's permission rules", () => {
 				approvals: new Map([["kilo.terminal/open", "reject"]]),
 				disableTools: [],
 				chatPermissions: [
-					{ permission: "bash", pattern: "*conda install*", action: "ask" },
-					{ permission: "desktop_environments_conda_envs_create", pattern: "*", action: "allow" },
+					{ action: "shell", resource: "*conda install*", effect: "ask" },
+					{ action: "desktop_environments_conda_envs_create", resource: "*", effect: "allow" },
 				],
 			}),
 		).toEqual([
-			{ permission: "external_directory", pattern: "/lib", action: "allow" },
-			{ permission: "external_directory", pattern: "/lib/*", action: "allow" },
-			{ permission: "bash", pattern: "*conda install*", action: "ask" },
-			{ permission: "desktop_environments_conda_envs_create", pattern: "*", action: "allow" },
-			{ permission: "desktop_environments_conda_envs_create", pattern: "*", action: "ask" },
-			{ permission: "desktop_terminal_open", pattern: "*", action: "deny" },
+			{ action: "external_directory", resource: "/lib", effect: "allow" },
+			{ action: "external_directory", resource: "/lib/*", effect: "allow" },
+			{ action: "shell", resource: "*conda install*", effect: "ask" },
+			{ action: "desktop_environments_conda_envs_create", resource: "*", effect: "allow" },
+			{ action: "desktop_environments_conda_envs_create", resource: "*", effect: "ask" },
+			{ action: "desktop_terminal_open", resource: "*", effect: "deny" },
 		]);
 	});
 });

@@ -42,7 +42,19 @@ export function actionCollaborators() {
 					ready: true,
 					followingAccount: false,
 					aiProviders: {},
-					models: {},
+					// The preferred model is one the server offers.
+					models: {
+						"kilo/fast": {
+							aiProviderId: "kilo",
+							modelId: "fast",
+							name: "Fast",
+							variants: ["low"],
+							attachments: false,
+							reasoning: true,
+							free: false,
+							byok: false,
+						},
+					},
 					defaults: {},
 					preferences: {
 						byAgent: {},

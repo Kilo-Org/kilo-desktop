@@ -42,7 +42,7 @@ export function findPermissionToolArgs(
 /** The contributions that apply to a permission request, highest priority first. */
 export function permissionRenderers(
 	contributions: readonly PermissionRendererContribution[],
-	request: Partial<Pick<PermissionInteraction, "toolKey" | "permission">>,
+	request: Partial<Pick<PermissionInteraction, "toolKey" | "action">>,
 ): PermissionRendererContribution[] {
 	return contributions.filter(
 		(contribution) =>
@@ -54,7 +54,7 @@ export function permissionRenderers(
 export interface PermissionPresentation {
 	readonly title: string | undefined;
 	readonly allowAlways: boolean;
-	readonly showPatterns: boolean;
+	readonly showResources: boolean;
 	readonly details: readonly PermissionRendererContribution[];
 }
 
@@ -66,16 +66,16 @@ export function presentPermission(
 	const applicable = permissionRenderers(contributions, request);
 	let title: string | undefined;
 	let allowAlways = true;
-	let showPatterns = true;
+	let showResources = true;
 	for (const { implementation } of applicable) {
 		title ??= implementation?.permissionTitle?.(request);
 		if (implementation?.allowAlways?.(request) === false) allowAlways = false;
-		if (implementation?.showPatterns?.(request) === false) showPatterns = false;
+		if (implementation?.showResources?.(request) === false) showResources = false;
 	}
 	return {
 		title,
 		allowAlways,
-		showPatterns,
+		showResources,
 		details: applicable.filter((contribution) => contribution.implementation?.PermissionDetail),
 	};
 }

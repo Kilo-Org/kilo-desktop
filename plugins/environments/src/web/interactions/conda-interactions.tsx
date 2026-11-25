@@ -36,7 +36,7 @@ function SummaryRow({ label, value }: { readonly label: string; readonly value: 
 
 /** What a mutating conda tool will run, and from where: its environment, packages, channels and warnings. */
 export function CondaInvocationDetail({ request }: PermissionDetailProps) {
-	const summary = summarizeCondaInvocation(request.permission, request.args);
+	const summary = summarizeCondaInvocation(request.action, request.args);
 	if (!summary || !hasSummaryContent(summary)) return null;
 	return (
 		<div className="grid min-w-0 gap-2" data-qa-id="conda-permission-summary">
@@ -74,17 +74,17 @@ export function CondaInvocationDetail({ request }: PermissionDetailProps) {
 	);
 }
 
-/** `conda-cli` applies to every request (renderers match on tools, not Kilo's names), so it picks out `bash` itself. */
-const isBash = (request: PermissionInteraction) => request.permission === "bash";
+/** `conda-cli` applies to every request, so it picks out `shell` itself. */
+const isShell = (request: PermissionInteraction) => request.action === "shell";
 
 /**
- * A `bash` request installing a local package file is the agent routing
+ * A `shell` request installing a local package file is the agent routing
  * around the gated conda tools: warn at the moment of consent, whatever the
  * agent said.
  */
 export function LocalFileInstallDetail({ request }: PermissionDetailProps) {
-	if (!isBash(request)) return null;
-	const warning = localCondaFileInstallWarning(request.patterns.join("\n"));
+	if (!isShell(request)) return null;
+	const warning = localCondaFileInstallWarning(request.resources.join("\n"));
 	if (!warning) return null;
 	return (
 		<div
@@ -98,24 +98,24 @@ export function LocalFileInstallDetail({ request }: PermissionDetailProps) {
 }
 
 /**
- * A conda mutation — a gated tool, or a conda-family command the `bash` ask
+ * A conda mutation — a gated tool, or a conda-family command the `shell` ask
  * rules gate — is approved one call at a time: a standing allow would let a
  * later, possibly injection-driven, call skip the prompt.
  */
 const perActionOnly = (request: PermissionInteraction) =>
-	!isPerActionCondaMutation(request.permission, request.patterns);
+	!isPerActionCondaMutation(request.action, request.resources);
 
 /** The mutating conda tools' permission cards. */
 export const condaToolInteractions: PermissionRendererImplementation = {
-	permissionTitle: (request) => condaPermissionAction(request.permission),
+	permissionTitle: (request) => condaPermissionAction(request.action),
 	PermissionDetail: CondaInvocationDetail,
 	allowAlways: perActionOnly,
 };
 
-/** `bash` permission cards for conda-family commands and local package installs. */
+/** `shell` permission cards for conda-family commands and local package installs. */
 export const condaCliInteractions: PermissionRendererImplementation = {
 	PermissionDetail: LocalFileInstallDetail,
-	allowAlways: (request) => !isBash(request) || perActionOnly(request),
+	allowAlways: (request) => !isShell(request) || perActionOnly(request),
 };
 
 /** Agent questions offering to install a local package file. */

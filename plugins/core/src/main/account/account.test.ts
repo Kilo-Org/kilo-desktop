@@ -31,19 +31,18 @@ import { activateAccount, type KiloAccountClient, type PersistedTerms } from "./
 import { inMemoryTerms, TermsRecord } from "./terms";
 
 const PROFILE: KiloProfile = {
-	profile: {
-		email: "ada@example.com",
-		name: "Ada Lovelace",
-		organizations: [{ id: "org-1", name: "Analytical Engines", role: "owner" }],
-		hasPersonalAccount: true,
-	},
+	email: "ada@example.com",
+	name: "Ada Lovelace",
+	organizations: [{ id: "org-1", name: "Analytical Engines", role: "owner" }],
+	hasPersonalAccount: true,
+	organizationId: null,
 	balance: { balance: 12.5 },
 	kiloPass: {
 		currentPeriodBaseCreditsUsd: 20,
 		currentPeriodUsageUsd: 5,
 		currentPeriodBonusCreditsUsd: 0,
+		nextBillingAt: null,
 	},
-	currentOrgId: null,
 };
 
 const CONNECTION: ServerConnection = {
@@ -99,7 +98,7 @@ class FakeKiloAccount implements KiloAccountClient {
 	async setOrganization(organizationId: string | null) {
 		this.organizations.push(organizationId);
 		if (this.profileResult instanceof Error) return;
-		this.profileResult = { ...this.profileResult, currentOrgId: organizationId };
+		this.profileResult = { ...this.profileResult, organizationId };
 	}
 	dispose = this.disposed;
 }
@@ -307,7 +306,7 @@ describe("the Kilo account as the kernel identity", () => {
 	it("is the primary account, keyed on email, with its organisation and not its name", async () => {
 		const account = new FakeKiloAccount();
 		account.authenticated = true;
-		account.profileResult = { ...PROFILE, currentOrgId: "org-1" };
+		account.profileResult = { ...PROFILE, organizationId: "org-1" };
 		const { kernel } = await boot({ account });
 
 		await vi.waitFor(() =>
@@ -326,7 +325,8 @@ describe("the Kilo account as the kernel identity", () => {
 		account.authenticated = true;
 		account.profileResult = {
 			...PROFILE,
-			profile: { email: "grace@Anaconda.com" },
+			email: "grace@Anaconda.com",
+			organizations: [],
 		};
 		const { kernel } = await boot({ account });
 		await vi.waitFor(() =>
@@ -503,7 +503,7 @@ describe("signing in to Kilo", () => {
 
 		expect(account.organizations).toEqual(["org-1"]);
 		expect(accountOf(kernel).getState()).toMatchObject({
-			profile: { currentOrgId: "org-1" },
+			profile: { organizationId: "org-1" },
 			switchingOrganization: false,
 			organizationError: null,
 		});

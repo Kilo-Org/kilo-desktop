@@ -10,7 +10,12 @@ import {
 	PermissionAutoAnswer,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { AutoApprove, needsPerson, neverAutoReplied, type ApprovalMode } from "../../contracts";
+import {
+	AutoApprove,
+	needsPerson,
+	type ApprovalMode,
+	type AutoReplyCandidate,
+} from "../../contracts";
 import { useOptionalExtensions } from "../optional-extensions";
 
 const NOTHING_HELD: readonly string[] = [];
@@ -36,18 +41,16 @@ export interface AutoAnswerRules {
 }
 
 /** Whether main's auto-approver will take this request (mirrors its rules). */
-export function autoAnswers(
-	request: Pick<OpenCodePermissionRequest, "permission" | "metadata">,
-	rules: AutoAnswerRules,
-): boolean {
-	if (rules.mode === "auto") return !needsPerson(request.metadata);
-	return (
-		!rules.signedIn &&
-		rules.signInTools.has(request.permission) &&
-		!neverAutoReplied(request.metadata) &&
-		request.metadata["skillShell"] !== true
-	);
+export function autoAnswers(request: AutoReplyCandidate, rules: AutoAnswerRules): boolean {
+	if (needsPerson(request)) return false;
+	return rules.mode === "auto" || (!rules.signedIn && rules.signInTools.has(request.action));
 }
+
+/** A transcript permission request as the auto-approver's rules read it. */
+const candidateOf = (request: OpenCodePermissionRequest): AutoReplyCandidate => ({
+	action: request.permission,
+	metadata: request.metadata,
+});
 
 /**
  * Tells kilo.work-sessions' notifier which requests main's auto-approver
@@ -84,7 +87,7 @@ export function hiddenPermissions(
 			holding.has(request.id) ||
 			(!state.released.has(request.id) &&
 				state.now - request.askedAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS &&
-				autoAnswers(request, state.rules)),
+				autoAnswers(candidateOf(request), state.rules)),
 	);
 }
 

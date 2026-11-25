@@ -24,26 +24,24 @@ const request = (
 const MANUAL: AutoAnswerRules = { mode: "manual", signedIn: true, signInTools: new Set() };
 const AUTO: AutoAnswerRules = { ...MANUAL, mode: "auto" };
 
+const candidate = (action: string, metadata: Record<string, unknown> = {}) => ({
+	action,
+	metadata,
+});
+
 describe("autoAnswers", () => {
 	it("in Auto, takes everything a person needn't see", () => {
-		expect(autoAnswers(request("p"), AUTO)).toBe(true);
-		expect(autoAnswers(request("p", { metadata: { sandboxEscalation: true } }), AUTO)).toBe(false);
-		expect(autoAnswers(request("p", { metadata: { skillShell: true } }), AUTO)).toBe(false);
+		expect(autoAnswers(candidate("shell"), AUTO)).toBe(true);
+		expect(autoAnswers(candidate("shell", { sandboxEscalation: true }), AUTO)).toBe(false);
+		expect(autoAnswers(candidate("shell", { interactive: true }), AUTO)).toBe(false);
 	});
 
 	it("in Manual, takes only signed-out calls to sign-in tools", () => {
 		const signedOut = { ...MANUAL, signedIn: false, signInTools: new Set(["desktop_x"]) };
-		expect(autoAnswers(request("p"), MANUAL)).toBe(false);
-		expect(autoAnswers(request("p", { permission: "desktop_x" }), signedOut)).toBe(true);
-		expect(
-			autoAnswers(request("p", { permission: "desktop_x" }), { ...signedOut, signedIn: true }),
-		).toBe(false);
-		expect(
-			autoAnswers(
-				request("p", { permission: "desktop_x", metadata: { configProtected: true } }),
-				signedOut,
-			),
-		).toBe(false);
+		expect(autoAnswers(candidate("shell"), MANUAL)).toBe(false);
+		expect(autoAnswers(candidate("desktop_x"), signedOut)).toBe(true);
+		expect(autoAnswers(candidate("desktop_x"), { ...signedOut, signedIn: true })).toBe(false);
+		expect(autoAnswers(candidate("desktop_x", { interactive: true }), signedOut)).toBe(false);
 	});
 });
 

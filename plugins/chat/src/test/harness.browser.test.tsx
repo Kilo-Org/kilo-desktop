@@ -98,7 +98,7 @@ describe("renderAgentPane", () => {
 		await host.host.renderer
 			.sdkFor("kilo.chat")
 			.domainObjects.get(Chats)!
-			.methods.replyPermission({ chatId: "ses_a", permissionId: "per_1", reply: "once" });
+			.methods.replyPermission({ chatId: "ses_a", permissionId: "per_1", decision: "once" });
 		await vi.waitFor(() =>
 			expect(chats.getState().chats.ses_a?.activity.pendingPermissionIds).toEqual([]),
 		);

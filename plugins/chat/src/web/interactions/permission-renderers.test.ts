@@ -13,22 +13,22 @@ function contribution(
 	key: string,
 	implementation: PermissionRendererContribution["implementation"],
 	tools?: string[],
-	permissions?: string[],
+	actions?: string[],
 ): PermissionRendererContribution {
 	return {
 		key,
 		pluginId: key.split("/")[0]!,
 		pointId: "kilo.chat/permission-renderer",
-		metadata: { ...(tools ? { tools } : {}), ...(permissions ? { permissions } : {}) },
+		metadata: { ...(tools ? { tools } : {}), ...(actions ? { actions } : {}) },
 		implementation,
 		priority: 0,
 	} as unknown as PermissionRendererContribution;
 }
 
 const request = {
-	permission: "desktop_acme_install",
+	action: "desktop_acme_install",
 	toolKey: "acme.a/install",
-	patterns: [],
+	resources: [],
 	metadata: {},
 	args: { packages: ["x"] },
 };
@@ -65,13 +65,13 @@ describe("presenting a permission request", () => {
 		expect(permissionRenderers(contributions, {}).map((c) => c.key)).toEqual(["acme.a/z"]);
 	});
 
-	it("applies contributions for a Kilo permission no desktop tool raises", () => {
+	it("applies contributions for a Kilo action no desktop tool raises", () => {
 		const execute = contribution("acme.a/x", {}, undefined, ["acme_execute"]);
 		const either = contribution("acme.a/y", {}, ["acme.a/install"], ["acme_execute"]);
-		const other = contribution("acme.a/z", {}, undefined, ["bash"]);
+		const other = contribution("acme.a/z", {}, undefined, ["shell"]);
 		const contributions = [execute, either, other];
 		expect(
-			permissionRenderers(contributions, { permission: "acme_execute" }).map((c) => c.key),
+			permissionRenderers(contributions, { action: "acme_execute" }).map((c) => c.key),
 		).toEqual(["acme.a/x", "acme.a/y"]);
 		expect(permissionRenderers(contributions, request).map((c) => c.key)).toEqual(["acme.a/y"]);
 	});
@@ -80,7 +80,7 @@ describe("presenting a permission request", () => {
 		const tools = [{ key: "kilo.terminal/open_terminal" }, { key: "acme.a/install" }];
 		expect(toolKeyOf(tools, "desktop_terminal_open_terminal")).toBe("kilo.terminal/open_terminal");
 		expect(toolKeyOf(tools, "desktop_acme_a_install")).toBe("acme.a/install");
-		expect(toolKeyOf(tools, "bash")).toBeUndefined();
+		expect(toolKeyOf(tools, "shell")).toBeUndefined();
 	});
 
 	it("takes the first title, withholds Always allow if any contribution does, and lists details", () => {
@@ -98,22 +98,22 @@ describe("presenting a permission request", () => {
 		expect(presentation.details.map((c) => c.key)).toEqual(["acme.a/y"]);
 	});
 
-	it("hides the request's patterns if any contribution does", () => {
+	it("hides the request's resources if any contribution does", () => {
 		const presentation = presentPermission(
 			[
-				contribution("acme.a/x", { showPatterns: () => true }),
-				contribution("acme.a/y", { showPatterns: () => false }),
+				contribution("acme.a/x", { showResources: () => true }),
+				contribution("acme.a/y", { showResources: () => false }),
 			],
 			request,
 		);
-		expect(presentation.showPatterns).toBe(false);
+		expect(presentation.showResources).toBe(false);
 	});
 
 	it("keeps the card's defaults without contributions", () => {
 		expect(presentPermission([], request)).toEqual({
 			title: undefined,
 			allowAlways: true,
-			showPatterns: true,
+			showResources: true,
 			details: [],
 		});
 	});

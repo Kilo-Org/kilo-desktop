@@ -25,7 +25,7 @@ export function KiloGatewayProviderDisclosure() {
 	const showRecovery = showDeviceAuth || profileFailed;
 	const showAccountDetails = signedIn || showRecovery;
 	const initialLoading = auth.isLoading && !showDeviceAuth && !auth.profile;
-	const email = auth.profile?.profile.email;
+	const email = auth.profile?.email;
 	return (
 		<div
 			className="min-w-0"

@@ -10,8 +10,8 @@ import { wireModel } from "./wire";
  * map on the prompt disables nothing; a chat-level deny-all ruleset does.
  */
 export const GENERATE_PERMISSION = [
-	{ permission: "*", pattern: "*", action: "deny" as const },
-	{ permission: "StructuredOutput", pattern: "*", action: "allow" as const },
+	{ action: "*", resource: "*", effect: "deny" as const },
+	{ action: "StructuredOutput", resource: "*", effect: "allow" as const },
 ];
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));

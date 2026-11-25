@@ -156,7 +156,7 @@ describe("the Kilo chat client", () => {
 		const created = await kilo.createChat("/projects/app", {
 			title: "New",
 			metadata: { "kilo-desktop": {} },
-			permission: [{ permission: "desktop_x", pattern: "*", action: "deny" }],
+			permission: [{ action: "desktop_x", resource: "*", effect: "deny" }],
 		});
 		await kilo.updateChat("/projects/app", "ses_a", { title: "Renamed" });
 		await kilo.updateChat("/projects/app", "ses_a", { archived: null });
@@ -192,21 +192,6 @@ describe("the Kilo chat client", () => {
 			"POST /question/que_1/reply",
 			"POST /question/que_2/reject",
 		]);
-	});
-
-	it("marks a person's approvals interactive, never a rejection", async () => {
-		const { kilo, seen } = await connect();
-
-		await kilo.replyPermission("/projects/app", "per_1", "always", undefined, true);
-		await kilo.replyPermission("/projects/app", "per_2", "reject", undefined, true);
-		await kilo.replyPermission("/projects/app", "per_3", "once");
-
-		expect(request(seen, "POST", "/permission/per_1/reply")?.body).toEqual({
-			reply: "always",
-			interactive: true,
-		});
-		expect(request(seen, "POST", "/permission/per_2/reply")?.body).toEqual({ reply: "reject" });
-		expect(request(seen, "POST", "/permission/per_3/reply")?.body).toEqual({ reply: "once" });
 	});
 
 	it("creates an unstamped chat and asks it for a structured answer", async () => {
@@ -292,7 +277,7 @@ describe("the Kilo chat client", () => {
 			directory: "/projects/app",
 			body: { messageID: "msg_2" },
 		});
-		expect(rules).toEqual([{ permission: "bash", pattern: "*", action: "ask" }]);
+		expect(rules).toEqual([{ action: "bash", resource: "*", effect: "ask" }]);
 		expect(request(seen, "PATCH", "/session/ses_fork")).toMatchObject({
 			directory: "/projects/app",
 			body: { permission: [{ permission: "bash", pattern: "*", action: "ask" }] },

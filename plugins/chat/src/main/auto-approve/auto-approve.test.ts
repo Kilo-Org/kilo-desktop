@@ -28,7 +28,7 @@ describe("auto mode", () => {
 		core.ask("ses_a", "per_1");
 		await vi.advanceTimersByTimeAsync(0);
 
-		expect(core.replies).toEqual([{ chatId: "ses_a", permissionId: "per_1", reply: "once" }]);
+		expect(core.replies).toEqual([{ chatId: "ses_a", permissionId: "per_1", decision: "once" }]);
 		expect(autoApprove.getState().holding).toEqual(["per_1"]);
 		// Still listed: a window may not have dropped the request yet, and would show its card.
 		core.resolve("ses_a", "per_1");
@@ -78,22 +78,23 @@ describe("auto mode", () => {
 		expect(autoApprove.getState().holding).toEqual([]);
 	});
 
-	it("leaves sandbox escalation and protected config to a person, and answers skill-shell unheld", async () => {
+	it("leaves interactive requests, sandbox escalation and sensitive browser steps to a person", async () => {
 		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
 		await autoApprove.methods.setMode({ mode: "auto" });
 		core.requests.set("ses_a", [
+			request("per_interactive", "ses_a", { metadata: { interactive: true } }),
 			request("per_sandbox", "ses_a", { metadata: { sandboxEscalation: true } }),
-			request("per_config", "ses_a", { metadata: { configProtected: true } }),
-			request("per_skill", "ses_a", { metadata: { skillShell: true } }),
+			request("per_browser", "ses_a", { action: "browser_sensitive" }),
+			request("per_shell", "ses_a"),
 		]);
 
-		core.ask("ses_a", "per_sandbox");
-		core.ask("ses_a", "per_config");
-		core.ask("ses_a", "per_skill");
+		for (const id of ["per_interactive", "per_sandbox", "per_browser", "per_shell"]) {
+			core.ask("ses_a", id);
+		}
 		await settle();
 
-		expect(core.replies.map((reply) => reply.permissionId)).toEqual(["per_skill"]);
-		expect(autoApprove.getState().holding).toEqual([]);
+		expect(core.replies.map((reply) => reply.permissionId)).toEqual(["per_shell"]);
+		expect(autoApprove.getState().holding).toEqual(["per_shell"]);
 	});
 
 	it("shows a request it can't read or that is gone", async () => {
@@ -201,11 +202,11 @@ describe("manual mode", () => {
 		});
 		core.requests.set("ses_a", [
 			request("per_tool", "ses_a", {
-				permission: "desktop_terminal_open_terminal",
+				action: "desktop_terminal_open_terminal",
 				toolKey: SIGN_IN_TOOL,
 			}),
 			request("per_other_tool", "ses_a", {
-				permission: "desktop_terminal_list_terminals",
+				action: "desktop_terminal_list_terminals",
 				toolKey: "kilo.terminal/list_terminals",
 			}),
 			request("per_bash", "ses_a"),
@@ -227,7 +228,7 @@ describe("manual mode", () => {
 		]) {
 			const { core, autoApprove } = await boot({ chats: [chat("ses_a")], ...options });
 			core.requests.set("ses_a", [
-				request("per_tool", "ses_a", { toolKey: SIGN_IN_TOOL, permission: "x" }),
+				request("per_tool", "ses_a", { toolKey: SIGN_IN_TOOL, action: "x" }),
 			]);
 
 			core.ask("ses_a", "per_tool");
@@ -245,7 +246,7 @@ describe("manual mode", () => {
 			plugins: [signInToolPlugin()],
 		});
 		core.requests.set("ses_a", [
-			request("per_tool", "ses_a", { toolKey: SIGN_IN_TOOL, metadata: { skillShell: true } }),
+			request("per_tool", "ses_a", { toolKey: SIGN_IN_TOOL, metadata: { interactive: true } }),
 		]);
 
 		core.ask("ses_a", "per_tool");

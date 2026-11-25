@@ -27,7 +27,7 @@ describe("classifyChannel", () => {
 
 describe("summarizeCondaInvocation", () => {
 	it("ignores non-conda tools", () => {
-		expect(summarizeCondaInvocation("bash", { channels: ["evil"] })).toBeUndefined();
+		expect(summarizeCondaInvocation("shell", { channels: ["evil"] })).toBeUndefined();
 		expect(summarizeCondaInvocation("desktop_environments_conda_envs_list", {})).toBeUndefined();
 	});
 
@@ -214,22 +214,22 @@ describe("summarizeCondaInvocation", () => {
 		expect(isMutatingCondaTool("desktop_environments_conda_channels_list")).toBe(false);
 		expect(isMutatingCondaTool("desktop_environments_conda_envs_list")).toBe(false);
 		expect(isMutatingCondaTool("desktop_environments_conda_setup_open")).toBe(false);
-		expect(isMutatingCondaTool("bash")).toBe(false);
+		expect(isMutatingCondaTool("shell")).toBe(false);
 	});
 
-	it("treats both the gated MCP tools and conda-CLI bash commands as per-action", () => {
+	it("treats both the gated MCP tools and conda-CLI shell commands as per-action", () => {
 		// MCP tool path — no standing allow.
 		expect(isPerActionCondaMutation("desktop_environments_conda_packages_install", ["*"])).toBe(
 			true,
 		);
-		// CLI substitution path — a bash request running a conda mutation.
-		expect(isPerActionCondaMutation("bash", ["conda install numpy"])).toBe(true);
-		expect(isPerActionCondaMutation("bash", ["/opt/anaconda3/bin/mamba env create -f e.yml"])).toBe(
-			true,
-		);
-		// Read-only tool and a non-conda bash command keep the standing allow.
+		// CLI substitution path — a shell request running a conda mutation.
+		expect(isPerActionCondaMutation("shell", ["conda install numpy"])).toBe(true);
+		expect(
+			isPerActionCondaMutation("shell", ["/opt/anaconda3/bin/mamba env create -f e.yml"]),
+		).toBe(true);
+		// Read-only tool and a non-conda shell command keep the standing allow.
 		expect(isPerActionCondaMutation("desktop_environments_conda_envs_list", ["*"])).toBe(false);
-		expect(isPerActionCondaMutation("bash", ["rm -rf /tmp/x"])).toBe(false);
+		expect(isPerActionCondaMutation("shell", ["rm -rf /tmp/x"])).toBe(false);
 	});
 
 	it("warns on unknown channels only (not main/defaults/conda-forge)", () => {

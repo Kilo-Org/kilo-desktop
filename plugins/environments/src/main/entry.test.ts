@@ -156,9 +156,9 @@ describe("kilo.environments in main", () => {
 		const config = await ready.chatConfig();
 		expect(config.disableTools).toBeUndefined();
 		expect(config.permissions).toContainEqual({
-			permission: "bash",
-			pattern: "*conda install*",
-			action: "ask",
+			action: "shell",
+			resource: "*conda install*",
+			effect: "ask",
 		});
 
 		const disabled = await boot({ flag: false });

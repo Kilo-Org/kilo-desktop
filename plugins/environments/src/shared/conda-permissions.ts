@@ -74,7 +74,7 @@ function condaCliMutationPatterns(): string[] {
 }
 
 /**
- * Whether a `bash` command matches one of the mutating conda-CLI patterns
+ * Whether a `shell` command matches one of the mutating conda-CLI patterns
  * above — i.e. the agent is running a conda mutation through the shell rather
  * than the gated MCP tools. Mirrors the `*<fragment>*` glob so the UI can treat
  * such a permission request as per-action-only (no standing "Always allow").
@@ -85,23 +85,23 @@ export function matchesMutatingCondaCli(command: string): boolean {
 
 /**
  * Session permission rules requiring **per-action user approval** (`ask`)
- * before the agent runs a mutating conda-family command through `bash`.
+ * before the agent runs a mutating conda-family command through `shell`.
  *
  * The MCP conda tools are gated above, but the agent can instead shell out to
  * `conda`/`mamba`/`micromamba` (e.g. to install a local package file the tool
- * refuses). Bash may still be allowed — by the user's config, an earlier
+ * refuses). Shell may still be allowed — by the user's config, an earlier
  * "Always allow", or Auto mode — so the CLI path could run a privileged install
  * with no prompt. These rules keep conda mutations on per-action ask whatever
- * bash's own rule is, closing that substitution gap.
+ * shell's own rule is, closing that substitution gap.
  *
  * Command-string matching is bypassable (wrappers, `sh -c`, aliases); this is
  * the app-side prompt, not a boundary. Pair with the bridge policy (gate 4),
  * isolation (gate 3), and agent-shell PATH/env scrubbing where available.
  */
 export function buildCondaCliPermissionRules(): PermissionRule[] {
-	return condaCliMutationPatterns().map((pattern) => ({
-		permission: "bash",
-		pattern,
-		action: "ask" as const,
+	return condaCliMutationPatterns().map((resource) => ({
+		action: "shell",
+		resource,
+		effect: "ask" as const,
 	}));
 }

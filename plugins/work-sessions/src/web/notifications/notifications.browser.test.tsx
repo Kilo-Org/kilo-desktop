@@ -96,7 +96,7 @@ describe("chat notifications", () => {
 				sdk.extensions.implement(
 					PermissionAutoAnswer,
 					"auto",
-					(request) => request.permission === "external_directory",
+					(request) => request.action === "external_directory",
 				),
 		});
 		const { chats } = await renderWorkSessions({
@@ -108,14 +108,14 @@ describe("chat notifications", () => {
 			},
 		});
 		await expect.element(row("Session s1")).toBeVisible();
-		const request = (id: string, permission: string) => ({
+		const request = (id: string, action: string) => ({
 			id,
 			chatId: "c1",
-			permission,
-			patterns: ["*"],
+			action,
+			resources: ["*"],
 			metadata: {},
 		});
-		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "bash")]);
+		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "shell")]);
 
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		try {

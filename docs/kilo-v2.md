@@ -56,6 +56,32 @@ or semantics), **missing** (no v2 equivalent; see [Gaps](#gaps)).
   RPC events arrive as `rpc.<rpcID>.<event>`. RPCs register after the
   location's plugins load; a call can briefly fail with `rpc.unavailable`.
 
+## Desktop's shared contracts
+
+Contracts other plugins use carry v2's shapes, so consumers move once:
+
+- `PermissionRule` is `{ action, resource, effect }` (`Permission.Rule`).
+- `PermissionRequest` is `{ id, chatId, action, resources, save?, message?,
+  metadata, toolKey? }`; `replyPermission` takes `{ decision }` (`once`,
+  `always`, `reject`) and no `interactive` flag.
+- kilo.chat's `PermissionInteraction` follows it (`action`, `resources`,
+  `save`); `kilo.chat/permission-renderer` matches `actions` (was
+  `permissions`) and offers `showResources` (was `showPatterns`).
+- Auto-approve leaves to a person what v2 marks `interactive: true`, plus
+  `sandbox_escalation` / `browser_sensitive` and their flags (as v2's VS Code
+  client does); v1's `configProtected` and `skillShell` flags are gone.
+- `McpServerEntry` is v2's `Mcp.ServerConfig` (`local` / `remote`, `disabled`
+  rather than `enabled`); agent extensions use `system` (was `prompt`) and
+  `subagent` (was `subtask`).
+- `KiloProfile` is flat: `email`, `name`, `organizations`,
+  `hasPersonalAccount`, `organizationId`, `balance`, `kiloPass`.
+- Desktop's `ModelRef` (`{ aiProviderId, modelId }`) is a domain type, not a
+  wire type, and keeps its names; saved model preferences start again in
+  `models-preferences-v2`.
+
+Until a producer moves to the v2 client (steps 5–6), it converts at its own
+v1 boundary (e.g. `kilo-chat-client.ts`'s `toV1Rules`).
+
 ## Server process (kilo.core `KiloServerManager.ts`)
 
 | v1                                                                                                | v2                                                                                          | Status  | Notes                                                                                                          |

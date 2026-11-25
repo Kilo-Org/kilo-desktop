@@ -6,7 +6,6 @@ import {
 	PromptQueues,
 	mediaViewerKey,
 	needsPerson,
-	neverAutoReplied,
 	permissionRendererApplies,
 	queuePreview,
 } from "./index";
@@ -20,18 +19,27 @@ describe("permissionRendererApplies", () => {
 		expect(permissionRendererApplies({ tools }, { toolKey: "kilo.files/open" })).toBe(false);
 		expect(permissionRendererApplies({ tools }, {})).toBe(false);
 	});
+
+	it("applies by Kilo action to requests no desktop tool raises", () => {
+		const actions = ["notebooks_execute"];
+		expect(permissionRendererApplies({ actions }, { action: "notebooks_execute" })).toBe(true);
+		expect(permissionRendererApplies({ actions }, { action: "shell" })).toBe(false);
+	});
 });
 
 describe("auto-approve policies", () => {
-	it("never answers sandbox escalation or protected config, and leaves skill shells to the person", () => {
-		expect(neverAutoReplied({ sandboxEscalation: true })).toBe(true);
-		expect(neverAutoReplied({ configProtected: true })).toBe(true);
-		expect(neverAutoReplied({ skillShell: true })).toBe(false);
-		expect(needsPerson({ skillShell: true })).toBe(true);
-		expect(needsPerson({ sandboxEscalation: true })).toBe(true);
-		expect(needsPerson({ configProtected: true })).toBe(true);
-		expect(needsPerson({ sandboxEscalation: "yes" })).toBe(false);
-		expect(needsPerson({})).toBe(false);
+	it("leaves interactive requests, sandbox escalation and sensitive browser steps to the person", () => {
+		const request = (action: string, metadata: Record<string, unknown> = {}) => ({
+			action,
+			metadata,
+		});
+		expect(needsPerson(request("shell", { interactive: true }))).toBe(true);
+		expect(needsPerson(request("shell", { sandboxEscalation: true }))).toBe(true);
+		expect(needsPerson(request("browser", { browserSensitive: true }))).toBe(true);
+		expect(needsPerson(request("sandbox_escalation"))).toBe(true);
+		expect(needsPerson(request("browser_sensitive"))).toBe(true);
+		expect(needsPerson(request("shell", { interactive: "yes" }))).toBe(false);
+		expect(needsPerson(request("shell"))).toBe(false);
 	});
 });
 

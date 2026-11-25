@@ -23,8 +23,8 @@ export function buildWorkspacePermissionRules(
 	return folders
 		.filter((folder) => !folder.isPrimary)
 		.flatMap(({ path }) => [
-			{ permission: "external_directory", pattern: path, action: "allow" as const },
-			{ permission: "external_directory", pattern: `${path}/*`, action: "allow" as const },
+			{ action: "external_directory", resource: path, effect: "allow" as const },
+			{ action: "external_directory", resource: `${path}/*`, effect: "allow" as const },
 		]);
 }
 
@@ -63,11 +63,11 @@ export function chatPermissionRules(input: ChatPermissionInput): PermissionRule[
 				approval: input.approvals.get(tool.key) === "ask" ? "ask" : tool.metadata.approval,
 			},
 		})),
-	).filter((rule) => !denied.has(rule.permission));
+	).filter((rule) => !denied.has(rule.action));
 	return [
 		...buildWorkspacePermissionRules(input.workspaceFolders),
 		...(input.chatPermissions ?? []),
 		...asking,
-		...[...denied].map((permission) => ({ permission, pattern: "*", action: "deny" as const })),
+		...[...denied].map((action) => ({ action, resource: "*", effect: "deny" as const })),
 	];
 }

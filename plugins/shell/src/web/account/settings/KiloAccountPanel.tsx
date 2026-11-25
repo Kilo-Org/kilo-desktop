@@ -27,7 +27,7 @@ export function KiloAccountPanel() {
 	const profileFailed = connected && !auth.profile && Boolean(auth.profileError);
 	const initialLoading = auth.isLoading && !showDeviceAuth && !auth.profile;
 	const showAccountDetails = signedIn || showDeviceAuth || profileFailed;
-	const email = auth.profile?.profile.email;
+	const email = auth.profile?.email;
 
 	if (initialLoading) return <KiloRowLoading connected={connected} />;
 

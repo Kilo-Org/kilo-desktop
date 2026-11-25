@@ -1,6 +1,8 @@
+import { KiloGatewayRpc } from "@kilocode/schema/kilocode/gateway";
 import { createKiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloProfile, ServerConnection } from "../../contracts";
+import { callLocationRpc, createServerClient } from "../agent/server-client";
 import type { KiloAccountClient } from "./account-service";
 
 const KILO_PROVIDER = "kilo";
@@ -18,15 +20,32 @@ export function createKiloAccountClient(connection: ServerConnection): KiloAccou
 		directory,
 	});
 	const options = { throwOnError: true } as const;
+	const server = createServerClient(connection);
+	const gateway = server.rpc(KiloGatewayRpc.Definition);
+	const location = { location: { directory } };
+	const read = <T>(call: () => Promise<T>) => callLocationRpc(server, directory, call);
 
 	return {
 		async authStatus() {
 			const { data } = await client.kilo.authStatus({ directory }, options);
 			return { authenticated: data.authenticated === true };
 		},
-		async profile() {
-			const { data } = await client.kilo.profile({ directory }, options);
-			return data as KiloProfile;
+		async profile(): Promise<KiloProfile> {
+			// Balance and Kilo Pass are extras: an account without them still has a profile.
+			const [profile, balance, kiloPass] = await Promise.all([
+				read(() => gateway.profile({}, location)),
+				read(() => gateway.balance({}, location)).catch(() => null),
+				read(() => gateway.kiloPass({}, location)).catch(() => null),
+			]);
+			return {
+				email: profile.email,
+				...(profile.name === undefined ? {} : { name: profile.name }),
+				organizations: profile.organizations.map((organization) => ({ ...organization })),
+				hasPersonalAccount: profile.hasPersonalAccount,
+				organizationId: profile.organizationID,
+				balance: balance ? { ...balance } : null,
+				kiloPass: kiloPass ? { ...kiloPass } : null,
+			};
 		},
 		async authorize() {
 			const { data } = await client.provider.oauth.authorize(

@@ -51,7 +51,7 @@ describe("live session status", () => {
 			activate: (sdk) =>
 				sdk.extensions.implement(PermissionAutoAnswer, "auto", (request) => {
 					if (request.id === "read") resolveAskedAboutRead();
-					return request.permission === "external_directory";
+					return request.action === "external_directory";
 				}),
 		});
 		const { chats } = await renderWorkSessions({
@@ -60,14 +60,14 @@ describe("live session status", () => {
 			guests: [autoApprover],
 		});
 		await expect.element(glyph("Fix login", "Working")).toBeVisible();
-		const request = (id: string, permission: string) => ({
+		const request = (id: string, action: string) => ({
 			id,
 			chatId: "c1",
-			permission,
-			patterns: ["*"],
+			action,
+			resources: ["*"],
 			metadata: {},
 		});
-		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "bash")]);
+		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "shell")]);
 		const seen: string[] = [];
 		const observer = new MutationObserver(() => {
 			if (list().getByTestId("session-list-attention-toggle").query()) seen.push("attention");

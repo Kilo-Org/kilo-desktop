@@ -26,7 +26,7 @@ function executeRequest(
 	args: Record<string, unknown>,
 	metadata: Record<string, unknown> = {},
 ): PermissionInteraction {
-	return { permission: "notebooks_execute", patterns: [NOTEBOOK_ID], args, metadata };
+	return { action: "notebooks_execute", resources: [NOTEBOOK_ID], args, metadata };
 }
 
 async function renderDetail(request: PermissionInteraction, panes?: readonly Pane[]) {
@@ -48,7 +48,7 @@ describe("kilo.notebook's notebook code permission card", () => {
 			executeRequest({ notebook_id: "nb", code: "import os\nos.remove('data.csv')" }),
 		);
 
-		expect(contribution.metadata.permissions).toEqual(["notebooks_execute"]);
+		expect(contribution.metadata.actions).toEqual(["notebooks_execute"]);
 		await expect
 			.element(screen.getByTestId("notebook-execute-code"))
 			.toHaveTextContent("import os os.remove('data.csv')");
@@ -116,7 +116,7 @@ describe("kilo.notebook's notebook code permission card", () => {
 		]);
 
 		expect(
-			(contribution.implementation as PermissionRendererImplementation).showPatterns?.(request),
+			(contribution.implementation as PermissionRendererImplementation).showResources?.(request),
 		).toBe(false);
 		await expect
 			.element(screen.getByTestId("notebook-execute-notebook").getByText("/work/analysis.ipynb"))

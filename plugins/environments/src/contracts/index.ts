@@ -98,7 +98,7 @@ export const MUTATING_CONDA_TOOL_IDS = [
 	"conda.channels.remove",
 ] as const;
 
-/** Its `kilo.core/chat-config` contribution: hides the conda tools while conda isn't ready, asks before conda-family `bash` commands. */
+/** Its `kilo.core/chat-config` contribution: hides the conda tools while conda isn't ready, asks before conda-family `shell` commands. */
 export const CONDA_CHAT_CONFIG = "conda";
 
 /** Its `kilo.local-inference/llama-runtime` contribution: llama.cpp from a `conda-runtime` environment. */

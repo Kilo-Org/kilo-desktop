@@ -18,7 +18,6 @@ describe("a static MCP server", () => {
 				type: "local",
 				command: ["/plugins/acme/resources/bin/acme", "--root", "/plugins/acme/resources"],
 				environment: { ACME_HOME: "/plugins/acme/resources/home" },
-				enabled: true,
 			},
 		});
 	});
@@ -57,13 +56,13 @@ describe("an agent extension", () => {
 			extension({
 				type: "agent",
 				description: "Reviews code",
-				prompt: "You review code.",
+				system: "You review code.",
 				model: { aiProviderId: "kilo", modelId: "anthropic/claude-sonnet-4" },
 			}),
 		).toEqual({
 			agent: {
 				description: "Reviews code",
-				prompt: "You review code.",
+				system: "You review code.",
 				mode: "subagent",
 				model: "kilo/anthropic/claude-sonnet-4",
 			},
@@ -81,7 +80,7 @@ describe("an agent extension", () => {
 				description: "Review",
 				agent: "reviewer",
 				model: { aiProviderId: "acme", modelId: "m" },
-				subtask: false,
+				subagent: false,
 			}),
 		).toEqual({
 			command: {
@@ -89,7 +88,7 @@ describe("an agent extension", () => {
 				description: "Review",
 				agent: "reviewer",
 				model: "acme/m",
-				subtask: false,
+				subagent: false,
 			},
 		});
 	});

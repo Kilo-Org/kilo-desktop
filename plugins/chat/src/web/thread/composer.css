@@ -36,6 +36,16 @@
 	border-color: transparent;
 }
 
+/* A strip joined to the top of the composer (the swarm shelf): the glass
+   stroke on its top and sides only, so it reads as the input's first row. */
+.chat-composer-glass.chat-composer-attached {
+	outline: none;
+	box-shadow:
+		inset 1px 0 0 var(--composer-glass-stroke),
+		inset -1px 0 0 var(--composer-glass-stroke),
+		inset 0 1px 0 var(--composer-glass-stroke);
+}
+
 .chat-composer-glass:focus-within {
 	--composer-glass-stroke: var(--composer-focus-stroke);
 }

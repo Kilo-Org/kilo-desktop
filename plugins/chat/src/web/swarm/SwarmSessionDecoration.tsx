@@ -9,7 +9,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { sessionSwarmState, swarmLabel } from "./session-swarm";
 
 /**
- * The work session row's swarm glyph (`row` decoration): shown once a chat of
+ * The work session row's swarm glyph (`status` decoration): shown once a chat of
  * the work session has delegated to subagents, with a dot in the text color
  * while one waits on the person, green while any works, and none once all
  * finished. Never interactive: it sits inside the row's button.
@@ -30,16 +30,16 @@ export function SwarmSessionDecoration({ workSession }: WorkSessionDecorationPro
 			role="img"
 			aria-label={label}
 			title={label}
-			className="text-muted-foreground relative flex shrink-0 items-center pl-2"
+			className="text-muted-foreground flex shrink-0 items-center gap-1.5"
 			data-qa-id="kilo-swarm-session-decoration"
 			data-state={dot ?? "finished"}
 		>
-			<WaypointsIcon aria-hidden className="size-3" />
+			<WaypointsIcon aria-hidden className="size-3.5" />
 			{dot ? (
 				<span
 					aria-hidden
 					className={cn(
-						"ring-background absolute -top-0.5 -right-0.5 size-1.5 rounded-full ring-1",
+						"size-1.5 rounded-full",
 						dot === "needs-you" ? "bg-foreground" : "bg-success",
 					)}
 				/>

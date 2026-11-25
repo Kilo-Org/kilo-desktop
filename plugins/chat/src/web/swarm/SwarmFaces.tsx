@@ -5,7 +5,7 @@ import { AgentAvatar } from "./swarm-parts";
 import { isActive, type TeamMember } from "./swarm-team";
 
 /** Faces shown before the rest fold into "+N". */
-const MAX_FACES = 6;
+const MAX_FACES = 4;
 
 const faceName = (member: TeamMember) => (member.main ? "Main agent" : member.title);
 
@@ -15,10 +15,14 @@ function faceState(member: TeamMember): string {
 	return member.main ? "idle" : "finished";
 }
 
+/** Each face's 2px ring in the surface behind the stack (`--swarm-face-ring`), so overlaps read cleanly. */
+const RING = "0 0 0 2px var(--swarm-face-ring, var(--background))";
+
 /**
  * A team as a stack of overlapping faces, the main agent first: a working
- * worker as its monster in its color, a stopped one greyed, and one waiting on the person
- * ringed in the text color. With `onOpen` the workers' faces are buttons.
+ * worker as its monster in its color, a stopped one greyed, and one waiting
+ * on the person ringed in the text color; past four, a "+N" chip. With
+ * `onOpen` the workers' faces are buttons.
  */
 export function SwarmFaces({
 	team,
@@ -27,15 +31,16 @@ export function SwarmFaces({
 	faceQaId,
 	size = "sm",
 }: {
-	/** `md` where the faces lead a card, `sm` in tight rows like the composer shelf. */
-	readonly size?: "sm" | "md";
 	readonly team: readonly TeamMember[];
 	readonly colors: ReadonlyMap<string, string>;
 	readonly onOpen?: (member: TeamMember) => void;
 	readonly faceQaId?: string;
+	/** `md` (26px) where the faces lead a row, `sm` (20px) in tight spots. */
+	readonly size?: "sm" | "md";
 }) {
 	const shown = team.slice(0, MAX_FACES);
 	const folded = team.length - shown.length;
+	const overlap = size === "md" ? "-ms-2.5" : "-ms-1.5";
 	return (
 		<span className="flex shrink-0 items-center">
 			{shown.map((member, index) => {
@@ -47,10 +52,10 @@ export function SwarmFaces({
 						: WORKER_COLORS[Math.max(index - 1, 0) % WORKER_COLORS.length]!);
 				const face = (
 					<span
-						className={cn(
-							"bg-background flex rounded-full p-px",
-							member.needsYou && "ring-foreground ring-[1.5px]",
-						)}
+						className="flex rounded-full"
+						style={{
+							boxShadow: member.needsYou ? `${RING}, 0 0 0 3.5px var(--foreground)` : RING,
+						}}
 						data-state={member.needsYou ? "needs-you" : member.state}
 					>
 						<AgentAvatar
@@ -62,14 +67,14 @@ export function SwarmFaces({
 					</span>
 				);
 				const title = `${name}: ${faceState(member)}`;
-				const overlap = cn("relative first:ms-0", size === "md" ? "-ms-1.5" : "-ms-1");
+				const place = cn("relative", index > 0 && overlap);
 				if (onOpen && !member.main) {
 					return (
 						<button
 							key={member.chatId}
 							type="button"
 							className={cn(
-								overlap,
+								place,
 								"focus-visible:ring-ring rounded-full outline-none hover:z-10 focus-visible:z-10 focus-visible:ring-2",
 							)}
 							aria-label={`Open ${name} (${faceState(member)})`}
@@ -82,13 +87,28 @@ export function SwarmFaces({
 					);
 				}
 				return (
-					<span key={member.chatId} className={overlap} title={title}>
+					<span key={member.chatId} className={place} title={title}>
 						{face}
 					</span>
 				);
 			})}
 			{folded > 0 ? (
-				<span className="text-muted-foreground ps-1 text-xs tabular-nums">+{folded}</span>
+				<span
+					className={cn(
+						"bg-muted text-foreground/85 relative flex items-center justify-center rounded-full px-[7px] font-semibold tabular-nums",
+						overlap,
+						size === "md" ? "h-[26px] min-w-[26px] text-[11px]" : "h-5 min-w-5 text-[10px]",
+					)}
+					style={{
+						boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent), ${RING}`,
+					}}
+					title={team
+						.slice(MAX_FACES)
+						.map((member) => faceName(member))
+						.join(", ")}
+				>
+					+{folded}
+				</span>
 			) : null}
 		</span>
 	);

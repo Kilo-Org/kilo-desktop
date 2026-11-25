@@ -43,7 +43,7 @@ export const WorkSessionMenu = defineExtensionPoint({
 
 // --- Decorations ---
 
-export const WORK_SESSION_DECORATION_SLOTS = ["row", "hover", "hover-branch"] as const;
+export const WORK_SESSION_DECORATION_SLOTS = ["status", "row", "hover", "hover-branch"] as const;
 export type WorkSessionDecorationSlot = (typeof WORK_SESSION_DECORATION_SLOTS)[number];
 
 export interface WorkSessionDecorationProps {
@@ -57,8 +57,10 @@ export interface WorkSessionDecorationProps {
 }
 
 /**
- * Extra detail for a work session: a badge on its list row (and its board
- * card), or a line in its details on hover — `hover-branch` takes the place
+ * Extra detail for a work session: a compact `status` glyph always shown at
+ * the end of its list row's title (live work inside it, like a running
+ * swarm), a `row` badge on its list row and board card (shown with the list's
+ * PR view option), or a line in its details on hover — `hover-branch` takes the place
  * of the work session's own branch line, `hover` lines follow the others. A
  * button in the open work session's header is a `work-session-action`.
  */

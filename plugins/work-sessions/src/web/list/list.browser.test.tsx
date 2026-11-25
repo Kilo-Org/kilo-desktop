@@ -38,6 +38,7 @@ function contributorPlugin() {
 						],
 						"kilo.work-sessions/work-session-decoration": [
 							{ id: "row-badge", slot: "row" },
+							{ id: "live-status", slot: "status" },
 							{ id: "branch-detail", slot: "hover-branch" },
 							{ id: "pr-detail", slot: "hover" },
 						],
@@ -61,6 +62,13 @@ function contributorPlugin() {
 						"row-badge",
 						({ workSession: s }: WorkSessionDecorationProps) => (
 							<span data-qa-id={`row-badge-${s.id}`}>PR</span>
+						),
+					);
+					sdk.extensions.implement(
+						WorkSessionDecoration,
+						"live-status",
+						({ workSession: s }: WorkSessionDecorationProps) => (
+							<span data-qa-id={`live-status-${s.id}`}>live</span>
 						),
 					);
 					sdk.extensions.implement(
@@ -529,6 +537,23 @@ describe("view options", () => {
 		await expect.element(info.getByTestId("row-badge-a")).toBeVisible();
 		await toggleShow("PR");
 		await expect.element(row("Fix login").getByTestId("row-badge-a")).not.toBeInTheDocument();
+	});
+
+	it("shows plugins' status glyphs whatever the view options", async () => {
+		const contributor = contributorPlugin();
+		await renderWorkSessions({
+			workSessions: [workSession("a", { title: "Fix login" })],
+			guests: [contributor.plugin],
+		});
+		await expect.element(row("Fix login").getByTestId("live-status-a")).toBeVisible();
+
+		await page.getByTestId("session-list-view-menu").click();
+		await page.getByRole("menuitem", { name: /^Show/ }).click();
+		await page.getByRole("menuitemcheckbox", { name: "PR" }).click();
+		await userEvent.keyboard("{Escape}{Escape}");
+
+		await expect.element(row("Fix login").getByTestId("row-badge-a")).not.toBeInTheDocument();
+		await expect.element(row("Fix login").getByTestId("live-status-a")).toBeVisible();
 	});
 
 	it("collapses and expands every shelf", async () => {

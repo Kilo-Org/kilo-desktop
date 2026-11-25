@@ -148,7 +148,7 @@ describe("the composer's swarm shelf", () => {
 		await expect.element(shelf(), WAIT).toBeVisible();
 		await expect
 			.element(shelf().getByTestId("kilo-composer-swarm-line"))
-			.toHaveTextContent("Audit login→ Main agentLogin is safe");
+			.toHaveTextContent("Audit login→Main agentLogin is safe");
 		const faces = shelf().getByTestId("kilo-composer-swarm-face");
 		await expect.poll(() => faces.elements().length, WAIT).toBe(2);
 		await expect.element(faces.nth(0)).toHaveAccessibleName("Open Map bridge RPC (working)");
@@ -190,7 +190,7 @@ describe("the composer's swarm shelf", () => {
 		await expect.element(answer, WAIT).toBeVisible();
 		await expect
 			.element(shelf().getByTestId("kilo-composer-swarm-line"))
-			.toHaveTextContent("Map bridge RPC→ youhas a question");
+			.toHaveTextContent("Map bridge RPC→youhas a question");
 		// The board takes the request as it opens here, so watch for it rather than read it after.
 		const requested: unknown[] = [];
 		const stop = useSwarmBoardStore.subscribe((state) => {
@@ -262,7 +262,7 @@ describe("the session list's swarm glyph", () => {
 		const contribution = renderer.extensions
 			.list(WorkSessionDecoration)
 			.find((candidate) => candidate.key === "kilo.chat/swarm");
-		expect(contribution?.metadata.slot).toBe("row");
+		expect(contribution?.metadata.slot).toBe("status");
 		render(
 			<KernelProvider kernel={renderer}>
 				<RenderContribution<WorkSessionDecorationProps>

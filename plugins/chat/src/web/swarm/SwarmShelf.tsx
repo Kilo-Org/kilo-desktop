@@ -5,7 +5,6 @@ import { Button } from "@kilo-desktop/ui/components/button";
 import type { SubagentActivity } from "../subagents/SubagentActivityContext";
 import { isActiveSubagentStatus } from "../subagents/subagent-state";
 import { useOpenSubagentPane } from "../subagents/use-open-subagent-pane";
-import { ComposerShelf } from "../thread/composer-shelf";
 import { SwarmFaces } from "./SwarmFaces";
 import { useSwarmBoardStore } from "./swarm-board-store";
 import { firstLine, needsYouSummary, workCounts, type SwarmSummary } from "./swarm-summary";
@@ -73,11 +72,16 @@ export function SwarmShelf({
 	const name = (id: string, label?: string) => participantName(id, label, team);
 	const latest = summary.latest;
 	return (
-		<ComposerShelf data-qa-id="kilo-composer-swarm-shelf">
-			<div className="flex h-8 min-w-0 items-center gap-2 ps-2 pe-[3px] text-xs">
+		<div
+			className="chat-composer-glass chat-composer-surface chat-composer-attached w-full overflow-hidden rounded-t-(--composer-radius) [--swarm-face-ring:var(--pane-raised,var(--card))]"
+			data-composer-attached
+			data-qa-id="kilo-composer-swarm-shelf"
+		>
+			<div className="bg-foreground/[0.035] flex min-w-0 items-center gap-3 px-3.5 py-[9px] text-[13px] leading-4">
 				<SwarmFaces
 					team={team}
 					colors={summary.colors}
+					size="md"
 					faceQaId="kilo-composer-swarm-face"
 					{...(openSubagent
 						? {
@@ -87,14 +91,15 @@ export function SwarmShelf({
 						: {})}
 				/>
 				<span
-					className="flex min-w-0 flex-1 items-baseline gap-1"
+					className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden"
 					data-qa-id="kilo-composer-swarm-line"
 				>
 					{waiting ? (
 						<>
 							<span className="text-foreground shrink-0 font-medium">{waiting.title}</span>
-							<span className="text-muted-foreground shrink-0">→ you</span>
-							<span className="text-foreground/80 min-w-0 truncate">
+							<span className="text-muted-foreground/70 shrink-0">→</span>
+							<span className="text-muted-foreground shrink-0">you</span>
+							<span className="text-foreground/85 min-w-0 truncate">
 								{needsYouSummary(waiting)}
 							</span>
 						</>
@@ -103,10 +108,11 @@ export function SwarmShelf({
 							<span className="text-foreground max-w-[40%] shrink-0 truncate font-medium">
 								{name(latest.from, latest.fromLabel)}
 							</span>
+							<span className="text-muted-foreground/70 shrink-0">→</span>
 							<span className="text-muted-foreground max-w-[30%] shrink-0 truncate">
-								→ {name(latest.to, latest.toLabel)}
+								{name(latest.to, latest.toLabel)}
 							</span>
-							<span className="text-foreground/80 min-w-0 truncate">{firstLine(latest.body)}</span>
+							<span className="text-foreground/85 min-w-0 truncate">{firstLine(latest.body)}</span>
 						</>
 					) : (
 						<span className="text-muted-foreground truncate tabular-nums">
@@ -132,7 +138,7 @@ export function SwarmShelf({
 				) : null}
 				<button
 					type="button"
-					className="text-muted-foreground hover:text-foreground flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 transition-colors"
+					className="text-muted-foreground hover:text-foreground -me-1.5 flex h-6 shrink-0 items-center gap-1.5 rounded-md px-1.5 transition-colors"
 					onClick={onOpenBoard}
 					aria-label={summary.newCount > 0 ? `Swarm Board, ${summary.newCount} new` : "Swarm Board"}
 					data-qa-id="kilo-composer-swarm-board"
@@ -146,9 +152,9 @@ export function SwarmShelf({
 							{summary.newCount >= 50 ? "50+" : summary.newCount}
 						</span>
 					) : null}
-					<ChevronRightIcon aria-hidden className="size-3.5" />
+					<ChevronRightIcon aria-hidden className="size-3" />
 				</button>
 			</div>
-		</ComposerShelf>
+		</div>
 	);
 }

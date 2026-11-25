@@ -126,54 +126,58 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						if (!isComposerEmpty) plan.refine();
 					}}
 				>
-					<ComposerSubagentStrip />
 					<ComposerTaskList />
 					<ComposerQueue steerOnEnter={hasMessageQueue && isComposerEmpty} />
-					<ComposerPrimitive.AttachmentDropzone
-						render={
-							<div
-								data-slot="aui_composer-shell"
-								className={cn(
-									"border-border-subtle chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
-									"chat-composer-glass shadow-composer relative z-10",
-								)}
+					{/* The swarm strip is the input's top part: the shell squares its top when it's there. */}
+					<div className="group/composer-stack flex w-full flex-col">
+						<ComposerSubagentStrip />
+						<ComposerPrimitive.AttachmentDropzone
+							render={
+								<div
+									data-slot="aui_composer-shell"
+									className={cn(
+										"border-border-subtle chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+										"chat-composer-glass shadow-composer relative z-10",
+										"group-has-[[data-composer-attached]]/composer-stack:rounded-t-none",
+									)}
+								/>
+							}
+						>
+							{inputHeight.canResize ? (
+								<ComposerResizeHandle
+									ratio={inputHeight.ratio}
+									onResize={inputHeight.setRatio}
+									measureDragStart={inputHeight.measureDragStart}
+								/>
+							) : null}
+							<ComposerAttachments />
+							<KiloLexicalComposerInput
+								ref={inputRef}
+								formatter={formatter}
+								placeholder={composerPlaceholder(sources)}
+								submitMode="enter"
+								onKeyDown={handleInputKeyDown}
+								style={inputHeight.inputStyle}
+								onEnter={() => {
+									if (runTypedClientCommand({ fromEnter: true })) return true;
+									// The follow-up keeps the thread running: Enter refines instead of queueing.
+									if (!refining) return false;
+									if (!aui.composer.getState().isEmpty) plan.refine();
+									return true;
+								}}
 							/>
-						}
-					>
-						{inputHeight.canResize ? (
-							<ComposerResizeHandle
-								ratio={inputHeight.ratio}
-								onResize={inputHeight.setRatio}
-								measureDragStart={inputHeight.measureDragStart}
+							<KiloSlashTrigger slash={slash} formatter={formatter} />
+							<MentionTriggers sources={sources} context={mentionContext} formatter={formatter} />
+							<ComposerActionBar
+								refining={refining}
+								refinePending={plan.submitting}
+								onRefine={() => plan.refine()}
+								onSendClick={(event) => {
+									if (runTypedClientCommand({ fromEnter: false })) event.preventDefault();
+								}}
 							/>
-						) : null}
-						<ComposerAttachments />
-						<KiloLexicalComposerInput
-							ref={inputRef}
-							formatter={formatter}
-							placeholder={composerPlaceholder(sources)}
-							submitMode="enter"
-							onKeyDown={handleInputKeyDown}
-							style={inputHeight.inputStyle}
-							onEnter={() => {
-								if (runTypedClientCommand({ fromEnter: true })) return true;
-								// The follow-up keeps the thread running: Enter refines instead of queueing.
-								if (!refining) return false;
-								if (!aui.composer.getState().isEmpty) plan.refine();
-								return true;
-							}}
-						/>
-						<KiloSlashTrigger slash={slash} formatter={formatter} />
-						<MentionTriggers sources={sources} context={mentionContext} formatter={formatter} />
-						<ComposerActionBar
-							refining={refining}
-							refinePending={plan.submitting}
-							onRefine={() => plan.refine()}
-							onSendClick={(event) => {
-								if (runTypedClientCommand({ fromEnter: false })) event.preventDefault();
-							}}
-						/>
-					</ComposerPrimitive.AttachmentDropzone>
+						</ComposerPrimitive.AttachmentDropzone>
+					</div>
 				</ComposerPrimitive.Root>
 			</ComposerPrimitive.Unstable_TriggerPopoverRoot>
 		</MentionIconsContext.Provider>

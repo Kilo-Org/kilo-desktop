@@ -1370,9 +1370,19 @@ function SessionRow({ session, indented }: { session: WorkSession; indented: boo
 	const workspaceColor = workspaceGlyphColor(workspace?.color);
 	const showWorkspace = show.includes("workspace") && locationLabel !== null;
 
-	const decorations = useExtensions(WorkSessionDecoration).filter(
-		(decoration) => decoration.metadata.slot === "row",
-	);
+	const allDecorations = useExtensions(WorkSessionDecoration);
+	const decorations = allDecorations.filter((decoration) => decoration.metadata.slot === "row");
+	// Status glyphs say live work is inside the work session, so they show whatever the view options.
+	const statusDecorations = allDecorations
+		.filter((decoration) => decoration.metadata.slot === "status")
+		.map((decoration) => (
+			<RenderContribution
+				key={decoration.key}
+				contribution={decoration}
+				props={{ workSession: session }}
+			/>
+		));
+	const hasStatus = statusDecorations.length > 0;
 	// The "PR" view option shows row decorations; git's pull request badge is the first (step 9).
 	const rowDecorations =
 		show.includes("pr") && decorations.length > 0
@@ -1434,13 +1444,18 @@ function SessionRow({ session, indented }: { session: WorkSession; indented: boo
 			<span
 				className={cn(
 					"text-muted-foreground ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums",
-					rightSlot || decorationsInTitleRow ? rowHoverLabelFadeClassName : null,
+					rightSlot || decorationsInTitleRow || hasStatus ? rowHoverLabelFadeClassName : null,
 				)}
 			>
 				{shortcutHint ? (
 					<ShortcutHintChip label={shortcutHint} />
 				) : (
 					<>
+						{hasStatus ? (
+							<span className="flex items-center gap-1" data-qa-id="session-list-item-status">
+								{statusDecorations}
+							</span>
+						) : null}
 						{decorationsInTitleRow ? (
 							<span className="peer/pr contents">{rowDecorations}</span>
 						) : null}

@@ -183,7 +183,7 @@
 			"kilo.work-sessions/work-session-decoration": [
 				{
 					"id": "swarm",
-					"slot": "row"
+					"slot": "status"
 				}
 			],
 			"kilo.work-sessions/opener": [

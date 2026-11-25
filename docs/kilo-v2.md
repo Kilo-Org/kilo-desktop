@@ -304,6 +304,32 @@ first page, then `message.list({ sessionID, cursor: cursor.next })` (do not
 resend `order` with a cursor). No `X-Next-Cursor`, no `before`, no unbounded
 load.
 
+### Observed on kilo2 (step 7, `0.0.0-v2-239`)
+
+`plugins/chat/src/test/kilo2/golden-turn.json` is a recorded turn (stand-in
+model, a `read` tool call) that `golden-turn.test.ts` re-records on every run.
+
+- A prompt publishes `session.inbox.enqueued` (user item, `delivery: "steer"`),
+  `execution.started`, `inbox.delivered`; the user message is stored then.
+- Each step: `step.started { agent, model (with variant), assistantMessageID,
+  started }`, `step.first-token`, parts, `step.streamed`, `step.ended { finish,
+  rawFinish, tokens, cost }`, then `usage.updated` with the chat's totals.
+- Text and reasoning: `*.started { ordinal }`, `*.delta`, `*.ended { text }`
+  (ordinals count per type). A part that arrives whole is one delta.
+- Tool: `tool.input.started { id, name }`, `tool.input.ended { text }` (no
+  delta for whole input), `tool.called { input, executed: false }`,
+  `tool.success { content, metadata, executed }`.
+- The turn ends with an `idle` message `{ outcome }` and
+  `execution.succeeded`. The title request runs alongside: its usage is added,
+  then `session.renamed`.
+- Frames: `durable` on everything but deltas, `step.first-token` and
+  `usage.updated`. Order across event types varies a little between runs;
+  order within a type doesn't.
+- `message.list` pages: `cursor.previous`/`next` encode the anchor message and
+  order; a cursor with `order` is `InvalidCursorError`.
+- Errors decode as tagged objects (`_tag`, `message`, fields) for declared
+  statuses; an undeclared status is a `ClientError` (`UnexpectedStatus`).
+
 ## Chat renderer (kilo.chat and `@assistant-ui/react-opencode`)
 
 | v1                                                           | v2                                                                                                                 | Status  |

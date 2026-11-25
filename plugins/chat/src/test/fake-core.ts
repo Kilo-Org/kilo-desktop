@@ -25,6 +25,8 @@ import {
 } from "@kilo-desktop/plugin-core/contracts";
 
 import { FakeKiloServer } from "./fake-kilo-server";
+import type { FakeKilo2Server } from "./kilo2/fake-kilo2-server";
+import { provideKilo2Chats } from "./kilo2/kilo2-chats";
 
 export const SIGNED_IN: AccountState = {
 	connection: "connected",
@@ -106,6 +108,11 @@ export function chatSummary(id: string, patch: Partial<ChatSummary> = {}): ChatS
 export interface FakeCoreOptions {
 	/** Backs the server's connection and the chats' actions; a new one by default. */
 	readonly server?: FakeKiloServer;
+	/**
+	 * Backs kilo.core's server and chats with this Kilo v2 fake instead of
+	 * `server` (`kilo2/kilo2-chats.ts`); the chats are seeded into it.
+	 */
+	readonly kilo2?: FakeKilo2Server;
 	readonly chats?: readonly ChatSummary[];
 	/** kilo.core's account; signed in by default, null leaves it out. */
 	readonly account?: AccountState | null;
@@ -471,7 +478,21 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		activate(sdk: PluginSdk): void {
 			sdkRef = sdk;
 			sdk.context.set("termsAccepted", true);
-			if (!options.withoutChats) provideChats(sdk);
+			if (options.withoutChats) {
+				// kilo.core without a Kilo server.
+			} else if (options.kilo2) {
+				chats = provideKilo2Chats(sdk, options.kilo2, {
+					...(options.chats ? { chats: options.chats } : {}),
+					...(options.instructions ? { instructions: options.instructions } : {}),
+					...(options.createError ? { createError: options.createError } : {}),
+					...(options.declinedSignInTools
+						? { declinedSignInTools: options.declinedSignInTools }
+						: {}),
+					...(options.onChatCreated ? { onChatCreated: options.onChatCreated } : {}),
+					record: (method, input) =>
+						(calls as Record<string, (input: never) => void>)[method]?.(input as never),
+				});
+			} else provideChats(sdk);
 			if (options.models !== null) provideModels(sdk, options.models ?? {});
 			if (options.account !== null) provideAccount(sdk, options.account ?? SIGNED_IN);
 		},

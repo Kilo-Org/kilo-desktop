@@ -10,7 +10,8 @@
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./contracts": "./src/contracts/index.ts",
-		"./cli-distribution": "./src/main/agent/cli-distribution/index.ts"
+		"./cli-distribution": "./src/main/agent/cli-distribution/index.ts",
+		"./testing": "./src/testing/index.ts"
 	},
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",

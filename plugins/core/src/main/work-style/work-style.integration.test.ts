@@ -4,7 +4,7 @@ import path from "node:path";
 import { parse } from "jsonc-parser";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { kilo2Executable, startKilo2, type Kilo2 } from "../../test/agent/kilo2-harness.js";
+import { kilo2Executable, startKilo2, type Kilo2 } from "../../testing/kilo2.js";
 import { applyWorkStyle } from "./apply-work-style.js";
 import { createKiloWorkStyleClient } from "./production.js";
 import { REVIEW_FIRST_PERMISSIONS } from "./work-style-presets.js";

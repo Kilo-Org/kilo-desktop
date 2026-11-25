@@ -44,6 +44,7 @@ import {
 } from "../contracts";
 import { fakeCore } from "./fake-core";
 import { FakeKiloServer } from "./fake-kilo-server";
+import type { FakeKilo2Server } from "./kilo2/fake-kilo2-server";
 import {
 	WORKSPACE,
 	agentPane,
@@ -98,6 +99,8 @@ export interface ChatHostOptions {
 	readonly workspaceId?: string | null;
 	readonly instructions?: readonly string[];
 	readonly server?: FakeKiloServer;
+	/** Backs kilo.core with this Kilo v2 fake instead (installed on the window's fetch). */
+	readonly kilo2?: FakeKilo2Server;
 	/** Leaves kilo.core's server and chats out entirely. */
 	readonly withoutAgent?: boolean;
 	/** Fails chat creation with this message. */
@@ -157,6 +160,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	liftPaneAboveShell();
 	const server = options.server ?? new FakeKiloServer();
 	server.install();
+	options.kilo2?.install();
 	const initialWorkSession = options.workSession ?? options.session ?? workSession();
 	const firstChatId = initialWorkSession.chatIds[0];
 	const pane =
@@ -178,6 +182,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	});
 	const core = fakeCore({
 		server,
+		...(options.kilo2 ? { kilo2: options.kilo2 } : {}),
 		...(options.chats ? { chats: options.chats } : {}),
 		...(options.identity !== undefined ? { account: options.identity } : {}),
 		...(options.models !== undefined ? { models: options.models } : {}),
@@ -334,6 +339,8 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	return {
 		host,
 		server,
+		/** The Kilo v2 fake backing kilo.core, when the host was given one. */
+		kilo2: options.kilo2,
 		core,
 		/** kilo.work-sessions' main stand-in (calls, `attachChat`, providers). */
 		workSessions,

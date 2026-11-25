@@ -16,6 +16,8 @@ import { testWebEntry } from "@kilo-desktop/plugin-work-sessions/testing";
 import { paneChatId } from "../contracts";
 import { chatSummary, renderAgentPane, workSession } from "./chat-host";
 import { renderInKernel } from "./kernel-harness";
+import { FakeKilo2Server } from "./kilo2/fake-kilo2-server";
+import { questionForm } from "./kilo2/fixtures";
 
 function AgentPaneProbe({ pane }: PaneProps) {
 	const chatId = paneChatId(pane);
@@ -102,6 +104,71 @@ describe("renderAgentPane", () => {
 		await vi.waitFor(() =>
 			expect(chats.getState().chats.ses_a?.activity.pendingPermissionIds).toEqual([]),
 		);
+	});
+});
+
+describe("renderAgentPane on the Kilo v2 fake", () => {
+	it("creates chats, sends prompts and follows a turn through v2 calls and events", async () => {
+		const kilo2 = new FakeKilo2Server();
+		kilo2.replies.push([[{ type: "text", text: "Hi there" }]]);
+		const host = await renderAgentPane({ chatWeb: probeWeb, kilo2 });
+		const sdk = host.host.renderer.sdkFor("kilo.chat");
+		const workSessions = sdk.domainObjects.get(WorkSessions)!;
+		const chats = sdk.domainObjects.get(Chats)!;
+		const ended: string[] = [];
+		chats.on("turn-ended", ({ chatId }) => ended.push(chatId));
+
+		const chat = await workSessions.methods.createChat({ id: "wses_1" });
+		await chats.methods.prompt({
+			chatId: chat.id,
+			parts: [{ type: "text", text: "Hello" }],
+			model: { aiProviderId: "acme", modelId: "deep-2", variant: "high" },
+		});
+
+		await vi.waitFor(() => expect(ended).toEqual([chat.id]));
+		expect(kilo2.chat(chat.id)).toMatchObject({
+			model: { providerID: "acme", id: "deep-2", variant: "high" },
+			metadata: { "kilo-desktop": { workSessionId: "wses_1", workspaceId: "w-app" } },
+		});
+		expect(kilo2.requestsTo("POST", `/api/session/${chat.id}/prompt`)[0]?.body).toMatchObject({
+			text: "Hello",
+		});
+		expect(kilo2.messages(chat.id).map((message) => message.type)).toEqual([
+			"user",
+			"assistant",
+			"idle",
+		]);
+	});
+
+	it("follows v2 permissions and question forms on the chat", async () => {
+		const kilo2 = new FakeKilo2Server();
+		const host = await renderAgentPane({ chatWeb: probeWeb, kilo2, chats: [chatSummary("ses_a")] });
+		const chats = host.host.renderer.sdkFor("kilo.chat").domainObjects.get(Chats)!;
+		const activity = () => chats.getState().chats.ses_a?.activity;
+
+		const asked = kilo2.askPermission("ses_a", { action: "shell", resources: ["ls"] });
+		const form = kilo2.createForm(
+			questionForm("ses_a", [{ question: "Which?", header: "Pick", options: ["A", "B"] }]),
+		);
+		await vi.waitFor(() =>
+			expect(activity()).toMatchObject({
+				pendingPermissionIds: [asked.id],
+				pendingQuestionIds: [form.id],
+			}),
+		);
+		await chats.methods.replyPermission({
+			chatId: "ses_a",
+			permissionId: asked.id,
+			decision: "once",
+		});
+		await chats.methods.replyQuestion({ chatId: "ses_a", questionId: form.id, answers: [["B"]] });
+
+		await vi.waitFor(() =>
+			expect(activity()).toMatchObject({ pendingPermissionIds: [], pendingQuestionIds: [] }),
+		);
+		expect(kilo2.published.find((frame) => frame.type === "form.replied")?.data.answer).toEqual({
+			q0: "B",
+		});
 	});
 });
 

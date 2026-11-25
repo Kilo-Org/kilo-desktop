@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { bundledKiloExecutable } from "../../test/agent/kilo-executable.js";
+import { bundledKiloExecutable } from "../../testing/kilo-executable.js";
 import { createInstanceDisposer } from "./dispose-instance.js";
 import { KiloServerManager } from "./KiloServerManager.js";
 import { createServerClient } from "./server-client.js";

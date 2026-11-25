@@ -10,7 +10,7 @@ import {
 	startStandInKiloApi,
 	type Kilo2,
 	type StandInKiloApi,
-} from "../../../test/agent/kilo2-harness.js";
+} from "../../../testing/kilo2.js";
 import { createServerClient, type KiloClient } from "../server-client.js";
 import type { KiloEvent } from "./activity.js";
 import { createKiloChatClient, type KiloChatClient } from "./kilo-chat-client.js";

@@ -105,6 +105,7 @@ export async function renderInKernel(ui: ReactNode, options: RenderInKernelOptio
 	cleanup();
 	const opened: string[] = [];
 	const workSessions = fakeWorkSessionsMain(options.workSessions);
+	options.core?.kilo2?.install();
 	const core = fakeCore({ ...options.core, onChatCreated: workSessions.attachChat });
 	const shell = fakeShellMain();
 	const storage = createMemoryStorage("/data/kilo.chat");

@@ -6,7 +6,7 @@ import {
 	startStandInKiloApi,
 	type Kilo2,
 	type StandInKiloApi,
-} from "../../test/agent/kilo2-harness.js";
+} from "../../testing/kilo2.js";
 import { createKiloAccountClient } from "./kilo-client.js";
 
 describe.skipIf(!kilo2Executable)("the Kilo account in the bundled kilo2", () => {

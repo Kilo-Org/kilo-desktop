@@ -19,6 +19,7 @@ export default defineConfig({
 				// Production wiring of real processes, paths and vendor SDKs; the entry is tested through createCoreMainEntry.
 				"src/main/index.ts",
 				"src/test/**",
+				"src/testing/**",
 				// Real Kilo SDK client and production wiring (vendor SDKs, paths, build env).
 				"src/main/account/kilo-client.ts",
 				"src/main/account/production.ts",

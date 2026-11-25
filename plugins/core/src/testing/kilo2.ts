@@ -4,8 +4,8 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import type { ServerConnection } from "../../contracts";
-import { KiloServerManager } from "../../main/agent/KiloServerManager.js";
+import type { ServerConnection } from "../contracts";
+import { KiloServerManager } from "../main/agent/KiloServerManager.js";
 import { bundledKiloExecutable } from "./kilo-executable.js";
 
 /** The installed `kilo2`, or undefined where it isn't installed (the tests skip). */

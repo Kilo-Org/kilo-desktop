@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { kilo2Executable, startKilo2, type Kilo2 } from "../../test/agent/kilo2-harness.js";
+import { kilo2Executable, startKilo2, type Kilo2 } from "../../testing/kilo2.js";
 import { KiloConfigManager } from "./KiloConfigManager.js";
 import { createServerClient, locationPluginsReady } from "./server-client.js";
 

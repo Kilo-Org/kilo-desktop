@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import { getKiloCliArtifact } from "../../main/agent/cli-distribution/artifacts.js";
+import { getKiloCliArtifact } from "../main/agent/cli-distribution/artifacts.js";
 
 /**
  * The installed platform `kilo2` for integration tests, or undefined where its

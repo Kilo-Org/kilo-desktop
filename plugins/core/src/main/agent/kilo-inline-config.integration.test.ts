@@ -6,7 +6,7 @@ import { execa } from "execa";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { kiloInlineConfigContent } from "./kilo-inline-config.js";
-import { bundledKiloExecutable } from "../../test/agent/kilo-executable.js";
+import { bundledKiloExecutable } from "../../testing/kilo-executable.js";
 
 const KILO_TIMEOUT_MS = 90_000;
 

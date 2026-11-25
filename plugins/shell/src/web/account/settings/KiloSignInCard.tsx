@@ -39,7 +39,7 @@ export function KiloSignInCard({
 			<div className="flex flex-col items-center px-6 pt-6 pb-5 text-center">
 				<KiloMark />
 				<h2 className="mt-4 text-sm font-medium">
-					{expired ? "Your Kilo sign-in has expired" : "Connect your Kilo account"}
+					{expired ? "Your Kilo sign-in has expired or was revoked" : "Connect your Kilo account"}
 				</h2>
 				<p className="text-muted-foreground mt-1.5 max-w-sm text-sm text-balance">
 					{expired

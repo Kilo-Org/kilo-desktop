@@ -124,7 +124,7 @@ function kiloDescription(input: {
 	if (input.showDeviceAuth) return "Finish connecting your Kilo account.";
 	if (input.profileFailed) return "Your account is connected, but its profile could not be loaded.";
 	if (input.signedIn) return `Signed in as ${input.email ?? "your Kilo account"}`;
-	if (input.expired) return "Your sign-in has expired. Sign in again.";
+	if (input.expired) return "Your sign-in has expired or was revoked. Sign in again.";
 	return "Not signed in.";
 }
 

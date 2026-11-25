@@ -39,6 +39,7 @@ import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { Navigation, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import { WORK_SESSIONS_DEFINITIONS } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
@@ -128,9 +129,9 @@ export interface LocalInferenceHostOptions {
 	readonly handlers?: Readonly<Record<string, Handler>>;
 	/** kilo.core's account (signed in by default); null leaves it unprovided. */
 	readonly identity?: AccountState | null;
-	/** Flag overrides; the model catalog is on unless set. */
-	readonly flags?: Readonly<Record<string, boolean | string | number>>;
-	/** The window's route search (`{ catalogModel }` for a deep link). */
+	/** Flag overrides; the model catalog is on unless set (pass `undefined` to clear an override). */
+	readonly flags?: Readonly<Record<string, boolean | string | number | undefined>>;
+	/** The window's route search (e.g. `{ modelAction, model, file, source }` for a deep link). */
 	readonly search?: Record<string, string>;
 	readonly pathForFile?: (file: File) => string | null;
 	/** The domain objects' first state; `catalog` is Anaconda's, signed in, unless set. */
@@ -155,6 +156,7 @@ const MAIN_WINDOW = "main";
  * telemetry, os and clipboard.
  */
 export async function bootLocalInferenceHost(options: LocalInferenceHostOptions = {}) {
+	toast.dismiss();
 	cleanup();
 	const handlers: Record<string, Handler> = { ...options.handlers };
 	const empty = async () => [];
@@ -266,8 +268,17 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 		definitions: WORK_SESSIONS_DEFINITIONS,
 	};
 	const chat: PluginRegistration = { manifest: chatManifest, definitions: CHAT_DEFINITIONS };
+	const rawFlags: Record<string, boolean | string | number | undefined> = {
+		[MODEL_CATALOG_FLAG]: true,
+		...options.flags,
+	};
+	const flagOverrides = Object.fromEntries(
+		Object.entries(rawFlags).filter(
+			(entry): entry is [string, boolean | string | number] => entry[1] !== undefined,
+		),
+	);
 	const { main, renderer } = await createTestKernelPair({
-		host: createTestHost({ flagOverrides: { [MODEL_CATALOG_FLAG]: true, ...options.flags } }),
+		host: createTestHost({ flagOverrides }),
 		main: [
 			{ ...core, entry: coreMain },
 			{ ...shell, entry: shellMain },
@@ -316,7 +327,10 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 	const wrap = (element: ReactNode) => (
 		<KernelProvider kernel={renderer} as={manifest.id}>
 			<QueryClientProvider client={queryClient}>
-				<TooltipProvider>{element}</TooltipProvider>
+				<TooltipProvider>
+					<Toaster />
+					{element}
+				</TooltipProvider>
 			</QueryClientProvider>
 		</KernelProvider>
 	);

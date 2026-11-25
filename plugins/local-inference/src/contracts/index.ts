@@ -71,6 +71,20 @@ export const LOCAL_INFERENCE_TELEMETRY_EVENTS = {
 	modelInstalled: "local-model-installed",
 	serverStarted: "local-model-server-started",
 	serverStopped: "local-model-server-stopped",
+	modelInstallLinkReceived: "model-install-link-received",
+	modelInstallLinkRejected: "model-install-link-rejected",
+} as const;
+
+/**
+ * Its `kilo.shell/deep-link` contribution: web catalog model install links
+ * (`kilo-desktop://models/install?model=<id>[&file=…][&source=…]`), opened on
+ * the settings page with the action as `modelAction`.
+ */
+export const MODEL_INSTALL_DEEP_LINK = {
+	id: "model-install",
+	host: "models",
+	pathParam: "modelAction",
+	query: ["model", "file", "source"],
 } as const;
 
 const ok = z.object({ ok: z.literal(true) });

@@ -36,6 +36,7 @@ import { formatFileSize } from "../models/model-format";
 
 export function ModelDownloadSection({
 	model,
+	initialQuantizationId,
 	hardware,
 	downloads,
 	addedCatalogArtifacts,
@@ -44,6 +45,7 @@ export function ModelDownloadSection({
 	onDelete,
 }: {
 	model: ModelCatalogEntry;
+	initialQuantizationId?: string | undefined;
 	hardware: LocalInferenceHardwareProfile | undefined;
 	downloads: readonly ModelDownload[];
 	addedCatalogArtifacts: ReadonlyMap<string, LocalModel>;
@@ -51,7 +53,12 @@ export function ModelDownloadSection({
 	onCancel: (identity: DownloadIdentity) => Promise<ModelDownload>;
 	onDelete: (model: LocalModel) => void;
 }) {
-	const [selectedQuantizationId, setSelectedQuantizationId] = useState<string | null>(null);
+	const [selectedQuantizationId, setSelectedQuantizationId] = useState<string | null>(() =>
+		initialQuantizationId &&
+		model.quantizations.some((quantization) => quantization.id === initialQuantizationId)
+			? initialQuantizationId
+			: null,
+	);
 	const [startingKey, setStartingKey] = useState<string>();
 	const [cancellingKey, setCancellingKey] = useState<string>();
 	const [actionErrors, setActionErrors] = useState<Record<string, string>>({});

@@ -90,7 +90,7 @@ the sender and validates payloads against the target's declared contract.
 
 Production navigation uses `kilo-desktop://app/#/`; development uses
 `kilo-desktop-dev://app/#/`. OS deep links use the same scheme with a dedicated host (for
-example, `kilo-desktop://model-catalog/{modelId}` opens the Local Model Catalog). The
+example, `kilo-desktop://models/install?model={modelId}` opens the Local Model Catalog). The
 custom protocol serves the independently built web `dist` — staged into
 `.vite/renderer/main_window` during packaging — or proxies the web Vite server in
 development, with a strict Content Security Policy.

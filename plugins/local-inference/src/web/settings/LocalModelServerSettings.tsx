@@ -8,12 +8,11 @@ import {
 	RefreshCwIcon,
 	SearchIcon,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { KernelClipboard, KernelOs } from "@kilo-desktop/kernel";
-import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
-import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Alert, AlertAction, AlertTitle } from "@kilo-desktop/ui/components/alert";
@@ -55,6 +54,7 @@ import {
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import { Separator } from "@kilo-desktop/ui/components/separator";
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -83,6 +83,7 @@ import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess";
 import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane";
 import { catalogListQueryOptions } from "../catalog/catalog-query";
 import { CatalogAccessBoundary, useCatalogAccess } from "../catalog/use-catalog-access";
+import { useModelInstallLink } from "../catalog/use-model-install-link";
 import {
 	catalogArtifactKey,
 	type DownloadIdentity,
@@ -111,18 +112,16 @@ import {
 const interactiveScrollbarClassName =
 	"[&_[data-slot=scroll-area-scrollbar]]:opacity-0 hover:[&_[data-slot=scroll-area-scrollbar]]:opacity-100 focus-within:[&_[data-slot=scroll-area-scrollbar]]:opacity-100";
 
-/** The catalog model a `model-catalog` deep link opened (`?catalogModel=`). */
-function useCatalogModelId(): string | undefined {
-	const windowId = useKernel().window.id;
-	return useDomainObjectState(
-		Navigation,
-		(state) => state.windows[windowId]?.search["catalogModel"] || undefined,
-	);
+interface CatalogSelection {
+	readonly model: ModelCatalogEntry;
+	readonly quantizationId?: string | undefined;
+	readonly selectionKey?: number | undefined;
 }
 
 /**
  * The Model Catalog stays hidden behind the `local-model-catalog` flag.
- * Off by default: no "From catalog" entry, deep links stay inert, and the catalog dialog never opens.
+ * Off by default: no "From catalog" entry, catalog dialog never opens, and
+ * model install deep links report unavailability via a toast.
  */
 export function LocalModelServerSettings() {
 	return (
@@ -193,8 +192,6 @@ function RuntimeHeading() {
 function LocalModelServerSettingsContent() {
 	const client = useLocalInference();
 	const queryClient = useQueryClient();
-	const windowId = useKernel().window.id;
-	const navigation = useDomainObject(Navigation);
 	const os = useDomainObject(KernelOs);
 	const clipboard = useDomainObject(KernelClipboard);
 	const pathForFile = usePathForFile();
@@ -206,11 +203,12 @@ function LocalModelServerSettingsContent() {
 	const catalogEnabled = useFlag(MODEL_CATALOG_FLAG);
 	const modelFileInput = useRef<HTMLInputElement>(null);
 	const modelSaveQueue = useRef<Promise<void> | null>(null);
+	const notifiedInstallRequestId = useRef<number | null>(null);
 	const [catalogOpen, setCatalogOpen] = useState(false);
-	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
-	const catalogModelId = useCatalogModelId();
-	const [appliedCatalogModelId, setAppliedCatalogModelId] = useState<string>();
-	const [openedCatalogLink, setOpenedCatalogLink] = useState<string>();
+	const [catalogSelection, setCatalogSelection] = useState<CatalogSelection>();
+	const [installRequest, dismissInstallRequest] = useModelInstallLink();
+	const [openedInstallRequestId, setOpenedInstallRequestId] = useState<number>();
+	const [appliedInstallRequestId, setAppliedInstallRequestId] = useState<number>();
 	const [expandedModelIds, setExpandedModelIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [lastExpandedModelId, setLastExpandedModelId] = useState<string>();
 	const [modelSearch, setModelSearch] = useState("");
@@ -260,28 +258,65 @@ function LocalModelServerSettingsContent() {
 
 	function openCatalog(model?: ModelCatalogEntry): void {
 		if (!catalogEnabled) return;
-		setCatalogModel(model);
+		dismissInstallRequest();
+		setCatalogSelection(model ? { model } : undefined);
 		setCatalogOpen(true);
 	}
 
-	const catalogLink = catalogEnabled ? catalogModelId : undefined;
-	if (openedCatalogLink !== catalogLink) {
-		setOpenedCatalogLink(catalogLink);
-		if (catalogLink) setCatalogOpen(true);
+	function selectCatalogModel(model: ModelCatalogEntry): void {
+		dismissInstallRequest();
+		// Clicking the row that is already selected keeps the current selection: rebuilding it
+		// would drop a deep link's quantization override and fall back to the recommendation.
+		setCatalogSelection((current) => (current?.model.id === model.id ? current : { model }));
 	}
 
-	// Apply a catalogModel deep link during render, in the same pass where
-	// catalog metadata arrives: the details skeleton hands straight over to the
-	// pane with no commit in between where the pane unmounts. Each link id is
-	// applied once so the user can then browse to other models.
-	if (appliedCatalogModelId !== catalogModelId) {
-		if (!catalogModelId) {
-			setAppliedCatalogModelId(undefined);
-		} else if (catalogMetadata.data) {
-			setAppliedCatalogModelId(catalogModelId);
-			setCatalogModel(catalogMetadata.data.models.find((model) => model.id === catalogModelId));
+	if (openedInstallRequestId !== installRequest?.id) {
+		setOpenedInstallRequestId(installRequest?.id);
+		if (installRequest) {
+			setCatalogOpen(true);
+			if (!catalogMetadata.data) setCatalogSelection(undefined);
 		}
 	}
+
+	// Apply a model install link during render, in the same pass where
+	// catalog metadata arrives: the details skeleton hands straight over to the
+	// pane with no commit in between where the pane unmounts.
+	if (appliedInstallRequestId !== installRequest?.id) {
+		if (!installRequest) {
+			setAppliedInstallRequestId(undefined);
+		} else if (catalogMetadata.data) {
+			setAppliedInstallRequestId(installRequest.id);
+			const entry = catalogMetadata.data.models.find((model) => model.id === installRequest.model);
+			if (entry) {
+				const quantizationId =
+					installRequest.file &&
+					entry.quantizations.some((quantization) => quantization.id === installRequest.file)
+						? installRequest.file
+						: undefined;
+				setCatalogSelection({ model: entry, quantizationId, selectionKey: installRequest.id });
+			} else {
+				setCatalogSelection(undefined);
+			}
+		}
+	}
+
+	useEffect(() => {
+		if (!installRequest || appliedInstallRequestId !== installRequest.id) return;
+		if (notifiedInstallRequestId.current === installRequest.id) return;
+		const modelsList = catalogMetadata.data?.models;
+		if (!modelsList) return;
+		notifiedInstallRequestId.current = installRequest.id;
+		const entry = modelsList.find((model) => model.id === installRequest.model);
+		if (!entry) {
+			toast.error("This model was not found in the catalog.");
+		} else if (
+			installRequest.file &&
+			!entry.quantizations.some((quantization) => quantization.id === installRequest.file)
+		) {
+			toast.error("The selected model file is not available for local download.");
+		}
+		dismissInstallRequest();
+	}, [installRequest, appliedInstallRequestId, catalogMetadata.data, dismissInstallRequest]);
 
 	const serverStatus = status.data?.status;
 	const pendingAction = start.isPending
@@ -325,7 +360,12 @@ function LocalModelServerSettingsContent() {
 	const catalogModels = new Map(
 		catalogMetadata.data?.models.map((model) => [model.id, model] as const) ?? [],
 	);
-	const resolvingCatalogModelLink = catalogModelId !== undefined && catalogMetadata.isPending;
+	const catalogModel = catalogSelection?.model;
+	const resolvingCatalogModelLink =
+		installRequest !== null &&
+		appliedInstallRequestId !== installRequest.id &&
+		!catalogMetadata.isError &&
+		(catalogAccount.resolving || catalogMetadata.isPending);
 	const catalogDetailOpen = catalogModel !== undefined || resolvingCatalogModelLink;
 	const catalogDownloadRows = catalogDownloads.data ?? [];
 	const addedCatalogArtifacts = new Map(
@@ -637,14 +677,8 @@ function LocalModelServerSettingsContent() {
 				onOpenChange={(open) => {
 					setCatalogOpen(open);
 					if (!open) {
-						setCatalogModel(undefined);
-						const location = navigation?.getState().windows[windowId];
-						if (location && typeof location.search["catalogModel"] === "string") {
-							const { catalogModel: _ignored, ...search } = location.search;
-							void navigation?.methods
-								.navigate({ path: location.path, search })
-								.catch(() => undefined);
-						}
+						dismissInstallRequest();
+						setCatalogSelection(undefined);
 					}
 				}}
 			>
@@ -674,7 +708,7 @@ function LocalModelServerSettingsContent() {
 							>
 								<div className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-4 pr-3 pb-4">
 									<LocalModelCatalog
-										onSelectModel={setCatalogModel}
+										onSelectModel={selectCatalogModel}
 										selectedModelId={catalogModel?.id}
 									/>
 								</div>
@@ -687,6 +721,8 @@ function LocalModelServerSettingsContent() {
 									{catalogModel ? (
 										<ModelDetailPane
 											model={catalogModel}
+											initialQuantizationId={catalogSelection?.quantizationId}
+											selectionKey={catalogSelection?.selectionKey}
 											hardware={catalogHardware.data}
 											downloads={catalogDownloadRows}
 											addedCatalogArtifacts={addedCatalogArtifacts}

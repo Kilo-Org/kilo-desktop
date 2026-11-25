@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { KernelError } from "@kilo-desktop/kernel";
-import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
 import type { ModelCatalogState } from "../../contracts/index";
 import {
@@ -175,12 +174,7 @@ describe("the model catalog and its model-catalog contribution", () => {
 			},
 			initialState: { catalog: SIGNED_OUT },
 		});
-		host.render(
-			<>
-				<Toaster />
-				<LocalModelCatalog onSelectModel={() => undefined} />
-			</>,
-		);
+		host.render(<LocalModelCatalog onSelectModel={() => undefined} />);
 
 		await page.getByTestId("model-catalog-sign-in-button").click();
 

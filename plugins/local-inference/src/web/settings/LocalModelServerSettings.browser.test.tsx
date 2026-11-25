@@ -168,7 +168,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
-	it("opens the catalog on the model from the catalogModel search param", async () => {
+	it("opens the catalog on the model from a models/install deep link", async () => {
 		const { baseElement } = await renderSettings(
 			{
 				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
@@ -180,7 +180,7 @@ describe("LocalModelServerSettings", () => {
 			authenticatedAuth,
 			staticNavigation({
 				path: "/settings/local-model-server",
-				search: { catalogModel: catalogModel.id },
+				search: { modelAction: "install", model: catalogModel.id },
 			}),
 		);
 		const dialog = page.elementLocator(baseElement).getByRole("dialog", {
@@ -191,7 +191,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(dialog.getByRole("heading", { name: "Catalog Model" })).toBeVisible();
 	});
 
-	it("keeps the details panel closed when the catalogModel search param is unknown", async () => {
+	it("keeps the details panel closed when a models/install deep link model is unknown", async () => {
 		const { baseElement } = await renderSettings(
 			{
 				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
@@ -203,7 +203,7 @@ describe("LocalModelServerSettings", () => {
 			authenticatedAuth,
 			staticNavigation({
 				path: "/settings/local-model-server",
-				search: { catalogModel: "missing-model" },
+				search: { modelAction: "install", model: "missing-model" },
 			}),
 		);
 		const dialog = page.elementLocator(baseElement).getByRole("dialog", {
@@ -291,7 +291,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(detailsPanel).not.toBeInTheDocument();
 	});
 
-	it("shows a details skeleton while a catalogModel deep link resolves", async () => {
+	it("shows a details skeleton while a models/install deep link resolves", async () => {
 		let resolveCatalog:
 			| ((value: { models: ModelCatalogEntry[]; total: number }) => void)
 			| undefined;
@@ -311,7 +311,7 @@ describe("LocalModelServerSettings", () => {
 			authenticatedAuth,
 			staticNavigation({
 				path: "/settings/local-model-server",
-				search: { catalogModel: catalogModel.id },
+				search: { modelAction: "install", model: catalogModel.id },
 			}),
 		);
 		const dialog = page.elementLocator(baseElement).getByRole("dialog", {

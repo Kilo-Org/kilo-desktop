@@ -8,7 +8,6 @@ import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, useExtensions } from "@kilo-desktop/kernel/web";
 import { ModelSource } from "@kilo-desktop/plugin-chat/contracts";
 import { SettingsSection, StatusBarItem } from "@kilo-desktop/plugin-shell/contracts";
-import { Toaster } from "@kilo-desktop/ui/components/sonner";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
@@ -95,12 +94,7 @@ describe("kilo.local-inference's renderer entry", () => {
 		const implementation = item!.implementation!;
 		if (implementation.kind !== "view") throw new Error("Expected a status bar view.");
 		const Toast = implementation.Component;
-		host.render(
-			<>
-				<Toaster />
-				<Toast />
-			</>,
-		);
+		host.render(<Toast />);
 
 		await host.update({
 			models: [MODEL],

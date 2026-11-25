@@ -132,7 +132,7 @@ describe("Swarm Board reading aids", () => {
 		host.core.announceBoard("ses_a");
 		await expect.element(pane().getByTestId("swarm-board-new-messages"), WAIT).toBeVisible();
 		expect(useSwarmBoardStore.getState().seen.ses_a).toBe(before);
-		await pane().getByTestId("swarm-members-tab").click();
+		await pane().getByTestId("swarm-team-toggle").click();
 		host.core.setBoard("ses_a", {
 			...board([...POSTS, message("m6"), message("m7")]),
 			revision: 3,
@@ -176,7 +176,7 @@ describe("Swarm Board reading aids", () => {
 		const host = await showBoard({ boards: { ses_a: board(history) }, boardEvents: true });
 		await expect.poll(() => posts().all().length, WAIT).toBe(30);
 		const list = pane().getByTestId("swarm-board-messages").element() as HTMLElement;
-		list.scrollTop = 1500;
+		list.scrollTop = (list.scrollHeight - list.clientHeight) / 2;
 		list.dispatchEvent(new Event("scroll"));
 		const anchor = posts()
 			.all()

@@ -42,13 +42,13 @@ export function BoardSearch({
 		return () => window.removeEventListener("keydown", focusSearch);
 	}, [active]);
 	return (
-		<div className="flex shrink-0 flex-col gap-2 pt-3" data-qa-id="swarm-board-search">
-			<label className="border-input focus-within:ring-ring/50 flex h-8 items-center gap-2 rounded-md border px-2 text-sm focus-within:ring-2">
-				<SearchIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+		<div className="flex shrink-0 flex-col gap-2.5 px-5 pt-3.5" data-qa-id="swarm-board-search">
+			<label className="bg-foreground/[0.04] ring-border focus-within:ring-ring flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-[13px] leading-4 ring-1 ring-inset focus-within:ring-2">
+				<SearchIcon aria-hidden className="text-muted-foreground/70 size-3.5 shrink-0" />
 				<input
 					ref={input}
 					type="search"
-					className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent outline-none [&::-webkit-search-cancel-button]:hidden"
+					className="placeholder:text-muted-foreground/70 min-w-0 flex-1 bg-transparent outline-none [&::-webkit-search-cancel-button]:hidden"
 					placeholder="Search posts, agents, #refs"
 					aria-label="Search the board"
 					value={filter.query}
@@ -71,7 +71,7 @@ export function BoardSearch({
 						<XIcon />
 					</Button>
 				) : (
-					<kbd className="text-muted-foreground text-xs">⌘F</kbd>
+					<kbd className="text-muted-foreground/70 font-sans text-xs">⌘F</kbd>
 				)}
 			</label>
 			<div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Show">
@@ -85,10 +85,10 @@ export function BoardSearch({
 							role="radio"
 							aria-checked={selected}
 							className={cn(
-								"rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+								"rounded-full px-[9px] py-[3px] text-xs leading-4 transition-colors",
 								selected
-									? "bg-foreground text-background border-transparent"
-									: "text-muted-foreground hover:text-foreground",
+									? "bg-foreground text-background font-medium"
+									: "bg-foreground/[0.07] text-foreground hover:bg-foreground/12",
 							)}
 							onClick={() => onChange({ ...filter, chip })}
 							data-qa-id="swarm-board-chip"

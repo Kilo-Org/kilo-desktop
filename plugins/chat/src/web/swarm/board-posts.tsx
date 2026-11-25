@@ -1,6 +1,5 @@
 import {
 	ArrowRightIcon,
-	ArrowUpRightIcon,
 	CheckIcon,
 	ChevronDownIcon,
 	ChevronRightIcon,
@@ -128,22 +127,28 @@ export function BoardPost({
 	const canOpen = context.canOpenSender(message.from);
 	return (
 		<li
-			className="group/post flex scroll-mt-4 gap-3 rounded-md"
+			className="group/post flex scroll-mt-4 gap-2.5 rounded-md"
 			tabIndex={-1}
 			data-qa-id="swarm-board-message"
 			data-type={message.type}
 			data-message-id={message.id}
 			data-new={isNew || undefined}
 		>
-			<div className="pt-0.5">
-				<AgentAvatar name={name} color={color} />
-			</div>
-			<div className="flex min-w-0 flex-1 flex-col gap-1">
-				<div className="flex min-w-0 items-center gap-1.5 text-sm">
+			<AgentAvatar
+				name={name}
+				color={color}
+				done={
+					!!member &&
+					!member.main &&
+					["done", "cancelled", "stopped", "failed"].includes(member.state)
+				}
+			/>
+			<div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+				<div className="flex min-h-4 min-w-0 items-center gap-1.5 text-xs leading-4">
 					{canOpen ? (
 						<button
 							type="button"
-							className="hover:text-foreground truncate font-medium hover:underline"
+							className="truncate font-semibold hover:underline"
 							onClick={() => context.onOpenSender(message.from)}
 							title={`Open ${name}`}
 							data-qa-id="swarm-board-message-sender"
@@ -151,13 +156,15 @@ export function BoardPost({
 							{name}
 						</button>
 					) : (
-						<span className="truncate font-medium" data-qa-id="swarm-board-message-sender">
+						<span className="truncate font-semibold" data-qa-id="swarm-board-message-sender">
 							{name}
 						</span>
 					)}
-					<ArrowRightIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />
+					<span aria-hidden className="text-muted-foreground/80 shrink-0">
+						→
+					</span>
 					<span
-						className="text-muted-foreground truncate"
+						className="text-muted-foreground/80 -ms-0.5 truncate"
 						data-qa-id="swarm-board-message-recipient"
 					>
 						{recipient}
@@ -177,7 +184,7 @@ export function BoardPost({
 						</span>
 					) : null}
 					<span className="ms-auto flex shrink-0 items-center gap-1 ps-2">
-						<span className="text-muted-foreground text-xs tabular-nums">
+						<span className="text-muted-foreground/80 text-xs tabular-nums">
 							{number !== undefined ? `#${number} · ` : ""}
 							<time
 								dateTime={new Date(message.timestamp).toISOString()}
@@ -220,7 +227,7 @@ export function BoardPost({
 					{showPreview ? (
 						<button
 							type="button"
-							className="text-muted-foreground hover:text-foreground block w-full truncate text-start text-sm"
+							className="text-muted-foreground hover:text-foreground block w-full truncate text-start text-[13px] leading-[19px]"
 							onClick={onToggle}
 							data-qa-id="swarm-board-message-preview"
 						>
@@ -230,7 +237,7 @@ export function BoardPost({
 						<MarkdownContent
 							text={message.body}
 							extensions={extensions}
-							className="min-w-0 text-sm wrap-break-word"
+							className="min-w-0 text-[13px] leading-[19px] wrap-break-word"
 						/>
 					)}
 				</div>
@@ -273,7 +280,7 @@ export function NeedsYouItem({
 	);
 }
 
-/** A worker that failed, with what's known and the next steps. */
+/** A worker that failed, with what's known and the next step. */
 export function FailedAgentCard({
 	member,
 	editedFiles,
@@ -285,36 +292,40 @@ export function FailedAgentCard({
 	readonly onOpen: () => void;
 	readonly canOpen: boolean;
 }) {
+	const error = (member.error ?? "It stopped with an error.").trim();
+	const edits =
+		editedFiles.length > 0
+			? ` Its edits to ${editedFiles.slice(0, 2).join(", ")}${editedFiles.length > 2 ? ` and ${editedFiles.length - 2} more` : ""} are saved; the main agent has been told.`
+			: " The main agent has been told.";
 	return (
 		<li
-			className="border-destructive/40 bg-destructive/5 flex flex-col gap-2 rounded-lg border p-3"
+			className="bg-destructive/[0.06] ring-destructive/25 flex flex-col gap-2.5 rounded-[10px] p-3.5 ring-1 ring-inset"
 			data-qa-id="swarm-board-failed"
 		>
-			<div className="flex items-center gap-2 text-sm font-medium">
-				<CircleAlertIcon aria-hidden className="text-destructive size-4" />
-				{member.title} failed
+			<div className="flex items-center gap-2">
+				<CircleAlertIcon aria-hidden className="text-destructive size-3.5 shrink-0" />
+				<span className="text-[13px] leading-4 font-semibold">{member.title} failed</span>
+				<span className="flex-1" />
 				{member.completedAt ? (
-					<span className="text-muted-foreground ms-auto text-xs font-normal tabular-nums">
+					<span className="text-muted-foreground/80 text-xs tabular-nums">
 						{clockTime(member.completedAt)}
 					</span>
 				) : null}
 			</div>
-			<p className="text-sm">
-				{member.error ?? "It stopped with an error."}
-				{editedFiles.length > 0
-					? ` Its edits to ${editedFiles.slice(0, 2).join(", ")}${editedFiles.length > 2 ? ` and ${editedFiles.length - 2} more` : ""} are saved.`
-					: ""}
+			<p className="text-[13px] leading-[19px]">
+				{/[.!?]$/.test(error) ? error : `${error}.`}
+				{edits}
 			</p>
 			<div className="flex justify-end">
-				<Button
-					size="sm"
-					variant="outline"
+				<button
+					type="button"
+					className="ring-foreground/16 hover:bg-muted focus-visible:ring-ring rounded-[7px] px-[11px] py-[5px] text-xs leading-4 ring-1 outline-none ring-inset focus-visible:ring-2 disabled:opacity-50"
 					disabled={!canOpen}
 					onClick={onOpen}
 					data-qa-id="swarm-board-failed-open"
 				>
-					Open transcript <ArrowUpRightIcon />
-				</Button>
+					Open transcript
+				</button>
 			</div>
 		</li>
 	);
@@ -369,7 +380,7 @@ export function SwarmDoneMarker({
 export function NewPostsDivider({ count }: { readonly count: number }) {
 	return (
 		<li
-			className="text-muted-foreground flex items-center gap-2 text-xs"
+			className="text-muted-foreground flex items-center gap-2.5 text-xs"
 			data-qa-id="swarm-board-new-divider"
 		>
 			<span className="bg-border h-px flex-1" />

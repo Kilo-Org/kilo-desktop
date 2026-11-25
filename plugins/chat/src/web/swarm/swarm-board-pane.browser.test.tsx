@@ -163,18 +163,23 @@ describe("the Swarm Board as a live conversation", () => {
 			.not.toBeInTheDocument();
 	});
 
-	it("names the swarm in one row with its status, and counts on the tabs", async () => {
-		await showBoard();
+	it("names the swarm's chat in the header, with its status, and sums up the team", async () => {
+		const host = await showBoard();
 
-		await expect
-			.element(pane().getByTestId("swarm-board-title"), WAIT)
-			.toHaveTextContent("Migrate invoices to v2");
+		await textOf(pane().getByTestId("swarm-board-chat")).toContain("Migrate invoices to v2");
 		await expect
 			.element(pane().getByTestId("swarm-board-status"))
 			.toHaveAttribute("data-status", "live");
-		await expect.element(pane().getByTestId("swarm-board-tab")).toHaveTextContent("Board 3");
-		await expect.element(pane().getByTestId("swarm-members-tab")).toHaveTextContent("Members 2");
-		await expect.element(pane().getByTestId("swarm-graph-tab")).toBeVisible();
+		await expect.element(pane().getByTestId("swarm-team-summary")).toHaveTextContent("2 working");
+		await expect.element(pane().getByTestId("swarm-team")).not.toBeInTheDocument();
+		await pane().getByTestId("swarm-team-toggle").click();
+		await expect.element(pane().getByTestId("swarm-members")).toBeVisible();
+		await pane().getByTestId("swarm-board-chat").click();
+		await vi.waitFor(() =>
+			expect(host.sessions.calls.open).toHaveBeenCalledWith(
+				expect.objectContaining({ object: chatPaneObject("ses_a") }),
+			),
+		);
 	});
 
 	it("answers a subagent's question in place, sent to that agent", async () => {
@@ -394,12 +399,13 @@ describe("Swarm Board actions", () => {
 			.element(pane().getByTestId("swarm-board-title"), WAIT)
 			.toHaveTextContent("Mapper ↔ Webhooks");
 		await expect.poll(() => posts().all().length).toBe(2);
-		await expect.element(pane().getByTestId("swarm-members-tab")).not.toBeInTheDocument();
+		await expect.element(pane().getByTestId("swarm-team-toggle")).not.toBeInTheDocument();
 	});
 
 	it("filters the board from the graph", async () => {
 		await showBoard();
-		await pane().getByTestId("swarm-graph-tab").click();
+		await expect.element(posts().nth(0), WAIT).toBeVisible();
+		await boardAction("swarm-board-graph");
 
 		await pane()
 			.getByTestId("swarm-graph-node")

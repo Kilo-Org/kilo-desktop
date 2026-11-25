@@ -1,19 +1,15 @@
 import type { ChatSummary } from "@kilo-desktop/plugin-core/contracts";
 
+import { MONSTERS } from "./swarm-monsters";
+
 /** The main agent's color: neutral, so the workers' colors stand out. */
 export const MAIN_AGENT_COLOR = "#64748B";
 
-/** Workers' colors, in the order they joined the team; readable on light and dark panes. */
-export const WORKER_COLORS = [
-	"#6366F1",
-	"#10B981",
-	"#F59E0B",
-	"#EC4899",
-	"#06B6D4",
-	"#8B5CF6",
-	"#EF4444",
-	"#84CC16",
-] as const;
+/**
+ * Workers' colors, in the order they joined the team: each monster avatar's
+ * colour, so a worker's colour and monster go together.
+ */
+export const WORKER_COLORS: readonly string[] = MONSTERS.map((monster) => monster.color);
 
 /** Kilo's board name for the root chat. */
 const MAIN = "main";

@@ -22,8 +22,6 @@ const THUMB_R = 4;
 /** Tick spacings to choose from, in minutes: the smallest giving at most six ticks. */
 const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 240];
 const MINUTE = 60_000;
-/** A done agent's color. */
-const DONE_COLOR = "var(--muted-foreground)";
 /** Board numbers shown on an edge before the rest fold into `+n`. */
 const LABEL_POSTS = 3;
 
@@ -130,10 +128,6 @@ export function SwarmGraph({
 	const centre = { x: width / 2, y: GRAPH_HEIGHT / 2 };
 	const memberById = new Map(members.map((member) => [member.id, member]));
 	const nameOf = (id: string) => memberById.get(id)?.name ?? id;
-	const colorOf = (id: string) => {
-		const member = memberById.get(id);
-		return !member || member.done ? DONE_COLOR : member.color;
-	};
 
 	return (
 		<div className="flex min-w-0 flex-col gap-3" data-qa-id="swarm-graph">
@@ -247,9 +241,7 @@ export function SwarmGraph({
 									data-member-id={member.id}
 									data-done={member.done}
 								>
-									<span className={cn("flex", member.done && "opacity-70 grayscale")}>
-										<AgentAvatar name={member.name} color={colorOf(member.id)} />
-									</span>
+									<AgentAvatar name={member.name} color={member.color} done={member.done} />
 									<span className="truncate">{member.name}</span>
 									{member.done ? <CheckIcon aria-label="done" className="size-3 shrink-0" /> : null}
 								</button>

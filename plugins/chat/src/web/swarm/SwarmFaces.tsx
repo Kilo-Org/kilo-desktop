@@ -17,7 +17,7 @@ function faceState(member: TeamMember): string {
 
 /**
  * A team as a stack of overlapping faces, the main agent first: a working
- * agent in its own color, a stopped one greyed, and one waiting on the person
+ * worker as its monster in its color, a stopped one greyed, and one waiting on the person
  * ringed in the text color. With `onOpen` the workers' faces are buttons.
  */
 export function SwarmFaces({
@@ -53,15 +53,12 @@ export function SwarmFaces({
 						)}
 						data-state={member.needsYou ? "needs-you" : member.state}
 					>
-						{/* Only the avatar fades: the backing stays opaque, so overlapped faces don't show through. */}
-						<span
-							className={cn(
-								"flex rounded-full",
-								!member.needsYou && !isActive(member.state) && "opacity-55 grayscale",
-							)}
-						>
-							<AgentAvatar name={name} color={color} size={size} />
-						</span>
+						<AgentAvatar
+							name={name}
+							color={color}
+							size={size}
+							done={!member.main && !member.needsYou && !isActive(member.state)}
+						/>
 					</span>
 				);
 				const title = `${name}: ${faceState(member)}`;

@@ -251,11 +251,11 @@ function MemberRow({
 						open && "rotate-90",
 					)}
 				/>
-				<span
-					className={cn("flex shrink-0 [&>span]:size-[26px]", finished && "opacity-70 grayscale")}
-				>
-					<AgentAvatar name={member.main ? "Main" : member.title} color={colorOf(member.chatId)} />
-				</span>
+				<AgentAvatar
+					name={member.main ? "Main" : member.title}
+					color={colorOf(member.chatId)}
+					done={finished}
+				/>
 				<span className="flex min-w-0 flex-1 flex-col">
 					<span className="truncate font-medium">{name}</span>
 					{now ? (

@@ -29,7 +29,7 @@ import {
 import { kernelAccountFor } from "./identity";
 import { accountHash, TermsRecord, type TermsStorage } from "./terms";
 
-export type { KiloAccountClient } from "./account-service";
+export { KiloUnauthorizedError, type KiloAccountClient } from "./account-service";
 export type { PersistedTerms, TermsStorage } from "./terms";
 
 export interface AccountOptions {

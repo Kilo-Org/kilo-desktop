@@ -29,7 +29,12 @@ import {
 	type ServerConnection,
 	type ServerStatus,
 } from "../../contracts";
-import { activateAccount, type KiloAccountClient, type PersistedTerms } from "./index";
+import {
+	activateAccount,
+	KiloUnauthorizedError,
+	type KiloAccountClient,
+	type PersistedTerms,
+} from "./index";
 import { inMemoryTerms, TermsRecord } from "./terms";
 
 const PROFILE: KiloProfile = {
@@ -59,7 +64,9 @@ const CONNECTION: ServerConnection = {
 /** The Kilo CLI's account API: what the app can read and do through the server. */
 class FakeKiloAccount implements KiloAccountClient {
 	authenticated = false;
-	/** Kilo refuses the stored sign-in (it no longer accepts the credential). */
+	/** A device sign-in (OAuth), or an API key. */
+	credential: "oauth" | "api" = "oauth";
+	/** Kilo's model catalog records that it refuses the stored sign-in. */
 	refused = false;
 	profileResult: KiloProfile | Error = PROFILE;
 	readonly disposed = vi.fn(async () => {});
@@ -69,7 +76,7 @@ class FakeKiloAccount implements KiloAccountClient {
 	signOutError: Error | undefined;
 
 	async authStatus() {
-		return { authenticated: this.authenticated };
+		return { authenticated: this.authenticated, oauth: this.credential === "oauth" };
 	}
 	async profile() {
 		if (this.profileResult instanceof Error) throw this.profileResult;
@@ -304,6 +311,35 @@ describe("the Kilo account", () => {
 		expect(account.authenticated).toBe(false);
 		expect(account.disposed).toHaveBeenCalled();
 		expect(kernel.kernelSdk.context.get(SIGNED_IN_KEY)).toBe(false);
+	});
+
+	it("signs out a sign-in whose profile Kilo refuses, even with a catalog that hides it", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		account.profileResult = new KiloUnauthorizedError("Unauthorized");
+		const { kernel } = await boot({ account });
+
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState()).toMatchObject({ signedIn: false, signInExpired: true }),
+		);
+		expect(account.authenticated).toBe(false);
+	});
+
+	it("keeps an API key Kilo answers the profile read for with 401", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		account.credential = "api";
+		account.profileResult = new KiloUnauthorizedError("Unauthorized");
+		const { kernel } = await boot({ account });
+
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState()).toMatchObject({
+				signedIn: true,
+				signInExpired: false,
+				profileError: "Unauthorized",
+			}),
+		);
+		expect(account.authenticated).toBe(true);
 	});
 
 	it("signs out when a chat's request finds Kilo no longer accepts the sign-in", async () => {

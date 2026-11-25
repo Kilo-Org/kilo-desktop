@@ -1,11 +1,22 @@
 import type { AccountState, DeviceSignInState, KiloProfile } from "../../contracts";
 
+/** The Kilo server answered a request with 401. */
+export class KiloUnauthorizedError extends Error {}
+
 /** The Kilo CLI's account API, reached through the running server. */
 export interface KiloAccountClient {
-	/** Whether credentials are stored; says nothing about whether Kilo still accepts them. */
-	authStatus(): Promise<{ readonly authenticated: boolean }>;
+	/**
+	 * Whether credentials are stored, and whether they are a device sign-in
+	 * (OAuth); says nothing about whether Kilo still accepts them.
+	 */
+	authStatus(): Promise<{ readonly authenticated: boolean; readonly oauth?: boolean }>;
+	/**
+	 * Rejects with `KiloUnauthorizedError` when the server answers 401: for a
+	 * sign-in, that Kilo refuses it (newer servers); for credentials that are
+	 * not a sign-in, always.
+	 */
 	profile(): Promise<KiloProfile>;
-	/** Whether Kilo refuses the stored credentials. */
+	/** Whether Kilo's model catalog records that it refuses the stored credentials. */
 	signInRefused(): Promise<boolean>;
 	/** Starts device sign-in; the server opens the browser itself. */
 	authorize(): Promise<{ readonly url: string; readonly instructions?: string | undefined }>;
@@ -81,7 +92,8 @@ export interface AccountServiceOptions {
  * until the server goes away).
  *
  * `authStatus` only says credentials are stored, so a failed profile read is
- * checked further: if Kilo refuses the credentials they are removed and the
+ * checked further (a 401 for a device sign-in, or older servers' catalog
+ * failure): if Kilo refuses the credentials they are removed and the
  * account reads signed out with `signInExpired`, which the next successful
  * read clears. Any other failure stays a `profileError` the person can retry.
  * Mid-session the profile is not read again, so a chat request Kilo refuses
@@ -229,14 +241,14 @@ export class AccountService {
 	}
 
 	async #read(client: KiloAccountClient): Promise<void> {
-		let signedIn: boolean;
+		let status: Awaited<ReturnType<KiloAccountClient["authStatus"]>>;
 		try {
-			signedIn = (await client.authStatus()).authenticated === true;
+			status = await client.authStatus();
 		} catch {
 			this.#set({ signedIn: false, profile: null, profileError: null });
 			return;
 		}
-		if (!signedIn) {
+		if (status.authenticated !== true) {
 			this.#set({ signedIn: false, profile: null, profileError: null });
 			return;
 		}
@@ -244,7 +256,8 @@ export class AccountService {
 			const profile = await client.profile();
 			this.#set({ signedIn: true, profile, profileError: null, signInExpired: false });
 		} catch (error) {
-			if (await this.#refused(client)) {
+			const refusedProfile = error instanceof KiloUnauthorizedError && status.oauth === true;
+			if (await this.#refused(client, refusedProfile)) {
 				await this.#signOutRefused(client);
 				return;
 			}
@@ -260,11 +273,12 @@ export class AccountService {
 	 * Whether a failed profile read means Kilo refuses the credentials, not a
 	 * passing failure. Not while a device sign-in may be storing new ones: the
 	 * refused credentials are about to be replaced, and removing them could
-	 * remove the new ones.
+	 * remove the new ones. Servers that answer a refused sign-in's profile
+	 * with 401 say so directly; older ones only through the model catalog.
 	 */
-	async #refused(client: KiloAccountClient): Promise<boolean> {
+	async #refused(client: KiloAccountClient, refusedProfile: boolean): Promise<boolean> {
 		if (this.#signInInProgress()) return false;
-		return client.signInRefused().catch(() => false);
+		return refusedProfile || client.signInRefused().catch(() => false);
 	}
 
 	#signInInProgress(): boolean {

@@ -204,15 +204,21 @@ const expand = async (chatId: string) => {
 };
 
 describe("MembersView", () => {
-	it("lists every member with one status vocabulary", async () => {
+	it("lists the subagents with one status vocabulary, those needing a look first", async () => {
 		renderMembers();
 		await expect.element(page.getByTestId("swarm-members")).toBeVisible();
-		const statuses = page
-			.getByTestId("swarm-member-status")
-			.elements()
-			.map((element) => element.textContent);
-		expect(statuses).toEqual(["Idle", "Working", "Done", "Needs you", "Failed", "Stopped"]);
-		expect(inRow("ses_root", "swarm-member-toggle")?.textContent).toContain("Main agent");
+		const statuses = () =>
+			page
+				.getByTestId("swarm-member-status")
+				.elements()
+				.map((element) => element.textContent);
+		expect(statuses()).toEqual(["Needs you", "Failed", "Working", "Done"]);
+		expect(row("ses_root")).toBeNull();
+
+		const more = page.getByTestId("swarm-members-more");
+		await expect.element(more).toHaveTextContent("Show 1 more agent· Benchmark · all stopped");
+		await more.click();
+		expect(statuses()).toEqual(["Needs you", "Failed", "Working", "Done", "Stopped"]);
 	});
 
 	it("says what each member does now while collapsed", async () => {
@@ -220,7 +226,6 @@ describe("MembersView", () => {
 		await expect
 			.poll(() => inRow("ses_coder", "swarm-member-now")?.textContent)
 			.toBe("Bash · pnpm test webhooks");
-		expect(inRow("ses_root", "swarm-member-now")?.textContent).toBe("Waiting on the team");
 		expect(inRow("ses_reviewer", "swarm-member-now")?.textContent).toBe("Backoff looks right");
 		expect(inRow("ses_broken", "swarm-member-now")?.textContent).toBe(
 			"The model provider refused the request",
@@ -274,15 +279,6 @@ describe("MembersView", () => {
 		expect(onOpenConversation).toHaveBeenLastCalledWith("ses_coder", "main");
 	});
 
-	it("opens the main agent's conversations by its board name", async () => {
-		const { onOpenConversation } = renderMembers();
-		await expand("ses_root");
-		const chip = inRow("ses_root", "swarm-member-talking")!.querySelector("button")!;
-		expect(chip.textContent).toBe("Fix retries · 3 posts");
-		chip.click();
-		expect(onOpenConversation).toHaveBeenCalledWith("main", "ses_coder");
-	});
-
 	it("offers the person's open question as a chip", async () => {
 		const { onShowQuestion } = renderMembers();
 		await expand("ses_asker");
@@ -294,6 +290,7 @@ describe("MembersView", () => {
 
 	it("hides Talking with for a member that exchanged no posts", async () => {
 		renderMembers();
+		await page.getByTestId("swarm-members-more").click();
 		await expand("ses_halted");
 		await expect
 			.poll(() => inRow("ses_halted", "swarm-member-task")?.textContent)

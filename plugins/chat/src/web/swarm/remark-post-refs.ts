@@ -13,7 +13,7 @@ const SKIP = new Set(["code", "inlineCode", "html", "link", "linkReference", "im
 const REF = /(^|[^\w&#])#(\d+)\b/g;
 
 export const POST_REF_CLASS =
-	"bg-muted text-foreground hover:bg-accent cursor-pointer rounded px-1 font-mono text-[0.85em] tabular-nums";
+	"text-foreground cursor-pointer rounded-sm tabular-nums underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring";
 
 function split(value: string, known: ReadonlySet<number>): MdNode[] | null {
 	const nodes: MdNode[] = [];

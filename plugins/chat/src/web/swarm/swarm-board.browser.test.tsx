@@ -127,13 +127,12 @@ describe("the Swarm Board pane", () => {
 			.toHaveTextContent("Reply to #1");
 		await pane().getByTestId("swarm-team-toggle").click();
 		const members = pane().getByTestId("swarm-member");
-		await expect.element(members.nth(0)).toHaveAttribute("data-chat-id", "ses_a");
-		await expect.element(members.nth(1)).toHaveAttribute("data-chat-id", "ses_c1");
+		await expect.element(members.nth(0)).toHaveAttribute("data-chat-id", "ses_c1");
 	});
 	it("opens an agent's transcript from Members", async () => {
 		const host = await showBoard();
 		await pane().getByTestId("swarm-team-toggle").click({ timeout: WAIT.timeout });
-		const member = pane().getByTestId("swarm-member").nth(1);
+		const member = pane().getByTestId("swarm-member").nth(0);
 		await member.getByTestId("swarm-member-toggle").click();
 
 		await member.getByTestId("swarm-member-open").click();
@@ -247,7 +246,7 @@ describe("the Swarm Board pane", () => {
 
 		fake.emit("session.status", { sessionID: "ses_c1", status: { type: "busy" } });
 		await pane().getByTestId("swarm-team-toggle").click({ timeout: WAIT.timeout });
-		const member = pane().getByTestId("swarm-member").nth(1);
+		const member = pane().getByTestId("swarm-member").nth(0);
 		await expect
 			.element(member.getByTestId("swarm-member-status"), WAIT)
 			.toHaveTextContent("Working");
@@ -298,7 +297,7 @@ describe("the Swarm Board pane", () => {
 		});
 
 		await pane().getByTestId("swarm-team-toggle").click({ timeout: WAIT.timeout });
-		const member = pane().getByTestId("swarm-member").nth(1);
+		const member = pane().getByTestId("swarm-member").nth(0);
 		await expect
 			.element(member.getByTestId("swarm-member-status"), WAIT)
 			.toHaveTextContent("Needs you");

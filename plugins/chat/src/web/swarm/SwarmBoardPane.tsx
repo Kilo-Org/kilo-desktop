@@ -116,8 +116,20 @@ import { clockTime, useNow } from "./swarm-time";
 import { useAgentActivity } from "./use-agent-activity";
 import { useSwarmBoard, type SwarmBoardView } from "./use-swarm-board";
 
+/** The Swarm Board's tab icon: three agents, two above one. */
 export const SwarmIcon: FC<{ className?: string }> = ({ className }) => (
-	<MessagesSquareIcon className={className} />
+	<svg
+		viewBox="0 0 24 24"
+		aria-hidden
+		className={cn("size-4", className)}
+		fill="none"
+		stroke="currentColor"
+		strokeWidth={1.8}
+	>
+		<circle cx="7" cy="8" r="2.5" />
+		<circle cx="17" cy="8" r="2.5" />
+		<circle cx="12" cy="17" r="2.5" />
+	</svg>
 );
 
 const NO_FOLDERS: readonly ComposerFolder[] = [];
@@ -234,7 +246,7 @@ function StatusPill({
 	if (working)
 		return (
 			<span
-				className="text-success flex shrink-0 items-center gap-1.5 text-xs"
+				className="text-success flex shrink-0 items-center gap-1.5 text-[13px] leading-4"
 				data-qa-id="swarm-board-status"
 				data-status="live"
 			>
@@ -901,7 +913,7 @@ function SwarmBoard({
 			) : null}
 			<div
 				ref={listRef}
-				className="min-h-0 flex-1 overflow-y-auto px-5 py-[18px] [overflow-anchor:none]"
+				className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-4 [overflow-anchor:none]"
 				data-qa-id="swarm-board-messages"
 				onScroll={(event) => {
 					const list = event.currentTarget;
@@ -947,7 +959,7 @@ function SwarmBoard({
 						{board.feed.hasMore ? " Show older posts to search more." : ""}
 					</p>
 				) : (
-					<ol className="flex flex-col gap-4">{feed()}</ol>
+					<ol className="flex flex-col gap-5">{feed()}</ol>
 				)}
 			</div>
 			{arrivals.length > 0 ? (
@@ -983,23 +995,23 @@ function SwarmBoard({
 
 	return (
 		<div className="bg-pane flex h-full min-h-0 flex-col overflow-hidden" data-qa-id="swarm-board">
-			<header className="flex shrink-0 items-center gap-2 ps-5 pe-4 pt-3.5 pb-2.5">
+			<header className="flex shrink-0 items-center gap-2.5 px-6 pt-3.5 pb-2.5">
 				<span className="text-muted-foreground shrink-0 text-[13px] leading-4">
 					{conversation ? "Conversation in" : "Swarm for"}
 				</span>
 				<button
 					type="button"
-					className="bg-foreground/[0.06] ring-foreground/10 hover:bg-foreground/10 focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-lg py-1 ps-[7px] pe-[9px] ring-1 outline-none ring-inset focus-visible:ring-2 disabled:pointer-events-none"
+					className="bg-foreground/[0.06] ring-foreground/10 hover:bg-foreground/10 focus-visible:ring-ring flex min-w-0 items-center gap-[7px] rounded-lg py-1 ps-2 pe-2.5 ring-1 outline-none ring-inset focus-visible:ring-2 disabled:pointer-events-none"
 					disabled={!panes}
 					onClick={openMain}
 					aria-label={`Go to main chat: ${chats?.[rootChatId]?.title || "Delegated work"}`}
 					data-qa-id="swarm-board-chat"
 				>
-					<MessageSquareIcon aria-hidden className="text-muted-foreground size-[13px] shrink-0" />
-					<span className="truncate text-[13px] leading-4 font-semibold">
+					<MessageSquareIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+					<span className="truncate text-sm leading-[18px] font-semibold">
 						{chats?.[rootChatId]?.title || "Delegated work"}
 					</span>
-					<ArrowUpRightIcon aria-hidden className="text-muted-foreground size-[11px] shrink-0" />
+					<ArrowUpRightIcon aria-hidden className="text-muted-foreground size-3 shrink-0" />
 				</button>
 				<span className="flex-1" />
 				<StatusPill board={board} finishedAt={finishedAt} />
@@ -1009,7 +1021,7 @@ function SwarmBoard({
 							<Button
 								variant="ghost"
 								size="icon-sm"
-								className="bg-foreground/10 size-[26px] rounded-md"
+								className="bg-foreground/10 hover:bg-foreground/15 size-7 rounded-md"
 								aria-label="Board actions"
 								data-qa-id="swarm-board-actions"
 							/>
@@ -1114,56 +1126,63 @@ function SwarmBoard({
 				</div>
 			) : (
 				<>
-					<button
-						type="button"
-						className="hover:bg-muted/50 focus-visible:ring-ring flex h-9 shrink-0 items-center gap-2 border-b ps-6 pe-5 text-start text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset"
-						aria-expanded={teamOpen}
-						onClick={() => setTeamOpen(!teamOpen)}
-						data-qa-id="swarm-team-toggle"
+					<div
+						className={cn(
+							"flex max-h-[55%] shrink-0 flex-col border-b",
+							teamOpen ? "gap-0.5 px-4 pt-0.5 pb-3" : "ps-4 pe-3",
+						)}
 					>
-						<span className="font-medium">Team</span>
-						<TeamSummary team={board.team} />
-						<span className="flex-1" />
-						<ChevronDownIcon
-							aria-hidden
+						<button
+							type="button"
 							className={cn(
-								"text-muted-foreground size-3.5 shrink-0 transition-transform motion-reduce:transition-none",
-								teamOpen && "rotate-180",
+								"hover:bg-foreground/[0.04] focus-visible:ring-ring flex shrink-0 items-center gap-2 rounded-md px-2 text-start text-xs outline-none focus-visible:ring-2 focus-visible:ring-inset",
+								teamOpen ? "h-7" : "h-9",
 							)}
-						/>
-					</button>
-					{teamOpen ? (
-						<div
-							className="max-h-[55%] shrink-0 overflow-y-auto border-b px-4 py-3"
-							data-qa-id="swarm-team"
+							aria-expanded={teamOpen}
+							onClick={() => setTeamOpen(!teamOpen)}
+							data-qa-id="swarm-team-toggle"
 						>
-							<MembersView
-								team={board.team}
-								rootChatId={rootChatId}
-								services={services}
-								colorOf={colorOf}
-								messages={messages}
-								numbers={numbers}
-								directoryOf={(chatId) => chats?.[chatId]?.directory ?? undefined}
-								updatedAtOf={(chatId) => chats?.[chatId]?.updatedAt}
-								costOf={memberCosts}
-								onOpen={openAgent}
-								canOpen={canOpen}
-								onShowPosts={(chatId) => {
-									setFilter({ ...EMPTY_FILTER, agents: new Set([chatId]) });
-									setTeamOpen(false);
-									setView("board");
-								}}
-								onOpenConversation={openConversation}
-								onShowQuestion={(chatId) => {
-									setTeamOpen(false);
-									setView("board");
-									setPendingReveal(questionSelector(chatId));
-								}}
-								onStop={stop}
+							<span className="font-medium">Team</span>
+							<TeamSummary team={board.team} />
+							<span className="flex-1" />
+							<ChevronDownIcon
+								aria-hidden
+								className={cn(
+									"text-muted-foreground size-3.5 shrink-0 transition-transform motion-reduce:transition-none",
+									teamOpen && "rotate-180",
+								)}
 							/>
-						</div>
-					) : null}
+						</button>
+						{teamOpen ? (
+							<div className="min-h-0 overflow-y-auto" data-qa-id="swarm-team">
+								<MembersView
+									team={board.team}
+									rootChatId={rootChatId}
+									services={services}
+									colorOf={colorOf}
+									messages={messages}
+									numbers={numbers}
+									directoryOf={(chatId) => chats?.[chatId]?.directory ?? undefined}
+									updatedAtOf={(chatId) => chats?.[chatId]?.updatedAt}
+									costOf={memberCosts}
+									onOpen={openAgent}
+									canOpen={canOpen}
+									onShowPosts={(chatId) => {
+										setFilter({ ...EMPTY_FILTER, agents: new Set([chatId]) });
+										setTeamOpen(false);
+										setView("board");
+									}}
+									onOpenConversation={openConversation}
+									onShowQuestion={(chatId) => {
+										setTeamOpen(false);
+										setView("board");
+										setPendingReveal(questionSelector(chatId));
+									}}
+									onStop={stop}
+								/>
+							</div>
+						) : null}
+					</div>
 				</>
 			)}
 			{view === "graph" && !conversation ? (

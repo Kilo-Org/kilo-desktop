@@ -5,7 +5,7 @@ import {
 	ChevronRightIcon,
 	CircleAlertIcon,
 	CornerDownRightIcon,
-	FlagIcon,
+	OctagonXIcon,
 	SquareIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -127,7 +127,7 @@ export function BoardPost({
 	const canOpen = context.canOpenSender(message.from);
 	return (
 		<li
-			className="group/post flex scroll-mt-4 gap-2.5 rounded-md"
+			className="group/post flex scroll-mt-4 gap-3 rounded-md"
 			tabIndex={-1}
 			data-qa-id="swarm-board-message"
 			data-type={message.type}
@@ -143,8 +143,8 @@ export function BoardPost({
 					["done", "cancelled", "stopped", "failed"].includes(member.state)
 				}
 			/>
-			<div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-				<div className="flex min-h-4 min-w-0 items-center gap-1.5 text-xs leading-4">
+			<div className={cn("flex min-w-0 flex-1 flex-col", tag ? "gap-1.5" : "gap-1")}>
+				<div className="flex min-h-4 min-w-0 items-center gap-1.5 text-[13px] leading-4">
 					{canOpen ? (
 						<button
 							type="button"
@@ -172,14 +172,21 @@ export function BoardPost({
 					{tag ? (
 						<span
 							className={cn(
-								"flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium",
+								"ms-1 flex shrink-0 items-center gap-1 rounded-full px-[7px] py-px text-xs leading-4",
 								message.type === "VETO"
-									? "bg-destructive/10 text-destructive"
-									: "bg-muted text-foreground",
+									? "bg-destructive/12 text-destructive"
+									: "bg-foreground/8 text-foreground",
 							)}
 							data-qa-id="swarm-board-message-tag"
 						>
-							<FlagIcon aria-hidden className="size-3" />
+							{message.type === "VETO" ? (
+								<OctagonXIcon aria-hidden className="size-2.5" />
+							) : (
+								<svg aria-hidden viewBox="0 0 24 24" className="size-2.5 fill-current">
+									<rect x="6" y="5" width="4" height="14" rx="1" />
+									<rect x="14" y="5" width="4" height="14" rx="1" />
+								</svg>
+							)}
 							{tag}
 						</span>
 					) : null}
@@ -223,11 +230,17 @@ export function BoardPost({
 						Reply to #{replyNumber}
 					</button>
 				) : null}
-				<div className={cn("min-w-0", tag && "border-border border-s-2 ps-3")}>
+				<div
+					className={cn(
+						"min-w-0",
+						tag &&
+							"ps-3 shadow-[inset_2px_0_0_color-mix(in_srgb,var(--foreground)_35%,transparent)]",
+					)}
+				>
 					{showPreview ? (
 						<button
 							type="button"
-							className="text-muted-foreground hover:text-foreground block w-full truncate text-start text-[13px] leading-[19px]"
+							className="text-muted-foreground hover:text-foreground block w-full truncate text-start text-sm leading-[21px]"
 							onClick={onToggle}
 							data-qa-id="swarm-board-message-preview"
 						>
@@ -237,7 +250,7 @@ export function BoardPost({
 						<MarkdownContent
 							text={message.body}
 							extensions={extensions}
-							className="min-w-0 text-[13px] leading-[19px] wrap-break-word"
+							className="text-foreground/85 [&_:not(pre)>code]:text-foreground min-w-0 text-sm leading-[21px] wrap-break-word [&_:not(pre)>code]:bg-transparent [&_:not(pre)>code]:p-0 [&_:not(pre)>code]:text-xs"
 						/>
 					)}
 				</div>
@@ -335,17 +348,20 @@ export function FailedAgentCard({
 export function WritingIndicator({ name }: { readonly name: string }) {
 	return (
 		<li
-			className="text-muted-foreground flex items-center gap-2 ps-9 text-xs"
+			className="flex items-center gap-2.5 ps-10 text-[13px] leading-4"
 			data-qa-id="swarm-board-writing"
 		>
-			<span aria-hidden className="flex gap-0.5">
-				<span className="size-1 animate-pulse rounded-full bg-current motion-reduce:animate-none" />
-				<span className="size-1 animate-pulse rounded-full bg-current [animation-delay:150ms] motion-reduce:animate-none" />
-				<span className="size-1 animate-pulse rounded-full bg-current [animation-delay:300ms] motion-reduce:animate-none" />
+			<span aria-hidden className="flex gap-[3px]">
+				{[1, 0.6, 0.3].map((opacity, index) => (
+					<span
+						key={opacity}
+						className="bg-muted-foreground size-[5px] rounded-full motion-safe:animate-pulse"
+						style={{ opacity, animationDelay: `${index * 150}ms` }}
+					/>
+				))}
 			</span>
-			<span>
-				<span className="text-foreground">{name}</span> is writing…
-			</span>
+			<span className="text-foreground/85">{name}</span>
+			<span className="text-muted-foreground -ms-1">is writing…</span>
 		</li>
 	);
 }

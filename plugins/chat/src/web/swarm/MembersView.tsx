@@ -1,8 +1,8 @@
 import {
 	ArrowUpRightIcon,
 	CheckIcon,
+	ChevronDownIcon,
 	ChevronRightIcon,
-	LoaderCircleIcon,
 	SquareIcon,
 } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
@@ -70,23 +70,14 @@ function statusWord(member: TeamMember): StatusWord {
 }
 
 const STATUS_TONE: Record<StatusWord, string> = {
-	Working: "text-primary-ink",
-	"Needs you": "text-warning",
+	Working: "text-muted-foreground",
+	"Needs you": "text-foreground font-medium",
 	Failed: "text-destructive",
-	Done: "text-success",
-	Stopped: "text-muted-foreground",
+	Done: "text-foreground/45",
+	Stopped: "text-muted-foreground/70",
 	Idle: "text-muted-foreground",
 	Unknown: "text-muted-foreground/70",
 };
-
-function StatusIcon({ word }: { readonly word: StatusWord }) {
-	if (word === "Working")
-		return (
-			<LoaderCircleIcon aria-hidden className="size-3 animate-spin motion-reduce:animate-none" />
-		);
-	if (word === "Done") return <CheckIcon aria-hidden className="size-3" />;
-	return null;
-}
 
 const memberName = (member: TeamMember) => (member.main ? "Main agent" : member.title);
 const boardIdOf = (member: TeamMember) => (member.main ? MAIN : member.chatId);
@@ -149,22 +140,49 @@ function doingNow(
 	return firstLine(lastPost) || activity?.now || "";
 }
 
+/** Rows shown before the rest fold behind "Show N more agents". */
+const SHOWN_MEMBERS = 4;
+
+/** Who needs a look first: waiting on the person, failed, working; finished last. */
+function rank(member: TeamMember): number {
+	if (member.needsYou) return 0;
+	if (member.state === "failed") return 1;
+	if (isActive(member.state)) return 2;
+	return 3;
+}
+
+/** "all working", "2 working · 1 done": how the folded rows are doing. */
+function foldedSummary(members: readonly TeamMember[]): string {
+	const counts = new Map<string, number>();
+	for (const member of members) {
+		const word = statusWord(member).toLowerCase();
+		counts.set(word, (counts.get(word) ?? 0) + 1);
+	}
+	if (counts.size === 1) return `all ${[...counts.keys()][0]}`;
+	return [...counts].map(([word, count]) => `${count} ${word}`).join(" · ");
+}
+
 /**
- * The Members tab of the Swarm Board: one row per team member (the main
- * agent first) saying what it does now, expandable to its task, who it talks
- * with on the board, its recent tool calls and its actions. Each row reads
- * its chat's messages only while it is open or its member works.
+ * The Swarm Board's Team list: a row per subagent, those needing a look
+ * first, each saying what it does now with a Stop while it works, and
+ * expandable to its task, who it talks with on the board, its recent tool
+ * calls and its actions. Past four, the rest fold behind one row. Each row
+ * reads its chat's messages only while it is open or its member works.
  */
 export function MembersView(props: MembersViewProps) {
 	const { team, messages, rootChatId } = props;
+	const [showAll, setShowAll] = useState(false);
 	const normalize = (id: string) => (id === rootChatId ? MAIN : id);
 	const nameOf = (id: string, label: string | undefined) => participantName(id, label, team);
 	const teamWorking = team.some((member) => !member.main && isActive(member.state));
 	const lastPostBy = new Map<string, BoardMessage>();
 	for (const message of messages) lastPostBy.set(normalize(message.from), message);
+	const workers = team.filter((member) => !member.main).toSorted((a, b) => rank(a) - rank(b));
+	const folded = showAll ? [] : workers.slice(SHOWN_MEMBERS);
+	const shown = showAll ? workers : workers.slice(0, SHOWN_MEMBERS);
 	return (
-		<ul className="flex min-w-0 flex-col" data-qa-id="swarm-members">
-			{team.map((member) => (
+		<ul className="flex min-w-0 flex-col gap-0.5" data-qa-id="swarm-members">
+			{shown.map((member) => (
 				<MemberRow
 					key={member.chatId}
 					{...props}
@@ -174,6 +192,25 @@ export function MembersView(props: MembersViewProps) {
 					partners={partnersOf(boardIdOf(member), messages, normalize, nameOf)}
 				/>
 			))}
+			{folded.length > 0 ? (
+				<li>
+					<button
+						type="button"
+						className="hover:bg-foreground/[0.04] focus-visible:ring-ring flex h-8 w-full min-w-0 items-center gap-2.5 rounded-lg px-2 text-start text-[13px] leading-4 outline-none focus-visible:ring-2"
+						onClick={() => setShowAll(true)}
+						data-qa-id="swarm-members-more"
+					>
+						<ChevronDownIcon aria-hidden className="text-muted-foreground/70 size-3.5 shrink-0" />
+						<span aria-hidden className="w-[26px] shrink-0" />
+						<span className="text-muted-foreground shrink-0">
+							Show {folded.length} more {folded.length === 1 ? "agent" : "agents"}
+						</span>
+						<span className="text-muted-foreground/70 truncate">
+							· {folded.map((member) => member.title).join(", ")} · {foldedSummary(folded)}
+						</span>
+					</button>
+				</li>
+			) : null}
 		</ul>
 	);
 }
@@ -231,54 +268,81 @@ function MemberRow({
 	const showTalking = partners.length > 0 || question;
 	return (
 		<li
-			className="border-border flex min-w-0 flex-col border-b last:border-b-0"
+			className="flex min-w-0 flex-col"
 			data-qa-id="swarm-member"
 			data-chat-id={member.chatId}
 			data-state={member.state}
 		>
-			<button
-				type="button"
-				className="focus-visible:ring-ring/50 flex min-w-0 items-center gap-2 rounded-md px-1 py-2 text-start text-sm outline-none hover:bg-(color:--ghost-hover) focus-visible:ring-3"
-				aria-expanded={open}
-				aria-controls={detailsId}
-				onClick={() => setOpen(!open)}
-				data-qa-id="swarm-member-toggle"
-			>
-				<ChevronRightIcon
-					aria-hidden
-					className={cn(
-						"text-muted-foreground size-3.5 shrink-0 transition-transform motion-reduce:transition-none",
-						open && "rotate-90",
-					)}
-				/>
-				<AgentAvatar
-					name={member.main ? "Main" : member.title}
-					color={colorOf(member.chatId)}
-					done={finished}
-				/>
-				<span className="flex min-w-0 flex-1 flex-col">
-					<span className="truncate font-medium">{name}</span>
-					{now ? (
-						<span
-							className="text-muted-foreground truncate text-xs"
-							title={postNumber && finished ? `#${postNumber} · ${lastPost?.body}` : now}
-							data-qa-id="swarm-member-now"
-						>
-							{now}
+			<div className="hover:bg-foreground/[0.04] flex h-9 min-w-0 items-center gap-2.5 rounded-lg px-2">
+				<button
+					type="button"
+					className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-2.5 self-stretch rounded-md text-start text-[13px] leading-4 outline-none focus-visible:ring-2"
+					aria-expanded={open}
+					aria-controls={detailsId}
+					onClick={() => setOpen(!open)}
+					data-qa-id="swarm-member-toggle"
+				>
+					<ChevronRightIcon
+						aria-hidden
+						className={cn(
+							"text-muted-foreground/70 size-3.5 shrink-0 transition-transform motion-reduce:transition-none",
+							open && "rotate-90",
+						)}
+					/>
+					<AgentAvatar name={member.title} color={colorOf(member.chatId)} done={!active} />
+					<span
+						className={cn(
+							"w-20 shrink-0 truncate font-medium",
+							active || member.needsYou ? "text-foreground" : "text-muted-foreground",
+						)}
+					>
+						{name}
+					</span>
+					<span
+						className={cn(
+							"min-w-0 flex-1 truncate",
+							active || member.needsYou ? "text-muted-foreground" : "text-muted-foreground/70",
+						)}
+						title={postNumber && finished ? `#${postNumber} · ${lastPost?.body}` : now}
+						data-qa-id="swarm-member-now"
+					>
+						{now}
+					</span>
+				</button>
+				<span className="flex w-16 shrink-0 items-center justify-end gap-1">
+					{active && !member.needsYou ? (
+						<span className="sr-only" data-qa-id="swarm-member-status" data-status={word}>
+							{word}
 						</span>
+					) : (
+						<span
+							className={cn("flex items-center gap-1 text-xs", STATUS_TONE[word])}
+							data-qa-id="swarm-member-status"
+							data-status={word}
+						>
+							{word === "Done" ? (
+								<CheckIcon aria-hidden className="size-3" strokeWidth={2.4} />
+							) : null}
+							{word}
+						</span>
+					)}
+					{member.jobId && active ? (
+						<Button
+							size="icon-xs"
+							variant="ghost"
+							className="text-muted-foreground size-6"
+							aria-label={`Stop ${name}`}
+							title={`Stop ${name}`}
+							onClick={() => onStop(member)}
+							data-qa-id="swarm-member-stop"
+						>
+							<SquareIcon aria-hidden className="size-2.5 fill-current" />
+						</Button>
 					) : null}
 				</span>
-				<span
-					className={cn("flex shrink-0 items-center gap-1 text-xs", STATUS_TONE[word])}
-					data-qa-id="swarm-member-status"
-					data-status={word}
-				>
-					<StatusIcon word={word} />
-					{word}
-				</span>
-			</button>
+			</div>
 			{open ? (
-				<div id={detailsId} className="flex min-w-0 flex-col gap-3 ps-7 pe-1 pt-1 pb-3">
+				<div id={detailsId} className="flex min-w-0 flex-col gap-3 ps-[68px] pe-2 pt-1 pb-3">
 					{activity?.task ? (
 						<Section title="Task">
 							<p
@@ -398,19 +462,6 @@ function MemberRow({
 						>
 							Show posts on board
 						</Button>
-						{member.jobId ? (
-							<Button
-								size="sm"
-								variant="ghost"
-								className="text-destructive hover:text-destructive ms-auto"
-								aria-label={`Stop ${name}`}
-								onClick={() => onStop(member)}
-								data-qa-id="swarm-member-stop"
-							>
-								<SquareIcon aria-hidden data-icon="inline-start" />
-								Stop
-							</Button>
-						) : null}
 					</div>
 				</div>
 			) : null}

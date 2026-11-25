@@ -73,7 +73,7 @@ export function SwarmShelf({
 	const latest = summary.latest;
 	return (
 		<div
-			className="chat-composer-glass chat-composer-surface chat-composer-attached w-full overflow-hidden rounded-t-(--composer-radius) [--swarm-face-ring:var(--pane-raised,var(--card))]"
+			className="chat-composer-glass chat-composer-surface chat-composer-attached w-full overflow-hidden rounded-t-(--composer-radius)"
 			data-composer-attached
 			data-qa-id="kilo-composer-swarm-shelf"
 		>
@@ -81,7 +81,7 @@ export function SwarmShelf({
 				<SwarmFaces
 					team={team}
 					colors={summary.colors}
-					size="md"
+					className="*:data-[slot=avatar]:ring-[color-mix(in_srgb,var(--pane-raised,var(--card))_94%,transparent)]"
 					faceQaId="kilo-composer-swarm-face"
 					{...(openSubagent
 						? {

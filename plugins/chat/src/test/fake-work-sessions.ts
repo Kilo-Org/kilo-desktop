@@ -20,6 +20,7 @@ import {
 	PaneKind,
 	Panes,
 	WorkSessions,
+	NotificationPreferences,
 	WorkSessionsWindow,
 	Workspaces,
 	type Authorization,
@@ -362,13 +363,14 @@ export type FakeWorkSessionsMain = ReturnType<typeof fakeWorkSessionsMain>;
 /**
  * kilo.work-sessions' per-window `window` object with `workSessionId` open
  * (or none), and the `workSessionActive` key; `openWorkSession`,
- * `openPane` and the `edit-workspace` command are recorded.
+ * `openPane`, notification mode changes and the `edit-workspace` command are recorded.
  */
 export function fakeWorkSessionsWindow(workSessionId: string | null) {
 	const calls = {
 		openWorkSession: vi.fn<(workSessionId: string) => void>(),
 		openPane: vi.fn<(kind: string) => void>(),
 		editWorkspace: vi.fn<(input: unknown) => void>(),
+		setNotificationMode: vi.fn<(input: { cue: string; mode: string }) => void>(),
 	};
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
@@ -398,6 +400,16 @@ export function fakeWorkSessionsWindow(workSessionId: string | null) {
 				},
 			);
 			sdk.context.set("workSessionActive", workSessionId !== null);
+			const notifications: DomainObjectProvider<typeof NotificationPreferences> =
+				sdk.domainObjects.provide(NotificationPreferences, {
+					initialState: { done: "smart", needsYou: "smart" },
+					methods: {
+						setMode: (input) => {
+							calls.setNotificationMode(input);
+							notifications.setState({ ...notifications.state, [input.cue]: input.mode });
+						},
+					},
+				});
 			sdk.extensions.implement(KernelCommand, "edit-workspace", (input: unknown) =>
 				calls.editWorkspace(input),
 			);

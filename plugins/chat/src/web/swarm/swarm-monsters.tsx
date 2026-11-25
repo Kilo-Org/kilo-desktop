@@ -3,15 +3,18 @@ import type { FC, ReactNode } from "react";
 /**
  * The subagents' monster avatars, from the design's "Sub Agent Monsters"
  * sheet: on a 24px grid, a 2px round stroke in `currentColor`, so the avatar
- * circle sets the tint. Each comes with its colour (the stroke while it
- * works) and the dark surface behind it; a worker's monster and colour go
- * together, in this order.
+ * circle sets the tint. Each comes with its colour, from the tool icons'
+ * palette, and the circle it sits in while it works; a worker's monster and
+ * colour go together, in this order.
  */
 export interface Monster {
 	readonly name: string;
 	readonly color: string;
-	/** The circle behind the monster on a dark pane. */
-	readonly surface: string;
+	/**
+	 * Its circle while it works, in the tool icons' style (light and dark):
+	 * a soft fill, the monster in its colour, and a ring at 40%.
+	 */
+	readonly circleClassName: string;
 	readonly Icon: FC<{ readonly className?: string }>;
 }
 
@@ -39,8 +42,9 @@ const DOT = { fill: "currentColor", stroke: "none" } as const;
 export const MONSTERS: readonly Monster[] = [
 	{
 		name: "Dapper",
+		circleClassName:
+			"border-sky-600/40 bg-sky-100 text-sky-600 dark:border-sky-400/40 dark:bg-sky-950 dark:text-sky-400",
 		color: "#38BDF8",
-		surface: "#082F49",
 		Icon: icon(
 			"Dapper",
 			<>
@@ -55,8 +59,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Grizz",
+		circleClassName:
+			"border-orange-600/40 bg-orange-100 text-orange-600 dark:border-orange-400/40 dark:bg-orange-950 dark:text-orange-400",
 		color: "#FB923C",
-		surface: "#431407",
 		Icon: icon(
 			"Grizz",
 			<>
@@ -72,8 +77,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Sunny",
+		circleClassName:
+			"border-amber-600/40 bg-amber-100 text-amber-600 dark:border-amber-400/40 dark:bg-amber-950 dark:text-amber-400",
 		color: "#FBBF24",
-		surface: "#451A03",
 		Icon: icon(
 			"Sunny",
 			<>
@@ -90,8 +96,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Specs",
+		circleClassName:
+			"border-violet-600/40 bg-violet-100 text-violet-600 dark:border-violet-400/40 dark:bg-violet-950 dark:text-violet-400",
 		color: "#A78BFA",
-		surface: "#2E1065",
 		Icon: icon(
 			"Specs",
 			<>
@@ -105,8 +112,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Mop",
+		circleClassName:
+			"border-emerald-600/40 bg-emerald-100 text-emerald-600 dark:border-emerald-400/40 dark:bg-emerald-950 dark:text-emerald-400",
 		color: "#34D399",
-		surface: "#022C22",
 		Icon: icon(
 			"Mop",
 			<>
@@ -121,8 +129,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Hoodie",
+		circleClassName:
+			"border-zinc-600/40 bg-zinc-100 text-zinc-600 dark:border-zinc-400/40 dark:bg-zinc-950 dark:text-zinc-400",
 		color: "#A1A1AA",
-		surface: "#09090B",
 		Icon: icon(
 			"Hoodie",
 			<>
@@ -136,8 +145,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Wavy",
+		circleClassName:
+			"border-fuchsia-600/40 bg-fuchsia-100 text-fuchsia-600 dark:border-fuchsia-400/40 dark:bg-fuchsia-950 dark:text-fuchsia-400",
 		color: "#E879F9",
-		surface: "#4A044E",
 		Icon: icon(
 			"Wavy",
 			<>
@@ -152,8 +162,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Beanie",
+		circleClassName:
+			"border-indigo-600/40 bg-indigo-100 text-indigo-600 dark:border-indigo-400/40 dark:bg-indigo-950 dark:text-indigo-400",
 		color: "#818CF8",
-		surface: "#1E1B4B",
 		Icon: icon(
 			"Beanie",
 			<>
@@ -169,8 +180,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Chomp",
+		circleClassName:
+			"border-rose-600/40 bg-rose-100 text-rose-600 dark:border-rose-400/40 dark:bg-rose-950 dark:text-rose-400",
 		color: "#FB7185",
-		surface: "#4C0519",
 		Icon: icon(
 			"Chomp",
 			<>
@@ -185,8 +197,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Curly",
+		circleClassName:
+			"border-cyan-600/40 bg-cyan-100 text-cyan-600 dark:border-cyan-400/40 dark:bg-cyan-950 dark:text-cyan-400",
 		color: "#22D3EE",
-		surface: "#083344",
 		Icon: icon(
 			"Curly",
 			<>
@@ -208,8 +221,9 @@ export const MONSTERS: readonly Monster[] = [
 	},
 	{
 		name: "Captain",
+		circleClassName:
+			"border-red-600/40 bg-red-100 text-red-600 dark:border-red-400/40 dark:bg-red-950 dark:text-red-400",
 		color: "#F87171",
-		surface: "#450A0A",
 		Icon: icon(
 			"Captain",
 			<>

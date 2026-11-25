@@ -113,6 +113,11 @@
 			"id": "layout-presets",
 			"home": "main",
 			"description": "Saved layout presets and the default one."
+		},
+		{
+			"id": "notification-preferences",
+			"home": "renderer",
+			"description": "When chats' cues notify on this device: done, and needs you."
 		}
 	],
 	"extensionPoints": [

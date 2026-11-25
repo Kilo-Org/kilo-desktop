@@ -1,67 +1,49 @@
+import { BotIcon } from "lucide-react";
+
+import { Avatar, AvatarFallback } from "@kilo-desktop/ui/components/avatar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { tint } from "./swarm-colors";
 import { monsterOf } from "./swarm-monsters";
 
-/** A finished worker's circle: the design's grey on dark panes, a light grey on light ones. */
-const DONE_SURFACE = "light-dark(#E5E5E5, #333333)";
-const DONE_INK = "light-dark(#737373, #A3A3A3)";
-
 /**
- * An agent's round badge. A worker shows its monster (the one paired with its
- * team colour) in that colour on a deep circle of it, ringed at 40%; once
- * done, the same monster in grey. The main agent shows its initial.
+ * An agent's round badge, drawn like the transcript's tool icons: a worker
+ * shows its monster in its colour while it works, and in the muted grey of a
+ * settled tool once done; the main agent shows the agent icon its tab uses.
+ * In an {@link AvatarGroup} it overlaps its neighbours the way tool icons do.
  */
 export function AgentAvatar({
 	name,
 	color,
 	size = "md",
 	done = false,
+	className,
 }: {
 	readonly name: string;
 	readonly color: string;
 	readonly size?: "sm" | "md";
 	/** A worker that stopped: its monster turns grey. */
 	readonly done?: boolean;
+	readonly className?: string;
 }) {
 	const monster = monsterOf(color);
-	const box = size === "sm" ? "size-5" : "size-[26px]";
-	if (monster) {
-		const ink = done
-			? DONE_INK
-			: `light-dark(color-mix(in srgb, ${monster.color} 70%, black), ${monster.color})`;
-		return (
-			<span
-				aria-hidden
-				className={cn("flex shrink-0 items-center justify-center rounded-full", box)}
-				style={{
-					color: ink,
-					backgroundColor: done
-						? DONE_SURFACE
-						: `light-dark(${tint(monster.color, 18)}, ${monster.surface})`,
-					boxShadow: done
-						? "inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent)"
-						: `inset 0 0 0 2px ${monster.color}66`,
-				}}
-				data-monster={monster.name}
-				data-done={done || undefined}
-			>
-				<monster.Icon className={size === "sm" ? "size-2.5" : "size-[13px]"} />
-			</span>
-		);
-	}
+	const Icon = monster?.Icon ?? BotIcon;
 	return (
-		<span
+		<Avatar
 			aria-hidden
-			className={cn(
-				"text-foreground flex shrink-0 items-center justify-center rounded-full leading-none font-semibold",
-				box,
-				size === "sm" ? "text-[10px]" : "text-xs",
-			)}
-			style={{ backgroundColor: tint(color, 24), boxShadow: `inset 0 0 0 1.5px ${color}` }}
+			className={cn(size === "sm" ? "size-5" : "size-6.5", className)}
+			data-monster={monster?.name}
+			data-done={done || undefined}
+			title={name}
 		>
-			{name.trim().charAt(0).toUpperCase() || "?"}
-		</span>
+			<AvatarFallback
+				className={cn(
+					"border-2",
+					monster && !done ? monster.circleClassName : "border-transparent",
+				)}
+			>
+				<Icon className={size === "sm" ? "size-3" : "size-3.5"} />
+			</AvatarFallback>
+		</Avatar>
 	);
 }
 

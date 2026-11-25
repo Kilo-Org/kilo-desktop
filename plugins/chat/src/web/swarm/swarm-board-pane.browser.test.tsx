@@ -402,17 +402,21 @@ describe("Swarm Board actions", () => {
 		await expect.element(pane().getByTestId("swarm-team-toggle")).not.toBeInTheDocument();
 	});
 
-	it("filters the board from the graph", async () => {
-		await showBoard();
+	it("turns needs-you notifications off and on from the menu", async () => {
+		const host = await showBoard();
 		await expect.element(posts().nth(0), WAIT).toBeVisible();
-		await boardAction("swarm-board-graph");
 
-		await pane()
-			.getByTestId("swarm-graph-node")
-			.and(page.getByRole("button", { name: "Filter the board to Webhooks" }))
-			.click();
-
-		await textOf(pane().getByTestId("swarm-board-agent-filter")).toContain("Webhooks");
+		await pane().getByTestId("swarm-board-actions").click();
+		const notify = page.getByTestId("swarm-board-notify");
+		await expect.element(notify).toHaveAttribute("aria-checked", "true");
+		await notify.click();
+		await vi.waitFor(() =>
+			expect(host.window.setNotificationMode).toHaveBeenCalledWith({
+				cue: "needsYou",
+				mode: "off",
+			}),
+		);
+		await expect.element(page.getByTestId("swarm-board-graph")).not.toBeInTheDocument();
 		await userEvent.keyboard("{Escape}");
 	});
 });

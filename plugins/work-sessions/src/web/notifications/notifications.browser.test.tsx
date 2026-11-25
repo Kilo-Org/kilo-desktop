@@ -4,7 +4,7 @@ import { page } from "vitest/browser";
 import type { MainKernel } from "@kilo-desktop/kernel/main";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
-import { PermissionAutoAnswer } from "../../contracts";
+import { NotificationPreferences, PermissionAutoAnswer } from "../../contracts";
 import {
 	chat,
 	fakeNotifications,
@@ -171,5 +171,21 @@ describe("Notifications settings", () => {
 			needsYou: "always",
 		});
 		await page.getByTestId("notification-preview-done").click();
+	});
+
+	it("shares the cues' modes as a domain object other plugins can flip", async () => {
+		const { host } = await renderWorkSessions({
+			workSessions: [workSession("s1", { chatIds: ["c1"] })],
+			chats: [chat("c1")],
+		});
+		const preferences = host.renderer.kernelSdk.domainObjects.get(NotificationPreferences)!;
+		expect(preferences.getState()).toEqual({ done: "smart", needsYou: "smart" });
+
+		await preferences.methods.setMode({ cue: "needsYou", mode: "off" });
+
+		expect(preferences.getState().needsYou).toBe("off");
+		expect(JSON.parse(localStorage.getItem(NOTIFICATION_PREFERENCES_STORAGE_KEY)!)).toMatchObject({
+			needsYou: "off",
+		});
 	});
 });

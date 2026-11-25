@@ -67,6 +67,10 @@ export const notificationPreferences = {
 		}
 		for (const listener of listeners) listener();
 	},
+	subscribe(listener: () => void): () => void {
+		listeners.add(listener);
+		return () => listeners.delete(listener);
+	},
 	/** Reads storage again, e.g. when the plugin activates. */
 	reload(): void {
 		preferences = undefined;

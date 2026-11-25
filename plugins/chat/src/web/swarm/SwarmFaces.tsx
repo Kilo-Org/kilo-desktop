@@ -1,11 +1,12 @@
+import { AvatarGroup, AvatarGroupCount } from "@kilo-desktop/ui/components/avatar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { MAIN_AGENT_COLOR, WORKER_COLORS } from "./swarm-colors";
 import { AgentAvatar } from "./swarm-parts";
 import { isActive, type TeamMember } from "./swarm-team";
 
-/** Faces shown before the rest fold into "+N". */
-const MAX_FACES = 4;
+/** Faces shown before the rest fold into "+N", as the transcript's tool icons do. */
+const MAX_FACES = 5;
 
 const faceName = (member: TeamMember) => (member.main ? "Main agent" : member.title);
 
@@ -15,34 +16,37 @@ function faceState(member: TeamMember): string {
 	return member.main ? "idle" : "finished";
 }
 
-/** Each face's 2px ring in the surface behind the stack (`--swarm-face-ring`), so overlaps read cleanly. */
-const RING = "0 0 0 2px var(--swarm-face-ring, var(--background))";
-
 /**
- * A team as a stack of overlapping faces, the main agent first: a working
- * worker as its monster in its color, a stopped one greyed, and one waiting
- * on the person ringed in the text color; past four, a "+N" chip. With
- * `onOpen` the workers' faces are buttons.
+ * A team as a row of agent icons overlapping like the transcript's tool
+ * icons: the main agent first, a working worker as its monster in its
+ * colour, a stopped one grey, one waiting on the person ringed in the text
+ * colour; past five, a "+N" count leads. With `onOpen` the workers' icons
+ * are buttons.
  */
 export function SwarmFaces({
 	team,
 	colors,
 	onOpen,
 	faceQaId,
-	size = "sm",
+	size = "md",
+	className,
 }: {
 	readonly team: readonly TeamMember[];
 	readonly colors: ReadonlyMap<string, string>;
 	readonly onOpen?: (member: TeamMember) => void;
 	readonly faceQaId?: string;
-	/** `md` (26px) where the faces lead a row, `sm` (20px) in tight spots. */
+	/** `md` (26px, the tool icons' size) or `sm` (20px) in tight spots. */
 	readonly size?: "sm" | "md";
+	/** Sets the ring between icons to the surface behind them (default: the pane). */
+	readonly className?: string;
 }) {
 	const shown = team.slice(0, MAX_FACES);
-	const folded = team.length - shown.length;
-	const overlap = size === "md" ? "-ms-2.5" : "-ms-1.5";
+	const folded = team.slice(MAX_FACES);
 	return (
-		<span className="flex shrink-0 items-center">
+		<AvatarGroup
+			className={cn("*:data-[slot=avatar]:ring-pane shrink-0 -space-x-1", className)}
+			data-qa-id="swarm-faces"
+		>
 			{shown.map((member, index) => {
 				const name = faceName(member);
 				const color =
@@ -50,66 +54,46 @@ export function SwarmFaces({
 					(member.main
 						? MAIN_AGENT_COLOR
 						: WORKER_COLORS[Math.max(index - 1, 0) % WORKER_COLORS.length]!);
-				const face = (
-					<span
-						className="flex rounded-full"
-						style={{
-							boxShadow: member.needsYou ? `${RING}, 0 0 0 3.5px var(--foreground)` : RING,
-						}}
+				const title = `${name}: ${faceState(member)}`;
+				const avatar = (
+					<AgentAvatar
+						key={member.chatId}
+						name={title}
+						color={color}
+						size={size}
+						done={!member.main && !member.needsYou && !isActive(member.state)}
+						className={cn(
+							"relative",
+							member.needsYou &&
+								"*:data-[slot=avatar-fallback]:ring-foreground *:data-[slot=avatar-fallback]:ring-[1.5px]",
+						)}
+					/>
+				);
+				if (!onOpen || member.main) return avatar;
+				return (
+					<button
+						key={member.chatId}
+						type="button"
+						data-slot="avatar"
+						className="focus-visible:ring-ring relative rounded-full outline-none hover:z-10 focus-visible:z-10"
+						aria-label={`Open ${name} (${faceState(member)})`}
+						title={title}
+						onClick={() => onOpen(member)}
+						data-qa-id={faceQaId}
 						data-state={member.needsYou ? "needs-you" : member.state}
 					>
-						<AgentAvatar
-							name={name}
-							color={color}
-							size={size}
-							done={!member.main && !member.needsYou && !isActive(member.state)}
-						/>
-					</span>
-				);
-				const title = `${name}: ${faceState(member)}`;
-				const place = cn("relative", index > 0 && overlap);
-				if (onOpen && !member.main) {
-					return (
-						<button
-							key={member.chatId}
-							type="button"
-							className={cn(
-								place,
-								"focus-visible:ring-ring rounded-full outline-none hover:z-10 focus-visible:z-10 focus-visible:ring-2",
-							)}
-							aria-label={`Open ${name} (${faceState(member)})`}
-							title={title}
-							onClick={() => onOpen(member)}
-							data-qa-id={faceQaId}
-						>
-							{face}
-						</button>
-					);
-				}
-				return (
-					<span key={member.chatId} className={place} title={title}>
-						{face}
-					</span>
+						{avatar}
+					</button>
 				);
 			})}
-			{folded > 0 ? (
-				<span
-					className={cn(
-						"bg-muted text-foreground/85 relative flex items-center justify-center rounded-full px-[7px] font-semibold tabular-nums",
-						overlap,
-						size === "md" ? "h-[26px] min-w-[26px] text-[11px]" : "h-5 min-w-5 text-[10px]",
-					)}
-					style={{
-						boxShadow: `inset 0 0 0 1px color-mix(in srgb, var(--foreground) 12%, transparent), ${RING}`,
-					}}
-					title={team
-						.slice(MAX_FACES)
-						.map((member) => faceName(member))
-						.join(", ")}
+			{folded.length > 0 ? (
+				<AvatarGroupCount
+					className={cn("ring-pane order-first text-xs", size === "sm" ? "size-5" : "size-6.5")}
+					title={folded.map((member) => faceName(member)).join(", ")}
 				>
-					+{folded}
-				</span>
+					+{folded.length}
+				</AvatarGroupCount>
 			) : null}
-		</span>
+		</AvatarGroup>
 	);
 }

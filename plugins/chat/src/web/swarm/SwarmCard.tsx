@@ -54,7 +54,7 @@ export function SwarmCard() {
 	return (
 		<button
 			type="button"
-			className="border-border-subtle hover:bg-muted/45 focus-visible:ring-ring/50 my-3 flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-start text-[13px] leading-4 transition-colors outline-none [--swarm-face-ring:var(--pane-surface,var(--background))] focus-visible:ring-2"
+			className="border-border-subtle hover:bg-muted/45 focus-visible:ring-ring/50 my-3 flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-start text-[13px] leading-4 transition-colors outline-none focus-visible:ring-2"
 			aria-label="Open Swarm Board"
 			onClick={() => {
 				void telemetry?.methods

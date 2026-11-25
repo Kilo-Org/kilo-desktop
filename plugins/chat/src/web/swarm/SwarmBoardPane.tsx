@@ -1,16 +1,16 @@
 import {
 	ArrowDownIcon,
 	ArrowUpRightIcon,
+	BellIcon,
 	CheckIcon,
 	ChevronDownIcon,
 	CircleAlertIcon,
-	ClipboardCopyIcon,
+	CopyIcon,
 	EllipsisIcon,
 	MessageSquareIcon,
 	MessagesSquareIcon,
 	SquareIcon,
 	Trash2Icon,
-	WaypointsIcon,
 	XIcon,
 } from "lucide-react";
 import {
@@ -27,7 +27,11 @@ import { useQuery } from "@tanstack/react-query";
 import { KernelTelemetry, type DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats, Swarm, type BoardMessage } from "@kilo-desktop/plugin-core/contracts";
-import { Panes, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
+import {
+	NotificationPreferences,
+	Panes,
+	type PaneProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import {
 	AlertDialog,
@@ -42,6 +46,7 @@ import {
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuGroup,
 	DropdownMenuItem,
@@ -108,9 +113,7 @@ import { MembersView } from "./MembersView";
 import { postRefsExtension } from "./remark-post-refs";
 import { useBoardFilter, useSwarmBoardStore, type BoardFocus } from "./swarm-board-store";
 import { MAIN_AGENT_COLOR } from "./swarm-colors";
-import type { GraphMember, GraphPost } from "./swarm-graph";
-import { SwarmGraph } from "./SwarmGraph";
-import { AgentAvatar } from "./swarm-parts";
+import { SwarmFaces } from "./SwarmFaces";
 import { isActive, participantName, type TeamMember } from "./swarm-team";
 import { clockTime, useNow } from "./swarm-time";
 import { useAgentActivity } from "./use-agent-activity";
@@ -147,8 +150,8 @@ function useTrack() {
  * The Swarm Board pane: a root chat's Kilo Swarm as a live conversation.
  * Board shows the agents' posts as messages (sender → recipient · #n · time),
  * with what waits on the person (questions, permission prompts) answered in
- * place, failures, who is writing and when the swarm is done. Members shows
- * each agent and what it is doing; Graph who talks to whom. A conversation
+ * place, failures, who is writing and when the swarm is done. The Team row
+ * opens each agent and what it is doing. A conversation
  * pane (metadata names two agents) shows only their posts. The person never
  * posts: they answer prompts, stop agents, open transcripts or clear the board.
  */
@@ -408,6 +411,12 @@ function SwarmBoard({
 	const openSubagent = useOpenSubagentPane();
 	const track = useTrack();
 	const copyText = useShellCopyText();
+	const notifications = useDomainObject(NotificationPreferences);
+	const notifyNeedsYou =
+		useDomainObjectState(
+			NotificationPreferences,
+			(state: DomainObjectState<typeof NotificationPreferences>) => state.needsYou !== "off",
+		) ?? false;
 	const now = useNow();
 	const panes = useDomainObject(Panes);
 	const interactions = usePendingInteractions();
@@ -423,8 +432,6 @@ function SwarmBoard({
 	const [seenAtOpen] = useState(() => useSwarmBoardStore.getState().seen[rootChatId]);
 	const [confirmReset, setConfirmReset] = useState<number | null>(null);
 	const [confirmStopAll, setConfirmStopAll] = useState(false);
-	/** The feed, or who talks to whom (from the ⋯ menu). */
-	const [view, setView] = useState<"board" | "graph">("board");
 	/** The Team row is open, listing each agent and what it is doing. */
 	const [teamOpen, setTeamOpen] = useState(false);
 	const [copiedBoard, setCopiedBoard] = useState(false);
@@ -559,7 +566,6 @@ function SwarmBoard({
 
 	/** Shows a post: unfolds it, drops a filter hiding it, then scrolls to it. */
 	const jumpTo = (messageId: string) => {
-		setView("board");
 		if (filtering && !conversation && !shown.some((message) => message.id === messageId)) {
 			setFilter(EMPTY_FILTER);
 		}
@@ -592,7 +598,6 @@ function SwarmBoard({
 			jumpTo(focus.messageId);
 			return;
 		}
-		setView("board");
 		if (focus.kind === "agent") {
 			setFilter({ ...EMPTY_FILTER, agents: new Set([focus.chatId]) });
 			return;
@@ -619,7 +624,7 @@ function SwarmBoard({
 	// Read marks: posts at least half seen, in order, move the "seen" mark on.
 	useEffect(() => {
 		const list = listRef.current;
-		if (!list || !visible || filtering || view !== "board" || confirmReset !== null) return;
+		if (!list || !visible || filtering || confirmReset !== null) return;
 		const observer = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) {
@@ -654,7 +659,7 @@ function SwarmBoard({
 			mutations.disconnect();
 			observer.disconnect();
 		};
-	}, [visible, filtering, view, confirmReset, messages, markSeen, rootChatId]);
+	}, [visible, filtering, confirmReset, messages, markSeen, rootChatId]);
 
 	// New posts: follow the bottom when there, else keep the reading position and offer a jump.
 	useLayoutEffect(() => {
@@ -667,7 +672,7 @@ function SwarmBoard({
 			return remaining.length === current.length ? current : remaining;
 		});
 		if (previous.length === 0) {
-			if (visible && !filtering && view === "board") list.scrollTop = list.scrollHeight;
+			if (visible && !filtering) list.scrollTop = list.scrollHeight;
 			rememberPosition();
 			return;
 		}
@@ -675,11 +680,11 @@ function SwarmBoard({
 		const incoming = messages.filter(
 			(message) => !ids.has(message.id) && message.timestamp >= (previous.at(-1)?.timestamp ?? 0),
 		);
-		if (incoming.length > 0 && visible && following.current && !filtering && view === "board") {
+		if (incoming.length > 0 && visible && following.current && !filtering) {
 			list.scrollTop = list.scrollHeight;
 		} else {
 			const anchor = readingAnchor.current;
-			if (anchor?.element.isConnected && previous !== messages && view === "board")
+			if (anchor?.element.isConnected && previous !== messages)
 				list.scrollTop +=
 					anchor.element.getBoundingClientRect().top -
 					list.getBoundingClientRect().top -
@@ -690,7 +695,7 @@ function SwarmBoard({
 				]);
 		}
 		rememberPosition();
-	}, [messages, board.loading, filtering, rememberPosition, view, visible]);
+	}, [messages, board.loading, filtering, rememberPosition, visible]);
 
 	const loadOlder = () => {
 		rememberPosition();
@@ -856,13 +861,7 @@ function SwarmBoard({
 	const emptyBoard = () => {
 		if (working.length > 0) {
 			return emptyNote(
-				<span className="flex">
-					{workers.slice(0, 5).map((member, index) => (
-						<span key={member.chatId} className={index > 0 ? "-ms-2" : undefined}>
-							<AgentAvatar name={member.title} color={colorOf(member.chatId)} />
-						</span>
-					))}
-				</span>,
+				<SwarmFaces team={workers} colors={board.colors} />,
 				working.length === 1
 					? "1 agent is working quietly"
 					: `${working.length} agents are working quietly`,
@@ -978,21 +977,6 @@ function SwarmBoard({
 		</div>
 	);
 
-	const graphMembers: GraphMember[] = board.team.map((member) => ({
-		id: boardId(member),
-		name: member.main ? "Main agent" : member.title,
-		color: colorOf(member.chatId),
-		done: !member.main && !isActive(member.state),
-	}));
-	const graphPosts: GraphPost[] = messages.map((message) => ({
-		id: message.id,
-		seq: numbers.get(message.id) ?? 0,
-		from: message.from === rootChatId ? MAIN : message.from,
-		to: message.to === rootChatId ? MAIN : message.to,
-		type: message.type,
-		timestamp: message.timestamp,
-	}));
-
 	return (
 		<div className="bg-pane flex h-full min-h-0 flex-col overflow-hidden" data-qa-id="swarm-board">
 			<header className="flex shrink-0 items-center gap-2.5 px-6 pt-3.5 pb-2.5">
@@ -1029,14 +1013,14 @@ function SwarmBoard({
 					>
 						<EllipsisIcon />
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
+					<DropdownMenuContent align="end" className="min-w-64">
 						<DropdownMenuGroup>
 							<DropdownMenuItem
 								disabled={!panes}
 								onClick={openMain}
 								data-qa-id="swarm-board-open-chat"
 							>
-								<ArrowUpRightIcon />
+								<MessageSquareIcon />
 								Go to main chat
 							</DropdownMenuItem>
 							<DropdownMenuItem
@@ -1044,19 +1028,23 @@ function SwarmBoard({
 								disabled={shown.length === 0}
 								onClick={copyBoard}
 							>
-								{copiedBoard ? <CheckIcon /> : <ClipboardCopyIcon />}
+								{copiedBoard ? <CheckIcon /> : <CopyIcon />}
 								{filtering ? "Copy shown posts as Markdown" : "Copy board as Markdown"}
 							</DropdownMenuItem>
-							{conversation ? null : (
-								<DropdownMenuItem
-									disabled={messages.length === 0}
-									onClick={() => setView(view === "graph" ? "board" : "graph")}
-									data-qa-id="swarm-board-graph"
+							{notifications ? (
+								<DropdownMenuCheckboxItem
+									checked={notifyNeedsYou}
+									onCheckedChange={(checked) =>
+										void notifications.methods
+											.setMode({ cue: "needsYou", mode: checked ? "smart" : "off" })
+											.catch(() => toast.error("Could not change notifications"))
+									}
+									data-qa-id="swarm-board-notify"
 								>
-									<WaypointsIcon />
-									{view === "graph" ? "Back to the board" : "Who talks to whom"}
-								</DropdownMenuItem>
-							)}
+									<BellIcon />
+									Notify when an agent needs me
+								</DropdownMenuCheckboxItem>
+							) : null}
 						</DropdownMenuGroup>
 						{conversation ? null : (
 							<>
@@ -1067,7 +1055,7 @@ function SwarmBoard({
 										onClick={() => setConfirmStopAll(true)}
 										data-qa-id="swarm-board-stop-all"
 									>
-										<SquareIcon />
+										<SquareIcon className="fill-current" />
 										Stop all agents
 									</DropdownMenuItem>
 								</DropdownMenuGroup>
@@ -1170,12 +1158,10 @@ function SwarmBoard({
 									onShowPosts={(chatId) => {
 										setFilter({ ...EMPTY_FILTER, agents: new Set([chatId]) });
 										setTeamOpen(false);
-										setView("board");
 									}}
 									onOpenConversation={openConversation}
 									onShowQuestion={(chatId) => {
 										setTeamOpen(false);
-										setView("board");
 										setPendingReveal(questionSelector(chatId));
 									}}
 									onStop={stop}
@@ -1185,36 +1171,7 @@ function SwarmBoard({
 					</div>
 				</>
 			)}
-			{view === "graph" && !conversation ? (
-				<div
-					className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
-					data-qa-id="swarm-board-graph-view"
-				>
-					<div className="mb-3 flex items-center justify-between gap-2">
-						<h3 className="text-[13px] font-semibold">Who talks to whom</h3>
-						<Button
-							size="xs"
-							variant="ghost"
-							className="text-muted-foreground"
-							onClick={() => setView("board")}
-							data-qa-id="swarm-board-graph-back"
-						>
-							Back to the board
-						</Button>
-					</div>
-					<SwarmGraph
-						members={graphMembers}
-						posts={graphPosts}
-						onFilter={(id) => {
-							setFilter({ ...EMPTY_FILTER, agents: new Set([id]) });
-							setView("board");
-						}}
-						onOpen={openAgent}
-					/>
-				</div>
-			) : (
-				boardList
-			)}
+			{boardList}
 			<AlertDialog
 				open={confirmReset !== null}
 				onOpenChange={(value) => {

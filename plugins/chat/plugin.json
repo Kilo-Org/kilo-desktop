@@ -17,6 +17,7 @@
 		"kilo.work-sessions/work-sessions": "optional",
 		"kilo.work-sessions/panes": "optional",
 		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/notification-preferences": "optional",
 		"kilo.work-sessions/pane-kind": "optional",
 		"kilo.work-sessions/work-session-action": "optional",
 		"kilo.work-sessions/work-session-decoration": "optional",

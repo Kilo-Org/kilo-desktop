@@ -15,7 +15,12 @@ import {
 	ToolApproval,
 } from "../../../contracts";
 import { bootAgent, cleanUpAgents, eventually, tempDir } from "../../../test/agent/boot";
-import { desktopChat, FakeKiloChats, rawChat } from "../../../test/agent/fake-kilo-chats";
+import {
+	createdEvent,
+	desktopChat,
+	event,
+	FakeKiloChats,
+} from "../../../test/agent/fake-kilo-chats";
 import { FakeServer } from "../../../test/agent/fake-server";
 import { withWorktreeBranch } from ".";
 import type { CreateChatParams } from "./kilo-chat-client";
@@ -64,6 +69,7 @@ async function boot(
 	conversations.on("created", record("created"));
 	conversations.on("updated", record("updated"));
 	conversations.on("deleted", record("deleted"));
+	conversations.on("listed", () => events.push("listed"));
 	conversations.on("turn-started", record("turn-started"));
 	conversations.on("turn-ended", (payload) =>
 		events.push(`turn-ended ${payload.chatId}${payload.error ? ` ${payload.error.message}` : ""}`),
@@ -97,10 +103,29 @@ async function boot(
 	};
 }
 
-const status = (sessionID: string, type: string) => ({
-	type: "session.status",
-	properties: { sessionID, status: { type } },
-});
+const started = (sessionID: string) => event("session.execution.started", { sessionID });
+const succeeded = (sessionID: string) => event("session.execution.succeeded", { sessionID });
+const interrupted = (sessionID: string) =>
+	event("session.execution.interrupted", { sessionID, reason: "user" });
+const failed = (sessionID: string, message: string) =>
+	event("session.execution.failed", { sessionID, error: { type: "provider", message } });
+const renamed = (sessionID: string, title: string) =>
+	event("session.renamed", { sessionID, title });
+const drained = (sessionID: string, token: string) =>
+	event("rpc.kilocode.session-drain.drained", { sessionID, token });
+const questionForm = (id: string, sessionID: string) =>
+	event("form.created", {
+		form: { id, sessionID, title: "Questions", metadata: { kind: "question" } },
+	});
+
+/** Drops the event stream and waits until kilo.core has reconnected and read the list again. */
+async function reread(chats: FakeKiloChats, events: string[]) {
+	const listed = events.filter((name) => name === "listed").length;
+	chats.end();
+	await eventually(() =>
+		expect(events.filter((name) => name === "listed").length).toBeGreaterThan(listed),
+	);
+}
 
 describe("chat work completion", () => {
 	it.each(["ses_child", "ses_a"])(
@@ -108,32 +133,25 @@ describe("chat work completion", () => {
 		async (stopped) => {
 			const chats = new FakeKiloChats();
 			chats.chats = [desktopChat("ses_a"), desktopChat("ses_child", { parentId: "ses_a" })];
+			chats.running = ["ses_child"];
 			const { conversations, whenReady, state } = await boot({ chats });
 			await whenReady();
 			const completed: string[] = [];
 			conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
 
-			chats.push(status("ses_a", "busy"));
-			chats.push(status("ses_child", "busy"));
-			chats.push(status("ses_a", "idle"));
+			chats.push(started("ses_a"));
+			chats.push(succeeded("ses_a"));
 			await eventually(() => expect(chats.drainRequests).toHaveLength(1));
 			const request = chats.drainRequests[0]!;
 			expect(request).toMatchObject({ directory: "/projects/app", id: "ses_a" });
 			request.resolve();
 			await conversations.methods.abort({ id: stopped });
-			chats.push({ type: "session.drain.interrupted", properties: { sessionID: stopped } });
-			chats.push({
-				type: "session.error",
-				properties: { sessionID: stopped, error: { name: "MessageAbortedError" } },
-			});
-			chats.push(status("ses_child", "idle"));
+			chats.push(interrupted(stopped));
+			chats.push(succeeded("ses_child"));
 			await eventually(() => expect(state().chats.ses_child?.activity.status).toBe("idle"));
 			expect(completed).toEqual([]);
 
-			chats.push({
-				type: "session.drained",
-				properties: { sessionID: "ses_a", token: request.token },
-			});
+			chats.push(drained("ses_a", request.token));
 			await eventually(() => expect(completed).toEqual(["ses_a"]));
 			expect(chats.drainRequests).toHaveLength(1);
 		},
@@ -146,24 +164,20 @@ describe("chat work completion", () => {
 		await whenReady();
 		const completed: string[] = [];
 		conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
-		chats.push(status("ses_a", "busy"));
-		chats.push(status("ses_a", "idle"));
+		chats.push(started("ses_a"));
+		chats.push(succeeded("ses_a"));
 		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
 		const first = chats.drainRequests[0]!;
 		first.resolve();
 		for (let report = 0; report < 2; report++) {
-			chats.push(status("ses_a", "busy"));
-			chats.push(status("ses_a", "idle"));
+			chats.push(started("ses_a"));
+			chats.push(succeeded("ses_a"));
 		}
-		const ack = { type: "session.drained", properties: { sessionID: "ses_a", token: first.token } };
-		chats.push(ack);
-		chats.push(ack);
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Finished" })) },
-		});
+		chats.push(drained("ses_a", first.token));
+		chats.push(drained("ses_a", first.token));
+		chats.push(renamed("ses_a", "Finished"));
 		await eventually(() => expect(state().chats.ses_a?.title).toBe("Finished"));
-		expect(events.filter((event) => event === "turn-ended ses_a")).toHaveLength(3);
+		expect(events.filter((name) => name === "turn-ended ses_a")).toHaveLength(3);
 		expect(chats.drainRequests).toHaveLength(1);
 		expect(completed).toEqual(["ses_a"]);
 	});
@@ -175,25 +189,19 @@ describe("chat work completion", () => {
 		await whenReady();
 		const completed: string[] = [];
 		conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
-		chats.push(status("ses_a", "busy"));
-		chats.push(status("ses_a", "idle"));
+		chats.push(started("ses_a"));
+		chats.push(succeeded("ses_a"));
 		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
 		const first = chats.drainRequests[0]!;
-		chats.push(status("ses_a", "busy"));
-		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Still working" })) },
-		});
+		chats.push(started("ses_a"));
+		chats.push(drained("ses_a", first.token));
+		chats.push(renamed("ses_a", "Still working"));
 		await eventually(() => expect(state().chats.ses_a?.title).toBe("Still working"));
 		expect(completed).toEqual([]);
 		expect(first.signal.aborted).toBe(true);
-		chats.push(status("ses_a", "idle"));
+		chats.push(succeeded("ses_a"));
 		await eventually(() => expect(chats.drainRequests).toHaveLength(2));
-		chats.push({
-			type: "session.drained",
-			properties: { sessionID: "ses_a", token: chats.drainRequests[1]!.token },
-		});
+		chats.push(drained("ses_a", chats.drainRequests[1]!.token));
 		await eventually(() => expect(completed).toEqual(["ses_a"]));
 	});
 
@@ -206,20 +214,15 @@ describe("chat work completion", () => {
 			await whenReady();
 			const completed: string[] = [];
 			conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
-			chats.push(status("ses_a", "busy"));
-			chats.push(status("ses_a", "idle"));
+			chats.push(started("ses_a"));
+			chats.push(succeeded("ses_a"));
 			await eventually(() => expect(chats.drainRequests).toHaveLength(1));
 			const request = chats.drainRequests[0]!;
-			if (cause === "turn error" || cause === "late error") {
-				if (cause === "turn error") chats.push(status("ses_a", "busy"));
-				chats.push({
-					type: "session.error",
-					properties: {
-						sessionID: "ses_a",
-						error: { name: "APIError", data: { message: "Failed" } },
-					},
-				});
-				chats.push(status("ses_a", "idle"));
+			if (cause === "turn error") {
+				chats.push(started("ses_a"));
+				chats.push(failed("ses_a", "Failed"));
+			} else if (cause === "late error") {
+				chats.push(failed("ses_a", "Failed"));
 			} else if (cause === "deletion") {
 				await conversations.methods.delete({ id: "ses_a" });
 			} else if (cause === "server stop") {
@@ -231,10 +234,7 @@ describe("chat work completion", () => {
 				request.reject(new Error("drain refused"));
 			}
 			await eventually(() => expect(request.signal.aborted).toBe(true));
-			chats.push({
-				type: "session.drained",
-				properties: { sessionID: "ses_a", token: request.token },
-			});
+			chats.push(drained("ses_a", request.token));
 			if (cause === "server stop") {
 				await kernel.kernelSdk.domainObjects
 					.get(KernelServices)!
@@ -242,10 +242,7 @@ describe("chat work completion", () => {
 				await whenReady();
 			}
 			if (cause !== "disposal") {
-				chats.push({
-					type: "session.updated",
-					properties: { info: rawChat(desktopChat("ses_marker", { title: "Observed" })) },
-				});
+				chats.push(renamed("ses_marker", "Observed"));
 				await eventually(() => expect(state().chats.ses_marker?.title).toBe("Observed"));
 			}
 			expect(completed).toEqual([]);
@@ -256,14 +253,14 @@ describe("chat work completion", () => {
 	it("rearms only pending live work after reconnect hydration and ignores the old token", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a"), desktopChat("ses_startup")];
-		chats.statusMap = { ses_startup: { type: "busy" } };
+		chats.running = ["ses_startup"];
 		const { conversations, whenReady, state } = await boot({ chats });
 		await whenReady();
 		const completed: string[] = [];
 		conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
 		expect(chats.drainRequests).toEqual([]);
-		chats.push(status("ses_a", "busy"));
-		chats.push(status("ses_a", "idle"));
+		chats.push(started("ses_a"));
+		chats.push(succeeded("ses_a"));
 		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
 		const first = chats.drainRequests[0]!;
 		let releaseHydration = () => {};
@@ -277,7 +274,7 @@ describe("chat work completion", () => {
 		await eventually(() => expect(chats.subscriptions).toBe(2));
 		expect(first.signal.aborted).toBe(true);
 		expect(chats.drainRequests).toHaveLength(1);
-		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
+		chats.push(drained("ses_a", first.token));
 		releaseHydration();
 		await eventually(() => expect(chats.drainRequests).toHaveLength(2));
 		const second = chats.drainRequests[1]!;
@@ -285,18 +282,12 @@ describe("chat work completion", () => {
 		expect(second.token).not.toBe(first.token);
 		second.resolve();
 		first.reject(new Error("old transport failed"));
-		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Reconnected" })) },
-		});
+		chats.push(drained("ses_a", first.token));
+		chats.push(renamed("ses_a", "Reconnected"));
 		await eventually(() => expect(state().chats.ses_a?.title).toBe("Reconnected"));
 		expect(completed).toEqual([]);
 		expect(second.signal.aborted).toBe(false);
-		chats.push({
-			type: "session.drained",
-			properties: { sessionID: "ses_a", token: second.token },
-		});
+		chats.push(drained("ses_a", second.token));
 		await eventually(() => expect(completed).toEqual(["ses_a"]));
 	});
 });
@@ -318,24 +309,30 @@ describe("following the server's chats", () => {
 			workspaceId: "w1",
 			activity: { status: "idle", pendingPermissionIds: [], pendingQuestionIds: [] },
 		});
-		expect(events).toEqual([]);
+		await eventually(() => expect(events).toEqual(["listed"]));
 	});
 
-	it("reads what is running and waiting when it connects", async () => {
+	it("reads what is running and what running chats wait on when it connects", async () => {
 		const chats = new FakeKiloChats();
-		chats.chats = [desktopChat("ses_a"), desktopChat("ses_b")];
-		chats.statusMap = { ses_a: { type: "busy" } };
-		chats.permissions = [{ id: "per_1", sessionID: "ses_b" }];
-		chats.questions = [{ id: "que_1", sessionID: "ses_b" }];
+		chats.chats = [desktopChat("ses_a"), desktopChat("ses_b"), desktopChat("ses_c")];
+		chats.running = ["ses_a", "ses_b"];
+		chats.permissions.ses_b = [
+			{ id: "per_1", chatId: "ses_b", action: "shell", resources: ["ls"], metadata: {} },
+		];
+		chats.questions.ses_b = ["frm_1"];
 
 		const { state, whenReady } = await boot({ chats });
 		await whenReady();
 
 		expect(state().chats.ses_a?.activity).toMatchObject({ status: "busy" });
 		expect(state().chats.ses_b?.activity).toMatchObject({
+			status: "busy",
 			pendingPermissionIds: ["per_1"],
-			pendingQuestionIds: ["que_1"],
+			pendingQuestionIds: ["frm_1"],
 		});
+		expect(state().chats.ses_c?.activity.status).toBe("idle");
+		// Only running chats can wait on a prompt.
+		expect(chats.reads).not.toContain("permissions ses_c");
 	});
 
 	it("announces live changes, turns and prompts", async () => {
@@ -343,46 +340,83 @@ describe("following the server's chats", () => {
 		chats.chats = [desktopChat("ses_a")];
 		const { state, whenReady, events } = await boot({ chats });
 		await whenReady();
+		events.length = 0;
 
-		chats.push({ type: "session.created", properties: { info: rawChat(desktopChat("ses_b")) } });
-		chats.push({
-			type: "session.updated",
-			properties: { info: rawChat(desktopChat("ses_a", { title: "Renamed", updatedAt: 300 })) },
-		});
-		chats.push(status("ses_a", "busy"));
-		chats.push({ type: "permission.asked", properties: { id: "per_1", sessionID: "ses_a" } });
-		chats.push({
-			type: "permission.replied",
-			properties: { requestID: "per_1", sessionID: "ses_a" },
-		});
-		chats.push({ type: "question.asked", properties: { id: "que_1", sessionID: "ses_a" } });
-		chats.push({
-			type: "question.rejected",
-			properties: { requestID: "que_1", sessionID: "ses_a" },
-		});
-		chats.push({
-			type: "session.error",
-			properties: { sessionID: "ses_a", error: { name: "APIError", data: { message: "Down" } } },
-		});
-		chats.push(status("ses_a", "idle"));
-		chats.push({ type: "session.deleted", properties: { info: rawChat(desktopChat("ses_b")) } });
+		chats.push(createdEvent(desktopChat("ses_b")));
+		chats.push(renamed("ses_a", "Renamed"));
+		chats.push(started("ses_a"));
+		chats.push(event("permission.asked", { id: "per_1", sessionID: "ses_a", action: "shell" }));
+		chats.push(
+			event("permission.replied", { requestID: "per_1", sessionID: "ses_a", reply: "once" }),
+		);
+		chats.push(questionForm("frm_1", "ses_a"));
+		chats.push(
+			event("form.created", { form: { id: "frm_other", sessionID: "ses_a", metadata: {} } }),
+		);
+		chats.push(event("form.cancelled", { id: "frm_1", sessionID: "ses_a" }));
+		chats.push(failed("ses_a", "Down"));
+		chats.push(event("session.deleted", { sessionID: "ses_b" }));
 
 		await eventually(() => expect(events).toContain("deleted ses_b"));
 		expect(state().chats.ses_b).toBeUndefined();
-		expect(events.filter((event) => !event.startsWith("updated"))).toEqual([
+		expect(events.filter((name) => !name.startsWith("updated"))).toEqual([
 			"created ses_b",
 			"turn-started ses_a",
 			"permission-requested ses_a per_1",
 			"permission-resolved ses_a per_1",
-			"question-requested ses_a que_1",
-			"question-resolved ses_a que_1",
+			"question-requested ses_a frm_1",
+			"question-resolved ses_a frm_1",
 			"turn-ended ses_a Down",
 			"deleted ses_b",
 		]);
 		expect(state().chats.ses_a).toMatchObject({
 			title: "Renamed",
-			activity: { status: "idle", lastError: { name: "APIError", message: "Down" } },
+			activity: { status: "idle", lastError: { name: "provider", message: "Down" } },
 		});
+	});
+
+	it("follows a retry until the next step starts, as one turn", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { state, whenReady, events } = await boot({ chats });
+		await whenReady();
+
+		chats.push(started("ses_a"));
+		chats.push(event("session.retry.scheduled", { sessionID: "ses_a", attempt: 1 }));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("retry"));
+		const since = state().chats.ses_a?.activity.workingSince;
+		chats.push(event("session.step.started", { sessionID: "ses_a" }));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		chats.push(succeeded("ses_a"));
+
+		await eventually(() => expect(events).toContain("turn-ended ses_a"));
+		expect(state().chats.ses_a?.activity.workingSince).toBeUndefined();
+		expect(since).toEqual(expect.any(Number));
+		expect(events.filter((name) => name === "turn-started ses_a")).toHaveLength(1);
+	});
+
+	it("follows archiving, metadata and moves", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { state, whenReady } = await boot({ chats });
+		await whenReady();
+
+		chats.push(event("session.archived", { sessionID: "ses_a" }, { created: 5_000 }));
+		await eventually(() => expect(state().chats.ses_a?.archivedAt).toBe(5_000));
+		chats.push(event("session.unarchived", { sessionID: "ses_a" }));
+		chats.push(
+			event("session.metadata.updated", {
+				sessionID: "ses_a",
+				metadata: { "kilo-desktop": { workspaceId: "w2" } },
+			}),
+		);
+		chats.push(
+			event("session.moved", { sessionID: "ses_a", location: { directory: "/projects/b" } }),
+		);
+
+		await eventually(() => expect(state().chats.ses_a?.directory).toBe("/projects/b"));
+		expect(state().chats.ses_a).toMatchObject({ workspaceId: "w2" });
+		expect(state().chats.ses_a).not.toHaveProperty("archivedAt");
 	});
 
 	it("reopens a dropped stream and reads everything again, announcing what changed", async () => {
@@ -390,31 +424,48 @@ describe("following the server's chats", () => {
 		chats.chats = [desktopChat("ses_a")];
 		const { state, whenReady, events } = await boot({ chats });
 		await whenReady();
-		chats.push(status("ses_a", "busy"));
-		chats.push({
-			type: "session.status",
-			properties: { sessionID: "ses_far", status: { type: "busy" } },
-			directory: "/projects/other",
-		});
+		chats.push(started("ses_a"));
+		chats.push(event("permission.asked", { id: "per_far", sessionID: "ses_far" }));
 		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-		const listed = chats.listCalls;
 
 		chats.chats.push(desktopChat("ses_new"));
-		chats.statusMap = {};
-		chats.byDirectory["/projects/other"] = {
-			permissions: [{ id: "per_far", sessionID: "ses_far" }],
-		};
-		chats.end();
+		chats.running = ["ses_far"];
+		chats.permissions.ses_far = [
+			{ id: "per_far", chatId: "ses_far", action: "shell", resources: [], metadata: {} },
+		];
+		await reread(chats, events);
 
-		await eventually(() => expect(chats.listCalls).toBe(listed + 1));
-		await eventually(() => expect(state().chats.ses_new).toBeDefined());
+		expect(state().chats.ses_new).toBeDefined();
 		expect(chats.subscriptions).toBe(2);
 		expect(state().ready).toBe(true);
 		expect(state().chats.ses_a?.activity.status).toBe("idle");
-		expect(chats.reads).toContain("permissions /projects/other");
+		expect(chats.reads).toContain("permissions ses_far");
 		expect(chats.reads).toContain("get ses_far");
 		expect(events).toContain("created ses_new");
-		expect(events.filter((event) => event.startsWith("turn-ended"))).toEqual([]);
+		expect(events.filter((name) => name.startsWith("turn-ended"))).toEqual([]);
+	});
+
+	it("keeps a chat renamed while the list was being read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { state, whenReady, events } = await boot({ chats });
+		await whenReady();
+		let releaseList = () => {};
+		const list = chats.listChats.bind(chats);
+		chats.listChats = async () => {
+			const rows = await list();
+			await new Promise<void>((resolve) => (releaseList = resolve));
+			return rows;
+		};
+		chats.end();
+		await eventually(() => expect(chats.subscriptions).toBe(2));
+		chats.push(renamed("ses_a", "Renamed meanwhile"));
+		await eventually(() => expect(state().chats.ses_a?.title).toBe("Renamed meanwhile"));
+		chats.listChats = list;
+		releaseList();
+
+		await eventually(() => expect(events.filter((name) => name === "listed")).toHaveLength(2));
+		expect(state().chats.ses_a?.title).toBe("Renamed meanwhile");
 	});
 
 	it("keeps trying while the list can't be read", async () => {
@@ -431,12 +482,30 @@ describe("following the server's chats", () => {
 		expect(state().chats.ses_a).toBeDefined();
 	});
 
+	it("keeps what it knew about a waiting chat whose prompts can't be read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { state, whenReady, events } = await boot({ chats });
+		await whenReady();
+		chats.push(started("ses_a"));
+		chats.push(event("permission.asked", { id: "per_1", sessionID: "ses_a" }));
+		await eventually(() =>
+			expect(state().chats.ses_a?.activity.pendingPermissionIds).toEqual(["per_1"]),
+		);
+		chats.running = ["ses_a"];
+		chats.failing.add("permissionRequests");
+
+		await reread(chats, events);
+
+		expect(state().chats.ses_a?.activity.pendingPermissionIds).toEqual(["per_1"]);
+	});
+
 	it("settles activity while the server is down, and reads again when it is back", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a")];
 		const { kernel, state, whenReady, server } = await boot({ chats });
 		await whenReady();
-		chats.push(status("ses_a", "busy"));
+		chats.push(started("ses_a"));
 		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
 		const listed = chats.listCalls;
 
@@ -456,9 +525,10 @@ describe("following the server's chats", () => {
 		chats.chats = [desktopChat("ses_a")];
 		const { state, whenReady, events } = await boot({ chats });
 		await whenReady();
+		events.length = 0;
 		chats.chats.push(desktopChat("ses_sub", { parentId: "ses_a", metadata: {} }));
 
-		chats.push({ type: "permission.asked", properties: { id: "per_1", sessionID: "ses_sub" } });
+		chats.push(event("permission.asked", { id: "per_1", sessionID: "ses_sub" }));
 
 		await eventually(() => expect(state().chats.ses_sub).toBeDefined());
 		expect(state().chats.ses_sub).toMatchObject({
@@ -469,16 +539,27 @@ describe("following the server's chats", () => {
 		expect(events).toEqual(["created ses_sub", "permission-requested ses_sub per_1"]);
 	});
 
+	it("lists a subagent the server announces with its parent", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { state, whenReady } = await boot({ chats });
+		await whenReady();
+
+		chats.push(createdEvent(desktopChat("ses_sub", { parentId: "ses_a", metadata: {} })));
+
+		await eventually(() => expect(state().chats.ses_sub).toMatchObject({ parentId: "ses_a" }));
+	});
+
 	it("looks a subagent up again after the stream reopens, not waiting on the dropped stream's lookup", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a")];
 		const { state, whenReady } = await boot({ chats });
 		await whenReady();
 		chats.chats.push(desktopChat("ses_sub", { parentId: "ses_a", metadata: {} }));
-		chats.permissions = [{ id: "per_1", sessionID: "ses_sub" }];
-		// The server lists root chats only; a subagent's is looked up.
-		const listChats = chats.listChats.bind(chats);
-		chats.listChats = async () => (await listChats()).filter((chat) => chat.parentId === null);
+		chats.running = ["ses_sub"];
+		chats.permissions.ses_sub = [
+			{ id: "per_1", chatId: "ses_sub", action: "shell", resources: [], metadata: {} },
+		];
 		const getChat = chats.getChat.bind(chats);
 		let lookups = 0;
 		chats.getChat = (id) => {
@@ -487,11 +568,27 @@ describe("following the server's chats", () => {
 			return lookups === 1 ? new Promise(() => {}) : getChat(id);
 		};
 
-		chats.push({ type: "permission.asked", properties: { id: "per_1", sessionID: "ses_sub" } });
+		chats.push(event("permission.asked", { id: "per_1", sessionID: "ses_sub" }));
 		await eventually(() => expect(lookups).toBe(1));
 		chats.end();
 
 		await eventually(() => expect(state().chats.ses_sub).toMatchObject({ parentId: "ses_a" }));
+	});
+
+	it("tells which chats the server doesn't have", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a"), desktopChat("ses_sub", { parentId: "ses_a" })];
+		const { conversations, whenReady } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.findMissing({ ids: ["ses_a", "ses_sub", "ses_gone", "ses_gone"] }),
+		).resolves.toEqual({ missing: ["ses_gone"] });
+		chats.failing.add("getChat");
+		await expect(conversations.methods.findMissing({ ids: ["ses_unsure"] })).resolves.toEqual({
+			missing: [],
+		});
+		expect(chats.reads.filter((read) => read === "get ses_a")).toEqual([]);
 	});
 });
 
@@ -554,6 +651,7 @@ describe("creating chats", () => {
 			],
 		});
 		await whenReady();
+		events.length = 0;
 
 		const chat = await conversations.methods.create({
 			directory: "/projects/app",
@@ -571,8 +669,8 @@ describe("creating chats", () => {
 
 		const [created] = chats.writes;
 		expect(created?.call).toBe("create");
-		expect(created?.directory).toBe("/projects/app");
-		expect(created?.args[0]).toEqual({
+		expect(created?.args[0]).toBe("/projects/app");
+		expect(created?.args[1]).toEqual({
 			title: "Fix login",
 			agent: "code",
 			model: { providerID: "kilo", id: "m1", variant: "high" },
@@ -588,7 +686,7 @@ describe("creating chats", () => {
 				},
 				"kilocode.sandbox": { enabled: false, version: 0 },
 			},
-			permission: [
+			permissions: [
 				{ action: "external_directory", resource: "/projects/lib", effect: "allow" },
 				{ action: "external_directory", resource: "/projects/lib/*", effect: "allow" },
 				{ action: "shell", resource: "*conda install*", effect: "ask" },
@@ -608,6 +706,27 @@ describe("creating chats", () => {
 		expect(events).toEqual([`created ${chat.id}`]);
 	});
 
+	it("keeps a chat created while the list was being read", async () => {
+		const chats = new FakeKiloChats();
+		const { conversations, state, whenReady, events } = await boot({ chats });
+		await whenReady();
+		let releaseList = () => {};
+		const list = chats.listChats.bind(chats);
+		chats.listChats = async () => {
+			const rows = await list();
+			await new Promise<void>((resolve) => (releaseList = resolve));
+			return rows;
+		};
+		chats.end();
+		await eventually(() => expect(chats.subscriptions).toBe(2));
+		const chat = await conversations.methods.create({ directory: "/tmp" });
+		chats.listChats = list;
+		releaseList();
+
+		await eventually(() => expect(events.filter((name) => name === "listed")).toHaveLength(2));
+		expect(state().chats[chat.id]).toBeDefined();
+	});
+
 	it("asks before tools tool-approval wants asked about, and stamps an unscoped chat", async () => {
 		const { conversations, chats } = await boot({
 			plugins: [shapingPlugin({ approve: () => ({ ask: "Check first." }) })],
@@ -615,9 +734,9 @@ describe("creating chats", () => {
 
 		await conversations.methods.create({ directory: "/tmp" });
 
-		const params = chats.writes[0]?.args[0] as CreateChatParams;
+		const params = chats.writes[0]?.args[1] as CreateChatParams;
 		expect(params.metadata?.["kilo-desktop"]).toEqual({});
-		const asked = params.permission?.filter(
+		const asked = params.permissions?.filter(
 			(rule) => rule.effect === "ask" && rule.action !== "shell",
 		);
 		expect(asked).toHaveLength(3);
@@ -628,9 +747,9 @@ describe("creating chats", () => {
 
 		await conversations.methods.create({});
 
-		const directory = chats.writes[0]?.directory;
-		expect(path.basename(path.dirname(directory ?? ""))).toBe("chats");
-		expect(path.basename(directory ?? "")).toMatch(/^session-/);
+		const directory = chats.writes[0]?.args[0] as string;
+		expect(path.basename(path.dirname(directory))).toBe("chats");
+		expect(path.basename(directory)).toMatch(/^session-/);
 	});
 
 	it("creates chats without rules when nothing asks for any", async () => {
@@ -638,7 +757,7 @@ describe("creating chats", () => {
 
 		await conversations.methods.create({ directory: "/tmp" });
 
-		expect(chats.writes[0]?.args[0]).not.toHaveProperty("permission");
+		expect(chats.writes[0]?.args[1]).not.toHaveProperty("permissions");
 	});
 
 	it("gathers chat config for the chat's prompts", async () => {
@@ -658,7 +777,7 @@ describe("creating chats", () => {
 		});
 	});
 
-	it("reads a chat's permission requests from its directory", async () => {
+	it("reads a chat's permission requests", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a", { directory: "/projects/a" })];
 		const request = (id: string, chatId: string) => ({
@@ -668,10 +787,7 @@ describe("creating chats", () => {
 			resources: ["ls"],
 			metadata: { interactive: true },
 		});
-		chats.permissionRequestsByDirectory["/projects/a"] = [
-			request("per_1", "ses_a"),
-			request("per_2", "ses_other"),
-		];
+		chats.permissions.ses_a = [request("per_1", "ses_a"), request("per_2", "ses_other")];
 		const { conversations, whenReady } = await boot({ chats });
 		await whenReady();
 
@@ -683,7 +799,7 @@ describe("creating chats", () => {
 	it("names the app's tool a permission request is for", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a", { directory: "/projects/a" })];
-		chats.permissionRequestsByDirectory["/projects/a"] = [
+		chats.permissions.ses_a = [
 			{
 				id: "per_1",
 				chatId: "ses_a",
@@ -714,14 +830,16 @@ describe("creating chats", () => {
 });
 
 describe("acting on chats", () => {
-	it("writes to each chat's own directory", async () => {
+	it("renames, stops, archives, answers and deletes chats by id", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a", { directory: "/projects/a" })];
 		const { conversations, whenReady, state, events } = await boot({ chats });
 		await whenReady();
+		events.length = 0;
 
 		await conversations.methods.rename({ id: "ses_a", title: "Renamed" });
 		await conversations.methods.abort({ id: "ses_a" });
+		await conversations.methods.setArchived({ id: "ses_a", archived: true });
 		await conversations.methods.setArchived({ id: "ses_a", archived: false });
 		await conversations.methods.replyPermission({
 			chatId: "ses_a",
@@ -730,22 +848,21 @@ describe("acting on chats", () => {
 		});
 		await conversations.methods.replyQuestion({
 			chatId: "ses_a",
-			questionId: "que_1",
+			questionId: "frm_1",
 			answers: [["Yes"]],
 		});
-		await conversations.methods.rejectQuestion({ chatId: "ses_a", questionId: "que_2" });
+		await conversations.methods.rejectQuestion({ chatId: "ses_a", questionId: "frm_2" });
 		await conversations.methods.delete({ id: "ses_a" });
-		await conversations.methods.delete({ id: "ses_unknown" });
 
-		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
-			["update", "/projects/a", ["ses_a", { title: "Renamed" }]],
-			["abort", "/projects/a", ["ses_a"]],
-			["update", "/projects/a", ["ses_a", { archived: null }]],
-			["replyPermission", "/projects/a", ["per_1", "always", undefined]],
-			["replyQuestion", "/projects/a", ["que_1", [["Yes"]]]],
-			["rejectQuestion", "/projects/a", ["que_2"]],
-			["delete", "/projects/a", ["ses_a"]],
-			["delete", "/home", ["ses_unknown"]],
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
+			["update", ["ses_a", { title: "Renamed" }]],
+			["interrupt", ["ses_a"]],
+			["update", ["ses_a", { archived: true }]],
+			["update", ["ses_a", { archived: false }]],
+			["replyPermission", ["ses_a", "per_1", "always", undefined]],
+			["replyQuestion", ["ses_a", "frm_1", [["Yes"]]]],
+			["rejectQuestion", ["ses_a", "frm_2"]],
+			["delete", ["ses_a"]],
 		]);
 		expect(state().chats.ses_a).toBeUndefined();
 		expect(events).toEqual(["deleted ses_a"]);
@@ -770,10 +887,10 @@ describe("acting on chats", () => {
 			snoop.replyPermission({ chatId: "ses_a", permissionId: "per_1", decision: "always" }),
 		).rejects.toMatchObject(denied);
 		await expect(
-			snoop.replyQuestion({ chatId: "ses_a", questionId: "que_1", answers: [["Yes"]] }),
+			snoop.replyQuestion({ chatId: "ses_a", questionId: "frm_1", answers: [["Yes"]] }),
 		).rejects.toMatchObject(denied);
 		await expect(
-			snoop.rejectQuestion({ chatId: "ses_a", questionId: "que_1" }),
+			snoop.rejectQuestion({ chatId: "ses_a", questionId: "frm_1" }),
 		).rejects.toMatchObject(denied);
 		await as("kilo.chat").methods.replyPermission({
 			chatId: "ses_a",
@@ -782,11 +899,11 @@ describe("acting on chats", () => {
 		});
 
 		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
-			["replyPermission", ["per_1", "once", undefined]],
+			["replyPermission", ["ses_a", "per_1", "once", undefined]],
 		]);
 	});
 
-	it("sends kilo.chat's prompts and slash commands to the chat's directory, in the server's shape", async () => {
+	it("sends kilo.chat's prompts and slash commands in v2's shape", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a", { directory: "/projects/a" })];
 		const { kernel, whenReady } = await boot({
@@ -806,6 +923,7 @@ describe("acting on chats", () => {
 				url: "data:image/png;base64,AAAA",
 				filename: "a.png",
 			},
+			{ type: "text" as const, text: "and the logout" },
 			{ type: "file" as const, mime: "text/plain", url: "file:///projects/a/notes.txt" },
 		];
 
@@ -827,31 +945,32 @@ describe("acting on chats", () => {
 			model: { aiProviderId: "acme", modelId: "fast-1" },
 		});
 
-		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
 			[
 				"prompt",
-				"/projects/a",
 				[
 					"ses_a",
 					{
-						parts,
+						text: "Fix the login\n\nand the logout",
+						files: [
+							{ uri: "data:image/png;base64,AAAA", name: "a.png" },
+							{ uri: "file:///projects/a/notes.txt" },
+						],
 						agent: "code",
-						model: { providerID: "acme", modelID: "fast-1" },
-						variant: "high",
-						system: "Primary folder: /projects/a",
+						model: { providerID: "acme", id: "fast-1", variant: "high" },
+						metadata: { "kilo-desktop": { system: "Primary folder: /projects/a" } },
 					},
 				],
 			],
 			[
 				"command",
-				"/projects/a",
 				[
 					"ses_a",
 					{
-						command: "review",
-						arguments: "the diff",
+						name: "review",
+						text: "the diff",
 						agent: "code",
-						model: { providerID: "acme", modelID: "fast-1" },
+						model: { providerID: "acme", id: "fast-1" },
 					},
 				],
 			],
@@ -878,32 +997,25 @@ describe("acting on chats", () => {
 				}),
 		).rejects.toMatchObject({ code: "UNAVAILABLE", message: "Could not send the prompt: offline" });
 	});
-
-	it("archives with the time it happened", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [desktopChat("ses_a")];
-		const { conversations, whenReady } = await boot({ chats });
-		await whenReady();
-
-		await conversations.methods.setArchived({ id: "ses_a", archived: true });
-
-		expect(chats.writes[0]?.args[1]).toEqual({ archived: expect.any(Number) });
-	});
 });
 
 describe("one structured answer", () => {
 	const request = {
 		directory: "/projects/app",
-		title: "Generate commit message",
-		system: "Write a commit subject.",
+		title: "Generate PR",
+		system: "Write a PR title.",
 		prompt: "Patch: …",
-		schema: { type: "object", properties: { message: { type: "string" } } },
+		schema: {
+			type: "object",
+			required: ["title"],
+			properties: { title: { type: "string", maxLength: 20 } },
+		},
 	};
 
-	it("asks a throwaway chat that may only answer, then deletes it without listing it", async () => {
+	it("asks one stateless reply with the schema in the prompt, creating no chat", async () => {
 		const chats = new FakeKiloChats();
-		chats.chats = [desktopChat("ses_a")];
-		const { generation, whenReady, state, events } = await boot({ chats });
+		chats.replies = ['Here you go:\n```json\n{"title":"Fix it"}\n```'];
+		const { generation, whenReady, state } = await boot({ chats });
 		await whenReady();
 
 		const answer = await generation.methods.generate({
@@ -911,68 +1023,62 @@ describe("one structured answer", () => {
 			model: { aiProviderId: "kilo", modelId: "fast", variant: "low" },
 		});
 
-		expect(answer).toEqual({ message: "Fix it" });
-		const [create, prompt, remove] = chats.writes;
-		expect(create).toMatchObject({ call: "create", directory: "/projects/app" });
-		const params = create?.args[0] as CreateChatParams;
-		expect(params.metadata).toBeUndefined();
-		expect(params.title).toBe("Generate commit message");
-		expect(params.permission).toEqual([
-			{ action: "*", resource: "*", effect: "deny" },
-			{ action: "StructuredOutput", resource: "*", effect: "allow" },
-		]);
-		expect(prompt).toEqual({
-			call: "promptStructured",
-			directory: "/projects/app",
-			args: [
-				"ses_new_1",
-				{
-					system: request.system,
-					text: request.prompt,
-					schema: request.schema,
-					model: { providerID: "kilo", modelID: "fast", variant: "low" },
-				},
-			],
-		});
-		expect(remove).toEqual({ call: "delete", directory: "/projects/app", args: ["ses_new_1"] });
-
-		// A late announcement of the throwaway chat, already deleted.
-		const throwaway = desktopChat("ses_new_1", {
-			title: "Generate commit message",
-			metadata: null,
-		});
-		chats.push({ type: "session.created", properties: { info: rawChat(throwaway) } });
-		// The stream consumes the announcement on the next tick; it must not publish.
-		await new Promise((resolve) => setImmediate(resolve));
-		expect(Object.keys(state().chats)).toEqual(["ses_a"]);
-		expect(events).toEqual([]);
+		expect(answer).toEqual({ title: "Fix it" });
+		expect(chats.writes).toHaveLength(1);
+		const [prompt, model] = chats.writes[0]!.args as [string, unknown];
+		expect(chats.writes[0]?.call).toBe("generateText");
+		expect(prompt).toContain("Write a PR title.\n\nPatch: …");
+		expect(prompt).toContain(JSON.stringify(request.schema));
+		expect(model).toEqual({ providerID: "kilo", id: "fast", variant: "low" });
+		expect(state().chats).toEqual({});
 	});
 
-	it("uses the server's model when none is given", async () => {
+	it("asks once more when the reply doesn't match the schema", async () => {
+		const chats = new FakeKiloChats();
+		chats.replies = ['{"title":"Far too long for the schema"}', '{"title":"Fix it"}'];
+		const { generation, whenReady } = await boot({ chats });
+		await whenReady();
+
+		await expect(generation.methods.generate(request)).resolves.toEqual({ title: "Fix it" });
+		expect(chats.writes.filter(({ call }) => call === "generateText")).toHaveLength(2);
+		expect(chats.writes[0]?.args[1]).toBeUndefined();
+	});
+
+	it("gives up after a second answer that isn't one", async () => {
+		const chats = new FakeKiloChats();
+		chats.replies = ["just text"];
+		const { generation, whenReady } = await boot({ chats });
+		await whenReady();
+
+		await expect(generation.methods.generate(request)).rejects.toMatchObject({
+			code: "BUSINESS",
+			message: "The model did not return a structured answer.",
+		});
+		expect(chats.writes).toHaveLength(2);
+		chats.failing.add("generateText");
+		await expect(generation.methods.generate(request)).rejects.toThrow(
+			"Could not get an answer: offline",
+		);
+	});
+
+	it("writes commit messages with Kilo's generator", async () => {
 		const chats = new FakeKiloChats();
 		const { generation, whenReady } = await boot({ chats });
 		await whenReady();
 
-		await generation.methods.generate(request);
+		await expect(
+			generation.methods.generateCommitMessage({ directory: "/projects/app" }),
+		).resolves.toEqual({ message: "Fix login" });
+		expect(chats.writes).toEqual([{ call: "generateCommitMessage", args: ["/projects/app"] }]);
 
-		expect(chats.writes[1]?.args[1]).not.toHaveProperty("model");
-	});
-
-	it("deletes the chat when the answer is missing or the prompt fails", async () => {
-		const chats = new FakeKiloChats();
-		const { generation, whenReady } = await boot({ chats });
-		await whenReady();
-
-		chats.structuredAnswer = "just text";
-		await expect(generation.methods.generate(request)).rejects.toThrow(
-			"The model did not return a structured answer.",
-		);
-		chats.failPrompt = true;
-		await expect(generation.methods.generate(request)).rejects.toThrow(
-			"Could not get an answer: model unavailable",
-		);
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(2);
+		chats.commitMessage = Object.assign(new Error("nothing staged"), { type: "no_changes" });
+		await expect(
+			generation.methods.generateCommitMessage({ directory: "/projects/app" }),
+		).rejects.toMatchObject({ code: "BUSINESS", message: "There are no changes to describe." });
+		chats.commitMessage = new Error("offline");
+		await expect(
+			generation.methods.generateCommitMessage({ directory: "/projects/app" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
 	});
 });
 
@@ -995,13 +1101,16 @@ describe("worktree branch naming", () => {
 			generation.methods.generateBranchName({ chatId: "ses_a", prompt: "" }),
 		).resolves.toEqual({ branch: null });
 
-		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
 			[
 				"generateBranchName",
-				"/projects/a",
-				["ses_a", { prompt: "fix the login bug", providerID: "kilo", modelID: "fast" }],
+				[
+					"/projects/a",
+					"ses_a",
+					{ prompt: "fix the login bug", providerID: "kilo", modelID: "fast" },
+				],
 			],
-			["generateBranchName", "/projects/a", ["ses_a", { prompt: "" }]],
+			["generateBranchName", ["/projects/a", "ses_a", { prompt: "" }]],
 		]);
 	});
 
@@ -1020,7 +1129,6 @@ describe("worktree branch naming", () => {
 		expect(chats.writes).toEqual([
 			{
 				call: "update",
-				directory: "/projects/app",
 				args: [
 					"ses_a",
 					{
@@ -1055,32 +1163,32 @@ describe("worktree branch naming", () => {
 		await whenReady();
 		const sent: unknown[] = [];
 		conversations.on("user-message", (message) => sent.push(message));
-		const userMessage = (id: string, sessionID: string, role = "user") => ({
-			type: "message.updated",
-			properties: {
-				sessionID,
-				info: { id, sessionID, role, model: { providerID: "kilo", modelID: "fast" } },
-			},
-		});
-		const textPart = (messageID: string, text: string, extra: object = {}) => ({
-			type: "message.part.updated",
-			properties: {
-				sessionID: "ses_a",
-				part: { id: `prt_${text}`, messageID, sessionID: "ses_a", type: "text", text, ...extra },
-			},
+		const enqueued = (inboxID: string, sessionID: string, item: object) =>
+			event("session.inbox.enqueued", { sessionID, inboxID, item });
+		const user = (text: string, selection?: object) => ({
+			type: "user",
+			payload: { text, ...(selection ? { selection } : {}) },
+			delivery: "queue",
 		});
 
-		chats.push(userMessage("msg_1", "ses_a"));
-		chats.push(textPart("msg_1", "context", { synthetic: true }));
-		chats.push(textPart("msg_1", "fix the login bug"));
-		chats.push(textPart("msg_1", "again"));
-		chats.push(userMessage("msg_1", "ses_a"));
-		chats.push(userMessage("msg_2", "ses_a", "assistant"));
-		chats.push(textPart("msg_2", "answer"));
-		chats.push(userMessage("msg_3", "ses_cli"));
-		chats.push(textPart("msg_3", "elsewhere"));
-		chats.push(userMessage("msg_4", "ses_a"));
-		chats.push(textPart("msg_4", "and the logout"));
+		chats.push(
+			event("session.model.selected", {
+				sessionID: "ses_a",
+				model: { providerID: "kilo", id: "fast" },
+			}),
+		);
+		chats.push(enqueued("msg_0", "ses_a", { type: "synthetic", payload: { text: "context" } }));
+		chats.push(enqueued("msg_1", "ses_a", user("fix the login bug")));
+		chats.push(enqueued("msg_1", "ses_a", user("fix the login bug")));
+		chats.push(enqueued("msg_2", "ses_a", user("  ")));
+		chats.push(enqueued("msg_3", "ses_cli", user("elsewhere")));
+		chats.push(
+			enqueued(
+				"msg_4",
+				"ses_a",
+				user("and the logout", { model: { providerID: "acme", id: "big" } }),
+			),
+		);
 
 		await eventually(() => expect(sent).toHaveLength(2));
 		expect(sent).toEqual([
@@ -1094,26 +1202,13 @@ describe("worktree branch naming", () => {
 				chatId: "ses_a",
 				messageId: "msg_4",
 				text: "and the logout",
-				model: { aiProviderId: "kilo", modelId: "fast" },
+				model: { aiProviderId: "acme", modelId: "big" },
 			},
 		]);
 	});
 });
 
 describe("forking chats", () => {
-	/** Drops the event stream and waits until kilo.core has reconnected and read the list again. */
-	async function reread(chats: FakeKiloChats) {
-		const listed = chats.listCalls;
-		const subscribed = chats.subscriptions;
-		chats.end();
-		await eventually(() => {
-			expect(chats.listCalls).toBeGreaterThan(listed);
-			expect(chats.subscriptions).toBeGreaterThan(subscribed);
-		});
-		// Lets the read settle and anything it starts (the unfinished-fork retry) run.
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	}
-
 	const stamped = (id: string) =>
 		desktopChat(id, {
 			metadata: { "kilo-desktop": { workspaceId: "w1", workSessionId: "wses_1" } },
@@ -1124,12 +1219,13 @@ describe("forking chats", () => {
 		chats.chats = [stamped("ses_a")];
 		const { conversations, whenReady, state, events } = await boot({ chats });
 		await whenReady();
+		events.length = 0;
 
 		const fork = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
 
-		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
-			["fork", "/projects/app", ["ses_a", "msg_2"]],
-			["handoff", "/projects/app", ["ses_fork_1"]],
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
+			["fork", ["ses_a", "msg_2"]],
+			["handoff", ["ses_fork_1", "/projects/app"]],
 		]);
 		expect(fork).toMatchObject({
 			id: "ses_fork_1",
@@ -1141,46 +1237,24 @@ describe("forking chats", () => {
 		});
 		expect(state().chats[fork.id]).toEqual(fork);
 		await eventually(() => expect(events).toEqual([`created ${fork.id}`]));
+		// The fork call publishes its own fork; `session.forked` looks nothing up.
+		expect(chats.reads).not.toContain(`get ${fork.id}`);
 	});
 
-	it("carries the source chat's permission rules to the fork", async () => {
+	it("hands the fork its hidden note before publishing it", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [stamped("ses_a")];
-		const rules = [
-			{ action: "external_directory", resource: "/projects/lib", effect: "allow" as const },
-			{ action: "desktop_notebook_open", resource: "*", effect: "deny" as const },
-		];
-		chats.permissionsById.ses_a = rules;
-		const { conversations, whenReady } = await boot({ chats });
+		const { conversations, whenReady, state } = await boot({ chats });
 		await whenReady();
+		const release = chats.hold("handoff");
 
-		const fork = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await eventually(() => expect(chats.writes.map(({ call }) => call)).toContain("handoff"));
+		expect(Object.keys(state().chats)).toEqual(["ses_a"]);
+		release();
 
-		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
-			["fork", "/projects/app", ["ses_a", "msg_2"]],
-			["update", "/projects/app", [fork.id, { permission: rules }]],
-			["handoff", "/projects/app", [fork.id]],
-		]);
-	});
-
-	it("hands the fork its hidden note before anyone can prompt it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		const { kernel, whenReady } = await boot({
-			chats,
-			plugins: [testPlugin("kilo.chat", { entry: { activate: () => {} } })],
-		});
-		await whenReady();
-		const asChat = kernel.sdkFor("kilo.chat").domainObjects.get(Chats)!;
-
-		const fork = await asChat.methods.fork({ id: "ses_a", messageId: "msg_2" });
-		await asChat.methods.prompt({ chatId: fork.id, parts: [{ type: "text", text: "Try B" }] });
-
-		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args[0]])).toEqual([
-			["fork", "/projects/app", "ses_a"],
-			["handoff", "/projects/app", fork.id],
-			["prompt", "/projects/app", fork.id],
-		]);
+		const fork = await forking;
+		expect(state().chats[fork.id]).toEqual(fork);
 	});
 
 	it("still lists a fork whose hidden note couldn't be sent", async () => {
@@ -1193,6 +1267,19 @@ describe("forking chats", () => {
 		const fork = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
 
 		expect(state().chats[fork.id]).toEqual(fork);
+	});
+
+	it("lists another client's fork of this app's chat", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a"), stamped("ses_cli_fork")];
+		chats.chats.pop();
+		const { state, whenReady } = await boot({ chats });
+		await whenReady();
+		chats.chats.push(stamped("ses_cli_fork"));
+
+		chats.push(event("session.forked", { sessionID: "ses_cli_fork", parentID: "ses_a" }));
+
+		await eventually(() => expect(state().chats.ses_cli_fork).toBeDefined());
 	});
 
 	it("refuses an unknown chat without asking the server", async () => {
@@ -1208,30 +1295,15 @@ describe("forking chats", () => {
 
 	it("refuses a subagent's chat", async () => {
 		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a"), desktopChat("ses_child", { parentId: "ses_a" })];
+		chats.chats = [stamped("ses_a")];
 		const { conversations, whenReady, state } = await boot({ chats });
 		await whenReady();
-		expect(state().chats.ses_child).toBeDefined();
+		chats.push(createdEvent(desktopChat("ses_child", { parentId: "ses_a" })));
+		await eventually(() => expect(state().chats.ses_child).toBeDefined());
 
 		await expect(
 			conversations.methods.fork({ id: "ses_child", messageId: "msg_2" }),
 		).rejects.toMatchObject({ code: "VALIDATION" });
-		expect(chats.writes).toEqual([]);
-	});
-
-	it("forks nothing when the source's permission rules can't be read", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.failing.add("getPermission");
-		const { conversations, whenReady } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({
-			code: "UNAVAILABLE",
-			message: "Could not read the chat's permissions: offline",
-		});
 		expect(chats.writes).toEqual([]);
 	});
 
@@ -1245,500 +1317,5 @@ describe("forking chats", () => {
 		await expect(
 			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
 		).rejects.toMatchObject({ code: "UNAVAILABLE", message: "Could not fork the chat: offline" });
-	});
-
-	it("deletes a fork whose permission rules can't be applied, never listing it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.failing.add("update");
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({
-			code: "UNAVAILABLE",
-			message: "Could not apply the chat's permissions: offline",
-		});
-		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
-			["fork", ["ses_a", "msg_2"]],
-			["delete", ["ses_fork_1"]],
-		]);
-		// The stream is in order: once this lands, so has the fork's `session.created`.
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("never lists a fork whose rules failed and whose deletion failed too, even once re-read", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.failing.add("update");
-		chats.failing.add("delete");
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		await reread(chats);
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-
-		expect(chats.chats.map(({ id }) => id)).toContain("ses_fork_1");
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("deletes a fork it couldn't delete before once the chat list is read again", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.failing.add("update");
-		chats.failing.add("delete");
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		chats.failing.delete("delete");
-
-		await reread(chats);
-
-		await eventually(() =>
-			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-			]),
-		);
-		await reread(chats);
-		expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(1);
-		expect(state().chats.ses_fork_1).toBeUndefined();
-	});
-
-	it("tries deleting it again on the next read when a retry fails too", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.failing.add("update");
-		chats.failing.add("delete");
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-
-		await reread(chats);
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		chats.failing.delete("delete");
-		await reread(chats);
-
-		await eventually(() =>
-			expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(1),
-		);
-		expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]);
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("deletes a fork it couldn't record as unfinished, never listing it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		const { conversations, whenReady, state, events, failingStorage } = await boot({ chats });
-		await whenReady();
-		failingStorage.add("unfinished-forks");
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-
-		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
-			["fork", ["ses_a", "msg_2"]],
-			["delete", ["ses_fork_1"]],
-		]);
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("never lists a fork it couldn't record as unfinished or delete, and deletes it on a later read", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.failing.add("delete");
-		const { conversations, whenReady, state, events, failingStorage } = await boot({ chats });
-		await whenReady();
-		failingStorage.add("unfinished-forks");
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		await reread(chats);
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-
-		expect(chats.chats.map(({ id }) => id)).toContain("ses_fork_1");
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-
-		chats.failing.delete("delete");
-		await reread(chats);
-
-		await eventually(() => expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]));
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("deletes a fork the server made though its reply was lost, never listing it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.loseForkReply = true;
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({
-			code: "UNAVAILABLE",
-			message: "Could not fork the chat: connection reset",
-		});
-
-		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
-			["fork", ["ses_a", "msg_2"]],
-			["delete", ["ses_fork_1"]],
-		]);
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("keeps hiding a fork whose reply was lost when deleting it fails, until a later read deletes it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.loseForkReply = true;
-		chats.failing.add("delete");
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		await reread(chats);
-		expect(state().chats.ses_fork_1).toBeUndefined();
-
-		chats.failing.delete("delete");
-		await reread(chats);
-
-		await eventually(() => expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]));
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("leaves other chats made in the work session meanwhile alone when a fork's reply was lost", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.loseForkReply = true;
-		const release = chats.hold("fork");
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-
-		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
-		await eventually(() => expect(chats.writes.map(({ call }) => call)).toEqual(["fork"]));
-		const other = stamped("ses_other");
-		chats.chats.push(other);
-		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
-		release();
-		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-		]);
-		await eventually(() => expect(state().chats.ses_other).toBeDefined());
-	});
-
-	it("finds a lost-reply fork among the chats it has seen when the list can't be read", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.loseForkReply = true;
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-		chats.failList = true;
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-		]);
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("keeps a lost-reply fork it hasn't seen hidden until the list can be read, then deletes it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.loseForkReply = true;
-		chats.quietForks = true;
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-		chats.failList = true;
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		const created = chats.chats.find(({ id }) => id === "ses_fork_1")!;
-		chats.push({ type: "session.created", properties: { info: rawChat(created) } });
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
-
-		chats.failList = false;
-
-		await eventually(() =>
-			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-			]),
-		);
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("deletes only the earliest chat that looks like a lost-reply fork", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.loseForkReply = true;
-		const release = chats.hold("fork");
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-
-		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
-		await eventually(() => expect(chats.writes.map(({ call }) => call)).toEqual(["fork"]));
-		// Another client forks the same chat meanwhile: same title and stamp, made later.
-		const elsewhere = {
-			...stamped("ses_elsewhere"),
-			title: "Chat ses_a (fork #1)",
-			createdAt: 700,
-		};
-		chats.chats.push(elsewhere);
-		chats.push({ type: "session.created", properties: { info: rawChat(elsewhere) } });
-		release();
-		await expect(forking).rejects.toMatchObject({ code: "UNAVAILABLE" });
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-			{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-		]);
-		await eventually(() => expect(state().chats.ses_elsewhere).toBeDefined());
-	});
-
-	it("leaves a fork made after a lost reply alone while still looking for the lost one", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.loseForkReply = true;
-		chats.quietForks = true;
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-		chats.failList = true;
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		chats.loseForkReply = false;
-		chats.quietForks = false;
-
-		const retried = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
-		chats.failList = false;
-
-		await eventually(() =>
-			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-			]),
-		);
-		await eventually(() => expect(state().chats[retried.id]).toBeDefined());
-	});
-
-	it("still finds a lost fork the server only lists after the first read", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.failing.add("fork");
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		// The server commits the fork after the request failed and the first read missed it.
-		const late = { ...stamped("ses_late"), title: "Chat ses_a (fork #1)" };
-		chats.chats.push(late);
-		chats.push({ type: "session.created", properties: { info: rawChat(late) } });
-
-		await eventually(() =>
-			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
-				{ call: "delete", directory: "/projects/app", args: ["ses_late"] },
-			]),
-		);
-		expect(state().chats.ses_late).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_late"))).toEqual([]);
-	});
-
-	it("stops hiding new chats once a second read still shows no lost fork", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.failing.add("fork");
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		const other = stamped("ses_other");
-		chats.chats.push(other);
-		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
-
-		await eventually(() => expect(state().chats.ses_other).toBeDefined());
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
-	});
-
-	it("reads again after a hydrate that missed a lost fork, so its hold doesn't outlive the search", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.failing.add("fork");
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-		chats.failList = true;
-
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		// The stream drops before the retry reads; the reconnect's hydrate is the first good read.
-		chats.failList = false;
-		await reread(chats);
-		const other = stamped("ses_other");
-		chats.chats.push(other);
-		chats.push({ type: "session.created", properties: { info: rawChat(other) } });
-
-		await eventually(() => expect(state().chats.ses_other).toBeDefined());
-	});
-
-	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		chats.failing.add("update");
-		chats.failing.add("delete");
-		const { conversations, whenReady } = await boot({ chats });
-		await whenReady();
-		await expect(
-			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
-		).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		chats.chats = chats.chats.filter(({ id }) => id !== "ses_fork_1");
-		chats.failing.delete("delete");
-
-		await reread(chats);
-		chats.chats.push(stamped("ses_fork_1"));
-		await reread(chats);
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
-	});
-
-	it("leaves a fork still being made to its own fork call when the list is read meanwhile", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		const release = chats.hold("update");
-		const { conversations, whenReady, state } = await boot({ chats });
-		await whenReady();
-
-		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
-		await eventually(() =>
-			expect(chats.writes.map(({ call }) => call)).toEqual(["fork", "update"]),
-		);
-		await reread(chats);
-		release();
-		const fork = await forking;
-
-		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
-		expect(state().chats[fork.id]).toEqual(fork);
-	});
-
-	it("deletes a fork the app stopped making midway, after it starts again", async () => {
-		const before = new FakeKiloChats();
-		before.chats = [stamped("ses_a")];
-		before.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		before.hold("update");
-		const first = await boot({ chats: before });
-		await first.whenReady();
-		void first.conversations.methods
-			.fork({ id: "ses_a", messageId: "msg_2" })
-			.catch(() => undefined);
-		await eventually(() =>
-			expect(before.writes.map(({ call }) => call)).toEqual(["fork", "update"]),
-		);
-		await first.kernel.stop();
-
-		const after = new FakeKiloChats();
-		after.chats = [stamped("ses_a"), stamped("ses_fork_1")];
-		const { whenReady, state, events } = await boot({ chats: after, root: first.root });
-		await whenReady();
-
-		await eventually(() =>
-			expect(after.writes).toEqual([
-				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
-			]),
-		);
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-	});
-
-	it("keeps nothing to clean up after restarting when the source had no rules", async () => {
-		const before = new FakeKiloChats();
-		before.chats = [stamped("ses_a")];
-		before.hold("handoff");
-		const first = await boot({ chats: before });
-		await first.whenReady();
-		void first.conversations.methods
-			.fork({ id: "ses_a", messageId: "msg_2" })
-			.catch(() => undefined);
-		await eventually(() =>
-			expect(before.writes.map(({ call }) => call)).toEqual(["fork", "handoff"]),
-		);
-		await first.kernel.stop();
-
-		const after = new FakeKiloChats();
-		after.chats = [stamped("ses_a"), stamped("ses_fork_1")];
-		const { whenReady, state } = await boot({ chats: after, root: first.root });
-		await whenReady();
-		await reread(after);
-
-		expect(state().chats.ses_fork_1).toBeDefined();
-		expect(after.writes).toEqual([]);
-	});
-
-	it("lists the fork only once its permission rules are applied", async () => {
-		const chats = new FakeKiloChats();
-		chats.chats = [stamped("ses_a")];
-		chats.permissionsById.ses_a = [{ action: "shell", resource: "*", effect: "ask" }];
-		const release = chats.hold("update");
-		const { conversations, whenReady, state, events } = await boot({ chats });
-		await whenReady();
-
-		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
-		await eventually(() =>
-			expect(chats.writes.map(({ call }) => call)).toEqual(["fork", "update"]),
-		);
-		chats.push(status("ses_a", "busy"));
-		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
-		expect(state().chats.ses_fork_1).toBeUndefined();
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
-
-		release();
-		const fork = await forking;
-
-		expect(state().chats[fork.id]).toEqual(fork);
-		expect(events.filter((event) => event.includes("ses_fork"))).toEqual(["created ses_fork_1"]);
 	});
 });

@@ -18,17 +18,22 @@ function info(id: string, overrides: Partial<ChatInfo> = {}): ChatInfo {
 	};
 }
 
+const STATUS_EVENTS: Record<string, string> = {
+	busy: "session.execution.started",
+	retry: "session.retry.scheduled",
+	idle: "session.execution.succeeded",
+};
 const status = (sessionID: string, type: string): KiloEvent => ({
-	type: "session.status",
-	properties: { sessionID, status: { type } },
+	type: STATUS_EVENTS[type]!,
+	data: { sessionID },
 });
-const asked = (kind: "permission" | "question", id: string, sessionID: string): KiloEvent => ({
-	type: `${kind}.asked`,
-	properties: { id, sessionID },
-});
+const asked = (kind: "permission" | "question", id: string, sessionID: string): KiloEvent =>
+	kind === "permission"
+		? { type: "permission.asked", data: { id, sessionID } }
+		: { type: "form.created", data: { form: { id, sessionID, metadata: { kind: "question" } } } };
 const replied = (requestID: string, sessionID: string): KiloEvent => ({
 	type: "permission.replied",
-	properties: { requestID, sessionID },
+	data: { requestID, sessionID },
 });
 
 function storeAt(now = NOW) {
@@ -42,7 +47,7 @@ describe("the conversation store", () => {
 		const { store } = storeAt();
 
 		expect(store.apply(status("ses-1", "busy"))).toBe(true);
-		expect(store.apply({ type: "message.updated", properties: {} })).toBe(false);
+		expect(store.apply({ type: "session.text.delta", data: { sessionID: "ses-1" } })).toBe(false);
 		expect(store.epoch).toBe(1);
 	});
 
@@ -72,19 +77,28 @@ describe("the conversation store", () => {
 		const { store } = storeAt();
 		store.replaceRoots([info("deleted"), info("renamed")], store.epoch);
 		const since = store.epoch;
-		store.apply({ type: "session.created", properties: { info: rawInfo("fresh") } });
-		store.apply({ type: "session.deleted", properties: { info: { id: "deleted" } } });
 		store.apply({
-			type: "session.updated",
-			properties: {
-				info: rawInfo("renamed", { title: "New", time: { created: 10, updated: 99 } }),
-			},
+			type: "session.created",
+			data: { sessionID: "fresh", metadata: { "kilo-desktop": {} } },
+			created: 30,
 		});
+		store.apply({ type: "session.deleted", data: { sessionID: "deleted" } });
+		store.apply({ type: "session.renamed", data: { sessionID: "renamed", title: "New" } });
 
 		store.replaceRoots([info("deleted"), info("renamed", { title: "Old" })], since);
 
 		expect(Object.keys(store.chats).sort()).toEqual(["fresh", "renamed"]);
 		expect(store.chats.renamed?.info?.title).toBe("New");
+	});
+
+	it("keeps a chat added while the list was read", () => {
+		const { store } = storeAt();
+		const since = store.epoch;
+		store.addInfos([info("created")]);
+
+		store.replaceRoots([], since);
+
+		expect(Object.keys(store.chats)).toEqual(["created"]);
 	});
 
 	it("never replaces newer info with an older lookup", () => {
@@ -143,20 +157,6 @@ describe("the conversation store", () => {
 			);
 
 			expect(store.chats["ses-1"]?.activity.pendingPermissionIds).toEqual([]);
-		});
-
-		it("remember where each chat's prompt was read", () => {
-			const { store } = storeAt();
-
-			store.hydrateActivity(
-				{
-					questions: { requests: [{ id: "q", sessionID: "ses-1" }], complete: true },
-					directories: { "ses-1": "/elsewhere" },
-				},
-				store.epoch,
-			);
-
-			expect(store.chats["ses-1"]?.directory).toBe("/elsewhere");
 		});
 	});
 
@@ -265,14 +265,3 @@ describe("the conversation store", () => {
 		});
 	});
 });
-
-function rawInfo(id: string, overrides: Record<string, unknown> = {}) {
-	return {
-		id,
-		title: `Chat ${id}`,
-		directory: "/repo",
-		metadata: { "kilo-desktop": {} },
-		time: { created: 10, updated: 20 },
-		...overrides,
-	};
-}

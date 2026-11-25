@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import {
+	isRef,
 	KernelError,
+	type DomainObjectHandle,
 	type DomainObjectProvider,
 	type ObjectRef,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
+import { Chat, Chats } from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	addPane,
@@ -69,7 +72,9 @@ const sameRef = (left: ObjectRef | undefined, right: ObjectRef) =>
  * contributions; the canvas owns the layout's shape and only saves it here,
  * except that a pane opened as a `tab` joins the active pane's group in the
  * same write, so it never flashes as a column first.
- * A deleted work session's panes go with it. Every pane opened or closed is
+ * A deleted work session's panes go with it, and so does a pane showing a
+ * chat the server no longer has, checked after each full read of kilo.core's
+ * chat list (`listed`, then `findMissing`). Every pane opened or closed is
  * reported to telemetry by its kind.
  */
 export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void {
@@ -108,21 +113,7 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 				});
 				return updated;
 			},
-			close: ({ workSessionId, paneId }) => {
-				const current = of(workSessionId);
-				const index = current.panes.findIndex((pane) => pane.id === paneId);
-				if (index === -1) return { closed: false };
-				const pane = current.panes[index]!;
-				const rest = current.panes.filter((candidate) => candidate.id !== paneId);
-				const activePaneId =
-					current.activePaneId === paneId
-						? (rest[Math.min(index, rest.length - 1)]?.id ?? null)
-						: current.activePaneId;
-				write(workSessionId, { ...current, panes: rest, activePaneId });
-				panes.emit("closed", { workSessionId, pane });
-				track(sdk, "pane-closed", { paneType: paneTypeOf(pane.kind) });
-				return { closed: true };
-			},
+			close: ({ workSessionId, paneId }) => ({ closed: closePane(workSessionId, paneId) }),
 			setLayout: ({ workSessionId, layout, activePaneId }) => {
 				const current = of(workSessionId);
 				const knownActive =
@@ -138,6 +129,40 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 			},
 		},
 	});
+
+	function closePane(workSessionId: string, paneId: string): boolean {
+		const current = of(workSessionId);
+		const index = current.panes.findIndex((pane) => pane.id === paneId);
+		if (index === -1) return false;
+		const pane = current.panes[index]!;
+		const rest = current.panes.filter((candidate) => candidate.id !== paneId);
+		const activePaneId =
+			current.activePaneId === paneId
+				? (rest[Math.min(index, rest.length - 1)]?.id ?? null)
+				: current.activePaneId;
+		write(workSessionId, { ...current, panes: rest, activePaneId });
+		panes.emit("closed", { workSessionId, pane });
+		track(sdk, "pane-closed", { paneType: paneTypeOf(pane.kind) });
+		return true;
+	}
+
+	/** Closes the panes showing chats the server no longer has (subagent chats included). */
+	async function closeMissingChatPanes(chats: DomainObjectHandle<typeof Chats>): Promise<void> {
+		const listed = chats.getState().chats;
+		const unlisted = new Set<string>();
+		for (const { panes: open } of Object.values(store.snapshot().byWorkSession)) {
+			for (const pane of open) {
+				if (isRef(Chat, pane.object) && !listed[pane.object.id]) unlisted.add(pane.object.id);
+			}
+		}
+		if (unlisted.size === 0) return;
+		const gone = new Set((await chats.methods.findMissing({ ids: [...unlisted] })).missing);
+		for (const [workSessionId, { panes: open }] of Object.entries(store.snapshot().byWorkSession)) {
+			for (const pane of open) {
+				if (isRef(Chat, pane.object) && gone.has(pane.object.id)) closePane(workSessionId, pane.id);
+			}
+		}
+	}
 
 	function openPane(input: OpenPaneInput): Pane {
 		const current = of(input.workSessionId);
@@ -251,5 +276,24 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 	const stopDeleted = sdk.domainObjects.get(WorkSessions)?.on("deleted", ({ workSession }) => {
 		if (store.snapshot().byWorkSession[workSession.id]) write(workSession.id, null);
 	});
-	sdk.onDispose(() => stopDeleted?.());
+	let stopListed: (() => void) | undefined;
+	sdk.domainObjects.track(Chats, {
+		added(chats) {
+			stopListed = chats.on("listed", () => {
+				closeMissingChatPanes(chats).catch((error: unknown) => {
+					sdk.logger.warn(
+						`Could not close the panes of deleted chats: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				});
+			});
+		},
+		removed() {
+			stopListed?.();
+			stopListed = undefined;
+		},
+	});
+	sdk.onDispose(() => {
+		stopDeleted?.();
+		stopListed?.();
+	});
 }

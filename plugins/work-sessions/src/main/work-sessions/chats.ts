@@ -37,7 +37,9 @@ export interface ChatFollower {
  * session's title (until the person renames it), directory and branch
  * current (a work session placed at creation keeps its own), and a chat
  * archived after the work session's last archive change archives it; a
- * deleted chat is detached. A deleted work session and its chats are
+ * deleted chat is detached, and so is every chat kilo.core's full list read
+ * (`listed`) shows the server no longer has (`findMissing`): the work
+ * session, its branch and its copy stay. A deleted work session and its chats are
  * forgotten while kilo.core's chats are present, so nothing adopts them
  * back. Without kilo.core there are no chats and nothing changes.
  */
@@ -135,6 +137,27 @@ export function followChats(
 		if (owner) registry.change(owner.id, { chatIds: owner.chatIds.filter((id) => id !== chatId) });
 	}
 
+	/**
+	 * Detaches the chats the server no longer has, after a full read of its
+	 * list: chats deleted while this app wasn't listening, and on the first
+	 * Kilo v2 launch every chat of the v1 server, whose chats v2 doesn't have.
+	 */
+	async function detachMissingChats(handle: DomainObjectHandle<typeof Chats>): Promise<void> {
+		const listed = handle.getState().chats;
+		const unlisted = [
+			...new Set(registry.list().flatMap((workSession) => workSession.chatIds)),
+		].filter((id) => !listed[id]);
+		if (unlisted.length === 0) return;
+		const { missing } = await handle.methods.findMissing({ ids: unlisted });
+		const gone = new Set(missing);
+		for (const workSession of registry.list()) {
+			if (!workSession.chatIds.some((id) => gone.has(id))) continue;
+			registry.change(workSession.id, {
+				chatIds: workSession.chatIds.filter((id) => !gone.has(id)),
+			});
+		}
+	}
+
 	// Copies from before chats were linked at creation get their link once per
 	// run, on the first full read; vcs never overwrites a link.
 	let linksBackfilled = false;
@@ -180,6 +203,7 @@ export function followChats(
 						detachChat(chat.id);
 					}),
 				),
+				handle.on("listed", () => inOrder(() => detachMissingChats(handle))),
 			];
 			stop = () => stops.forEach((dispose) => dispose());
 		},

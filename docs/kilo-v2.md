@@ -79,8 +79,8 @@ Contracts other plugins use carry v2's shapes, so consumers move once:
   wire type, and keeps its names; saved model preferences start again in
   `models-preferences-v2`.
 
-Until a producer moves to the v2 client (steps 5–6), it converts at its own
-v1 boundary (e.g. `kilo-chat-client.ts`'s `toV1Rules`).
+Every kilo.core producer is on the v2 client (steps 5–6); nothing converts to
+v1 shapes any more.
 
 ## Server process (kilo.core `KiloServerManager.ts`)
 
@@ -197,7 +197,7 @@ on `provider.updated` / `model.updated`.
 | `session.status`                                                                | `session.active()` → `{ [id]: { type: "running" } }` plus `session.execution.*` events                | changed | Running sessions only.                                                                                |
 | `session.create({ directory, model, permission, metadata })`                    | `session.create({ location, agent, model, metadata, permissions })`                                   | changed |                                                                                                       |
 | `session.update({ time: { archived }, permission })`                            | `session.update({ sessionID, title, metadata, permissions, archived: boolean })`                      | changed | Changes arrive as `session.renamed` / `metadata.updated` / `archived` / `unarchived` / `permissions`. |
-| `session.fork({ messageID, directory })`                                        | `session.fork({ sessionID, before })`, then `session.move` for another directory                      | changed | v2 records the fork on `SessionInfo.fork`; check whether the fork is a root.                          |
+| `session.fork({ messageID, directory })`                                        | `session.fork({ sessionID, before })`, then `session.move` for another directory                      | changed | The fork is a root in the source's location, titled "… (fork #n)", with its metadata and rules.       |
 | `promptAsync({ noReply: true, parts: [synthetic] })`                            | `session.synthetic({ sessionID, text, resume: false })`                                               | changed |                                                                                                       |
 | `promptAsync({ parts, agent, model, variant, system, snapshotInitialization })` | `session.prompt({ sessionID, text, files, agents, skills, metadata, delivery })`                      | changed | `system`, `snapshotInitialization`: see Gaps. Returns once admitted, not when the turn ends.          |
 | `session.command({ command, arguments, model: "p/m" })`                         | `session.command({ sessionID, name, text })`                                                          | changed |                                                                                                       |
@@ -212,6 +212,49 @@ on `provider.updated` / `model.updated`.
 | `question.reply({ answers: string[][] })`                                       | `session.form.reply({ sessionID, formID, answer: { q0, q1, … } })`                                    | changed |                                                                                                       |
 | `question.reject`                                                               | `session.form.cancel({ sessionID, formID, message? })`                                                | changed |                                                                                                       |
 | `global.event` + `x-kilo-sse-skip-fork-sync`                                    | `event.subscribe({ types? }, { signal })` (`GET /api/event`)                                          | changed | One stream for all locations, no replay, no `sync` wrapper. First event `server.connected`.           |
+
+### What kilo.core's chats do on v2 (step 6)
+
+- `kilo-chat-client.ts` is the only chat client: one `@kilocode/client`, calls
+  by session id (the server resolves the location), Kilo RPCs in the chat's
+  directory through `callLocationRpc`.
+- One `event.subscribe({ types, signal })` stream. On every (re)connect it
+  first opens the stream, then reads the full root list (paged, cursor only
+  after the first page), `session.active()` and, for running or still-waiting
+  chats only, `permission.list` / `session.form.list`; what the stream said
+  meanwhile wins (`store.ts` epochs).
+- Activity: busy from `session.execution.started`, retry from
+  `session.retry.scheduled` until the next `session.step.started`, idle on
+  `succeeded` / `failed` (with `{ type, message }` as the chat's error) /
+  `interrupted`. Questions are forms with `metadata.kind === "question"`.
+- `session.created` carries no times: the event's `created` stamps the chat.
+  Renames, metadata, archive and moves update known chats from their own
+  events.
+- A fork is announced only by `session.forked { sessionID, parentID }` (no
+  `session.created`); the fork already carries the source's metadata (the
+  `kilo-desktop` stamp) and permission rules, so Desktop's
+  apply-rules-then-publish dance (`unfinished-forks`, `lost-forks`) is gone.
+  Desktop forks in place, so it never needs `session.move`. Other clients'
+  forks are looked up by id.
+- `user-message` comes from `session.inbox.enqueued` with a `user` item (once
+  per inbox id); its model is the prompt's selection or the chat's last
+  `session.model.selected`. Synthetic notes and copied fork history are never
+  announced.
+- Prompts: `switchAgent` (only when it changes) and `switchModel`, then
+  `session.prompt` with text parts joined and files as `{ uri, name }`.
+  kilo.chat's per-prompt `system` is stored on the user message's metadata
+  (`metadata["kilo-desktop"].system`) until step 14's server plugin feeds it
+  to the model.
+- `kilo.core/chats` gains `findMissing({ ids })` and a `listed` event after
+  every full read. kilo.work-sessions (work sessions' `chatIds` and chat
+  panes) and kilo.git (branch-namer progress) drop the ids the server lacks on
+  each `listed`, which on the first v2 launch is every v1 chat.
+- `kilo.core/generation`: `generate` is one `experimental.generate.text` reply
+  (no tools, no chat) with the JSON schema written into the prompt, checked
+  with `z.fromJSONSchema` and asked once more on a mismatch;
+  `generateCommitMessage` is `kilocode.commit-message.generate` (kilo.git's
+  commit action uses it); `generateBranchName` is
+  `kilocode.branch-name.generate`.
 
 ## Events
 
@@ -324,19 +367,19 @@ MCP tools are named `<server>_<tool>`.
 Per the plan, Desktop features with no v2 equivalent are hidden and recorded
 until v2 supports them. Gaps with a v2 workaround are adapted instead.
 
-| Gap                                                        | Desktop impact                                                  | Handling                                                                                                                                                                                 |
-| ---------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP resource read and tool call routes                     | MCP Apps widgets (`mcp-apps/*`)                                 | **Hide.** v2 also never sets `metadata.mcpApp` on tool calls.                                                                                                                            |
-| `kilocode.sessionModelUsage`                               | Per-model usage breakdown                                       | **Hide.** Totals remain (`SessionInfo.cost` / `tokens`, `session.usage.updated`).                                                                                                        |
-| CLI telemetry                                              | Telemetry toggle's effect on the server                         | **Hide** the server side; Desktop's own telemetry is unaffected.                                                                                                                         |
-| Structured output on `session.prompt`                      | `generation.ts` (git commit and PR text, other JSON generation) | **Adapt:** `kilocode.commit-message.generate` for commit messages; otherwise `session.generate` / `experimental.generate.text` with the schema in the prompt and client-side validation. |
-| Per-prompt `system`                                        | Per-chat workspace context sent with each prompt                | **Adapt:** a Desktop server plugin edits `system` in a session request hook, keyed on the chat's metadata.                                                                               |
-| `snapshotInitialization: "wait"`                           | Snapshot readiness before a turn                                | **Verify** v2 snapshot behaviour; drop if v2 always waits.                                                                                                                               |
-| Retry in place (`promptAsync({ messageID, parts: [] })`)   | Retry a failed turn                                             | **Adapt:** resend the user's text as a new prompt (optionally after `revert.stage` + `commit`).                                                                                          |
-| `interactive` on permission replies                        | Auto-approve tracking                                           | **Drop** the flag.                                                                                                                                                                       |
-| Plugin `config` hook                                       | Notebook plugin's permission edits                              | **Adapt:** permission rules in Desktop's config or `ctx.permission.hook("evaluate")`.                                                                                                    |
-| `AgentInfo.native` / `source`, skill builtin marker        | Marketplace's "installed vs built-in"                           | **Adapt:** derive from `kilocode.marketplace.installed`.                                                                                                                                 |
-| `KILO_PARENT_PID`, `x-kilo-sse-skip-fork-sync`, SSE replay | Process and stream plumbing                                     | Replaced by stdin lifetime and reload-on-reconnect.                                                                                                                                      |
+| Gap                                                        | Desktop impact                                                  | Handling                                                                                                                                                                       |
+| ---------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MCP resource read and tool call routes                     | MCP Apps widgets (`mcp-apps/*`)                                 | **Hide.** v2 also never sets `metadata.mcpApp` on tool calls.                                                                                                                  |
+| `kilocode.sessionModelUsage`                               | Per-model usage breakdown                                       | **Hide.** Totals remain (`SessionInfo.cost` / `tokens`, `session.usage.updated`).                                                                                              |
+| CLI telemetry                                              | Telemetry toggle's effect on the server                         | **Hide** the server side; Desktop's own telemetry is unaffected.                                                                                                               |
+| Structured output on `session.prompt`                      | `generation.ts` (git commit and PR text, other JSON generation) | **Adapted (step 6):** `kilocode.commit-message.generate` for commit messages; otherwise `experimental.generate.text` with the schema in the prompt, zod validation, one retry. |
+| Per-prompt `system`                                        | Per-chat workspace context sent with each prompt                | **Adapt (step 14):** a Desktop server plugin edits `system` in a session request hook. Until then it is stored on the user message's metadata and the model doesn't see it.    |
+| `snapshotInitialization: "wait"`                           | Snapshot readiness before a turn                                | **Dropped (step 6):** v2 always captures a step's start snapshot before its local tools run (`core/src/session/runner/step.ts`); generation no longer uses a chat at all.      |
+| Retry in place (`promptAsync({ messageID, parts: [] })`)   | Retry a failed turn                                             | **Adapt:** resend the user's text as a new prompt (optionally after `revert.stage` + `commit`).                                                                                |
+| `interactive` on permission replies                        | Auto-approve tracking                                           | **Drop** the flag.                                                                                                                                                             |
+| Plugin `config` hook                                       | Notebook plugin's permission edits                              | **Adapt:** permission rules in Desktop's config or `ctx.permission.hook("evaluate")`.                                                                                          |
+| `AgentInfo.native` / `source`, skill builtin marker        | Marketplace's "installed vs built-in"                           | **Adapt:** derive from `kilocode.marketplace.installed`.                                                                                                                       |
+| `KILO_PARENT_PID`, `x-kilo-sse-skip-fork-sync`, SSE replay | Process and stream plumbing                                     | Replaced by stdin lifetime and reload-on-reconnect.                                                                                                                            |
 
 ## Prompt queue vs the v2 session inbox
 

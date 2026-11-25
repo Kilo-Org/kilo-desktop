@@ -367,6 +367,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 					calls.rejectQuestion(input);
 					await server.post(`/question/${input.questionId}/reject`, directoryOf(input.chatId), {});
 				},
+				findMissing: () => ({ missing: [] }),
 				declineSignInTools: (input) => {
 					calls.declineSignInTools(input);
 					provider.setState({

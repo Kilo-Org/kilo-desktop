@@ -190,7 +190,6 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 		createClient: options.createChatClient,
 		signedIn,
 		declinedSignIns,
-		storage: mainHost(sdk).storage,
 		createUnscopedDirectory: () => createUnscopedChatDirectory(storageDirectory),
 		...(options.chatReconnectDelayMs !== undefined
 			? { reconnectDelayMs: options.chatReconnectDelayMs }

@@ -334,6 +334,30 @@ describe("the copy branch namer", () => {
 		);
 	});
 
+	it("forgets saved chats a full read shows the server no longer has", async () => {
+		const storage = createMemoryStorage();
+		storage.saved.set("branch-namer", {
+			armed: {
+				ses_v1: { promptCount: 1, idleAttempted: false },
+				ses_subagent: { promptCount: 1, idleAttempted: false },
+				ses_live: { promptCount: 1, idleAttempted: false },
+			},
+		});
+		const host = await boot({ chats: [chat("ses_live", "/projects/app")], storage });
+		host.core.onServer.add("ses_subagent");
+
+		host.core.vanishAndList("ses_none");
+
+		await vi.waitFor(
+			() =>
+				expect(Object.keys(host.storage.saved.get("branch-namer")?.armed ?? {}).sort()).toEqual([
+					"ses_live",
+					"ses_subagent",
+				]),
+			WAIT,
+		);
+	});
+
 	it("activates quietly without kilo.core and kilo.work-sessions", async () => {
 		const { logger, warnings, errors } = recordingLogger();
 

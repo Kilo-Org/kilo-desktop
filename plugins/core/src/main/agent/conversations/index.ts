@@ -3,7 +3,6 @@ import {
 	type DomainObjectHandle,
 	type DomainObjectProvider,
 	type PluginSdk,
-	type PluginStorage,
 } from "@kilo-desktop/kernel";
 
 import {
@@ -18,7 +17,6 @@ import {
 	type ChatConfigContext,
 	type ChatSummary,
 	type PermissionRule,
-	type PromptChatInput,
 	type ResolvedChatConfig,
 	type ServerConnection,
 } from "../../../contracts";
@@ -38,13 +36,9 @@ import {
 	type ToolApprovalOutcome,
 } from "./chat-creation";
 import { onlyCallers, PROMPT_ANSWERING_PLUGINS, PROMPTING_PLUGINS } from "../callers";
-import { ForkHolds } from "./fork-holds";
-import { forkedTitle } from "./fork-title";
-import { LostForks } from "./lost-forks";
-import { UnfinishedForks, type UnfinishedFork } from "./unfinished-forks";
 import type { KiloChatClient } from "./kilo-chat-client";
 import { UserMessageTracker } from "./user-messages";
-import { wireModel, wireParts } from "./wire";
+import { wireModel, wirePrompt } from "./wire";
 import { ConversationStore, type ActivitySnapshot, type PendingRequest } from "./store";
 
 export { createKiloChatClient, type KiloChatClient } from "./kilo-chat-client";
@@ -54,8 +48,6 @@ export interface ConversationsOptions {
 	readonly signedIn: SignedInState;
 	/** Plugins whose sign-in tools the person chose to go without; shared with the tool gateway. */
 	readonly declinedSignIns: DeclinedSignIns;
-	/** kilo.core's storage: forks left without their permission rules are remembered here. */
-	readonly storage: PluginStorage;
 	/** A fresh folder for a chat created without a directory (origin's unscoped chats). */
 	readonly createUnscopedDirectory?: () => Promise<string>;
 	readonly now?: () => number;
@@ -83,10 +75,11 @@ const MAX_LINEAGE_DEPTH = 8;
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-const isActive = (record: ChatRecord) =>
-	record.activity.status !== "idle" ||
-	record.activity.pendingPermissionIds.length > 0 ||
-	record.activity.pendingQuestionIds.length > 0;
+const isWaiting = (record: ChatRecord) =>
+	record.activity.pendingPermissionIds.length > 0 || record.activity.pendingQuestionIds.length > 0;
+
+/** The event the session-drain Kilo plugin publishes when a drain with a token completes. */
+const DRAINED_EVENT = "rpc.kilocode.session-drain.drained";
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
 	return new Promise((resolve) => {
@@ -104,37 +97,31 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 /**
  * The `kilo.core/chats` domain object: this app's Kilo chats, read from the
- * one event stream the app keeps open to the Kilo server.
+ * one event stream the app keeps open to the Kilo v2 server.
  *
  * - The stream follows the `server` domain object: opened once it is ready,
  *   closed when it isn't. A stream that drops while the server runs is
- *   reopened with backoff. Each opening first starts the stream, then reads
- *   the full chat list (paged, from every project: no directory) and the
- *   current statuses and pending prompts, which merge with what the stream
- *   said meanwhile (`ConversationStore`). Prompts and statuses live in the
- *   server's per-directory instances, so besides the default directory the
- *   read covers the directories of chats already working or waiting.
+ *   reopened with backoff. The stream replays nothing, so each opening first
+ *   starts the stream, then reads the full chat list (paged, every project),
+ *   the running chats (`session.active`) and the prompts the running and
+ *   waiting chats wait on, which merge with what the stream said meanwhile
+ *   (`ConversationStore`). Each such full read is announced with `listed`.
+ * - v2 publishes no session status: a chat works from
+ *   `session.execution.started` until the execution succeeds, fails or is
+ *   interrupted, and is retrying from `session.retry.scheduled` until its
+ *   next step starts. Questions are the question tool's forms.
  * - A server that stops takes its turns and prompts with it: activity is
  *   settled and `ready` goes false until the next read. Chats stay listed.
  * - Subagent chats are listed once known (from events, or looked up by id
  *   while one is working or waiting on the user); only this app's root chats
- *   and their subagents are published.
+ *   and their subagents are published. A fork (`session.forked`, which
+ *   carries no chat) is looked up too.
  * - Per-chat events fire only while `ready`; the first read of a connection
  *   announces nothing (consumers read the state when `ready` turns true),
  *   later reads announce chats created or changed, never turns or prompts.
- * - Writes wait for the server and go to the chat's own directory.
- * - The server's fork drops permission rules, so a fork gets its source's
- *   rules re-applied and stays unpublished until they are (`ForkHolds`), then
- *   is handed the hidden note VS Code and JetBrains give every fork
- *   (`forkHandoffText`). While its rules are being applied a fork is also
- *   recorded as unfinished (`UnfinishedForks`, in memory until persisted):
- *   one whose rules fail, or that can't be persisted, is deleted, and one
- *   whose delete fails too (or that a crash left behind) is never published
- *   and is deleted again after each read of the chat list.
- *   A fork request that fails keeps its hold until a read of the chats
- *   finds the fork by its title and stamp, which is then discarded too, or
- *   until two reads in a row don't (`LostForks`). A fork the server commits
- *   only after that, or a crash before the server answers, is not covered.
+ * - The server's fork keeps the source's stamp and permission rules, so a
+ *   fork is published as soon as it is handed the hidden note VS Code and
+ *   JetBrains give every fork (`forkHandoffText`).
  * - Successful live root turns share one drain barrier until its matching
  *   stream acknowledgment: server reservations include descendants and queued
  *   report delivery. Dropped streams preserve intent but replace the token
@@ -147,18 +134,11 @@ export function provideConversations(
 	const now = options.now ?? Date.now;
 	const firstDelay = options.reconnectDelayMs ?? 1_000;
 	const store = new ConversationStore(now);
-	const forkHolds = new ForkHolds();
-	const unfinishedForks = new UnfinishedForks(options.storage);
-	const lostForks = new LostForks({
-		holds: forkHolds,
-		unfinished: unfinishedForks,
-		discard: (client, directory, id) => discardFork(client, directory, id),
-		republish: () => publish({ activity: ready }),
-		warn: (message) => sdk.logger.warn(message),
-	});
 	let ready = false;
 	let current: { key: string; client: KiloChatClient; connection: ServerConnection } | undefined;
 	const drains = new Map<string, { token: string; controller: AbortController } | null>();
+	/** Chats this app is forking right now: the fork call itself publishes their forks. */
+	const forking = new Set<string>();
 	let activeStream:
 		| {
 				client: KiloChatClient;
@@ -202,7 +182,7 @@ export function provideConversations(
 						workspaceId: input.workspaceId ?? null,
 					}),
 				]);
-				const permission = chatPermissionRules({
+				const permissions = chatPermissionRules({
 					workspaceFolders,
 					tools,
 					approvals,
@@ -222,17 +202,9 @@ export function provideConversations(
 					client.createChat(directory, {
 						...(input.title ? { title: input.title } : {}),
 						...(input.agent ? { agent: input.agent } : {}),
-						...(input.model
-							? {
-									model: {
-										providerID: input.model.aiProviderId,
-										id: input.model.modelId,
-										...(input.model.variant ? { variant: input.model.variant } : {}),
-									},
-								}
-							: {}),
+						...(input.model ? { model: wireModel(input.model) } : {}),
 						metadata,
-						...(permission.length > 0 ? { permission } : {}),
+						...(permissions.length > 0 ? { permissions } : {}),
 					}),
 				);
 				store.addInfos([info.metadata === null ? { ...info, metadata } : info]);
@@ -242,11 +214,11 @@ export function provideConversations(
 				return chat;
 			},
 			setWorktreeBranch: async ({ id, branch }) => {
-				const { client, directory } = await chatClient(id);
+				const { client } = await connected();
 				const info = await serverCall("read the chat", () => client.getChat(id));
 				if (!info) throw new KernelError("NOT_FOUND", "The chat was not found.");
 				const metadata = withWorktreeBranch(info.metadata, branch);
-				await serverCall("update the chat", () => client.updateChat(directory, id, { metadata }));
+				await serverCall("update the chat", () => client.updateChat(id, { metadata }));
 				store.addInfos([{ ...info, metadata }]);
 				publish({ activity: ready });
 			},
@@ -257,87 +229,62 @@ export function provideConversations(
 					throw new KernelError("VALIDATION", "A subagent's chat can't be forked.");
 				}
 				const { client, directory } = await chatClient(id);
-				const permission = await serverCall("read the chat's permissions", () =>
-					client.getChatPermission(directory, id),
-				);
-				const known = new Set(Object.keys(store.chats));
-				const sourceTitle = store.chats[id]?.info?.title ?? source.title;
-				const hold = forkHolds.begin(source.workSessionId, known);
+				forking.add(id);
 				let info;
-				let stillLooking = false;
 				try {
-					info = await serverCall("fork the chat", () =>
-						client.forkChat(directory, id, messageId),
-					).catch(async (error: unknown) => {
-						const search = {
-							directory,
-							workSessionId: source.workSessionId,
-							title: forkedTitle(sourceTitle),
-							known,
-							hold,
-						};
-						stillLooking = await lostForks.look(client, search, seenChats);
-						if (stillLooking) retryLostForks();
-						throw error;
-					});
+					info = await serverCall("fork the chat", () => client.forkChat(id, messageId));
 					const forkId = info.id;
-					hold.narrow(forkId);
-					if (permission.length > 0) {
-						await serverCall("apply the chat's permissions", async () => {
-							unfinishedForks.add({ id: forkId, directory });
-							await client.updateChat(directory, forkId, { permission });
-						}).catch(async (error: unknown) => {
-							await discardFork(client, directory, forkId);
-							throw error;
+					await client
+						.recordForkHandoff(forkId, info.directory ?? directory)
+						.catch((error: unknown) => {
+							sdk.logger.warn(`Could not hand fork ${forkId} its note: ${errorText(error)}`);
 						});
-						unfinishedForks.remove(forkId);
-					}
-					await client.recordForkHandoff(directory, forkId).catch((error: unknown) => {
-						sdk.logger.warn(`Could not hand fork ${forkId} its note: ${errorText(error)}`);
-					});
 					store.addInfos([info]);
 				} finally {
-					// A lost fork still being looked for stays held until `lostForks` settles it.
-					if (!stillLooking) hold.release();
-					publish({ activity: ready });
+					forking.delete(id);
 				}
+				publish({ activity: ready });
 				const chat: ChatSummary | undefined = provider.state.chats[info.id];
 				if (!chat) throw new KernelError("INTERNAL", "The forked chat could not be read back.");
 				return chat;
 			},
 			chatConfig: (context) => chatConfig(context),
 			rename: ({ id, title }) =>
-				write(id, "rename the chat", (client, directory) =>
-					client.updateChat(directory, id, { title }),
-				),
+				write("rename the chat", (client) => client.updateChat(id, { title })),
 			delete: async ({ id }) => {
-				await write(id, "delete the chat", (client, directory) => client.deleteChat(directory, id));
-				applyLive({ type: "session.deleted", properties: { info: { id } } });
+				await write("delete the chat", (client) => client.deleteChat(id));
+				applyLive({ type: "session.deleted", data: { sessionID: id } });
 			},
 			prompt: async (input, caller) => {
 				promptersOnly(caller);
 				const { chatId, command } = input;
-				const options = promptOptions(input);
-				await write(chatId, "send the prompt", (client, directory) =>
+				const selection = {
+					...(input.agent ? { agent: input.agent } : {}),
+					...(input.model ? { model: wireModel(input.model) } : {}),
+				};
+				await write("send the prompt", (client) =>
 					command
-						? client.command(directory, chatId, {
-								command: command.name,
-								arguments: command.arguments,
-								...options,
+						? client.command(chatId, {
+								name: command.name,
+								text: command.arguments,
+								...selection,
 							})
-						: client.prompt(directory, chatId, { parts: wireParts(input.parts), ...options }),
+						: client.prompt(chatId, {
+								...wirePrompt(input.parts),
+								...selection,
+								...(input.system ? { metadata: promptMetadata(input.system) } : {}),
+							}),
 				);
 			},
-			abort: ({ id }) =>
-				write(id, "stop the chat", (client, directory) => client.abortChat(directory, id)),
+			abort: ({ id }) => write("stop the chat", (client) => client.interrupt(id)),
 			setArchived: ({ id, archived }) =>
-				write(id, archived ? "archive the chat" : "restore the chat", (client, directory) =>
-					client.updateChat(directory, id, { archived: archived ? now() : null }),
+				write(archived ? "archive the chat" : "restore the chat", (client) =>
+					client.updateChat(id, { archived }),
 				),
 			permissionRequests: async ({ id }) => {
-				const { client, directory } = await chatClient(id);
+				const { client } = await connected();
 				const requests = await serverCall("read the permission requests", () =>
-					client.permissionRequests(directory),
+					client.permissionRequests(id),
 				);
 				const toolKeys = new Map(
 					sdk.extensions.list(Tool).map((tool) => [toolWireName(tool.key), tool.key]),
@@ -351,21 +298,34 @@ export function provideConversations(
 			},
 			replyPermission: async ({ chatId, permissionId, decision, message }, caller) => {
 				promptAnswerersOnly(caller);
-				await write(chatId, "answer the permission request", (client, directory) =>
-					client.replyPermission(directory, permissionId, decision, message),
+				await write("answer the permission request", (client) =>
+					client.replyPermission(chatId, permissionId, decision, message),
 				);
 			},
 			replyQuestion: async ({ chatId, questionId, answers }, caller) => {
 				promptAnswerersOnly(caller);
-				await write(chatId, "answer the question", (client, directory) =>
-					client.replyQuestion(directory, questionId, answers),
+				await write("answer the question", (client) =>
+					client.replyQuestion(chatId, questionId, answers),
 				);
 			},
 			rejectQuestion: async ({ chatId, questionId }, caller) => {
 				promptAnswerersOnly(caller);
-				await write(chatId, "dismiss the question", (client, directory) =>
-					client.rejectQuestion(directory, questionId),
+				await write("dismiss the question", (client) => client.rejectQuestion(chatId, questionId));
+			},
+			findMissing: async ({ ids }) => {
+				const unknown = [...new Set(ids)].filter((id) => !store.chats[id]?.info);
+				if (unknown.length === 0) return { missing: [] };
+				const { client } = await connected();
+				const found = await Promise.all(
+					unknown.map((id) =>
+						client.getChat(id).then(
+							(info) => (info ? null : id),
+							// A lookup that failed proves nothing.
+							() => null,
+						),
+					),
 				);
+				return { missing: found.filter((id) => id !== null) };
 			},
 			declineSignInTools: ({ pluginId }) => {
 				if (!signedIn.isSignedIn()) declinedSignIns.decline(pluginId);
@@ -412,72 +372,9 @@ export function provideConversations(
 		return { client, directory };
 	}
 
-	async function write(
-		chatId: string,
-		label: string,
-		call: (client: KiloChatClient, directory: string) => Promise<void>,
-	): Promise<void> {
-		const { client, directory } = await chatClient(chatId);
-		await serverCall(label, () => call(client, directory));
-	}
-
-	/**
-	 * Deletes a fork that must not exist, while it is still held, and forgets
-	 * it. One that can't be deleted stays unfinished: hidden, and retried after
-	 * the next read of the chat list.
-	 */
-	async function discardFork(client: KiloChatClient, directory: string, id: string) {
-		try {
-			await client.deleteChat(directory, id);
-		} catch (error) {
-			sdk.logger.warn(`Could not delete the unfinished fork ${id}: ${errorText(error)}`);
-			return;
-		}
-		unfinishedForks.remove(id);
-		store.apply({ type: "session.deleted", properties: { info: { id } } });
-	}
-
-	/** Every chat seen so far, as the server described it. */
-	function seenChats() {
-		return Object.values(store.chats).flatMap((record) => (record.info ? [record.info] : []));
-	}
-
-	let lostForkRetry: Promise<void> | undefined;
-
-	/**
-	 * Reads the chat list again, backing off, until the waiting lost-fork
-	 * searches settle. Stops when the stream drops (it exits at once, so it is
-	 * gone before the reconnect); each hydrate restarts it while searches wait.
-	 */
-	function retryLostForks() {
-		lostForkRetry ??= (async () => {
-			let delay = firstDelay;
-			while (lostForks.waiting) {
-				const stream = activeStream;
-				if (!stream) return;
-				await sleep(delay, stream.signal);
-				if (stream.signal.aborted) return;
-				try {
-					await lostForks.settle(stream.client, await stream.client.listChats());
-				} catch (error) {
-					sdk.logger.warn(`Could not look for a fork whose request failed: ${errorText(error)}`);
-				}
-				delay = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
-			}
-		})().finally(() => {
-			lostForkRetry = undefined;
-		});
-	}
-
-	/** The chats anyone may see: no fork held mid-fork or left unfinished. */
-	function visibleChats() {
-		// Every way a chat leaves the store (a deletion, a re-read) publishes through here.
-		forkHolds.prune(store.chats);
-		const held = forkHolds.visible(store.chats);
-		const unfinished = unfinishedForks.list();
-		if (unfinished.length === 0) return held;
-		const hidden = new Set(unfinished.map(({ id }) => id));
-		return Object.fromEntries(Object.entries(held).filter(([id]) => !hidden.has(id)));
+	async function write(label: string, call: (client: KiloChatClient) => Promise<void>) {
+		const { client } = await connected();
+		await serverCall(label, () => call(client));
 	}
 
 	async function decideApprovals(
@@ -506,6 +403,7 @@ export function provideConversations(
 		const permissions: PermissionRule[] = [];
 		for (const contribution of sdk.extensions.list(ChatConfigPoint)) {
 			try {
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				const config = await contribution.implementation?.configure(context);
 				instructions.push(...(config?.instructions ?? []));
 				for (const name of config?.disableTools ?? []) disableTools.add(name);
@@ -522,7 +420,7 @@ export function provideConversations(
 		readonly deleted?: ChatSummary | undefined;
 	}) {
 		const before = provider.state.chats;
-		const chats = publishChats(visibleChats());
+		const chats = publishChats(store.chats);
 		provider.setState({ ready, chats, declinedSignInTools: [...declinedSignIns.scopes] });
 		for (const id of drains.keys()) {
 			const chat = chats[id];
@@ -581,8 +479,8 @@ export function provideConversations(
 
 	function applyLive(event: KiloEvent): boolean {
 		const deletedId =
-			event.type === "session.deleted"
-				? (event.properties.info as { id?: string } | undefined)?.id
+			event.type === "session.deleted" && typeof event.data.sessionID === "string"
+				? event.data.sessionID
 				: undefined;
 		const deleted = deletedId ? provider.state.chats[deletedId] : undefined;
 		if (!store.apply(event)) return false;
@@ -637,25 +535,20 @@ export function provideConversations(
 				activeStream = stream;
 				const streaming = consume(client, attempt.signal);
 				streaming.catch(() => undefined);
-				await hydrate(client, connection, attempt.signal);
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
+				await hydrate(client, attempt.signal);
 				if (signal.aborted) return;
 				delay = firstDelay;
 				if (activeStream === stream) {
 					stream.hydrated = true;
-					// `settle` counts this read synchronously: a search it didn't settle needs another.
-					void lostForks.settle(client, seenChats()).catch((error: unknown) => {
-						sdk.logger.warn(`Could not settle lost forks: ${errorText(error)}`);
-					});
-					if (lostForks.waiting) retryLostForks();
-					void retryUnfinishedForks(client, attempt.signal).catch((error: unknown) => {
-						sdk.logger.warn(`Could not clean up unfinished forks: ${errorText(error)}`);
-					});
 					if (!ready) {
 						ready = true;
 						publish({ activity: false });
 					}
+					provider.emit("listed", {});
 					for (const id of drains.keys()) requestDrain(id);
 				}
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				await streaming;
 			} catch (error) {
 				if (!signal.aborted) sdk.logger.warn(`Kilo chat stream stopped: ${errorText(error)}`);
@@ -665,6 +558,7 @@ export function provideConversations(
 				signal.removeEventListener("abort", stopAttempt);
 			}
 			if (signal.aborted) return;
+			// react-doctor-disable-next-line react-doctor/async-await-in-loop
 			await sleep(delay, signal);
 			delay = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS);
 		}
@@ -682,23 +576,8 @@ export function provideConversations(
 				}
 				const message = userMessages.observe(event);
 				if (applyLive(event) && ready) void resolveLineage(client, signal, true);
-				if (event.type === "session.drained") {
-					const id = event.properties.sessionID;
-					const request = typeof id === "string" ? drains.get(id) : undefined;
-					if (typeof id === "string" && request && request.token === event.properties.token) {
-						cancelDrain(id);
-						const chat = provider.state.chats[id];
-						if (
-							ready &&
-							activeStream?.hydrated &&
-							chat?.parentId === null &&
-							chat.activity.status === "idle" &&
-							!chat.activity.lastError
-						) {
-							provider.emit("work-completed", { chatId: id });
-						}
-					}
-				}
+				if (event.type === "session.forked") void lookUpFork(client, signal, event);
+				if (event.type === DRAINED_EVENT) settleDrain(event);
 				if (message && ready && provider.state.chats[message.chatId]) {
 					const { model, ...rest } = message;
 					provider.emit("user-message", {
@@ -712,24 +591,44 @@ export function provideConversations(
 		}
 	}
 
-	async function hydrate(
-		client: KiloChatClient,
-		connection: ServerConnection,
-		signal: AbortSignal,
-	) {
+	function settleDrain(event: KiloEvent) {
+		const id = event.data.sessionID;
+		const request = typeof id === "string" ? drains.get(id) : undefined;
+		if (typeof id !== "string" || !request || request.token !== event.data.token) return;
+		cancelDrain(id);
+		const chat = provider.state.chats[id];
+		if (
+			ready &&
+			activeStream?.hydrated &&
+			chat?.parentId === null &&
+			chat.activity.status === "idle" &&
+			!chat.activity.lastError
+		) {
+			provider.emit("work-completed", { chatId: id });
+		}
+	}
+
+	/** A fork announces only its id and its source: anyone's fork of this app's chat is this app's. */
+	async function lookUpFork(client: KiloChatClient, signal: AbortSignal, event: KiloEvent) {
+		const forkId = event.data.sessionID;
+		const sourceId = event.data.parentID;
+		if (typeof forkId !== "string" || store.chats[forkId]?.info) return;
+		if (typeof sourceId === "string" && forking.has(sourceId)) return;
+		const info = await client.getChat(forkId).catch(() => undefined);
+		if (!info || signal.aborted) return;
+		store.addInfos([info]);
+		publish({ activity: ready });
+	}
+
+	async function hydrate(client: KiloChatClient, signal: AbortSignal) {
 		lookedUp.clear();
 		const since = store.epoch;
-		const directories = new Set<string>();
-		for (const record of Object.values(store.chats)) {
-			const directory = record.info?.directory ?? record.directory;
-			if (directory && directory !== connection.globalDirectory && isActive(record)) {
-				directories.add(directory);
-			}
-		}
-		const [chats, activity] = await Promise.all([
-			client.listChats(),
-			readActivity(client, [...directories]),
-		]);
+		const [chats, running] = await Promise.all([client.listChats(), client.runningChats()]);
+		if (signal.aborted) return;
+		// Prompts outlive no execution: only running chats, and chats still shown waiting, can have any.
+		const watched = new Set(running);
+		for (const [id, record] of Object.entries(store.chats)) if (isWaiting(record)) watched.add(id);
+		const activity = await readPrompts(client, [...watched], running);
 		if (signal.aborted) return;
 		store.replaceRoots(chats, since);
 		store.hydrateActivity(activity, since);
@@ -748,6 +647,8 @@ export function provideConversations(
 				const ids = chatsAwaitingLineage(store.chats).filter((id) => !lookedUp.has(id));
 				if (ids.length === 0) return;
 				for (const id of ids) lookedUp.add(id);
+				// Each level's parents are known only once the level below is looked up.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
 				const found = await Promise.all(ids.map((id) => client.getChat(id).catch(() => undefined)));
 				const infos = found.filter((info) => info !== undefined);
 				if (infos.length === 0 || signal.aborted) return;
@@ -758,47 +659,6 @@ export function provideConversations(
 			if (lineageRun?.promise === promise) lineageRun = undefined;
 		});
 		lineageRun = { promise, signal };
-		return promise;
-	}
-
-	/** The retry in flight; one whose stream was dropped is never joined, like `lineageRun`. */
-	let forkRetry: { readonly promise: Promise<void>; readonly signal: AbortSignal } | undefined;
-
-	/**
-	 * Deletes the unfinished forks the list just read still holds; ones it
-	 * doesn't hold are gone already. A fork still being made is left to its
-	 * own `fork` call. A failed delete keeps the fork for the next read.
-	 */
-	function retryUnfinishedForks(client: KiloChatClient, signal: AbortSignal) {
-		if (forkRetry && !forkRetry.signal.aborted) return forkRetry.promise;
-		const promise: Promise<void> = (async () => {
-			const listed: UnfinishedFork[] = [];
-			for (const fork of unfinishedForks.list()) {
-				if (forkHolds.names(fork.id)) continue;
-				if (store.chats[fork.id]?.info) listed.push(fork);
-				else unfinishedForks.remove(fork.id);
-			}
-			if (listed.length === 0) return;
-			const results = await Promise.allSettled(
-				listed.map((fork) => client.deleteChat(fork.directory, fork.id)),
-			);
-			if (signal.aborted) return;
-			results.forEach((result, index) => {
-				const { id } = listed[index]!;
-				if (result.status === "rejected") {
-					sdk.logger.warn(
-						`Could not delete the unfinished fork ${id}: ${errorText(result.reason)}`,
-					);
-					return;
-				}
-				unfinishedForks.remove(id);
-				store.apply({ type: "session.deleted", properties: { info: { id } } });
-			});
-			publish({ activity: ready });
-		})().finally(() => {
-			if (forkRetry?.promise === promise) forkRetry = undefined;
-		});
-		forkRetry = { promise, signal };
 		return promise;
 	}
 
@@ -832,14 +692,13 @@ export function provideConversations(
 	};
 }
 
-/** The options of a prompt or command, in the server's shape. */
-function promptOptions(input: PromptChatInput) {
-	return {
-		...(input.agent ? { agent: input.agent } : {}),
-		...(input.model ? { model: wireModel(input.model) } : {}),
-		...(input.model?.variant ? { variant: input.model.variant } : {}),
-		...(input.system !== undefined ? { system: input.system } : {}),
-	};
+/**
+ * Where a prompt's `system` text goes until Desktop's Kilo plugin adds it to
+ * the turn's system prompt (v2 prompts have no `system`): the user message's
+ * metadata, which the server shows to no model.
+ */
+export function promptMetadata(system: string): Record<string, unknown> {
+	return { [KILO_DESKTOP_METADATA_KEY]: { system } };
 }
 
 /**
@@ -863,55 +722,48 @@ export function withWorktreeBranch(metadata: unknown, branch: string): Record<st
 	};
 }
 
-async function readActivity(
+/**
+ * What running and waiting chats wait on, read chat by chat. A chat whose
+ * read failed keeps what the store knew (`complete: false`).
+ */
+async function readPrompts(
 	client: KiloChatClient,
-	directories: readonly string[],
+	chatIds: readonly string[],
+	running: readonly string[],
 ): Promise<ActivitySnapshot> {
 	const reads = await Promise.all(
-		[undefined, ...directories].map(async (directory) => {
-			const [statuses, permissions, questions] = await Promise.allSettled([
-				client.statuses(directory),
-				client.pendingPermissions(directory),
-				client.pendingQuestions(directory),
+		chatIds.map(async (chatId) => {
+			const [permissions, questions] = await Promise.allSettled([
+				client.permissionRequests(chatId),
+				client.pendingQuestions(chatId),
 			]);
-			return { directory, statuses, permissions, questions };
+			return { permissions, questions };
 		}),
 	);
-	const whereRead: Record<string, string> = {};
-	const remember = (chatId: string, directory: string | undefined) => {
-		if (directory) whereRead[chatId] = directory;
-	};
-	const statuses = reads.flatMap(({ directory, statuses: read }) => {
-		if (read.status !== "fulfilled") return [];
-		for (const chatId of Object.keys(read.value)) remember(chatId, directory);
-		return [read.value];
-	});
 	const requests = (kind: "permissions" | "questions") => {
-		const fulfilled = reads.flatMap((read) => {
+		const found: PendingRequest[] = [];
+		let complete = true;
+		for (const read of reads) {
 			const result = read[kind];
-			if (result.status !== "fulfilled") return [];
-			for (const request of result.value) remember(request.sessionID, read.directory);
-			return [result.value];
-		});
-		if (fulfilled.length === 0) return undefined;
-		return {
-			requests: fulfilled.flat() as PendingRequest[],
-			complete: fulfilled.length === reads.length,
-		};
+			if (result.status !== "fulfilled") {
+				complete = false;
+				continue;
+			}
+			for (const request of result.value) {
+				found.push({
+					id: request.id,
+					sessionID: "chatId" in request ? request.chatId : request.sessionID,
+				});
+			}
+		}
+		return { requests: found, complete };
 	};
-	const permissions = requests("permissions");
-	const questions = requests("questions");
 	return {
-		...(statuses.length > 0
-			? {
-					statuses: {
-						byChat: Object.assign({}, ...statuses) as Record<string, { type: string }>,
-						complete: statuses.length === reads.length,
-					},
-				}
-			: {}),
-		...(permissions ? { permissions } : {}),
-		...(questions ? { questions } : {}),
-		directories: whereRead,
+		statuses: {
+			byChat: Object.fromEntries(running.map((id) => [id, { type: "busy" }])),
+			complete: true,
+		},
+		permissions: requests("permissions"),
+		questions: requests("questions"),
 	};
 }

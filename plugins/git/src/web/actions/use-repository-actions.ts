@@ -99,6 +99,8 @@ function useWriter(): SourceControlWriter | null {
 	if (!generation) return null;
 	return createSourceControlWriter({
 		generate: (input) => generation.methods.generate(input),
+		generateCommitMessage: async (directory) =>
+			(await generation.methods.generateCommitMessage({ directory })).message,
 		model: () => {
 			const state = models?.getState();
 			return state ? generationModel(state) : undefined;
@@ -250,9 +252,9 @@ export function useRepositoryActions(
 	async function commitStep(step: Step) {
 		const generator = requireWriter();
 		step("Staging changes...", "stage changes");
-		const context = await requireRepository().methods.stageChanges({ directory });
+		await requireRepository().methods.stageChanges({ directory });
 		step("Generating commit message...", "generate a commit message");
-		const message = await generator.generateCommitMessage({ directory, ...context });
+		const message = await generator.generateCommitMessage({ directory });
 		track(GIT_TELEMETRY_EVENTS.commitMessageGenerated);
 		step("Committing...", "commit");
 		await requireRepository().methods.commit({ directory, message });

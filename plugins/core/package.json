@@ -24,7 +24,6 @@
 		"@kilo-desktop/kernel": "workspace:*",
 		"@kilocode/client": "catalog:",
 		"@kilocode/schema": "catalog:",
-		"@kilocode/sdk": "7.8.27",
 		"@launchdarkly/node-client-sdk": "^4.4.4",
 		"@modelcontextprotocol/server": "2.4.0",
 		"atomically": "catalog:",

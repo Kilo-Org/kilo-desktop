@@ -19,6 +19,7 @@ export const PREFERRED_MODEL = { aiProviderId: "kilo", modelId: "fast", variant:
 
 export function actionCollaborators() {
 	const generated: GenerateInput[] = [];
+	const commitMessages: string[] = [];
 	const delivered: TelemetryEnvelope[] = [];
 	const inserted: unknown[] = [];
 	let answer: Record<string, unknown> = { message: "Fix the login" };
@@ -33,6 +34,10 @@ export function actionCollaborators() {
 					generate: (input) => {
 						generated.push(input);
 						return answer;
+					},
+					generateCommitMessage: ({ directory }) => {
+						commitMessages.push(directory);
+						return { message: "Fix the login" };
 					},
 					generateBranchName: unused,
 				},
@@ -100,6 +105,8 @@ export function actionCollaborators() {
 	return {
 		options,
 		generated,
+		/** The repositories commit messages were generated for. */
+		commitMessages,
 		inserted,
 		/** Tracked events as delivered: `[key, data]`. */
 		tracked: () => delivered.map(({ key, data }) => [key, data]),

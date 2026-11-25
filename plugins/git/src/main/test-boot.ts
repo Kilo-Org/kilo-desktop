@@ -102,6 +102,8 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 	const generated: GenerateBranchNameInput[] = [];
 	const names = [...(options.names ?? [])];
 	let chats: DomainObjectProvider<typeof Chats> | undefined;
+	/** Chats the server has though kilo.core doesn't list them. */
+	const onServer = new Set<string>();
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
 			chats = sdk.domainObjects.provide(Chats, {
@@ -121,6 +123,9 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 					replyQuestion: unused,
 					rejectQuestion: unused,
 					declineSignInTools: unused,
+					findMissing: ({ ids }) => ({
+						missing: ids.filter((id) => !chats!.state.chats[id] && !onServer.has(id)),
+					}),
 					permissionRequests: () => [],
 					replyPermission: unused,
 					prompt: unused,
@@ -132,6 +137,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				initialState: {},
 				methods: {
 					generate: unused,
+					generateCommitMessage: unused,
 					generateBranchName: (input) => {
 						generated.push(input);
 						return { branch: names.length > 0 ? names.shift()! : "fix-the-login-bug" };
@@ -164,6 +170,13 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		},
 		turnEnded(chatId: string) {
 			provider().emit("turn-ended", { chatId });
+		},
+		onServer,
+		/** A chat left the server unannounced, and kilo.core read the full list again. */
+		vanishAndList(chatId: string) {
+			const { [chatId]: _gone, ...rest } = provider().state.chats;
+			provider().setState({ ...provider().state, chats: rest });
+			provider().emit("listed", {});
 		},
 	};
 }

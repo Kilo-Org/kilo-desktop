@@ -7,7 +7,7 @@ export interface UserMessage {
 	readonly model?: { readonly providerID: string; readonly modelID: string };
 }
 
-/** Bounds the ids remembered per kind; old ones are forgotten first. */
+/** Bounds the ids and models remembered; old ones are forgotten first. */
 const MAX_REMEMBERED = 500;
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -17,49 +17,48 @@ const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
 
 function remember<T>(map: Map<string, T>, key: string, value: T): void {
+	map.delete(key);
 	map.set(key, value);
 	if (map.size > MAX_REMEMBERED) map.delete(map.keys().next().value!);
 }
 
+/** A v2 `Model.Ref` (`{ providerID, id }`). */
 function readModel(value: unknown): UserMessage["model"] {
 	const model = asRecord(value);
 	const providerID = asString(model?.providerID);
-	const modelID = asString(model?.modelID);
+	const modelID = asString(model?.id);
 	return providerID && modelID ? { providerID, modelID } : undefined;
 }
 
 /**
- * Picks the messages people send out of the server's stream: a user message
- * (`message.updated`, role `user`) is announced once, with its first text
- * part the person wrote (the server writes the message before its parts).
- * Messages without such a part are never announced.
+ * Picks the messages people send out of the server's stream: every prompt is
+ * admitted to the chat's inbox (`session.inbox.enqueued` with a `user` item)
+ * with its text, and is announced once. The model is the one the prompt
+ * selected, else the one the chat last switched to (Desktop switches the
+ * chat's model before prompting). Synthetic notes and copied fork history are
+ * never admitted as user items, so they are never announced.
  */
 export class UserMessageTracker {
-	readonly #awaitingText = new Map<string, Omit<UserMessage, "text">>();
 	readonly #announced = new Map<string, true>();
+	readonly #models = new Map<string, NonNullable<UserMessage["model"]>>();
 
 	observe(event: KiloEvent): UserMessage | undefined {
-		if (event.type === "message.updated") {
-			const info = asRecord(event.properties.info);
-			const messageId = asString(info?.id);
-			const chatId = asString(info?.sessionID);
-			if (info?.role !== "user" || !messageId || !chatId) return undefined;
-			if (this.#announced.has(messageId) || this.#awaitingText.has(messageId)) return undefined;
-			const model = readModel(info.model);
-			remember(this.#awaitingText, messageId, { chatId, messageId, ...(model ? { model } : {}) });
+		const chatId = asString(event.data.sessionID);
+		if (!chatId) return undefined;
+		if (event.type === "session.model.selected" || event.type === "session.created") {
+			const model = readModel(event.data.model);
+			if (model) remember(this.#models, chatId, model);
 			return undefined;
 		}
-		if (event.type !== "message.part.updated") return undefined;
-		const part = asRecord(event.properties.part);
-		const messageId = asString(part?.messageID);
-		if (!part || !messageId || part.type !== "text" || part.synthetic || part.ignored) {
-			return undefined;
-		}
-		const pending = this.#awaitingText.get(messageId);
-		const text = typeof part.text === "string" ? part.text : "";
-		if (!pending || !text.trim()) return undefined;
-		this.#awaitingText.delete(messageId);
+		if (event.type !== "session.inbox.enqueued") return undefined;
+		const item = asRecord(event.data.item);
+		const payload = asRecord(item?.payload);
+		const messageId = asString(event.data.inboxID);
+		const text = typeof payload?.text === "string" ? payload.text : "";
+		if (item?.type !== "user" || !messageId || !text.trim()) return undefined;
+		if (this.#announced.has(messageId)) return undefined;
 		remember(this.#announced, messageId, true);
-		return { ...pending, text };
+		const model = readModel(asRecord(payload?.selection)?.model) ?? this.#models.get(chatId);
+		return { chatId, messageId, text, ...(model ? { model } : {}) };
 	}
 }

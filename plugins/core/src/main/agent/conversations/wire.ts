@@ -1,20 +1,34 @@
 import type { ModelRef, PromptChatInput } from "../../../contracts";
+import type { KiloModelRef, PromptFile } from "./kilo-chat-client";
 
-/** A model as the Kilo server's prompt endpoints name it. */
-export function wireModel(model: ModelRef): { providerID: string; modelID: string } {
-	return { providerID: model.aiProviderId, modelID: model.modelId };
+/** Desktop's model reference as Kilo v2 names it (`Model.Ref`). */
+export function wireModel(
+	model: ModelRef & { readonly variant?: string | undefined },
+): KiloModelRef {
+	return {
+		providerID: model.aiProviderId,
+		id: model.modelId,
+		...(model.variant ? { variant: model.variant } : {}),
+	};
 }
 
-/** Prompt parts in the server's shape: text, and files by URL. */
-export function wireParts(parts: PromptChatInput["parts"]): Record<string, unknown>[] {
-	return parts.map((part) =>
-		part.type === "text"
-			? { type: "text", text: part.text }
-			: {
-					type: "file",
-					mime: part.mime,
-					url: part.url,
-					...(part.filename !== undefined ? { filename: part.filename } : {}),
-				},
-	);
+/**
+ * A prompt's parts as one v2 prompt: its text parts joined (a v2 prompt has
+ * one text) and its files by URL.
+ */
+export function wirePrompt(parts: PromptChatInput["parts"]): {
+	readonly text: string;
+	readonly files: PromptFile[];
+} {
+	const texts: string[] = [];
+	const files: PromptFile[] = [];
+	for (const part of parts) {
+		if (part.type === "text") texts.push(part.text);
+		else
+			files.push({
+				uri: part.url,
+				...(part.filename !== undefined ? { name: part.filename } : {}),
+			});
+	}
+	return { text: texts.join("\n\n"), files };
 }

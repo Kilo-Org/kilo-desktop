@@ -1,6 +1,7 @@
 import {
 	applyHydratedStatus,
 	applyKiloEvent,
+	chatIdOfEvent,
 	IDLE,
 	resetActivity,
 	sameInfo,
@@ -27,20 +28,12 @@ export interface ActivitySnapshot {
 		readonly complete: boolean;
 	};
 	readonly questions?: { readonly requests: readonly PendingRequest[]; readonly complete: boolean };
-	/** Where each chat's status or prompt was read. */
-	readonly directories?: Readonly<Record<string, string>>;
 }
 
 type PendingKey = "pendingPermissionIds" | "pendingQuestionIds";
 
 const isWorking = (activity: ChatActivity) =>
 	activity.status === "busy" || activity.status === "retry";
-
-const chatIdOf = (event: KiloEvent): string | undefined => {
-	const id =
-		event.properties.sessionID ?? (event.properties.info as { id?: unknown } | undefined)?.id;
-	return typeof id === "string" ? id : undefined;
-};
 
 /**
  * Every chat the Kilo server has mentioned and its activity, as live events
@@ -50,8 +43,8 @@ const chatIdOf = (event: KiloEvent): string | undefined => {
  * sent, and anything live events changed since wins over it — a chat created,
  * deleted or renamed meanwhile, a turn that finished, a prompt answered (the
  * answered ids are remembered until a clean read). A read whose epoch is
- * current replaces what it covers; one that raced, or that could only reach
- * some directories, is merged instead.
+ * current replaces what it covers; one that raced, or that could only read
+ * some chats' prompts, is merged instead.
  */
 export class ConversationStore {
 	#chats: ChatRecords = {};
@@ -77,14 +70,15 @@ export class ConversationStore {
 		const before = this.#chats;
 		const after = applyKiloEvent(before, event, this.now());
 		if (after === before) return false;
-		const chatId = chatIdOf(event);
+		const chatId = chatIdOfEvent(event);
 		this.#epoch += 1;
 		if (chatId) {
 			this.#touched.set(chatId, this.#epoch);
 			for (const key of ["pendingPermissionIds", "pendingQuestionIds"] as const) {
 				const was = before[chatId]?.activity[key] ?? [];
 				const now = after[chatId]?.activity[key] ?? [];
-				for (const id of was) if (!now.includes(id)) this.#cleared[key].add(id);
+				const pending = new Set(now);
+				for (const id of was) if (!pending.has(id)) this.#cleared[key].add(id);
 				for (const id of now) this.#cleared[key].delete(id);
 			}
 		}
@@ -118,15 +112,21 @@ export class ConversationStore {
 			}
 		}
 		for (const id of gone) delete next[id];
+		// What live events said since the read began wins: a chat deleted meanwhile stays gone, a
+		// chat renamed or archived meanwhile keeps its new info.
 		next = this.#withInfos(
 			next,
-			infos.filter((info) => !(changedSince(info.id) && !next[info.id])),
+			infos.filter((info) => !changedSince(info.id) || (next[info.id] && !next[info.id]!.info)),
 		);
 		this.#chats = next;
 	}
 
 	/** Chats looked up one by one (subagent lineage, a chat just created). */
 	addInfos(infos: readonly ChatInfo[]): void {
+		if (infos.length === 0) return;
+		// Counts as live: a list read already in flight may predate a chat just created.
+		this.#epoch += 1;
+		for (const info of infos) this.#touched.set(info.id, this.#epoch);
 		this.#chats = this.#withInfos({ ...this.#chats }, infos);
 	}
 
@@ -144,10 +144,6 @@ export class ConversationStore {
 			next = this.#withPending(next, "pendingQuestionIds", snapshot.questions, raced);
 		}
 		if (snapshot.statuses) next = this.#withStatuses(next, snapshot.statuses, raced);
-		for (const [id, directory] of Object.entries(snapshot.directories ?? {})) {
-			const record = next[id];
-			if (record && record.directory !== directory) next[id] = { ...record, directory };
-		}
 		this.#chats = next;
 	}
 

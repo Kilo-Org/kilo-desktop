@@ -13,7 +13,7 @@ import {
 	setActivePane,
 } from "@kilo-desktop/pane-layout";
 
-import { bootWorkSessions, storageWithWorkspaces, type MemoryStorage } from "../test-boot";
+import { bootWorkSessions, chat, storageWithWorkspaces, type MemoryStorage } from "../test-boot";
 import { globToRegExp } from "../../contracts/model/openers";
 import { paneTypeOf } from "./index";
 
@@ -53,6 +53,31 @@ async function boot(storage: MemoryStorage = storageWithWorkspaces()) {
 }
 
 describe("panes", () => {
+	it("closes the panes of chats the server no longer has after a full read, keeping the rest", async () => {
+		const { panes, workSession, of, core } = await boot();
+		const target = { workSessionId: workSession.id };
+		const chatPane = (id: string) =>
+			panes.methods.open({
+				...target,
+				kind: "test.panes/editor",
+				object: { type: "kilo.core/chat", id },
+			});
+		core!.upsert(chat("ses_live"));
+		core!.unlisted.add("ses_subagent");
+		const gone = await chatPane("ses_gone");
+		const live = await chatPane("ses_live");
+		const subagent = await chatPane("ses_subagent");
+		const terminal = await panes.methods.open({ ...target, kind: "test.panes/terminal" });
+		const closed: string[] = [];
+		panes.on("closed", ({ pane }) => closed.push(pane.id));
+
+		core!.listed();
+
+		await vi.waitFor(() => expect(closed).toEqual([gone.id]));
+		expect(of()?.panes.map((pane) => pane.id)).toEqual([live.id, subagent.id, terminal.id]);
+		expect(core!.lookedUp).toEqual([["ses_gone", "ses_subagent"]]);
+	});
+
 	it("places a pane opened as a tab in the active pane's group; other panes stay for the canvas", async () => {
 		const { panes, workSession, of } = await boot();
 		const target = { workSessionId: workSession.id };

@@ -121,6 +121,7 @@ export class FakeCore {
 				setArchived: unused,
 				replyQuestion: unused,
 				rejectQuestion: unused,
+				findMissing: () => ({ missing: [] }),
 				declineSignInTools: unused,
 				permissionRequests: async ({ id }) => {
 					await this.readGate;

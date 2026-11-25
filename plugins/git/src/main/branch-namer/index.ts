@@ -71,7 +71,8 @@ function readArmed(saved: unknown): ArmedChats {
  *   `worktree-branch-renamed` and toasts it), then the work session takes the
  *   new branch (`setBranch`, which rewrites its chats' stamps too).
  * - Progress per chat is kept in kv (`branch-namer`); a deleted work
- *   session's chats are dropped.
+ *   session's chats are dropped, and so are chats a full read of kilo.core's
+ *   list (`listed`) shows the server no longer has (`findMissing`).
  */
 export function activateBranchNamer(sdk: PluginSdk, { vcs }: BranchNamerOptions): void {
 	const store = mainHost(sdk).storage.kv<{ armed: unknown }>({
@@ -124,6 +125,15 @@ export function activateBranchNamer(sdk: PluginSdk, { vcs }: BranchNamerOptions)
 	});
 	sdk.onDispose(() => namer.dispose());
 
+	/** Drops the progress of armed chats the server no longer has. */
+	async function forgetMissingChats(handle: DomainObjectHandle<typeof Chats>): Promise<void> {
+		const listed = handle.getState().chats;
+		const unlisted = namer.armedChats().filter((id) => !listed[id]);
+		if (unlisted.length === 0) return;
+		const { missing } = await handle.methods.findMissing({ ids: unlisted });
+		missing.forEach(namer.forget);
+	}
+
 	let stopWorkSessions = () => {};
 	let stopChats = () => {};
 	sdk.onDispose(() => {
@@ -157,6 +167,13 @@ export function activateBranchNamer(sdk: PluginSdk, { vcs }: BranchNamerOptions)
 					namer.prompt({ chatId, text, model }),
 				),
 				handle.on("turn-ended", ({ chatId }) => namer.turnEnded(chatId)),
+				handle.on("listed", () => {
+					forgetMissingChats(handle).catch((error: unknown) => {
+						sdk.logger.warn(
+							`Could not drop deleted chats' branch naming: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					});
+				}),
 			];
 			stopChats = () => stops.forEach((stop) => stop());
 		},

@@ -4,41 +4,38 @@ import type {
 	ChatPromptParams,
 	CreateChatParams,
 	KiloChatClient,
-	StructuredPromptParams,
+	KiloModelRef,
+	PendingQuestion,
 } from "../../main/agent/conversations/kilo-chat-client";
-import type { PendingRequest } from "../../main/agent/conversations/store";
-import type { PermissionRequest, PermissionRule } from "../../contracts";
+import type { PermissionRequest } from "../../contracts";
 
 export interface Write {
 	readonly call: string;
-	readonly directory: string;
 	readonly args: readonly unknown[];
 }
 
-/** The Kilo server's chats: what kilo.core can list, change and hear about, recorded. */
+/**
+ * The Kilo v2 server's chats: what kilo.core can list, change and hear
+ * about, recorded. Events are v2 frames (`type`, `data`, `created`,
+ * `directory`); the stream opens with `server.connected` and replays
+ * nothing, as kilo2's does (`chat-fork.integration.test.ts` and
+ * `kilo-chat-client.integration.test.ts` pin the real behaviour).
+ */
 export class FakeKiloChats implements KiloChatClient {
 	chats: ChatInfo[] = [];
-	statusMap: Record<string, { type: string }> = {};
-	permissions: PendingRequest[] = [];
-	questions: PendingRequest[] = [];
-	/** Per directory, overriding the defaults above. */
-	byDirectory: Record<
-		string,
-		{ statuses?: Record<string, { type: string }>; permissions?: PendingRequest[] }
-	> = {};
+	/** What `session.active` answers. */
+	running: string[] = [];
+	/** Per chat: what `permission.list` answers. */
+	permissions: Record<string, Omit<PermissionRequest, "toolKey">[]> = {};
+	/** Per chat: the question forms `session.form.list` answers. */
+	questions: Record<string, string[]> = {};
 	failList = false;
 	failWrites = false;
-	/** Calls (as recorded in `writes`, or `getPermission`) that fail with "offline". */
+	/** Calls (as recorded in `writes`, or `getChat`/`permissionRequests`/`pendingQuestions`) that fail with "offline". */
 	readonly failing = new Set<string>();
-	/** The server makes the fork, but its reply never arrives. */
-	loseForkReply = false;
-	/** Forks are made without announcing `session.created` (as when the stream drops with the reply). */
-	quietForks = false;
-	/** Each chat's stored permission rules. */
-	permissionsById: Record<string, readonly PermissionRule[]> = {};
 	readonly writes: Write[] = [];
 	readonly reads: string[] = [];
-	/** Settle HTTP separately from push(session.drained), including failures arriving after abort. */
+	/** Settle HTTP separately from the `drained` event, including failures arriving after abort. */
 	readonly drainRequests: {
 		readonly directory: string;
 		readonly id: string;
@@ -58,27 +55,30 @@ export class FakeKiloChats implements KiloChatClient {
 	async listChats() {
 		this.listCalls += 1;
 		if (this.failList) throw new Error("list failed");
-		return [...this.chats];
+		return this.chats.filter((chat) => chat.parentId === null);
 	}
 	async getChat(id: string) {
 		this.reads.push(`get ${id}`);
+		if (this.failing.has("getChat")) throw new Error("offline");
 		return this.chats.find((chat) => chat.id === id);
 	}
-	async statuses(directory?: string) {
-		this.reads.push(`statuses ${directory ?? "-"}`);
-		return directory ? (this.byDirectory[directory]?.statuses ?? {}) : this.statusMap;
+	async runningChats() {
+		this.reads.push("running");
+		return [...this.running];
 	}
-	async pendingPermissions(directory?: string) {
-		this.reads.push(`permissions ${directory ?? "-"}`);
-		return directory ? (this.byDirectory[directory]?.permissions ?? []) : this.permissions;
+	async permissionRequests(chatId: string) {
+		this.reads.push(`permissions ${chatId}`);
+		if (this.failing.has("permissionRequests")) throw new Error("offline");
+		return this.permissions[chatId] ?? [];
 	}
-	async pendingQuestions(directory?: string) {
-		this.reads.push(`questions ${directory ?? "-"}`);
-		return directory ? [] : this.questions;
+	async pendingQuestions(chatId: string): Promise<PendingQuestion[]> {
+		this.reads.push(`questions ${chatId}`);
+		if (this.failing.has("pendingQuestions")) throw new Error("offline");
+		return (this.questions[chatId] ?? []).map((id) => ({ id, sessionID: chatId }));
 	}
 	async *events(signal: AbortSignal): AsyncIterable<KiloEvent> {
 		this.subscriptions += 1;
-		yield { type: "server.connected", properties: {} };
+		yield { type: "server.connected", data: {} };
 		while (!signal.aborted) {
 			const next = this.#pending.shift();
 			if (next === "end") return;
@@ -93,7 +93,7 @@ export class FakeKiloChats implements KiloChatClient {
 		}
 	}
 	async createChat(directory: string, params: CreateChatParams) {
-		this.#write("create", directory, [params]);
+		this.#write("create", [directory, params]);
 		const info: ChatInfo = {
 			id: `ses_new_${++this.#created}`,
 			title: params.title ?? "",
@@ -106,39 +106,32 @@ export class FakeKiloChats implements KiloChatClient {
 		this.chats.push(info);
 		return info;
 	}
-	async updateChat(directory: string, id: string, patch: object) {
-		this.#write("update", directory, [id, patch]);
+	async updateChat(id: string, patch: object) {
+		this.#write("update", [id, patch]);
 		await this.#gates.get("update");
 	}
-	/** Like the server: the stamp is cloned, the rules are not, and `session.created` comes first. */
-	async forkChat(directory: string, id: string, messageId: string) {
-		this.#write("fork", directory, [id, messageId]);
+	/** Like kilo2: a root chat with the source's title "(fork #1)", stamp and rules, announced by `session.forked`. */
+	async forkChat(id: string, messageId: string) {
+		this.#write("fork", [id, messageId]);
 		const source = this.chats.find((chat) => chat.id === id);
 		if (!source) throw new Error(`Session not found: ${id}`);
 		const info: ChatInfo = {
 			id: `ses_fork_${++this.#forked}`,
 			title: `${source.title} (fork #1)`,
 			parentId: null,
-			directory,
+			directory: source.directory,
 			metadata: structuredClone(source.metadata),
 			createdAt: 600,
 			updatedAt: 600,
 		};
 		this.chats.push(info);
-		if (!this.quietForks)
-			this.push({ type: "session.created", properties: { info: rawChat(info) } });
+		this.push(event("session.forked", { sessionID: info.id, parentID: id }));
 		await this.#gates.get("fork");
-		if (this.loseForkReply) throw new Error("connection reset");
 		return info;
 	}
-	async recordForkHandoff(directory: string, id: string) {
-		this.#write("handoff", directory, [id]);
+	async recordForkHandoff(id: string, directory: string) {
+		this.#write("handoff", [id, directory]);
 		await this.#gates.get("handoff");
-	}
-	async getChatPermission(directory: string, id: string) {
-		this.reads.push(`permission ${directory} ${id}`);
-		if (this.failing.has("getPermission")) throw new Error("offline");
-		return this.permissionsById[id] ?? [];
 	}
 	/** Holds `call` (`fork`, `update`, `handoff`) after it is recorded until the returned release runs. */
 	hold(call: string): () => void {
@@ -154,63 +147,60 @@ export class FakeKiloChats implements KiloChatClient {
 		);
 		return release;
 	}
-	async deleteChat(directory: string, id: string) {
-		this.#write("delete", directory, [id]);
-		this.chats = this.chats.filter((chat) => chat.id !== id);
+	async deleteChat(id: string) {
+		this.#write("delete", [id]);
+		this.chats = this.chats.filter((chat) => chat.id !== id && chat.parentId !== id);
 	}
 	/** What `generateBranchName` answers. */
 	branchName: string | null = "fix-login";
 
 	async generateBranchName(directory: string, id: string, params: object) {
-		this.#write("generateBranchName", directory, [id, params]);
+		this.#write("generateBranchName", [directory, id, params]);
 		return this.branchName;
 	}
-	/** What `promptStructured` answers; a function sees the prompt. */
-	structuredAnswer: unknown | ((params: StructuredPromptParams) => unknown) = { message: "Fix it" };
-	failPrompt = false;
+	/** What `generateText` answers, in turn; a function sees the prompt. */
+	replies: (string | ((prompt: string) => string))[] = ['{"message":"Fix it"}'];
 
-	async promptStructured(directory: string, id: string, params: StructuredPromptParams) {
-		this.#write("promptStructured", directory, [id, params]);
-		if (this.failPrompt) throw new Error("model unavailable");
-		return typeof this.structuredAnswer === "function"
-			? (this.structuredAnswer as (params: StructuredPromptParams) => unknown)(params)
-			: this.structuredAnswer;
+	async generateText(prompt: string, model?: KiloModelRef) {
+		this.#write("generateText", [prompt, model]);
+		const reply = this.replies.length > 1 ? this.replies.shift()! : this.replies[0]!;
+		return typeof reply === "function" ? reply(prompt) : reply;
 	}
-	async prompt(directory: string, id: string, params: ChatPromptParams) {
-		this.#write("prompt", directory, [id, params]);
+	/** What `generateCommitMessage` answers; an Error is thrown. */
+	commitMessage: string | Error = "Fix login";
+
+	async generateCommitMessage(directory: string) {
+		this.#write("generateCommitMessage", [directory]);
+		if (this.commitMessage instanceof Error) throw this.commitMessage;
+		return this.commitMessage;
 	}
-	async command(directory: string, id: string, params: ChatCommandParams) {
-		this.#write("command", directory, [id, params]);
+	async prompt(id: string, params: ChatPromptParams) {
+		this.#write("prompt", [id, params]);
 	}
-	async abortChat(directory: string, id: string) {
-		this.#write("abort", directory, [id]);
+	async command(id: string, params: ChatCommandParams) {
+		this.#write("command", [id, params]);
+	}
+	async interrupt(id: string) {
+		this.#write("interrupt", [id]);
 	}
 	drainChat(directory: string, id: string, token: string, signal: AbortSignal): Promise<void> {
 		return new Promise((resolve, reject) => {
 			this.drainRequests.push({ directory, id, token, signal, resolve, reject });
 		});
 	}
-	/** Full permission requests by directory, for `permissionRequests`. */
-	permissionRequestsByDirectory: Record<string, PermissionRequest[]> = {};
-
-	async permissionRequests(directory: string) {
-		this.reads.push(`permission requests ${directory}`);
-		return this.permissionRequestsByDirectory[directory] ?? [];
+	async replyPermission(...args: unknown[]) {
+		this.#write("replyPermission", args);
 	}
-
-	async replyPermission(directory: string, ...args: unknown[]) {
-		this.#write("replyPermission", directory, args);
+	async replyQuestion(...args: unknown[]) {
+		this.#write("replyQuestion", args);
 	}
-	async replyQuestion(directory: string, ...args: unknown[]) {
-		this.#write("replyQuestion", directory, args);
-	}
-	async rejectQuestion(directory: string, ...args: unknown[]) {
-		this.#write("rejectQuestion", directory, args);
+	async rejectQuestion(...args: unknown[]) {
+		this.#write("rejectQuestion", args);
 	}
 
 	/** The server announces a change. */
-	push(event: KiloEvent) {
-		this.#pending.push(event);
+	push(next: KiloEvent) {
+		this.#pending.push(next);
 		this.#wake?.();
 	}
 	/** The server closes the event stream. */
@@ -219,10 +209,26 @@ export class FakeKiloChats implements KiloChatClient {
 		this.#wake?.();
 	}
 
-	#write(call: string, directory: string, args: readonly unknown[]) {
+	#write(call: string, args: readonly unknown[]) {
 		if (this.failWrites || this.failing.has(call)) throw new Error("offline");
-		this.writes.push({ call, directory, args });
+		this.writes.push({ call, args });
 	}
+}
+
+let clock = 1_000;
+
+/** A v2 event frame; `created` ticks forward so later events are newer. */
+export function event(
+	type: string,
+	data: Record<string, unknown>,
+	extra: { readonly directory?: string; readonly created?: number } = {},
+): KiloEvent {
+	return {
+		type,
+		data,
+		created: extra.created ?? ++clock,
+		...(extra.directory ? { directory: extra.directory } : {}),
+	};
 }
 
 /** A chat this app created, as the server lists it. */
@@ -239,18 +245,17 @@ export function desktopChat(id: string, overrides: Partial<ChatInfo> = {}): Chat
 	};
 }
 
-/** The raw `info` of a `session.*` event for a chat. */
-export function rawChat(chat: ChatInfo) {
-	return {
-		id: chat.id,
-		title: chat.title,
-		directory: chat.directory,
-		...(chat.parentId ? { parentID: chat.parentId } : {}),
-		metadata: chat.metadata,
-		time: {
-			created: chat.createdAt,
-			updated: chat.updatedAt,
-			...(chat.archivedAt !== undefined ? { archived: chat.archivedAt } : {}),
+/** `session.created` for a chat, as kilo2 announces it (no times: the event's own stamp). */
+export function createdEvent(chat: ChatInfo): KiloEvent {
+	return event(
+		"session.created",
+		{
+			sessionID: chat.id,
+			title: chat.title,
+			location: { directory: chat.directory },
+			...(chat.parentId ? { parentID: chat.parentId } : {}),
+			metadata: chat.metadata,
 		},
-	};
+		{ created: chat.createdAt, ...(chat.directory ? { directory: chat.directory } : {}) },
+	);
 }

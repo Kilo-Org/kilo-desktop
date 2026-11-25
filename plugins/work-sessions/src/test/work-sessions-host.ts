@@ -508,6 +508,7 @@ export function fakeChats(initial: readonly ChatSummary[]) {
 					replyPermission: unused,
 					replyQuestion: unused,
 					rejectQuestion: unused,
+					findMissing: () => ({ missing: [] }),
 					declineSignInTools: unused,
 				},
 			});

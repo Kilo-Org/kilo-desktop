@@ -57,6 +57,8 @@ export interface BranchNamer {
 	turnEnded(chatId: string): void;
 	/** Drops a chat for good (its session is gone). */
 	forget(chatId: string): void;
+	/** The chats armed now, saved progress included. */
+	armedChats(): string[];
 	dispose(): void;
 }
 
@@ -233,6 +235,8 @@ export function createBranchNamer(deps: BranchNamerDeps): BranchNamer {
 		},
 
 		forget: (chatId) => disarm(chatId),
+
+		armedChats: () => [...armed.keys()],
 
 		dispose() {
 			disposed = true;

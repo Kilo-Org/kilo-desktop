@@ -197,11 +197,8 @@ export const Chats = defineDomainObject({
 		 * Forks a root chat at one of its user messages into a new chat in the
 		 * same directory, carrying the messages strictly before `messageId` and
 		 * the source's stamp and permission rules, plus a hidden note telling
-		 * the agent it was forked (as VS Code and JetBrains do). The fork is
-		 * published only once its rules are applied; a fork whose rules can't
-		 * be applied is never published and is deleted, retried until the
-		 * server no longer lists it. `NOT_FOUND` for an unknown chat,
-		 * `VALIDATION` for a subagent's.
+		 * the agent it was forked (as VS Code and JetBrains do). `NOT_FOUND`
+		 * for an unknown chat, `VALIDATION` for a subagent's.
 		 */
 		fork: method(chatIdInput.extend({ messageId: z.string().min(1) }), chatSummarySchema),
 		/** What `kilo.core/chat-config` contributions want for a chat. */
@@ -239,6 +236,15 @@ export const Chats = defineDomainObject({
 			nothing,
 		),
 		/**
+		 * The chats among `ids` the server doesn't have: neither in `chats` nor
+		 * found by id. A chat that couldn't be looked up is not missing. With
+		 * `listed`, how other plugins drop the chats they hold that are gone.
+		 */
+		findMissing: method(
+			z.object({ ids: z.array(z.string()) }),
+			z.object({ missing: z.array(z.string()) }),
+		),
+		/**
 		 * Withdraws the sign-in tools of `pluginId` (the plugin contributing a
 		 * refused tool) until the person signs in. Does nothing while signed in.
 		 */
@@ -251,9 +257,15 @@ export const Chats = defineDomainObject({
 		/** The chat was deleted on the server. */
 		deleted: chatEvent,
 		/**
-		 * Someone sent the chat a message (announced with its first text part).
-		 * A fork replays its copied user messages under new ids, so a fork's
-		 * earlier messages may be announced too.
+		 * The server's full chat list was just read (on each connection, and
+		 * again after the stream reopens): `chats` holds every root chat of this
+		 * app the server has. Subagent chats are listed only once known, so ask
+		 * `findMissing` before dropping one.
+		 */
+		listed: z.object({}),
+		/**
+		 * Someone sent the chat a message (announced once, with its text, when
+		 * the server admits it). A fork's copied messages are not announced.
 		 */
 		"user-message": z.object({
 			chatId: z.string(),

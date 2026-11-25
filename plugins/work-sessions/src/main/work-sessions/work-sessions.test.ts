@@ -349,6 +349,55 @@ describe("following Kilo chats", () => {
 		await vi.waitFor(() => expect(list()[0]?.chatIds).toEqual([]));
 	});
 
+	it("detaches the chats a full read shows the server no longer has, keeping the work session", async () => {
+		const core = new FakeCore();
+		core.chats = [
+			chat("ses_a", { workSessionId: "wses_a" }),
+			chat("ses_b", { workSessionId: "wses_a" }),
+		];
+		const { list, events } = await boot({ core });
+		await vi.waitFor(() => expect(list()[0]?.chatIds).toEqual(["ses_a", "ses_b"]));
+		const [before] = list();
+
+		core.vanish("ses_a");
+		core.listed();
+
+		await vi.waitFor(() => expect(list()[0]?.chatIds).toEqual(["ses_b"]));
+		expect(list()).toHaveLength(1);
+		expect(list()[0]).toMatchObject({ id: before!.id, title: before!.title });
+		expect(core.lookedUp).toEqual([["ses_a"]]);
+		expect(events.filter((event) => event.startsWith("deleted"))).toEqual([]);
+	});
+
+	it("keeps a chat the server still has though kilo.core doesn't list it", async () => {
+		const core = new FakeCore();
+		core.chats = [chat("ses_a")];
+		const { list } = await boot({ core });
+		await vi.waitFor(() => expect(list()[0]?.chatIds).toEqual(["ses_a"]));
+
+		core.vanish("ses_a");
+		core.unlisted.add("ses_a");
+		core.listed();
+
+		await vi.waitFor(() => expect(core.lookedUp).toEqual([["ses_a"]]));
+		await settle();
+		expect(list()[0]?.chatIds).toEqual(["ses_a"]);
+	});
+
+	it("drops a saved work session's chats the server never had, on the first read", async () => {
+		const core = new FakeCore();
+		const { list, workSessions } = await boot({ core });
+		const created = await workSessions.methods.create({ workspaceId: "w1" });
+		core.upsert(chat("ses_v1", { workSessionId: created.id }));
+		await vi.waitFor(() => expect(list()[0]?.chatIds).toEqual(["ses_v1"]));
+		core.vanish("ses_v1");
+
+		core.listed();
+
+		await vi.waitFor(() => expect(list()[0]?.chatIds).toEqual([]));
+		expect(list()[0]?.id).toBe(created.id);
+	});
+
 	it("reads every chat again each time the list is read", async () => {
 		const { core, list } = await boot();
 		core.setReady(false);

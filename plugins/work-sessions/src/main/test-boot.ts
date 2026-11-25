@@ -76,6 +76,9 @@ export class FakeCore {
 	readonly branches: [string, string][] = [];
 	readonly deleted: string[] = [];
 	readonly forked: { id: string; messageId: string }[] = [];
+	/** Chats the server has though kilo.core doesn't list them (subagents not yet seen). */
+	readonly unlisted = new Set<string>();
+	readonly lookedUp: string[][] = [];
 	failWrites = false;
 	failDispose = false;
 	#provider: DomainObjectProvider<typeof Chats> | undefined;
@@ -136,6 +139,11 @@ export class FakeCore {
 						replyPermission: unused,
 						replyQuestion: unused,
 						rejectQuestion: unused,
+						findMissing: ({ ids }) => {
+							this.lookedUp.push(ids);
+							const known = new Set(this.chats.map((candidate) => candidate.id));
+							return { missing: ids.filter((id) => !known.has(id) && !this.unlisted.has(id)) };
+						},
 						declineSignInTools: unused,
 					},
 				});
@@ -167,6 +175,15 @@ export class FakeCore {
 		this.#provider?.setState(this.#state());
 		if (before) this.#provider?.emit("updated", { before, after: next });
 		else this.#provider?.emit("created", { chat: next });
+	}
+	/** kilo.core read the server's full chat list: `chats` is every root chat it has. */
+	listed() {
+		this.#provider?.emit("listed", {});
+	}
+	/** A chat left the server while nobody listened: gone from the list, with no `deleted`. */
+	vanish(id: string) {
+		this.chats = this.chats.filter((candidate) => candidate.id !== id);
+		this.#provider?.setState(this.#state());
 	}
 	remove(id: string) {
 		const gone = this.chats.find((candidate) => candidate.id === id)!;

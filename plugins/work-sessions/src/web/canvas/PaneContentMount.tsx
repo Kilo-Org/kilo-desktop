@@ -10,6 +10,8 @@ export type PaneContentMountRegistry = {
 	/** The hidden element that holds hosts between targets; a callback ref. */
 	readonly setParking: (element: HTMLDivElement | null) => void;
 	readonly attachTarget: (paneId: string, target: HTMLDivElement) => void;
+	/** Whether the pane still has a connected target, i.e. it was hidden, not removed. */
+	readonly hasLiveTarget: (paneId: string) => boolean;
 	readonly parkDescendants: (root: HTMLDivElement) => void;
 	readonly parkPanes: (paneIds: Iterable<string>) => void;
 	/** Moves the host into its pane's target, if one is connected, and reports it ready. */
@@ -52,6 +54,9 @@ export function createPaneContentMountRegistry(): PaneContentMountRegistry {
 			moveConnectedHost(host.element, target);
 			parked.delete(paneId);
 			host.onTargetReady();
+		},
+		hasLiveTarget(paneId) {
+			return targets.get(paneId)?.isConnected === true;
 		},
 		parkPanes(paneIds) {
 			const parking = parkingElement;
@@ -114,14 +119,15 @@ export function PaneContentMount({
 		return () => registry.unregisterHost(paneId, host);
 	}, [host, paneId, registry]);
 
-	// Remove the portal host only once React has detached its children (real
-	// unmount). Under `<Activity mode="hidden">` effects clean up while portaled
-	// DOM stays attached; keeping `host` connected preserves iframe documents.
+	// `<Activity mode="hidden">` disconnects effects while the pane stays in the
+	// page, and an idle tab of a kind without `keepAlive` can legitimately be an
+	// empty host. Only a pane that is really gone takes its target with it, so the
+	// target — not the host's emptiness — says whether this is an unmount.
 	useEffect(
 		() => () => {
-			if (!host.hasChildNodes()) host.remove();
+			if (!registry.hasLiveTarget(paneId)) host.remove();
 		},
-		[host],
+		[host, paneId, registry],
 	);
 
 	return ready ? createPortal(children, host) : null;

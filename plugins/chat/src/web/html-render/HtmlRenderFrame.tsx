@@ -165,6 +165,8 @@ export function HtmlRenderFrame({
 	// disconnecting and reconnecting an iframe destroys its browsing context and
 	// creates a new WindowProxy.
 	const deliveredWindow = useRef<Window | null>(null);
+	// The page that window was handed, so a changed `html` gets a fresh shell.
+	const deliveredHtml = useRef<string | null>(null);
 	const hiddenBeforeDelivery = useRef(false);
 	// The page whose shell never reported ready; a new page clears it.
 	const [failedPage, setFailedPage] = useState<string | null>(null);
@@ -191,6 +193,7 @@ export function HtmlRenderFrame({
 		if (activeGeneration.current !== frameGeneration) {
 			activeGeneration.current = frameGeneration;
 			deliveredWindow.current = null;
+			deliveredHtml.current = null;
 			hiddenBeforeDelivery.current = false;
 		}
 		const frame = iframeRef.current?.contentWindow ?? null;
@@ -198,7 +201,13 @@ export function HtmlRenderFrame({
 		// this exact browsing context already has the page (or navigated away from
 		// it), so keep the frame untouched and do not re-arm the failure timeout.
 		if (frame && deliveredWindow.current === frame) {
-			shellReady.current = true;
+			if (deliveredHtml.current === html) {
+				shellReady.current = true;
+				return;
+			}
+			// The shell accepts one page and the page owns the document now, so a
+			// different page can only arrive at a fresh shell.
+			setFrameGeneration((generation) => generation + 1);
 			return;
 		}
 		// Previously delivered to a browsing context that was destroyed (e.g. an
@@ -244,6 +253,7 @@ export function HtmlRenderFrame({
 				// (e.g. the widget shell, under a looser policy).
 				if (deliveredWindow.current !== null) return;
 				deliveredWindow.current = frame;
+				deliveredHtml.current = html;
 				const page = bootstrapPage(html);
 				frame.postMessage({ type: MCP_APP_SHELL_HTML_MESSAGE, html: page }, "*");
 				return;

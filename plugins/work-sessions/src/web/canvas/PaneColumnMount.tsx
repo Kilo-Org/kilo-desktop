@@ -14,11 +14,6 @@ function placeHost(container: HTMLDivElement, host: HTMLDivElement, order: numbe
 	}
 }
 
-/** Marks `host` as having committed portaled children so an empty host later means unmount. */
-function markHostReady(host: HTMLDivElement) {
-	host.dataset.columnReady = "true";
-}
-
 // A column owns one portal host for its lifetime. Both destination containers stay
 // mounted; moveBefore transfers the connected host without resetting iframe documents
 // or React state. Only removing the column tears down its content.
@@ -54,10 +49,8 @@ export function PaneColumnMount({
 	// onReady must run after the commit that portals the children, so the parent sees mounted content.
 	// react-doctor-disable-next-line react-doctor/no-effect-chain
 	useLayoutEffect(() => {
-		if (!ready) return;
-		markHostReady(host);
-		onReady();
-	}, [host, ready, onReady]);
+		if (ready) onReady();
+	}, [ready, onReady]);
 
 	useLayoutEffect(
 		() => () => {
@@ -66,9 +59,9 @@ export function PaneColumnMount({
 		[host, onBeforeRemove],
 	);
 
-	// Remove the portal host only once React has detached its children (real
-	// unmount). Under `<Activity mode="hidden">` effects clean up while portaled
-	// DOM stays attached; keeping `host` connected preserves descendant iframes.
+	// A live column always portals its column's <div>, so an empty host means React
+	// detached the children on a real unmount. `<Activity mode="hidden">` cleans
+	// effects up while they stay attached, keeping descendant iframes alive.
 	useEffect(
 		() => () => {
 			if (!host.hasChildNodes()) host.remove();

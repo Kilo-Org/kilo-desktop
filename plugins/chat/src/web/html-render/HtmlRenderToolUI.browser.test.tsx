@@ -1,6 +1,6 @@
 import { Activity, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -365,9 +365,9 @@ describe("HtmlRenderFrame shell handshake under Activity", () => {
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
 		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
-		act(() => {
-			vi.advanceTimersByTime(15_000);
-		});
+		// Resuming a connected frame must arm no failure budget at all, or a reader
+		// returning to the session sees "failed to load" ten seconds later.
+		expect(vi.getTimerCount()).toBe(0);
 		vi.useRealTimers();
 
 		expect(screen.queryByText("This page failed to load.")).toBeNull();
@@ -461,5 +461,45 @@ describe("HtmlRenderFrame shell handshake under Activity", () => {
 		remountedFrame.contentWindow?.postMessage({ kind: "ping" }, "*");
 		await waitFor(() => expect(events).toContain("pong"));
 		expect(events).not.toContain("smuggled");
+	});
+});
+
+describe("HtmlRenderFrame page identity", () => {
+	it("shows a new page when html changes on a mounted frame", async () => {
+		const shellUrl = createShellUrl();
+		const rendered: string[] = [];
+		const onMessage = (event: MessageEvent) => {
+			if (typeof event.data?.kind === "string") rendered.push(event.data.kind);
+		};
+		window.addEventListener("message", onMessage);
+		onTestFinished(() => window.removeEventListener("message", onMessage));
+
+		const page = (kind: string) => `<!doctype html><body><script>
+			parent.postMessage({ kind: ${JSON.stringify(kind)} }, "*");
+		</script></body>`;
+
+		function Harness() {
+			const [first, setFirst] = useState(true);
+			return (
+				<>
+					<button type="button" onClick={() => setFirst(false)}>
+						Show second page
+					</button>
+					<HtmlRenderFrame
+						html={first ? page("first") : page("second")}
+						title="Chart"
+						fit="content"
+						shellSrc={shellUrl}
+					/>
+				</>
+			);
+		}
+
+		await renderInKernel(<Harness />);
+		await waitFor(() => expect(rendered).toEqual(["first"]));
+
+		fireEvent.click(screen.getByRole("button", { name: "Show second page" }));
+
+		await waitFor(() => expect(rendered).toEqual(["first", "second"]));
 	});
 });

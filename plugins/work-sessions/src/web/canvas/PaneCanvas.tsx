@@ -663,14 +663,6 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 
 	useLayoutEffect(() => {
 		contentRegistry.restoreParked();
-		for (const container of [pinnedRef.current, trackRef.current]) {
-			if (!container) continue;
-			for (const child of Array.from(container.children)) {
-				if ((child as HTMLElement).dataset.columnReady === "true" && !child.hasChildNodes()) {
-					child.remove();
-				}
-			}
-		}
 	});
 
 	useEffect(() => {

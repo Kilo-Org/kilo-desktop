@@ -125,6 +125,7 @@ const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
 		specDirectory("e2e", "specs", "files"),
 		specDirectory("e2e", "specs", "chat") + "welcome-shortcuts",
 		specDirectory("e2e", "specs", "chat") + "file-mentions",
+		specDirectory("e2e", "specs", "chat") + "menu-keyboard",
 	],
 	terminal: [
 		specDirectory("e2e", "specs", "terminal"),

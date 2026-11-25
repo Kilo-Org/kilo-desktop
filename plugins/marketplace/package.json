@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.marketplace \u2014 Kilo's Marketplace of agents, skills and MCP servers",
+	"description": "kilo.marketplace — Kilo's Marketplace of agents, skills and MCP servers",
 	"author": "Anaconda, Inc.",
 	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
@@ -24,6 +24,8 @@
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
+		"@kilocode/client": "catalog:",
+		"@kilocode/schema": "catalog:",
 		"@tanstack/react-query": "^5.108.1",
 		"lucide-react": "catalog:",
 		"react": "^19.3.1",

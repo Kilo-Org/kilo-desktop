@@ -189,6 +189,12 @@ settings:
 
 catalogs:
   default:
+    '@kilocode/client':
+      specifier: kilo-v2
+      version: 0.0.0-v2-239
+    '@kilocode/schema':
+      specifier: kilo-v2
+      version: 0.0.0-v2-239
     '@pierre/diffs':
       specifier: 1.6.4
       version: 1.6.4
@@ -1341,6 +1347,12 @@ importers:
       '@kilo-desktop/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@kilocode/client':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239(effect@4.1.0)
+      '@kilocode/schema':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239
       '@kilocode/sdk':
         specifier: 7.8.27
         version: 7.8.27
@@ -1463,6 +1475,12 @@ importers:
       '@kilo-desktop/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@kilocode/client':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239(effect@4.1.0)
+      '@kilocode/schema':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239
       '@kilocode/sdk':
         specifier: 7.8.27
         version: 7.8.27
@@ -2056,6 +2074,12 @@ importers:
       '@kilo-desktop/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@kilocode/client':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239(effect@4.1.0)
+      '@kilocode/schema':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239
       '@tanstack/react-query':
         specifier: ^5.108.1
         version: 5.108.1(@types/react@19.2.17)(react@19.3.1)
@@ -3498,6 +3522,23 @@ packages:
     resolution: {integrity: sha512-KFq+oDysY3n1bbvEQ0WB1VNesfK0BEahP4f4P3BushnRC83rERVnns1CTQV3oU0w1a6rsF+8qX3X3PTqtrFWsA==}
     cpu: [x64]
     os: [win32]
+
+  '@kilocode/client@0.0.0-v2-239':
+    resolution: {integrity: sha512-2Qtlpr4PbGBi6F3i3pjb1HDN/5fiaANNxOLlHl0FXe1rLznJjPTuzU6Ga7Y/W3Ntv882jvM/oX4KQ4zqxNM/Sw==}
+    peerDependencies:
+      effect: 4.1.0
+      solid-js: '>=1.9.0'
+    peerDependenciesMeta:
+      effect:
+        optional: true
+      solid-js:
+        optional: true
+
+  '@kilocode/protocol@0.0.0-v2-239':
+    resolution: {integrity: sha512-PKjIWcQPtC9Vt/rLzxvP+u9H5MQ5XxfEJxZ850VCjxhzCPaE5sp2QBeI8CmrGqZbStO8DzxrN/kFs9+CrkSZRQ==}
+
+  '@kilocode/schema@0.0.0-v2-239':
+    resolution: {integrity: sha512-Uac7EpqclPn3t30C5J7K456S0xxByK3XfK2BCeVrahM46z9hwuDjoxiJdfVwj2nE523M12n5pAsMsooN07HQUg==}
 
   '@kilocode/sdk@7.8.27':
     resolution: {integrity: sha512-P5LD034HM8pDARw3KwrMZWSp1KM8jLqMpSzMkRHHLaK2Ra/+FgTLWV0WbfBD4XylZqo4+9J9djnP+msPvlZD/A==}
@@ -7771,6 +7812,9 @@ packages:
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
+
+  effect@4.1.0:
+    resolution: {integrity: sha512-lGx2MJJyrXA8RZb2UpQ/0Nkb5Utaimby7oD92+18noBxLPE85IFOvptdzau8dvcxAOwfwHo9iqapbKeFzqQM/Q==}
 
   electron-debug@5.0.0:
     resolution: {integrity: sha512-OJURKDBbEMcejThLVqFuTM3rvv0J4JU3OK7wp0JAV59fusU0kgZTuRqZPHSVS362onE7xuEC4VKBnziAswIXwg==}
@@ -12228,6 +12272,23 @@ snapshots:
   '@kilocode/cli-windows-x64-baseline@7.8.27':
     optional: true
 
+  '@kilocode/client@0.0.0-v2-239(effect@4.1.0)':
+    dependencies:
+      '@opencode/protocol': '@kilocode/protocol@0.0.0-v2-239'
+      '@opencode/schema': '@kilocode/schema@0.0.0-v2-239'
+    optionalDependencies:
+      effect: 4.1.0
+
+  '@kilocode/protocol@0.0.0-v2-239':
+    dependencies:
+      '@opencode/schema': '@kilocode/schema@0.0.0-v2-239'
+      effect: 4.1.0
+
+  '@kilocode/schema@0.0.0-v2-239':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      effect: 4.1.0
+
   '@kilocode/sdk@7.8.27':
     dependencies:
       cross-spawn: 7.0.6
@@ -15886,6 +15947,8 @@ snapshots:
       call-bind-apply-helpers: 1.0.2
       es-errors: 1.3.0
       gopd: 1.2.0
+
+  effect@4.1.0: {}
 
   electron-debug@5.0.0:
     dependencies:

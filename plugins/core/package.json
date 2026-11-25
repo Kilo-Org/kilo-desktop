@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.core \u2014 the Kilo server and everything it knows: identity, terms, AI providers and models, chats and tools",
+	"description": "kilo.core — the Kilo server and everything it knows: identity, terms, AI providers and models, chats and tools",
 	"author": "Anaconda, Inc.",
 	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
@@ -22,6 +22,8 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
+		"@kilocode/client": "catalog:",
+		"@kilocode/schema": "catalog:",
 		"@kilocode/sdk": "7.8.27",
 		"@launchdarkly/node-client-sdk": "^4.4.4",
 		"@modelcontextprotocol/server": "2.4.0",

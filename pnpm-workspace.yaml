@@ -10,6 +10,11 @@ packages:
 catalog:
   "@pierre/diffs": 1.6.4
   "@pierre/trees": 1.0.0
+  # Kilo v2 server client and wire schema. Desktop tracks the `kilo-v2` dist-tag
+  # (decision on the Kilo V2 plan); the lockfile fixes each build's version and
+  # `pnpm update "@kilocode/*"` moves it forward. See docs/kilo-v2.md.
+  "@kilocode/client": kilo-v2
+  "@kilocode/schema": kilo-v2
   "@playwright/test": 1.65.1
   # Every Sentry package must resolve to the exact @sentry/core pinned by
   # @sentry/electron, so the repo carries a single core.

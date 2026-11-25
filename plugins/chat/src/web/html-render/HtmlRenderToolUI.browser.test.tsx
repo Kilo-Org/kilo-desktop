@@ -1,4 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { Activity, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
@@ -12,10 +14,12 @@ import {
 	MCP_APP_SHELL_READY_MESSAGE,
 	type SaveHtmlPageInput,
 } from "../../contracts";
+import { mcpAppShellHtml } from "../../main/html-render/mcp-app-host";
 import { renderInKernel } from "../../test/kernel-harness";
 import type { ToolCallView } from "../tools/tool-call";
 import { ChatMarkdownProvider } from "../thread/chat-markdown";
 import { TurnWorkFoldContext } from "../tools/turn-work-fold-context";
+import { HtmlRenderFrame } from "./HtmlRenderFrame";
 import { HtmlRenderToolUI } from "./HtmlRenderToolUI";
 
 type WriteNewFile = (path: string, content: string) => Promise<boolean>;
@@ -238,5 +242,224 @@ describe("HtmlRenderToolUI", () => {
 		});
 		expect(screen.getByText("Couldn't show Chart")).toBeTruthy();
 		expect(screen.getByText(/Tool failed/)).toBeTruthy();
+	});
+});
+
+function createShellUrl(title = "HTML page"): string {
+	const url = URL.createObjectURL(new Blob([mcpAppShellHtml(title)], { type: "text/html" }));
+	onTestFinished(() => URL.revokeObjectURL(url));
+	return url;
+}
+
+/**
+ * Portal whose layout effect detaches its host on cleanup (the exact DOM
+ * disconnect that happens when an ancestor removes a portal on `<Activity>` hide).
+ */
+function DetachingPortal({ children }: { readonly children: ReactNode }) {
+	const targetRef = useRef<HTMLDivElement>(null);
+	const [host] = useState(() => document.createElement("div"));
+	useLayoutEffect(() => {
+		const target = targetRef.current;
+		if (!target) return;
+		target.append(host);
+		return () => host.remove();
+	}, [host]);
+	return <div ref={targetRef}>{createPortal(children, host)}</div>;
+}
+
+describe("HtmlRenderFrame shell handshake under Activity", () => {
+	it("re-delivers the page when its iframe is disconnected and reconnected across an Activity hide/show cycle", async () => {
+		const shellUrl = createShellUrl();
+		const events: string[] = [];
+		const onMessage = (event: MessageEvent) => {
+			if (typeof event.data?.kind === "string") events.push(event.data.kind);
+		};
+		window.addEventListener("message", onMessage);
+		onTestFinished(() => window.removeEventListener("message", onMessage));
+
+		const html = `<!doctype html><body><div style="height:260px">Chart</div><script>
+			addEventListener("message", (event) => {
+				if (event.data && event.data.kind === "ping") parent.postMessage({ kind: "pong" }, "*");
+			});
+			parent.postMessage({ kind: "rendered" }, "*");
+		</script></body>`;
+
+		function Harness() {
+			const [shown, setShown] = useState(true);
+			return (
+				<>
+					<button type="button" onClick={() => setShown((value) => !value)}>
+						Toggle visibility
+					</button>
+					<Activity mode={shown ? "visible" : "hidden"}>
+						<DetachingPortal>
+							<HtmlRenderFrame html={html} title="Chart" fit="content" shellSrc={shellUrl} />
+						</DetachingPortal>
+					</Activity>
+				</>
+			);
+		}
+
+		await renderInKernel(<Harness />);
+
+		await waitFor(() => expect(events).toEqual(["rendered"]));
+		await waitFor(() => expect(frameHeight("Chart")).toBe("260px"));
+
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+
+		await waitFor(() => expect(events.filter((kind) => kind === "rendered")).toHaveLength(2));
+		const frame = screen.getByTitle("Chart") as HTMLIFrameElement;
+		frame.contentWindow?.postMessage({ kind: "ping" }, "*");
+		await waitFor(() => expect(events).toContain("pong"));
+	});
+
+	it("keeps a connected iframe alive across an Activity hide/show cycle without tripping the shell-ready timeout", async () => {
+		const shellUrl = createShellUrl();
+		const counts: number[] = [];
+		let renders = 0;
+		const onMessage = (event: MessageEvent) => {
+			if (event.data?.kind === "rendered") renders += 1;
+			if (event.data?.kind === "count" && typeof event.data.clicks === "number") {
+				counts.push(event.data.clicks);
+			}
+		};
+		window.addEventListener("message", onMessage);
+		onTestFinished(() => {
+			window.removeEventListener("message", onMessage);
+			vi.useRealTimers();
+		});
+
+		const html = `<!doctype html><body><div style="height:240px">Interactive</div><script>
+			var clicks = 0;
+			addEventListener("message", (event) => {
+				if (event.data && event.data.kind === "increment") {
+					clicks += 1;
+					parent.postMessage({ kind: "count", clicks: clicks }, "*");
+				}
+			});
+			parent.postMessage({ kind: "rendered" }, "*");
+		</script></body>`;
+
+		function Harness() {
+			const [shown, setShown] = useState(true);
+			return (
+				<>
+					<button type="button" onClick={() => setShown((value) => !value)}>
+						Toggle visibility
+					</button>
+					<Activity mode={shown ? "visible" : "hidden"}>
+						<HtmlRenderFrame html={html} title="Chart" fit="content" shellSrc={shellUrl} />
+					</Activity>
+				</>
+			);
+		}
+
+		await renderInKernel(<Harness />);
+		await waitFor(() => expect(renders).toBe(1));
+
+		const frame = screen.getByTitle("Chart") as HTMLIFrameElement;
+		frame.contentWindow?.postMessage({ kind: "increment" }, "*");
+		await waitFor(() => expect(counts).toEqual([1]));
+
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+		act(() => {
+			vi.advanceTimersByTime(15_000);
+		});
+		vi.useRealTimers();
+
+		expect(screen.queryByText("This page failed to load.")).toBeNull();
+		expect(renders).toBe(1);
+		expect(screen.getByTitle("Chart")).toBe(frame);
+
+		frame.contentWindow?.postMessage({ kind: "increment" }, "*");
+		await waitFor(() => expect(counts).toEqual([1, 2]));
+	});
+
+	it("never smuggles HTML into a foreign shell after in-frame navigation and an Activity hide/show cycle", async () => {
+		const shellUrl = createShellUrl();
+		const events: string[] = [];
+		const onMessage = (event: MessageEvent) => {
+			if (typeof event.data?.kind === "string") events.push(event.data.kind);
+		};
+		window.addEventListener("message", onMessage);
+		onTestFinished(() => window.removeEventListener("message", onMessage));
+
+		// A foreign shell (e.g. /widget-host.html under a looser CSP) that reports
+		// if HTML is ever delivered to it and can re-announce READY on demand.
+		const foreignShell = `<!doctype html><body><script>
+			addEventListener("message", (event) => {
+				if (event.data && event.data.type === ${JSON.stringify(MCP_APP_SHELL_HTML_MESSAGE)}) {
+					parent.postMessage({ kind: "smuggled" }, "*");
+				}
+				if (event.data && event.data.kind === "probe-ready") {
+					parent.postMessage({ type: ${JSON.stringify(MCP_APP_SHELL_READY_MESSAGE)} }, "*");
+					parent.postMessage({ kind: "probe-sent" }, "*");
+				}
+				if (event.data && event.data.kind === "ping") {
+					parent.postMessage({ kind: "pong" }, "*");
+				}
+			});
+			parent.postMessage({ type: ${JSON.stringify(MCP_APP_SHELL_READY_MESSAGE)} }, "*");
+			parent.postMessage({ kind: "foreign-loaded" }, "*");
+		</script></body>`;
+		const html = `<!doctype html><body><script>
+			parent.postMessage({ kind: "delivered" }, "*");
+			location.href = "data:text/html," + encodeURIComponent(${JSON.stringify(foreignShell).replaceAll("</", "<\\/")});
+		</script></body>`;
+
+		function Harness({ detach }: { readonly detach: boolean }) {
+			const [shown, setShown] = useState(true);
+			const content = (
+				<HtmlRenderFrame html={html} title="Chart" fit="content" shellSrc={shellUrl} />
+			);
+			return (
+				<>
+					<button type="button" onClick={() => setShown((value) => !value)}>
+						Toggle visibility
+					</button>
+					<Activity mode={shown ? "visible" : "hidden"}>
+						{detach ? <DetachingPortal>{content}</DetachingPortal> : content}
+					</Activity>
+				</>
+			);
+		}
+
+		// Case 1: iframe stays connected across Activity hide/show after navigating
+		// to the foreign shell — re-announcing READY after resume must still be ignored.
+		const connected = await renderInKernel(<Harness detach={false} />);
+		await waitFor(() => expect(events).toEqual(["delivered", "foreign-loaded"]));
+
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+
+		const connectedFrame = screen.getByTitle("Chart") as HTMLIFrameElement;
+		connectedFrame.contentWindow?.postMessage({ kind: "probe-ready" }, "*");
+		// Wait until the host has received the foreign shell's READY (ordered before
+		// "probe-sent"), then ping the frame so any wrongly posted HTML would be
+		// processed by the foreign shell before it replies "pong".
+		await waitFor(() => expect(events).toContain("probe-sent"));
+		connectedFrame.contentWindow?.postMessage({ kind: "ping" }, "*");
+		await waitFor(() => expect(events).toContain("pong"));
+		expect(events).not.toContain("smuggled");
+		connected.view.unmount();
+
+		// Case 2: iframe is disconnected and reconnected across Activity hide/show —
+		// HtmlRenderFrame remounts a fresh iframe at shellSrc, never delivering to
+		// the foreign shell.
+		events.length = 0;
+		await renderInKernel(<Harness detach={true} />);
+		await waitFor(() => expect(events).toEqual(["delivered", "foreign-loaded"]));
+
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+		fireEvent.click(screen.getByRole("button", { name: "Toggle visibility" }));
+
+		await waitFor(() => expect(events.filter((kind) => kind === "foreign-loaded")).toHaveLength(2));
+		const remountedFrame = screen.getByTitle("Chart") as HTMLIFrameElement;
+		remountedFrame.contentWindow?.postMessage({ kind: "ping" }, "*");
+		await waitFor(() => expect(events).toContain("pong"));
+		expect(events).not.toContain("smuggled");
 	});
 });

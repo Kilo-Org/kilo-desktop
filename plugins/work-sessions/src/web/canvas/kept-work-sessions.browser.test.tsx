@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import type { PaneProps } from "../../contracts";
@@ -60,6 +60,50 @@ describe("kept work sessions", () => {
 
 		await expect.element(page.getByTestId("counter-a")).toHaveTextContent("a 2");
 		expect(page.getByTestId("counter-a").element().getAttribute("data-mount")).toBe(mount);
+	});
+
+	it("keeps iframe documents alive when switching to another work session and back", async () => {
+		const frameLoaded = vi.fn();
+		function FramePane({ workSessionId }: PaneProps) {
+			return (
+				<iframe
+					data-qa-id={`frame-${workSessionId}`}
+					title={`Frame ${workSessionId}`}
+					srcDoc='<input aria-label="Note" value="Initial">'
+					onLoad={workSessionId === "a" ? frameLoaded : undefined}
+				/>
+			);
+		}
+		const framed = paneKindPlugin("acme.frame", [
+			{ id: "frame", metadata: { title: "Frame" }, component: FramePane },
+		]);
+		const { window } = await renderWorkSessions({
+			workSessions: [workSession("a"), workSession("b")],
+			panes: {
+				a: panesOf([pane("pa", "acme.frame/frame")]),
+				b: panesOf([pane("pb", "acme.frame/frame")]),
+			},
+			open: "a",
+			guests: [framed],
+		});
+
+		await expect.element(page.getByTestId("frame-a")).toBeVisible();
+		await vi.waitFor(() => expect(frameLoaded).toHaveBeenCalledTimes(1));
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="frame-a"]')!;
+		const frameDocument = frame.contentDocument!;
+		frameDocument.querySelector("input")!.value = "Keep this across switch";
+
+		await window().methods.openWorkSession({ workSessionId: "b" });
+		await expect.element(page.getByTestId("frame-b")).toBeVisible();
+		expect(frame.isConnected).toBe(true);
+
+		await window().methods.openWorkSession({ workSessionId: "a" });
+		await expect.element(page.getByTestId("frame-a")).toBeVisible();
+
+		expect(document.querySelector('[data-qa-id="frame-a"]')).toBe(frame);
+		expect(frame.contentDocument).toBe(frameDocument);
+		expect(frameDocument.querySelector("input")).toHaveValue("Keep this across switch");
+		expect(frameLoaded).toHaveBeenCalledTimes(1);
 	});
 
 	it("lets a closed work session go", async () => {

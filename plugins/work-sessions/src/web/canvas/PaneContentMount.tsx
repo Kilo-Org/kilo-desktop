@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 type ContentHost = {
@@ -86,7 +86,6 @@ export function createPaneContentMountRegistry(): PaneContentMountRegistry {
 				hosts.delete(paneId);
 				parked.delete(paneId);
 			}
-			host.remove();
 		},
 	};
 }
@@ -114,6 +113,16 @@ export function PaneContentMount({
 		});
 		return () => registry.unregisterHost(paneId, host);
 	}, [host, paneId, registry]);
+
+	// Remove the portal host only once React has detached its children (real
+	// unmount). Under `<Activity mode="hidden">` effects clean up while portaled
+	// DOM stays attached; keeping `host` connected preserves iframe documents.
+	useEffect(
+		() => () => {
+			if (!host.hasChildNodes()) host.remove();
+		},
+		[host],
+	);
 
 	return ready ? createPortal(children, host) : null;
 }

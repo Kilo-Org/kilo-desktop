@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 /** Places `host` among `container`'s column hosts by ascending order. */
@@ -12,6 +12,11 @@ function placeHost(container: HTMLDivElement, host: HTMLDivElement, order: numbe
 		if (host.isConnected) container.moveBefore(host, next);
 		else container.insertBefore(host, next);
 	}
+}
+
+/** Marks `host` as having committed portaled children so an empty host later means unmount. */
+function markHostReady(host: HTMLDivElement) {
+	host.dataset.columnReady = "true";
 }
 
 // A column owns one portal host for its lifetime. Both destination containers stay
@@ -49,15 +54,26 @@ export function PaneColumnMount({
 	// onReady must run after the commit that portals the children, so the parent sees mounted content.
 	// react-doctor-disable-next-line react-doctor/no-effect-chain
 	useLayoutEffect(() => {
-		if (ready) onReady();
-	}, [ready, onReady]);
+		if (!ready) return;
+		markHostReady(host);
+		onReady();
+	}, [host, ready, onReady]);
 
 	useLayoutEffect(
 		() => () => {
 			onBeforeRemove?.(host);
-			host.remove();
 		},
 		[host, onBeforeRemove],
+	);
+
+	// Remove the portal host only once React has detached its children (real
+	// unmount). Under `<Activity mode="hidden">` effects clean up while portaled
+	// DOM stays attached; keeping `host` connected preserves descendant iframes.
+	useEffect(
+		() => () => {
+			if (!host.hasChildNodes()) host.remove();
+		},
+		[host],
 	);
 
 	// Mount children in a connected host so autofocus and initial measurements work.

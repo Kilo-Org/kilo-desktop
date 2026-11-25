@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode-v2";
+import type {
+	KiloAssistantContent,
+	KiloToolCall,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
 
 import {
 	findNewestPlanProjection,
@@ -13,9 +17,12 @@ import {
 	type PlanThreadSource,
 } from "./plan-projection";
 
+type Part = KiloAssistantContent;
+type ToolPart = KiloToolCall;
+
 const toolPart = (
-	tool: string,
-	callID: string,
+	name: string,
+	id: string,
 	state:
 		| { status: "running"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
 		| { status: "completed"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
@@ -26,48 +33,26 @@ const toolPart = (
 				metadata?: Record<string, unknown>;
 		  },
 ): ToolPart => {
-	const identity = {
-		id: `part-${callID}`,
-		sessionID: "session-1",
-		messageID: "message-1",
-		type: "tool" as const,
-		tool,
-		callID,
-	};
+	const identity = { type: "tool" as const, id, name, time: { created: 1 } };
 	if (state.status === "running") {
-		return {
-			...identity,
-			state: {
-				...state,
-				time: { start: 1 },
-			},
-		};
+		return { ...identity, state: { ...state, metadata: state.metadata ?? {} } } as ToolPart;
 	}
 	if (state.status === "error") {
 		return {
 			...identity,
-			state: {
-				...state,
-				time: { start: 1, end: 2 },
-			},
-		};
+			state: { ...state, error: { type: "tool", message: state.error } },
+		} as ToolPart;
 	}
 	return {
 		...identity,
-		state: {
-			...state,
-			output: "",
-			title: tool,
-			metadata: state.metadata ?? {},
-			time: { start: 1, end: 2 },
-		},
-	};
+		state: { ...state, content: [{ type: "text", text: "" }], metadata: state.metadata ?? {} },
+	} as ToolPart;
 };
 
 const writePart = (
 	callID = "write-1",
 	input: Record<string, unknown> = {
-		filePath: ".kilo/plans/ship.md",
+		path: ".kilo/plans/ship.md",
 		content: "# Ship it\n\n- step 1",
 	},
 ): ToolPart => toolPart("write", callID, { status: "completed", input });
@@ -75,7 +60,7 @@ const writePart = (
 const editPart = (
 	callID = "edit-1",
 	input: Record<string, unknown> = {
-		filePath: ".kilo/plans/ship.md",
+		path: ".kilo/plans/ship.md",
 		oldString: "# Ship it",
 		newString: "# Ship it faster",
 	},
@@ -110,17 +95,20 @@ const threadSource = (
 ): PlanThreadSource => ({
 	messageOrder: messages.map((message) => message.id),
 	messagesById: Object.fromEntries(
-		messages.map((message) => [
+		messages.map((message): [string, SessionMessageInfo] => [
 			message.id,
-			{
-				info: {
-					role: message.role,
-					...(message.agent ? { agent: message.agent } : {}),
-					...(message.finish ? { finish: message.finish } : {}),
-					...(message.error ? { error: message.error } : {}),
-				},
-				parts: message.parts ?? [],
-			},
+			message.role === "user"
+				? { id: message.id, type: "user", text: "next", time: { created: 1 } }
+				: ({
+						id: message.id,
+						type: "assistant",
+						agent: message.agent ?? "code",
+						model: { providerID: "kilo", id: "m" },
+						time: { created: 1 },
+						content: [...(message.parts ?? [])],
+						...(message.finish ? { finish: message.finish } : {}),
+						...(message.error ? { error: message.error } : {}),
+					} as SessionMessageInfo),
 		]),
 	),
 });
@@ -141,7 +129,7 @@ describe("getPlanProjectionFromParts", () => {
 		const writing = getPlanProjectionFromParts([
 			toolPart("write", "write-running", {
 				status: "running",
-				input: { filePath: ".kilo/plans/ship.md", content: "# Ship" },
+				input: { path: ".kilo/plans/ship.md", content: "# Ship" },
 			}),
 		]);
 		expect(writing?.status).toBe("writing");
@@ -178,7 +166,7 @@ describe("getPlanProjectionFromParts", () => {
 		const projection = getPlanProjectionFromParts(
 			[
 				editPart("edit-incomplete", {
-					filePath: ".kilo/plans/ship.md",
+					path: ".kilo/plans/ship.md",
 					oldString: "# Ship it",
 				}),
 			],
@@ -358,7 +346,7 @@ describe("projectPlanThread", () => {
 					finish: "unknown",
 					parts: [
 						editPart("edit-2", {
-							filePath: ".kilo/plans/ship.md",
+							path: ".kilo/plans/ship.md",
 							oldString: "- step 1",
 							newString: "- step 1\n- step 2",
 						}),
@@ -404,7 +392,7 @@ describe("projectPlanThread", () => {
 				role: "assistant",
 				parts: [
 					editPart("edit-b", {
-						filePath: ".kilo/plans/ship.md",
+						path: ".kilo/plans/ship.md",
 						oldString: "- step 1",
 						newString: "- step 1\n- step 2",
 					}),
@@ -483,14 +471,14 @@ describe("projectPlanThread", () => {
 				toolPart("edit", "edit-failed", {
 					status: "error",
 					input: {
-						filePath: ".kilo/plans/ship.md",
+						path: ".kilo/plans/ship.md",
 						oldString: "# Ship it",
 						newString: "# Dropped",
 					},
 					error: "File changed since it was last read",
 				}),
 				editPart("edit-applied", {
-					filePath: ".kilo/plans/ship.md",
+					path: ".kilo/plans/ship.md",
 					oldString: "- step 1",
 					newString: "- step 1\n- step 2",
 				}),
@@ -558,7 +546,7 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 		expect(
 			shouldExcludeToolCallFromActivityGroup({
 				toolName: "write",
-				args: { filePath: ".kilo/plans/a.md" },
+				args: { path: ".kilo/plans/a.md" },
 			}),
 		).toBe(true);
 		expect(

@@ -1,1082 +1,357 @@
-import { describe, it, expect } from "vitest";
-import { projectOpenCodeThreadMessages } from "./openCodeMessageProjection";
+import type { SessionMessageInfo } from "@kilocode/client";
+import { describe, expect, it } from "vitest";
+
+import {
+	createOpenCodeProjectionCache,
+	projectOpenCodeThreadMessages,
+	projectOpenCodeThreadRepository,
+} from "./openCodeMessageProjection";
 import { createOpenCodeThreadState } from "./openCodeThreadState";
-import type { OpenCodeThreadState } from "./types";
+import type {
+	KiloAssistantContent,
+	OpenCodePermissionRequest,
+	OpenCodeThreadState,
+	PendingUserMessage,
+	SessionMessageAssistant,
+} from "./types";
+
+const user = (id: string, text: string, created = 1, files?: unknown[]): SessionMessageInfo =>
+	({
+		id,
+		type: "user",
+		text,
+		time: { created },
+		...(files ? { files } : {}),
+	}) as SessionMessageInfo;
+
+const step = (
+	id: string,
+	content: KiloAssistantContent[],
+	patch: Partial<SessionMessageAssistant> = {},
+): SessionMessageAssistant => ({
+	id,
+	type: "assistant",
+	agent: "code",
+	model: { providerID: "kilo", id: "m" },
+	time: { created: 2, completed: 3 },
+	finish: "stop",
+	content,
+	...patch,
+});
+
+const tool = (id: string, name: string, state: Record<string, unknown>): KiloAssistantContent =>
+	({ type: "tool", id, name, time: { created: 1 }, state }) as KiloAssistantContent;
+
+const completed = (input: Record<string, unknown>, text: string, metadata = {}) => ({
+	status: "completed",
+	input,
+	content: [{ type: "text", text }],
+	metadata,
+});
+
+const stateOf = (
+	messages: SessionMessageInfo[],
+	patch: Partial<OpenCodeThreadState> = {},
+): OpenCodeThreadState => ({
+	...createOpenCodeThreadState("ses_1"),
+	loadState: { type: "ready" },
+	messageOrder: messages.map((message) => message.id),
+	messagesById: Object.fromEntries(messages.map((message) => [message.id, message])),
+	...patch,
+});
+
+const project = (messages: SessionMessageInfo[], patch: Partial<OpenCodeThreadState> = {}) =>
+	projectOpenCodeThreadMessages(stateOf(messages, patch));
+
+const contentOf = (message: { content: unknown } | undefined) =>
+	(message?.content ?? []) as { type: string; [key: string]: unknown }[];
 
 describe("projectOpenCodeThreadMessages", () => {
-	it("merges consecutive assistant messages into one projected message", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			messageOrder: ["assistant-1", "assistant-2"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-					} as never,
-					parts: [
-						{
-							id: "step-1",
-							sessionID: "ses_1",
-							messageID: "assistant-1",
-							type: "step-start",
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-				"assistant-2": {
-					id: "assistant-2",
-					info: {
-						id: "assistant-2",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "assistant-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 2 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "patch-1",
-							sessionID: "ses_1",
-							messageID: "assistant-2",
-							type: "patch",
-							hash: "hash",
-							files: ["a.ts"],
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-
-		expect(messages).toHaveLength(1);
-		expect(messages[0]?.role).toBe("assistant");
-		expect(messages[0]?.content).toMatchObject([
-			{ type: "data", name: "opencode-step-start" },
-			{ type: "data", name: "opencode-patch" },
+	it("projects a run of steps as one assistant message, each step's content under its marker", () => {
+		const messages = project([
+			user("msg_u", "Read it"),
+			step("msg_a1", [{ type: "text", text: "Let me look." }], { finish: "tool-calls" }),
+			step("msg_a2", [
+				{ type: "reasoning", text: "\\nDone\\t[REDACTED]" },
+				{ type: "text", text: "It says hi." },
+			]),
 		]);
-		expect(messages[0]).not.toHaveProperty("unstable_execution");
-	});
 
-	it("projects OpenCode tools into tool-call parts", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "tool-1",
-							callID: "call-1",
-							sessionID: "ses_1",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "read",
-							state: {
-								status: "completed",
-								input: { path: "README.md" },
-								output: { ok: true },
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.content).toMatchObject([
-			{
-				type: "tool-call",
-				toolCallId: "call-1",
-				toolName: "read",
-				result: { ok: true },
-			},
+		expect(messages.map(({ id, role }) => [id, role])).toEqual([
+			["msg_u", "user"],
+			["msg_a1", "assistant"],
 		]);
-	});
-
-	it("projects Task child sessions into nested tool-call messages", () => {
-		const grandchildState: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_grandchild"),
-			loadState: { type: "ready" },
-			messageOrder: ["grandchild-assistant"],
-			messagesById: {
-				"grandchild-assistant": {
-					id: "grandchild-assistant",
-					info: {
-						id: "grandchild-assistant",
-						role: "assistant",
-						sessionID: "ses_grandchild",
-						parentID: "grandchild-user",
-						modelID: "model",
-						providerID: "provider",
-						mode: "subagent",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 4 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "grandchild-text",
-							sessionID: "ses_grandchild",
-							messageID: "grandchild-assistant",
-							type: "text",
-							text: "The nested dependency is healthy.",
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-		const childState: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_child"),
-			loadState: { type: "ready" },
-			childSessionsById: { ses_grandchild: grandchildState },
-			messageOrder: ["child-user", "child-assistant"],
-			messagesById: {
-				"child-user": {
-					id: "child-user",
-					info: {
-						id: "child-user",
-						role: "user",
-						sessionID: "ses_child",
-						time: { created: 2 },
-					} as never,
-					parts: [
-						{
-							id: "child-user-text",
-							sessionID: "ses_child",
-							messageID: "child-user",
-							type: "text",
-							text: "Inspect the package",
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-				"child-assistant": {
-					id: "child-assistant",
-					info: {
-						id: "child-assistant",
-						role: "assistant",
-						sessionID: "ses_child",
-						parentID: "child-user",
-						modelID: "model",
-						providerID: "provider",
-						mode: "subagent",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 3 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "child-assistant-text",
-							sessionID: "ses_child",
-							messageID: "child-assistant",
-							type: "text",
-							text: "The package is healthy.",
-						} as never,
-						{
-							id: "child-task",
-							callID: "child-task-call",
-							sessionID: "ses_child",
-							messageID: "child-assistant",
-							type: "tool",
-							tool: "task",
-							state: {
-								status: "completed",
-								input: { description: "Inspect nested dependency" },
-								output: "Done",
-								metadata: { sessionId: "ses_grandchild" },
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_parent"),
-			childSessionsById: { ses_child: childState },
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_parent",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "tool-1",
-							callID: "call-1",
-							sessionID: "ses_parent",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "task",
-							state: {
-								status: "completed",
-								input: { description: "Review package" },
-								output: "Done",
-								metadata: { sessionId: "ses_child" },
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		const tool = messages[0]?.content[0];
-
-		expect(tool).toMatchObject({
-			type: "tool-call",
-			toolName: "task",
-			messages: [
-				{ id: "child-user", role: "user" },
-				{ id: "child-assistant", role: "assistant" },
-			],
+		const assistant = messages[1]!;
+		expect(contentOf(assistant).map((part) => [part.type, part.name ?? part.text])).toEqual([
+			["data", "opencode-step-start"],
+			["text", "Let me look."],
+			["data", "opencode-step-finish"],
+			["data", "opencode-step-start"],
+			["reasoning", "Done"],
+			["text", "It says hi."],
+			["data", "opencode-step-finish"],
+		]);
+		expect(assistant.status).toEqual({ type: "complete", reason: "stop" });
+		expect(assistant.metadata?.custom).toMatchObject({
+			opencode: { message: { id: "msg_a2" }, messages: [{ id: "msg_a1" }, { id: "msg_a2" }] },
+			modelID: "m",
+			providerID: "kilo",
+			agent: "code",
 		});
-		if (typeof tool === "string" || tool?.type !== "tool-call") {
-			throw new Error("Expected a task tool call");
-		}
-		expect(tool.messages?.[0]?.content).toEqual([{ type: "text", text: "Inspect the package" }]);
-		expect(tool.messages?.[1]?.content).toEqual([
-			{ type: "text", text: "The package is healthy." },
+	});
+
+	it("projects tool calls with Kilo v2's names, inputs and text output", () => {
+		const [assistant] = project([
+			step("msg_a", [
+				tool("call_1", "shell", completed({ command: "ls" }, "a\nb", { exit: 0 })),
+				tool("call_2", "read", {
+					status: "error",
+					input: { path: "x" },
+					error: { type: "tool", message: "missing" },
+				}),
+				tool("call_3", "patch", { status: "streaming", input: '{"pat' }),
+			]),
+		]);
+		const calls = contentOf(assistant).filter((part) => part.type === "tool-call");
+		expect(calls).toEqual([
+			expect.objectContaining({
+				toolCallId: "call_1",
+				toolName: "shell",
+				args: { command: "ls" },
+				result: "a\nb",
+				parentId: "msg_a",
+			}),
+			expect.objectContaining({
+				toolCallId: "call_2",
+				toolName: "read",
+				args: { path: "x" },
+				result: "missing",
+				isError: true,
+			}),
+			expect.objectContaining({ toolCallId: "call_3", toolName: "patch", args: {} }),
+		]);
+		expect(calls[2]).not.toHaveProperty("result");
+	});
+
+	it("shows composer shell runs and compactions, and hides Kilo's context", () => {
+		const messages = project([
+			{ id: "msg_n", type: "synthetic", text: "note", time: { created: 1 } },
+			{ id: "msg_k", type: "skill", skill: "s", name: "S", text: "use", time: { created: 1 } },
+			{ id: "msg_m", type: "agent-switched", agent: "plan", time: { created: 1 } },
+			{
+				id: "msg_s",
+				type: "shell",
+				shellID: "sh_1",
+				command: "ls",
+				status: "exited",
+				exit: 0,
+				output: { output: "a", cursor: 1, size: 1, truncated: false },
+				time: { created: 2 },
+			},
+			{
+				id: "msg_c",
+				type: "compaction",
+				status: "completed",
+				reason: "manual",
+				summary: "Summary",
+				time: { created: 3 },
+			},
+		]);
+		expect(messages.map(({ id }) => id)).toEqual(["msg_s", "msg_c"]);
+		expect(contentOf(messages[0])).toEqual([
 			expect.objectContaining({
 				type: "tool-call",
-				toolName: "task",
-				messages: [
-					expect.objectContaining({
-						id: "grandchild-assistant",
-						role: "assistant",
-						content: [
-							{
-								type: "text",
-								text: "The nested dependency is healthy.",
-							},
-						],
-					}),
+				toolName: "shell",
+				args: { command: "ls" },
+				result: "a",
+			}),
+		]);
+		expect(contentOf(messages[1])).toEqual([
+			expect.objectContaining({
+				type: "data",
+				name: "opencode-compaction",
+				data: expect.objectContaining({ status: "completed", reason: "manual" }),
+			}),
+			{ type: "text", text: "Summary" },
+		]);
+	});
+
+	it("continues a reply past a turn's end into a background task's continuation", () => {
+		const messages = project([
+			user("msg_u", "Investigate"),
+			step("msg_a1", [tool("call_1", "subagent", completed({ agent: "explore" }, "started"))], {
+				finish: "tool-calls",
+			}),
+			{ id: "msg_i", type: "idle", outcome: "succeeded", time: { created: 4 } },
+			{
+				id: "msg_n",
+				type: "synthetic",
+				text: "Background task completed",
+				metadata: { background: true },
+				time: { created: 5 },
+			},
+			step("msg_a2", [{ type: "text", text: "Here is the comparison." }], {
+				time: { created: 6, completed: 7 },
+			}),
+		]);
+		expect(messages.map(({ id }) => id)).toEqual(["msg_u", "msg_a1"]);
+		expect(contentOf(messages[1]).filter((part) => part.type !== "data")).toEqual([
+			expect.objectContaining({ type: "tool-call", toolName: "subagent" }),
+			{ type: "text", text: "Here is the comparison." },
+		]);
+	});
+
+	it("reads a step's state as the message's status", () => {
+		const running = step("msg_a", [], { time: { created: 2 }, finish: undefined } as never);
+		delete (running as { finish?: unknown }).finish;
+		expect(project([running], { runState: { type: "streaming" } })[0]?.status).toEqual({
+			type: "running",
+		});
+		expect(project([running])[0]?.status).toEqual({ type: "incomplete", reason: "cancelled" });
+		expect(
+			project([step("msg_a", [], { error: { type: "provider", message: "Boom" } })])[0]?.status,
+		).toEqual({ type: "incomplete", reason: "error", error: "Boom" });
+		expect(project([step("msg_a", [], { finish: "tool-calls" })])[0]?.status).toEqual({
+			type: "incomplete",
+			reason: "cancelled",
+		});
+	});
+
+	it("holds a tool call waiting on a permission, and records how it was answered", () => {
+		const request = {
+			id: "per_1",
+			sessionID: "ses_1",
+			action: "shell",
+			resources: ["ls"],
+			save: ["ls *"],
+			source: { type: "tool", messageID: "msg_a", id: "call_1" },
+			askedAt: 1,
+		} as unknown as OpenCodePermissionRequest;
+		const messages = [
+			step("msg_a", [tool("call_1", "shell", { status: "running", input: {}, metadata: {} })]),
+		];
+		const base = createOpenCodeThreadState("ses_1").interactions;
+		const waiting = project(messages, {
+			interactions: { ...base, permissions: { pending: { per_1: request }, resolved: {} } },
+		})[0]!;
+		expect(waiting.status).toEqual({ type: "requires-action", reason: "tool-calls" });
+		expect(contentOf(waiting)[1]).toMatchObject({ approval: { id: "per_1" } });
+
+		const answered = project(messages, {
+			interactions: {
+				...base,
+				permissions: {
+					pending: {},
+					resolved: { per_1: { request, reply: "once", respondedAt: 2 } },
+				},
+			},
+		})[0]!;
+		expect(contentOf(answered)[1]).toMatchObject({
+			approval: { id: "per_1", approved: true, optionId: "once" },
+		});
+	});
+
+	it("nests a subagent's child transcript once it has loaded, reusing it while unchanged", () => {
+		const subagent = tool("call_1", "subagent", {
+			status: "running",
+			input: { agent: "explore" },
+			metadata: { sessionID: "ses_child" },
+		});
+		const child = stateOf([user("msg_cu", "child prompt")]);
+		const loading = { ...child, loadState: { type: "loading" } } as OpenCodeThreadState;
+		const messages = [step("msg_a", [subagent])];
+
+		expect(
+			contentOf(project(messages, { childSessionsById: { ses_child: loading } })[0])[1],
+		).not.toHaveProperty("messages");
+
+		const first = contentOf(project(messages, { childSessionsById: { ses_child: child } })[0])[1];
+		const second = contentOf(project(messages, { childSessionsById: { ses_child: child } })[0])[1];
+		expect(first?.messages).toHaveLength(1);
+		expect(second?.messages).toBe(first?.messages);
+	});
+
+	it("hides messages from the session's revert boundary on", () => {
+		const messages = project([user("msg_1", "a"), user("msg_2", "b"), user("msg_3", "c")], {
+			session: { revert: { messageID: "msg_2" } } as never,
+		});
+		expect(messages.map(({ id }) => id)).toEqual(["msg_1"]);
+	});
+});
+
+describe("user message projection", () => {
+	it("projects a prompt's attached files as image and file attachments", () => {
+		const [message] = project([
+			user("msg_u", "See these", 1, [
+				{ data: "AQID", mime: "image/png", name: "a.png", source: { type: "inline" } },
+				{ data: "BAUG", mime: "application/pdf", source: { type: "inline" } },
+			]),
+		]);
+		expect(message?.content).toEqual([{ type: "text", text: "See these" }]);
+		expect(message?.attachments).toEqual([
+			expect.objectContaining({
+				type: "image",
+				name: "a.png",
+				contentType: "image/png",
+				content: [{ type: "image", image: "data:image/png;base64,AQID", filename: "a.png" }],
+			}),
+			expect.objectContaining({
+				type: "file",
+				name: "file",
+				contentType: "application/pdf",
+				content: [
+					{
+						type: "file",
+						filename: "file",
+						data: "data:application/pdf;base64,BAUG",
+						mimeType: "application/pdf",
+					},
 				],
 			}),
 		]);
 	});
 
-	it("does not associate non-Task tools or invalid child metadata", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_parent"),
-			childSessionsById: {
-				ses_child: createOpenCodeThreadState("ses_child"),
-			},
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_parent",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "tool-1",
-							callID: "call-1",
-							sessionID: "ses_parent",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "read",
-							state: {
-								status: "completed",
-								input: {},
-								output: "Done",
-								metadata: { sessionId: "ses_child" },
-							},
-						} as never,
-						{
-							id: "tool-2",
-							callID: "call-2",
-							sessionID: "ses_parent",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "task",
-							state: {
-								status: "completed",
-								input: {},
-								output: "Done",
-								metadata: { sessionId: 42 },
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
+	it("splits a pending prompt's parts between content and attachments, in time order", () => {
+		const pending: PendingUserMessage = {
+			clientId: "c1",
+			messageId: "msg_p",
+			sessionId: "ses_1",
+			createdAt: 5,
+			parentId: null,
+			sourceId: null,
+			runConfig: undefined,
+			contentText: "hi",
+			parts: [
+				{ type: "text", text: "hi" },
+				{ type: "image", image: "data:image/png;base64,AQID", filename: "a.png" },
+			],
+			status: "pending",
 		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.content).toEqual([
-			expect.not.objectContaining({ messages: expect.anything() }),
-			expect.not.objectContaining({ messages: expect.anything() }),
-		]);
-	});
-
-	it("marks assistant messages with pending permission requests as requires-action", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			interactions: {
-				permissions: {
-					pending: {
-						permission_1: {
-							id: "permission_1",
-							sessionID: "ses_1",
-							action: "shell",
-							resources: [],
-							metadata: {},
-							save: ["git *"],
-							askedAt: 1000,
-							source: { type: "tool", messageID: "assistant-1", id: "call-1" },
-						},
-					},
-					resolved: {},
-				},
-				questions: {
-					pending: {},
-					answered: {},
-					rejected: {},
-				},
-			},
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "tool-1",
-							callID: "call-1",
-							sessionID: "ses_1",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "bash",
-							state: {
-								status: "pending",
-								input: { command: "ls" },
-								raw: "ls",
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.status).toEqual({
-			type: "requires-action",
-			reason: "tool-calls",
+		const messages = project([user("msg_u", "first", 1)], {
+			pendingUserMessages: { c1: pending },
 		});
-		expect(messages[0]?.content).toMatchObject([
-			{
-				type: "tool-call",
-				toolCallId: "call-1",
-				approval: {
-					id: "permission_1",
-					options: [
-						{ id: "once", kind: "allow-once" },
-						{
-							id: "always",
-							kind: "allow-always",
-							grants: ["git *"],
-							confirm: true,
-						},
-						{ id: "reject", kind: "reject-once" },
-					],
-				},
-			},
+		expect(messages.map(({ id }) => id)).toEqual(["msg_u", "local:c1"]);
+		expect(messages[1]?.content).toEqual([{ type: "text", text: "hi" }]);
+		expect(messages[1]?.attachments).toEqual([
+			expect.objectContaining({ type: "image", name: "a.png", contentType: "image/png" }),
 		]);
-	});
-
-	it("projects resolved permissions as recorded approval decisions", () => {
-		const base = createOpenCodeThreadState("ses_1");
-		const state: OpenCodeThreadState = {
-			...base,
-			interactions: {
-				...base.interactions,
-				permissions: {
-					pending: {},
-					resolved: {
-						permission_1: {
-							request: {
-								id: "permission_1",
-								sessionID: "ses_1",
-								action: "shell",
-								resources: [],
-								metadata: {},
-								save: ["git *"],
-								askedAt: 1000,
-								source: { type: "tool", messageID: "assistant-1", id: "call-1" },
-							},
-							reply: "once",
-							respondedAt: 2000,
-						},
-					},
-				},
-			},
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "tool-1",
-							callID: "call-1",
-							sessionID: "ses_1",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "bash",
-							state: {
-								status: "pending",
-								input: { command: "ls" },
-								raw: "ls",
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.content).toMatchObject([
-			{
-				type: "tool-call",
-				toolCallId: "call-1",
-				approval: {
-					id: "permission_1",
-					approved: true,
-					optionId: "once",
-				},
-			},
-		]);
-	});
-
-	it("normalizes escaped newlines in reasoning parts", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "reasoning-1",
-							sessionID: "ses_1",
-							messageID: "assistant-1",
-							type: "reasoning",
-							text: "Confirming\\n\\nI checked the file.",
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.content).toMatchObject([
-			{
-				type: "reasoning",
-				text: "Confirming\n\nI checked the file.",
-			},
-		]);
-	});
-
-	it("projects unsupported OpenCode parts into visible data fallbacks", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "custom-1",
-							sessionID: "ses_1",
-							messageID: "assistant-1",
-							type: "future-part",
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.content).toMatchObject([
-			{
-				type: "data",
-				name: "opencode-unsupported-part",
-				data: { type: "future-part" },
-			},
-		]);
-	});
-
-	it("handles non-object assistant errors without throwing", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_1",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						error: "Request failed",
-					} as never,
-					parts: [],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const messages = projectOpenCodeThreadMessages(state);
-		expect(messages[0]?.status).toMatchObject({
-			type: "incomplete",
-			reason: "error",
-			error: "Request failed",
-		});
-	});
-
-	it("reuses the projected child transcript while the child state is unchanged", () => {
-		const childState: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_child"),
-			loadState: { type: "ready" },
-			messageOrder: ["child-assistant"],
-			messagesById: {
-				"child-assistant": {
-					id: "child-assistant",
-					info: {
-						id: "child-assistant",
-						role: "assistant",
-						sessionID: "ses_child",
-						parentID: "child-user",
-						modelID: "model",
-						providerID: "provider",
-						mode: "subagent",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 2 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "child-text",
-							sessionID: "ses_child",
-							messageID: "child-assistant",
-							type: "text",
-							text: "Subagent finished.",
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_parent"),
-			childSessionsById: { ses_child: childState },
-			messageOrder: ["assistant-1"],
-			messagesById: {
-				"assistant-1": {
-					id: "assistant-1",
-					info: {
-						id: "assistant-1",
-						role: "assistant",
-						sessionID: "ses_parent",
-						parentID: "user-1",
-						modelID: "model",
-						providerID: "provider",
-						mode: "primary",
-						path: { cwd: "/", root: "/" },
-						cost: 0,
-						tokens: {
-							input: 0,
-							output: 0,
-							reasoning: 0,
-							cache: { read: 0, write: 0 },
-						},
-						time: { created: 1 },
-						finish: "stop",
-					} as never,
-					parts: [
-						{
-							id: "task-part",
-							callID: "task-call",
-							sessionID: "ses_parent",
-							messageID: "assistant-1",
-							type: "tool",
-							tool: "task",
-							state: {
-								status: "completed",
-								input: { description: "Inspect dependency" },
-								output: "Done",
-								metadata: { sessionId: "ses_child" },
-							},
-						} as never,
-					],
-					shadowParts: undefined,
-				},
-			},
-		};
-
-		const readNested = (projected: ReturnType<typeof projectOpenCodeThreadMessages>) => {
-			const content = projected[0]?.content;
-			const part =
-				typeof content === "string" ? undefined : content?.find((p) => p.type === "tool-call");
-			return part?.type === "tool-call" ? part.messages : undefined;
-		};
-
-		const first = readNested(projectOpenCodeThreadMessages(state));
-		const second = readNested(
-			projectOpenCodeThreadMessages({ ...state, runState: { type: "idle" } }),
-		);
-
-		expect(first).toHaveLength(1);
-		expect(second).toBe(first);
-	});
-
-	it("omits nested messages until the child session has loaded", () => {
-		const state = (loadState: OpenCodeThreadState["loadState"]) =>
-			({
-				...createOpenCodeThreadState("ses_parent"),
-				childSessionsById: {
-					ses_child: {
-						...createOpenCodeThreadState("ses_child"),
-						loadState,
-					},
-				},
-				messageOrder: ["assistant-1"],
-				messagesById: {
-					"assistant-1": {
-						id: "assistant-1",
-						info: {
-							id: "assistant-1",
-							role: "assistant",
-							sessionID: "ses_parent",
-							parentID: "user-1",
-							modelID: "model",
-							providerID: "provider",
-							mode: "primary",
-							path: { cwd: "/", root: "/" },
-							cost: 0,
-							tokens: {
-								input: 0,
-								output: 0,
-								reasoning: 0,
-								cache: { read: 0, write: 0 },
-							},
-							time: { created: 1 },
-						} as never,
-						parts: [
-							{
-								id: "task-part",
-								callID: "task-call",
-								sessionID: "ses_parent",
-								messageID: "assistant-1",
-								type: "tool",
-								tool: "task",
-								state: {
-									status: "running",
-									input: { description: "Inspect" },
-									metadata: { sessionId: "ses_child" },
-								},
-							} as never,
-						],
-						shadowParts: undefined,
-					},
-				},
-			}) satisfies OpenCodeThreadState;
-
-		const toolPart = (loadState: OpenCodeThreadState["loadState"]) => {
-			const content = projectOpenCodeThreadMessages(state(loadState))[0]?.content;
-			return typeof content === "string" ? undefined : content?.find((p) => p.type === "tool-call");
-		};
-
-		expect(toolPart({ type: "loading" })).toBeDefined();
-		expect(toolPart({ type: "loading" })).not.toHaveProperty("messages");
-		expect(toolPart({ type: "idle" })).not.toHaveProperty("messages");
-		expect(toolPart({ type: "error", error: "boom" })).not.toHaveProperty("messages");
-		expect(toolPart({ type: "ready" })).toHaveProperty("messages", []);
 	});
 });
 
-describe("user message projection", () => {
-	const userInfo = {
-		id: "user-1",
-		role: "user",
-		sessionID: "ses_1",
-		time: { created: 1 },
-	} as never;
-
-	const serverUserMessage = (parts: unknown[]) => ({
-		...createOpenCodeThreadState("ses_1"),
-		messageOrder: ["user-1"],
-		messagesById: {
-			"user-1": {
-				id: "user-1",
-				info: userInfo,
-				parts: parts as never,
-				shadowParts: undefined,
-			},
-		},
-	});
-
-	it("projects a user image file part as a complete image attachment", () => {
-		const state: OpenCodeThreadState = serverUserMessage([
-			{
-				id: "part-text",
-				sessionID: "ses_1",
-				messageID: "user-1",
-				type: "text",
-				text: "look at this",
-			},
-			{
-				id: "part-file",
-				sessionID: "ses_1",
-				messageID: "user-1",
-				type: "file",
-				mime: "image/png",
-				filename: "photo.png",
-				url: "data:image/png;base64,AA==",
-			},
-		]);
-
-		const [message] = projectOpenCodeThreadMessages(state);
-
-		expect(message?.content).toEqual([{ type: "text", text: "look at this" }]);
-		expect(message?.attachments).toEqual([
-			{
-				id: "part-file",
-				type: "image",
-				name: "photo.png",
-				contentType: "image/png",
-				status: { type: "complete" },
-				content: [
-					{
-						type: "image",
-						image: "data:image/png;base64,AA==",
-						filename: "photo.png",
-					},
-				],
-			},
-		]);
-	});
-
-	it("projects a non-image user file part as a complete file attachment", () => {
-		const state: OpenCodeThreadState = serverUserMessage([
-			{
-				id: "part-file",
-				sessionID: "ses_1",
-				messageID: "user-1",
-				type: "file",
-				mime: "application/pdf",
-				filename: "report.pdf",
-				url: "https://example.com/report.pdf",
-			},
-		]);
-
-		const [message] = projectOpenCodeThreadMessages(state);
-
-		expect(message?.content).toEqual([]);
-		expect(message?.attachments).toEqual([
-			{
-				id: "part-file",
-				type: "file",
-				name: "report.pdf",
-				contentType: "application/pdf",
-				status: { type: "complete" },
-				content: [
-					{
-						type: "file",
-						filename: "report.pdf",
-						data: "https://example.com/report.pdf",
-						mimeType: "application/pdf",
-					},
-				],
-			},
-		]);
-	});
-
-	it("splits pending user parts between content and attachments", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			pendingUserMessages: {
-				client_1: {
-					clientId: "client_1",
-					sessionId: "ses_1",
-					createdAt: 1,
-					parentId: null,
-					sourceId: null,
-					runConfig: undefined,
-					contentText: "look at this",
-					parts: [
-						{ type: "text", text: "look at this" },
-						{
-							type: "image",
-							image: "data:image/png;base64,AA==",
-							filename: "photo.png",
-						},
-					],
-					status: "pending",
-				},
-			},
-		};
-
-		const [message] = projectOpenCodeThreadMessages(state);
-
-		expect(message?.content).toEqual([{ type: "text", text: "look at this" }]);
-		expect(message?.attachments).toEqual([
-			{
-				id: "0",
-				type: "image",
-				name: "photo.png",
-				contentType: "image/png",
-				status: { type: "complete" },
-				content: [
-					{
-						type: "image",
-						image: "data:image/png;base64,AA==",
-						filename: "photo.png",
-					},
-				],
-			},
-		]);
-	});
-
-	it("splits shadow parts the same way while server parts are empty", () => {
-		const state: OpenCodeThreadState = {
-			...createOpenCodeThreadState("ses_1"),
-			messageOrder: ["user-1"],
+describe("projectOpenCodeThreadRepository with a cache", () => {
+	it("keeps a message's projection while its sources are unchanged", () => {
+		const cache = createOpenCodeProjectionCache();
+		const state = stateOf([user("msg_u", "a"), step("msg_a", [{ type: "text", text: "b" }])]);
+		const first = projectOpenCodeThreadRepository(state, {}, cache).messages;
+		const changed = {
+			...state,
 			messagesById: {
-				"user-1": {
-					id: "user-1",
-					info: userInfo,
-					parts: [],
-					shadowParts: [
-						{ type: "text", text: "look at this" },
-						{
-							type: "file",
-							data: "data:application/pdf;base64,AA==",
-							mimeType: "application/pdf",
-							filename: "report.pdf",
-						},
-					] as never,
-				},
+				...state.messagesById,
+				msg_a: step("msg_a", [{ type: "text", text: "bc" }]),
 			},
 		};
-
-		const [message] = projectOpenCodeThreadMessages(state);
-
-		expect(message?.content).toEqual([{ type: "text", text: "look at this" }]);
-		expect(message?.attachments).toEqual([
-			{
-				id: "0",
-				type: "file",
-				name: "report.pdf",
-				contentType: "application/pdf",
-				status: { type: "complete" },
-				content: [
-					{
-						type: "file",
-						data: "data:application/pdf;base64,AA==",
-						mimeType: "application/pdf",
-						filename: "report.pdf",
-					},
-				],
-			},
-		]);
+		const second = projectOpenCodeThreadRepository(changed, {}, cache).messages;
+		expect(second[0]?.message).toBe(first[0]?.message);
+		expect(second[1]?.message).not.toBe(first[1]?.message);
 	});
 });

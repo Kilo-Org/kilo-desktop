@@ -1493,9 +1493,6 @@ importers:
       '@kilo-desktop/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
       '@lexical/history':
         specifier: ^0.53.0
         version: 0.53.0(typescript@7.0.2)
@@ -1608,9 +1605,6 @@ importers:
       '@kilocode/client':
         specifier: 0.0.0-v2-239
         version: 0.0.0-v2-239(effect@4.1.0)
-      '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
     devDependencies:
       '@assistant-ui/react':
         specifier: 0.15.35

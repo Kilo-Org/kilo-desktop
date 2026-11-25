@@ -18,7 +18,7 @@ export type PlanContentState = {
 export function usePlanContent(projection: PlanProjection): PlanContentState {
 	const { connection } = useChatConnection();
 	const session = useOptionalOpenCodeSession();
-	const directory = session?.directory;
+	const directory = session?.location.directory;
 	const needsFile = Boolean(projection.path) && !projection.markdown;
 
 	const content = useQuery({

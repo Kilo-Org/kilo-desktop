@@ -3,61 +3,52 @@ import {
 	projectOpenCodeThreadMessages,
 	reduceOpenCodeThreadState,
 	type OpenCodeServerMessage,
+	type OpenCodeStateEvent,
 	type OpenCodeThreadState,
+	type SessionMessageAssistant,
 } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it } from "vitest";
 
 /*
- * Stop status in kilo.chat's react-opencode fork
- * (plugins/chat/react-opencode): a stopped turn projects as
- * `incomplete/cancelled` so the transcript says "You stopped" instead of
- * "Worked for" or an error banner.
+ * Stop status: a stopped turn projects as `incomplete/cancelled` so the
+ * transcript says "You stopped" instead of "Worked for" or an error banner.
  */
 
 const assistant = (
 	id: string,
-	info: Record<string, unknown>,
-	parts: Array<Record<string, unknown>> = [],
+	patch: Partial<SessionMessageAssistant> = {},
+	content: SessionMessageAssistant["content"] = [],
 ): OpenCodeServerMessage => ({
 	id,
-	info: {
-		id,
-		role: "assistant",
-		sessionID: "ses_1",
-		modelID: "model",
-		providerID: "provider",
-		mode: "primary",
-		path: { cwd: "/", root: "/" },
-		cost: 0,
-		tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-		time: { created: Number(id.split("-")[1] ?? 1), completed: 10 },
-		...info,
-	} as never,
-	parts: parts as never,
-	shadowParts: undefined,
+	type: "assistant",
+	agent: "code",
+	model: { providerID: "provider", id: "model" },
+	cost: 0,
+	tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+	time: { created: 2, completed: 10 },
+	finish: "stop",
+	content,
+	...patch,
 });
 
 const user = (id: string): OpenCodeServerMessage => ({
 	id,
-	info: {
-		id,
-		role: "user",
-		sessionID: "ses_1",
-		time: { created: Number(id.split("-")[1] ?? 1) },
-	} as never,
-	parts: [{ id: `${id}_1`, sessionID: "ses_1", messageID: id, type: "text", text: "go" }] as never,
-	shadowParts: undefined,
+	type: "user",
+	text: "go",
+	time: { created: 1 },
 });
 
-const taskPart = (id: string, status: string) => ({
-	id,
-	sessionID: "ses_1",
-	messageID: "msg-2",
-	type: "tool",
-	tool: "task",
-	callID: `call-${id}`,
-	state: { status, input: {}, error: "Task cancelled", time: { start: 1, end: 2 } },
-});
+const subagentCall = (id: string, status: "completed" | "error", name = "subagent") =>
+	({
+		type: "tool",
+		id,
+		name,
+		time: { created: 1, completed: 2 },
+		state:
+			status === "completed"
+				? { status, input: {}, content: [{ type: "text", text: "done" }] }
+				: { status, input: {}, error: { type: "cancelled", message: "Task cancelled" } },
+	}) as SessionMessageAssistant["content"][number];
 
 const statusOf = (
 	messages: readonly OpenCodeServerMessage[],
@@ -74,19 +65,19 @@ const statusOf = (
 };
 
 describe("projectOpenCodeThreadMessages stop status", () => {
-	it("reports a turn aborted mid-step as stopped, not failed", () => {
-		const status = statusOf([
-			user("msg-1"),
-			assistant("msg-2", { error: { name: "MessageAbortedError", data: { message: "Aborted" } } }),
-		]);
-
-		expect(status).toEqual({ type: "incomplete", reason: "cancelled" });
+	it("reports a turn stopped mid-step (the step never ended) as stopped, not failed", () => {
+		const unfinished = assistant("msg-2", { time: { created: 2 } });
+		delete (unfinished as { finish?: unknown }).finish;
+		expect(statusOf([user("msg-1"), unfinished])).toEqual({
+			type: "incomplete",
+			reason: "cancelled",
+		});
 	});
 
 	it("reports a turn halted between steps as stopped", () => {
 		const status = statusOf([
 			user("msg-1"),
-			assistant("msg-2", { finish: "tool-calls" }, [taskPart("prt-1", "error")]),
+			assistant("msg-2", { finish: "tool-calls" }, [subagentCall("call-1", "error")]),
 		]);
 
 		expect(status).toEqual({ type: "incomplete", reason: "cancelled" });
@@ -96,7 +87,7 @@ describe("projectOpenCodeThreadMessages stop status", () => {
 		const status = statusOf(
 			[
 				user("msg-1"),
-				assistant("msg-2", { finish: "tool-calls" }, [taskPart("prt-1", "completed")]),
+				assistant("msg-2", { finish: "tool-calls" }, [subagentCall("c", "completed")]),
 			],
 			{ sessionStatus: { type: "busy" } },
 		);
@@ -107,9 +98,7 @@ describe("projectOpenCodeThreadMessages stop status", () => {
 	it("treats a completed plan_exit as the intended end of a turn", () => {
 		const status = statusOf([
 			user("msg-1"),
-			assistant("msg-2", { finish: "tool-calls" }, [
-				{ ...taskPart("prt-1", "completed"), tool: "plan_exit" },
-			]),
+			assistant("msg-2", { finish: "tool-calls" }, [subagentCall("c", "completed", "plan_exit")]),
 		]);
 
 		expect(status).toMatchObject({ type: "complete" });
@@ -118,40 +107,46 @@ describe("projectOpenCodeThreadMessages stop status", () => {
 	it("still surfaces genuine errors", () => {
 		const status = statusOf([
 			user("msg-1"),
-			assistant("msg-2", { error: { name: "APIError", data: { message: "Rate limited" } } }),
+			assistant("msg-2", { error: { type: "provider.api", message: "Rate limited" } }),
 		]);
 
 		expect(status).toEqual({ type: "incomplete", reason: "error", error: "Rate limited" });
 	});
 });
 
-describe("reduceOpenCodeThreadState part activity", () => {
-	const message = assistant("msg-2", {}, [taskPart("prt-1", "completed")]);
+describe("reduceOpenCodeThreadState step activity", () => {
+	const message = assistant("msg-2", { time: { created: 2 } }, [{ type: "text", text: "a" }]);
 	const stateWith = (overrides: Partial<OpenCodeThreadState>): OpenCodeThreadState => ({
 		...createOpenCodeThreadState("ses_1"),
 		messageOrder: [message.id],
 		messagesById: { [message.id]: message },
 		...overrides,
 	});
-	const trailingPart = {
-		type: "part.updated",
-		messageId: message.id,
-		part: taskPart("prt-1", "completed"),
-	} as never;
+	const trailingDelta: OpenCodeStateEvent = {
+		type: "kilo.event",
+		event: {
+			type: "session.text.delta",
+			created: 3,
+			data: { sessionID: "ses_1", assistantMessageID: message.id, ordinal: 0, delta: "b" },
+		} as never,
+	};
 
 	it.each(["cancelling", "reverting"] as const)(
-		"keeps a %s run from flipping back to streaming on trailing part output",
+		"keeps a %s run from flipping back to streaming on trailing step output",
 		(type) => {
 			const state = stateWith({ runState: { type } });
-			const next = reduceOpenCodeThreadState(state, trailingPart);
+			const next = reduceOpenCodeThreadState(state, trailingDelta);
 
 			expect(next.runState).toEqual({ type });
 			expect(next.sessionStatus).toBe(state.sessionStatus);
 		},
 	);
 
-	it("treats part output with an unknown status as a live run", () => {
-		const next = reduceOpenCodeThreadState(stateWith({ runState: { type: "idle" } }), trailingPart);
+	it("treats step output with an unknown status as a live run", () => {
+		const next = reduceOpenCodeThreadState(
+			stateWith({ runState: { type: "idle" } }),
+			trailingDelta,
+		);
 
 		expect(next.runState).toEqual({ type: "streaming" });
 		expect(next.sessionStatus).toEqual({ type: "busy" });

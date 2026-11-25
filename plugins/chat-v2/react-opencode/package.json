@@ -3,7 +3,7 @@
 	"version": "0.2.17-kilo.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.chat v2's copy of its @assistant-ui/react-opencode 0.2.17 fork (MIT), moving to Kilo v2's @kilocode/client",
+	"description": "kilo.chat v2's copy of its @assistant-ui/react-opencode 0.2.17 fork (MIT), on Kilo v2's @kilocode/client",
 	"author": "Anaconda, Inc.",
 	"license": "SEE LICENSE IN ../../../LICENSE.md",
 	"exports": {
@@ -17,8 +17,7 @@
 	"dependencies": {
 		"@assistant-ui/core": "^0.3.35",
 		"@assistant-ui/store": "^0.3.23",
-		"@kilocode/client": "0.0.0-v2-239",
-		"@kilocode/sdk": "7.8.27"
+		"@kilocode/client": "0.0.0-v2-239"
 	},
 	"peerDependencies": {
 		"@assistant-ui/react": "^0.15.0",

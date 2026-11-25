@@ -2,17 +2,15 @@ import type { PartState } from "@assistant-ui/react";
 import { useAuiState } from "@assistant-ui/react";
 
 import { HtmlRenderPart } from "../html-render/HtmlRenderToolUI";
+import { kiloMessagesOf } from "../runtime/kilo-transcript";
 import { isFoldHoistedPart, showsHoistedPage } from "../tools/activity-grouping";
 import { useIsInTurnWorkFold } from "../tools/turn-work-fold-context";
 import { ChatImage } from "./ChatImage";
 import { fileName, savedImages, toolImageAttachments } from "./message-images";
 
-/** The message's raw OpenCode parts, which carry what assistant-ui's parts leave out. */
-function useOpenCodeParts(): unknown {
-	return useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
+/** The message's Kilo messages, which carry what assistant-ui's parts leave out. */
+function useKiloMessages() {
+	return useAuiState((s) => kiloMessagesOf(s.message.metadata?.custom));
 }
 
 /**
@@ -39,9 +37,9 @@ export function AssistantImagePart({
  * they render nothing: the message shows them below the fold.
  */
 export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: string }) {
-	const parts = useOpenCodeParts();
+	const messages = useKiloMessages();
 	const folded = useIsInTurnWorkFold();
-	const attachments = toolImageAttachments(parts, toolCallId);
+	const attachments = toolImageAttachments(messages, toolCallId);
 	if (folded || attachments.length === 0) return null;
 	return (
 		<div className="my-2 flex flex-wrap gap-2" data-qa-id="chat-tool-images">
@@ -64,8 +62,8 @@ export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: stri
  * wrote), read from the workspace and shown at the end of the message.
  */
 export function TurnSavedImages() {
-	const parts = useOpenCodeParts();
-	const { images, more } = savedImages(parts);
+	const messages = useKiloMessages();
+	const { images, more } = savedImages(messages);
 	if (images.length === 0) return null;
 	return (
 		<div

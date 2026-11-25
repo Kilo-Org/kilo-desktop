@@ -54,6 +54,22 @@ const notFound = (message: string) => json({ _tag: "NotFoundError", message }, 4
  * real time.
  */
 let fixtureClock = 0;
+/**
+ * A prompt's file as Kilo stores it: its bytes inline (`data`, base64) with
+ * where they came from. Only `data:` URIs are read here; others store empty.
+ */
+function storedFile(file: unknown): Json {
+	const { uri, name, mime } = file as { uri?: string; name?: string; mime?: string };
+	const match = /^data:([^;,]+)?(;base64)?,(.*)$/u.exec(uri ?? "");
+	const data = match ? (match[2] ? match[3]! : btoa(decodeURIComponent(match[3]!))) : "";
+	return {
+		data,
+		mime: mime ?? match?.[1] ?? "application/octet-stream",
+		source: { type: "uri", uri: uri ?? "" },
+		...(name ? { name } : {}),
+	};
+}
+
 export function nextCreated(): number {
 	fixtureClock = Math.max(fixtureClock + 1, Date.now());
 	return fixtureClock;
@@ -269,8 +285,10 @@ export class FakeKiloServer {
 			this.#active.delete(sessionID);
 		}
 		const at = directory ?? (sessionID ? this.chats.get(sessionID)?.directory : undefined);
+		// Kilo names a message an event starts after the event (`evt_…` → `msg_…`),
+		// so event ids stay clear of the fixtures' `msg_<n>` ids.
 		const event = {
-			id: `evt_${++this.#nextId}`,
+			id: `evt_event${++this.#nextId}`,
 			created: nextCreated(),
 			type,
 			...(at ? { location: { directory: at } } : {}),
@@ -643,7 +661,7 @@ export class FakeKiloServer {
 				type,
 				text,
 				time: { created },
-				...(Array.isArray(body.files) ? { files: body.files } : {}),
+				...(Array.isArray(body.files) ? { files: body.files.map(storedFile) } : {}),
 			});
 			this.emit("session.inbox.delivered", { sessionID: chat.id, inboxID: id });
 		}, 20);

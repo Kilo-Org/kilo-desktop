@@ -106,3 +106,28 @@ export async function readHistory(
 	} while (cursor);
 	return messages;
 }
+
+const ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+let lastIdTime = 0;
+let idCounter = 0;
+
+/**
+ * A new message id, as Kilo v2 mints them (`msg_` + an ascending id: time and
+ * a counter, then random characters): a prompt sent with it is delivered under
+ * it, so its pending copy is matched exactly.
+ */
+export function newMessageId(now = Date.now()): string {
+	if (now !== lastIdTime) {
+		lastIdTime = now;
+		idCounter = 0;
+	}
+	idCounter += 1;
+	const value = BigInt(now) * 0x1000n + BigInt(idCounter);
+	const time = Array.from({ length: 6 }, (_, index) =>
+		Number((value >> BigInt(40 - 8 * index)) & 0xffn)
+			.toString(16)
+			.padStart(2, "0"),
+	).join("");
+	const random = crypto.getRandomValues(new Uint8Array(14));
+	return `msg_${time}${Array.from(random, (byte) => ID_CHARS[byte % 62]).join("")}`;
+}

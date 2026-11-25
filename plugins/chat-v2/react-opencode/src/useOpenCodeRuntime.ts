@@ -24,7 +24,7 @@ import type {
 	OpenCodeThreadState,
 	FormAnswer,
 } from "./types";
-import { OpenCodeEventSource } from "./OpenCodeEventSource";
+import { kiloEventSubscriber, OpenCodeEventSource } from "./OpenCodeEventSource";
 import { toOpenCodePermissionResponse } from "./openCodePermissionApproval";
 import { OpenCodeThreadController } from "./OpenCodeThreadController";
 import {
@@ -40,7 +40,6 @@ import {
 } from "./openCodeMessageQueue";
 import { useOpenCodeControllerState } from "./useOpenCodeControllerState";
 import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
-import { v2ClientEventSubscriber } from "./v2/v2-event-source";
 
 type OpenCodeControllerRegistry = {
 	getEventSource(): ReturnType<OpenCodeRuntimeBackend["createEventSource"]>;
@@ -221,9 +220,7 @@ const getOptimisticMessagesByThreadId = (registry: OpenCodeControllerRegistry) =
 
 const liveThreadHasUserMessage = (state: OpenCodeThreadState): boolean => {
 	if (Object.keys(state.pendingUserMessages).length > 0) return true;
-	return state.messageOrder.some(
-		(messageId) => state.messagesById[messageId]?.info?.role === "user",
-	);
+	return state.messageOrder.some((messageId) => state.messagesById[messageId]?.type === "user");
 };
 
 const useOpenCodeThreadStore = (
@@ -539,7 +536,7 @@ export const useOpenCodeRuntime = (options: OpenCodeRuntimeOptions = {}): Assist
 						directory: session.location.directory,
 					};
 				},
-				createEventSource: () => new OpenCodeEventSource(v2ClientEventSubscriber(client)),
+				createEventSource: () => new OpenCodeEventSource(kiloEventSubscriber(client)),
 			},
 		[client, options.backend],
 	);

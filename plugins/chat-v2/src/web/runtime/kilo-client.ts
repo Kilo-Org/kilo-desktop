@@ -1,6 +1,6 @@
 import {
 	createKiloClient,
-	v2ClientEventSubscriber,
+	kiloEventSubscriber,
 	type KiloClient,
 } from "@kilo-desktop/react-opencode-v2";
 
@@ -28,7 +28,7 @@ export function createKiloV2Wire(): KiloWire {
 	};
 	return {
 		client: clientFor,
-		subscribe: (connection, options) => v2ClientEventSubscriber(clientFor(connection))(options),
+		subscribe: (connection, options) => kiloEventSubscriber(clientFor(connection))(options),
 	};
 }
 

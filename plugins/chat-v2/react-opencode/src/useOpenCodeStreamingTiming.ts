@@ -7,32 +7,22 @@ import type { OpenCodeThreadState } from "./types";
 
 export function getMessageTextLength(state: OpenCodeThreadState, messageId: string): number {
 	const message = state.messagesById[messageId];
-	if (!message?.info || message.info.role !== "assistant") return 0;
+	if (message?.type !== "assistant") return 0;
 	let len = 0;
-	for (const part of message.parts) {
-		if ((part.type === "text" || part.type === "reasoning") && typeof part.text === "string") {
-			len += part.text.length;
-		}
+	for (const item of message.content) {
+		if (item.type === "text" || item.type === "reasoning") len += item.text.length;
 	}
 	return len;
 }
 
 export function getMessageToolCallCount(state: OpenCodeThreadState, messageId: string): number {
 	const message = state.messagesById[messageId];
-	if (!message?.info || message.info.role !== "assistant") return 0;
-	return message.parts.filter((p) => p.type === "tool").length;
+	if (message?.type !== "assistant") return 0;
+	return message.content.filter((item) => item.type === "tool").length;
 }
 
 export function getLastAssistantId(state: OpenCodeThreadState): string | undefined {
-	for (let i = state.messageOrder.length - 1; i >= 0; i--) {
-		const messageId = state.messageOrder[i];
-		if (!messageId) continue;
-		const message = state.messagesById[messageId];
-		if (message?.info?.role === "assistant") {
-			return messageId;
-		}
-	}
-	return undefined;
+	return state.messageOrder.findLast((id) => state.messagesById[id]?.type === "assistant");
 }
 
 // OpenCode tracks timing off a single thread-state snapshot rather than a

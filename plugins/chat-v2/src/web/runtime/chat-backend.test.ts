@@ -55,22 +55,31 @@ describe("createChatBackend", () => {
 			directoryOf: () => "/repo",
 			createChat: async () => ({ id: "s1", directory: "/repo" }),
 		});
-		const part = { id: "prt_1", messageID: "msg_1", sessionID: "s1", type: "text", text: "" };
+		const ids = { sessionID: "s1", assistantMessageID: "msg_1", ordinal: 0 };
 		services.liveParts.apply({
-			type: "message.part.updated",
+			type: "session.text.started",
 			sessionId: "s1",
-			properties: { part },
+			properties: ids,
 			raw: undefined,
 		});
 		services.liveParts.apply({
-			type: "message.part.delta",
+			type: "session.text.delta",
 			sessionId: "s1",
-			properties: { messageID: "msg_1", partID: "prt_1", field: "text", delta: "Hello" },
+			properties: { ...ids, delta: "Hello" },
 			raw: undefined,
 		});
 
-		const [message] = backend.patchHistory!("s1", [{ info: {} as never, parts: [part as never] }]);
+		const [message] = backend.patchHistory!("s1", [
+			{
+				id: "msg_1",
+				type: "assistant",
+				agent: "code",
+				model: { providerID: "kilo", id: "m" },
+				content: [{ type: "text", text: "" }],
+				time: { created: 1 },
+			},
+		]);
 
-		expect(message?.parts[0]).toMatchObject({ text: "Hello" });
+		expect(message?.type === "assistant" && message.content[0]).toMatchObject({ text: "Hello" });
 	});
 });

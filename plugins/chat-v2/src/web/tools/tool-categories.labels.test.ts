@@ -96,12 +96,12 @@ describe("group keys", () => {
 
 describe("soloRowHidesItself", () => {
 	it("hides a quiet successful command but not a failed or cancelled one", () => {
-		expect(soloRowHidesItself("terminal", call("bash", {}, { result: "" }))).toBe(true);
-		expect(soloRowHidesItself("terminal", call("bash", {}, { result: "out" }))).toBe(false);
+		expect(soloRowHidesItself("terminal", call("shell", {}, { result: "" }))).toBe(true);
+		expect(soloRowHidesItself("terminal", call("shell", {}, { result: "out" }))).toBe(false);
 		expect(
 			soloRowHidesItself(
 				"terminal",
-				call("bash", {}, { status: { type: "incomplete", reason: "cancelled" } as never }),
+				call("shell", {}, { status: { type: "incomplete", reason: "cancelled" } as never }),
 			),
 		).toBe(false);
 		expect(soloRowHidesItself("terminal", undefined)).toBe(false);

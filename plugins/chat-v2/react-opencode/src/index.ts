@@ -17,6 +17,7 @@ export { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
 // Lower-level building blocks, deliberately public as advanced API and
 // documented in the docs site's OpenCode "lower-level building blocks" table.
 export {
+	kiloEventSubscriber,
 	OpenCodeEventSource,
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeEventSubscriber,
@@ -33,16 +34,28 @@ export {
 } from "./openCodeMessageQueue";
 export { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState";
 export {
+	foldKiloEvent,
+	foldKiloSessionEvent,
+	messageIdFromEvent,
+	type KiloTranscript,
+} from "./kiloTranscript";
+export { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
+export {
 	createOpenCodeProjectionCache,
 	projectOpenCodeThreadMessages,
 	projectOpenCodeThreadRepository,
 	setLocalMcpApps,
+	toolCallOutput,
+	userFileUrl,
 	type LocalMcpApp,
 	type OpenCodeProjectionCache,
 } from "./openCodeMessageProjection";
 
 export type {
-	MessageWithParts,
+	KiloAssistantContent,
+	KiloToolCall,
+	KiloToolState,
+	OpenCodeInboxEntry,
 	OpenCodeLoadState,
 	OpenCodeModelRef,
 	OpenCodeOlderHistory,
@@ -60,6 +73,7 @@ export type {
 	OpenCodeServerEvent,
 	OpenCodeSessionRef,
 	OpenCodeServerMessage,
+	OpenCodeSessionStatus,
 	OpenCodeStateEvent,
 	OpenCodeThreadControllerLike,
 	OpenCodeThreadControllerSnapshot,
@@ -72,31 +86,22 @@ export type {
 
 export type {
 	AgentInfo,
-	AssistantMessage,
 	CommandInfo,
-	Event,
-	FilePart,
+	FileDiffInfo,
 	FormAnswer,
 	FormInfo,
-	GlobalSession,
 	KiloClient,
-	Message,
-	Model,
-	Part,
-	Provider,
-	ReasoningPart,
-	Session,
+	OpenCodeEvent,
+	SessionInboxItem,
 	SessionInfo,
-	SessionStatus,
+	SessionMessageAssistant,
+	SessionMessageCompaction,
+	SessionMessageInfo,
+	SessionMessageShell,
+	SessionMessageUser,
+	SessionRevert,
 	SkillInfo,
-	SnapshotFileDiff,
-	SnapshotPart,
-	StepFinishPart,
-	StepStartPart,
-	TextPart,
-	ToolPart,
-	ToolState,
-	UserMessage,
+	ToolContent,
 } from "./types";
 
 // Kilo v2's client, and the calls every caller makes the same way.
@@ -107,14 +112,9 @@ export {
 	listAgents,
 	listCommands,
 	listSkills,
+	newMessageId,
 	OPEN_CODE_HISTORY_PAGE_SIZE,
 	pluginsRegistered,
 	readHistory,
 	systemNote,
 } from "./kilo";
-
-// Kilo v2's transcript and events in the v1 shapes above (until the thread
-// state reads Kilo v2's own).
-export { createV2EventSubscriber, v2ClientEventSubscriber } from "./v2/v2-event-source";
-export { V2EventTranslator, type ReadSession, type V1Event } from "./v2/v2-events";
-export { toV1Messages, toV1Session, type V2Message } from "./v2/v2-messages";

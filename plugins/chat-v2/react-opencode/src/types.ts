@@ -13,54 +13,54 @@ import type {
 import type {
 	FormAnswer,
 	FormInfo,
+	OpenCodeEvent,
 	PermissionRequest as KiloPermissionRequest,
+	SessionInboxItem,
 	SessionInfo,
+	SessionMessageAssistant,
+	SessionMessageInfo,
 } from "@kilocode/client";
 import type { KiloClient } from "./kilo";
-import type { Message, Part, Session, SessionStatus } from "./sdk";
 import type {
 	OpenCodeMessageQueueController,
 	OpenCodeMessageQueueControls,
 	OpenCodeMessageQueueOptions,
 } from "./openCodeMessageQueue";
 
-export type {
-	AssistantMessage,
-	Event,
-	EventMessagePartDelta,
-	FilePart,
-	GlobalSession,
-	Message,
-	Model,
-	Part,
-	Provider,
-	ReasoningPart,
-	Session,
-	SessionStatus,
-	SnapshotFileDiff,
-	SnapshotPart,
-	StepFinishPart,
-	StepStartPart,
-	TextPart,
-	ToolPart,
-	ToolState,
-	UserMessage,
-} from "./sdk";
-
 export type { KiloClient } from "./kilo";
 export type {
 	AgentInfo,
 	CommandInfo,
+	FileDiffInfo,
 	FormAnswer,
 	FormInfo,
+	OpenCodeEvent,
+	SessionInboxItem,
 	SessionInfo,
+	SessionMessageAssistant,
+	SessionMessageCompaction,
+	SessionMessageInfo,
+	SessionMessageShell,
+	SessionMessageUser,
+	SessionRevert,
 	SkillInfo,
+	ToolContent,
 } from "@kilocode/client";
 
-export type MessageWithParts = {
-	info: Message;
-	parts: Part[];
-};
+/** One item of a Kilo v2 assistant message's `content`: text, reasoning or a tool call. */
+export type KiloAssistantContent = SessionMessageAssistant["content"][number];
+/** A tool call in a Kilo v2 assistant message's `content`. */
+export type KiloToolCall = Extract<KiloAssistantContent, { type: "tool" }>;
+export type KiloToolState = KiloToolCall["state"];
+
+/**
+ * Whether the session runs, as the thread reads it from Kilo v2's execution
+ * events (`session.execution.*`, `session.retry.scheduled`).
+ */
+export type OpenCodeSessionStatus =
+	| { type: "idle" }
+	| { type: "busy" }
+	| { type: "retry"; attempt: number; message: string; next: number };
 
 /** A permission reply, as Kilo v2 takes it (`permission.reply`'s `decision`). */
 export type OpenCodePermissionResponse = "once" | "always" | "reject";
@@ -77,6 +77,8 @@ export type OpenCodeQuestionRequest = FormInfo & {
 
 export type PendingUserMessage = {
 	clientId: string;
+	/** The id the prompt is sent with (`session.prompt`'s `id`): its message's id once delivered. */
+	messageId: string;
 	sessionId: string;
 	createdAt: number;
 	parentId: string | null;
@@ -88,12 +90,11 @@ export type PendingUserMessage = {
 	error?: unknown;
 };
 
-export type OpenCodeServerMessage = {
-	id: string;
-	info: Message | undefined;
-	parts: readonly Part[];
-	shadowParts?: readonly ThreadUserMessagePart[] | undefined;
-};
+/** A message the thread holds: Kilo v2's own. */
+export type OpenCodeServerMessage = SessionMessageInfo;
+
+/** An inbox item Kilo v2 holds for the session until it is delivered into the transcript. */
+export type OpenCodeInboxEntry = { item: SessionInboxItem; created: number };
 
 export type OpenCodeLoadState =
 	| { type: "idle" }
@@ -126,14 +127,16 @@ export type OpenCodeOlderHistory =
 
 export type OpenCodeThreadState = {
 	sessionId: string;
-	session: Session | null;
-	sessionStatus: SessionStatus | null;
+	session: SessionInfo | null;
+	sessionStatus: OpenCodeSessionStatus | null;
 	loadState: OpenCodeLoadState;
 	/** Absent means complete. */
 	olderHistory?: OpenCodeOlderHistory;
 	runState: OpenCodeRunState;
 	messageOrder: readonly string[];
 	messagesById: Readonly<Record<string, OpenCodeServerMessage>>;
+	/** Prompts and notes enqueued and not yet delivered, by inbox id (= their message id). */
+	inbox: Readonly<Record<string, OpenCodeInboxEntry>>;
 	childSessionsById: Readonly<Record<string, OpenCodeThreadState>>;
 	pendingUserMessages: Readonly<Record<string, PendingUserMessage>>;
 	interactions: {
@@ -217,13 +220,12 @@ export type OpenCodeRuntimeBackend = {
 	getSessionClient(ref: OpenCodeSessionRef): KiloClient;
 	/**
 	 * Adjusts a session's history as the thread is about to show it, e.g. with
-	 * text streamed since the server answered (the history is read whole and
-	 * shown in the thread state's message shapes).
+	 * text streamed since the server answered.
 	 */
 	patchHistory?(
 		sessionId: string,
-		messages: readonly MessageWithParts[],
-	): readonly MessageWithParts[];
+		messages: readonly SessionMessageInfo[],
+	): readonly SessionMessageInfo[];
 	initializeSession(): Promise<OpenCodeSessionRef>;
 	createEventSource(): OpenCodeEventSourceLike;
 	/**
@@ -275,7 +277,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
 };
 
 export type OpenCodeRuntimeExtras = {
-	session: Session | null;
+	session: SessionInfo | null;
 	state: OpenCodeThreadState;
 	permissions: OpenCodeThreadState["interactions"]["permissions"]["pending"];
 	questions: OpenCodeThreadState["interactions"]["questions"]["pending"];
@@ -295,11 +297,12 @@ export type OpenCodeRuntime = AssistantRuntime;
 
 export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
 
+/** A Kilo v2 event (`raw`), with its session and location picked out; `properties` is its `data`. */
 export type OpenCodeServerEvent = {
 	type: string;
 	sessionId: string | undefined;
 	directory?: string | undefined;
-	raw: unknown;
+	raw: OpenCodeEvent | undefined;
 	properties: Record<string, unknown>;
 };
 
@@ -309,40 +312,26 @@ export type OpenCodeStateEvent =
 	  }
 	| {
 			type: "history.loaded";
-			session: Session | null;
-			messages: readonly MessageWithParts[];
+			session: SessionInfo | null;
+			messages: readonly SessionMessageInfo[];
 			olderHistory?: OpenCodeOlderHistory;
 	  }
 	| {
 			type: "history.prepended";
-			messages: readonly MessageWithParts[];
+			messages: readonly SessionMessageInfo[];
 			boundaryId: string;
 	  }
 	| { type: "history.olderFailed"; error: unknown }
 	| { type: "history.failed"; error: unknown }
-	| { type: "session.updated"; session: Session }
-	| { type: "session.status"; status: SessionStatus }
+	| { type: "session.updated"; session: SessionInfo }
+	| { type: "session.status"; status: OpenCodeSessionStatus }
 	| { type: "session.idle"; sessionId: string }
-	| { type: "session.compacted"; sessionId: string }
 	| { type: "run.started" }
 	| { type: "run.cancelling" }
 	| { type: "run.reverting" }
 	| { type: "run.failed"; error: unknown }
-	| { type: "message.updated"; info: Message }
-	| { type: "message.removed"; messageId: string }
-	| {
-			type: "part.updated";
-			messageId: string;
-			part: Part;
-	  }
-	| {
-			type: "part.delta";
-			messageId: string;
-			partId: string;
-			field: string;
-			delta: string;
-	  }
-	| { type: "part.removed"; messageId: string; partId: string }
+	/** A Kilo v2 event for the session, folded into its transcript and status. */
+	| { type: "kilo.event"; event: OpenCodeEvent }
 	| { type: "permission.asked"; request: OpenCodePermissionRequest }
 	| {
 			type: "permission.replied";

@@ -1,4 +1,8 @@
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode-v2";
+import type {
+	KiloAssistantContent,
+	KiloToolCall,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
 
 import type { TaskItem, TaskStatus } from "./task-list";
 
@@ -6,16 +10,7 @@ export type TaskThreadSource = {
 	runState?: { type: string } | undefined;
 	sessionStatus?: { type: string } | null | undefined;
 	messageOrder: readonly string[];
-	messagesById: Readonly<
-		Record<
-			string,
-			| {
-					info: { role: string } | undefined;
-					parts: readonly Part[];
-			  }
-			| undefined
-		>
-	>;
+	messagesById: Readonly<Record<string, SessionMessageInfo | undefined>>;
 };
 
 export type TaskThreadProjection = {
@@ -32,8 +27,8 @@ const STATUS_MAP: Readonly<Record<string, TaskStatus | undefined>> = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
 
-const isTaskWrite = (part: Part): part is ToolPart =>
-	part.type === "tool" && part.tool.toLowerCase() === "todowrite";
+const isTaskWrite = (item: KiloAssistantContent): item is KiloToolCall =>
+	item.type === "tool" && item.name.toLowerCase() === "todowrite";
 
 const parseTaskItems = (value: unknown): readonly TaskItem[] | undefined => {
 	if (!Array.isArray(value)) return undefined;
@@ -71,13 +66,16 @@ export function projectTaskThread(source: TaskThreadSource): TaskThreadProjectio
 	let projection: TaskThreadProjection | undefined;
 	for (const messageId of source.messageOrder) {
 		const message = source.messagesById[messageId];
-		if (message?.info?.role !== "assistant") {
-			projection = undefined;
+		if (!message) continue;
+		if (message.type !== "assistant") {
+			// A prompt starts a new list; Kilo's context notes and markers don't.
+			if (message.type === "user") projection = undefined;
 			continue;
 		}
-		for (const part of message.parts) {
-			if (!isTaskWrite(part)) continue;
-			const items = isRecord(part.state.input) ? parseTaskItems(part.state.input.todos) : undefined;
+		for (const item of message.content) {
+			if (!isTaskWrite(item)) continue;
+			const input = item.state.status === "streaming" ? undefined : item.state.input;
+			const items = isRecord(input) ? parseTaskItems(input.todos) : undefined;
 			if (!items) continue;
 			projection = { items };
 		}

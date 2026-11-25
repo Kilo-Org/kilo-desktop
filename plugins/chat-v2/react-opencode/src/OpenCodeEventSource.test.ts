@@ -89,7 +89,12 @@ describe("OpenCodeEventSource", () => {
 	it("finds the session of a Kilo v2 form", async () => {
 		const subscribe = vi.fn(async () => ({
 			stream: (async function* () {
-				yield { type: "form.created", properties: { form: { id: "frm_1", sessionID: "ses_1" } } };
+				yield {
+					id: "evt_1",
+					type: "form.created",
+					data: { form: { id: "frm_1", sessionID: "ses_1" } },
+					location: { directory: "/w" },
+				};
 			})(),
 		}));
 		const source = new OpenCodeEventSource(subscribe);
@@ -98,7 +103,7 @@ describe("OpenCodeEventSource", () => {
 
 		await waitFor(() => {
 			expect(listener).toHaveBeenCalledWith(
-				expect.objectContaining({ type: "form.created", sessionId: "ses_1" }),
+				expect.objectContaining({ type: "form.created", sessionId: "ses_1", directory: "/w" }),
 			);
 		});
 		unsubscribe();

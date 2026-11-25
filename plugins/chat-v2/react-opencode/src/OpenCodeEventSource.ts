@@ -1,3 +1,6 @@
+import type { OpenCodeEvent } from "@kilocode/client";
+
+import type { KiloClient } from "./kilo";
 import type { OpenCodeServerEvent } from "./types";
 
 type Listener = (event: OpenCodeServerEvent) => void;
@@ -11,66 +14,25 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 };
 
-const extractSessionId = (
-	type: string,
-	properties: Record<string, unknown>,
-): string | undefined => {
-	if (typeof properties.sessionID === "string") {
-		return properties.sessionID;
-	}
-
-	const info = asRecord(properties.info);
-	if (info) {
-		if (typeof info.sessionID === "string") {
-			return info.sessionID;
-		}
-
-		if (
-			(type === "session.created" || type === "session.updated" || type === "session.deleted") &&
-			typeof info.id === "string"
-		) {
-			return info.id;
-		}
-	}
-
-	const part = asRecord(properties.part);
-	if (part && typeof part.sessionID === "string") {
-		return part.sessionID;
-	}
-
-	// Kilo v2's `form.created` carries its form whole.
-	const form = asRecord(properties.form);
-	if (form && typeof form.sessionID === "string") {
-		return form.sessionID;
-	}
-
-	return undefined;
+/** The session a Kilo v2 event is about: its `sessionID`, or its form's. */
+const extractSessionId = (data: Record<string, unknown>): string | undefined => {
+	if (typeof data.sessionID === "string") return data.sessionID;
+	const form = asRecord(data.form);
+	return form && typeof form.sessionID === "string" ? form.sessionID : undefined;
 };
 
 const normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {
-	const outer = asRecord(event);
-	if (!outer) return null;
-
-	const payload = asRecord(outer.payload);
-	const candidate = payload ?? outer;
-
-	if (
-		typeof candidate.type !== "string" ||
-		!("properties" in candidate) ||
-		!asRecord(candidate.properties)
-	) {
-		return null;
-	}
-
-	const normalized = {
+	const candidate = asRecord(event);
+	const data = asRecord(candidate?.data);
+	if (!candidate || typeof candidate.type !== "string" || !data) return null;
+	const location = asRecord(candidate.location);
+	return {
 		type: candidate.type,
-		properties: candidate.properties as Record<string, unknown>,
-		directory: typeof outer.directory === "string" ? outer.directory : undefined,
-		sessionId: extractSessionId(candidate.type, candidate.properties as Record<string, unknown>),
-		raw: event,
-	} satisfies OpenCodeServerEvent;
-
-	return normalized;
+		properties: data,
+		directory: typeof location?.directory === "string" ? location.directory : undefined,
+		sessionId: extractSessionId(data),
+		raw: event as OpenCodeEvent,
+	};
 };
 
 export const STREAM_RECONNECTED_EVENT_TYPE = "stream.reconnected";
@@ -88,7 +50,7 @@ export class OpenCodeEventSource {
 	private readonly subscribeToEvents: OpenCodeEventSubscriber;
 	private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;
 
-	/** `subscribeToEvents` opens the stream (for Kilo v2, `v2ClientEventSubscriber`). */
+	/** `subscribeToEvents` opens Kilo v2's event stream (`kiloEventSubscriber`). */
 	constructor(
 		subscribeToEvents: OpenCodeEventSubscriber,
 		onEvent?: (event: OpenCodeServerEvent) => void,
@@ -203,4 +165,9 @@ export class OpenCodeEventSource {
 			await new Promise((resolve) => setTimeout(resolve, reconnectDelayMs));
 		}
 	}
+}
+
+/** An `OpenCodeEventSubscriber` over a `@kilocode/client`'s event stream. */
+export function kiloEventSubscriber(client: KiloClient): OpenCodeEventSubscriber {
+	return async ({ signal }) => ({ stream: client.event.subscribe({ signal }) });
 }

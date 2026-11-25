@@ -3,7 +3,7 @@ import { str, truncate } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
 export const SkillActivity: ToolCallComponent = ({ args, status }) => {
-	const name = str((args as Record<string, unknown> | undefined)?.name);
+	const name = str((args as Record<string, unknown> | undefined)?.id);
 	const skill = name ? truncate(name) : undefined;
 
 	return (

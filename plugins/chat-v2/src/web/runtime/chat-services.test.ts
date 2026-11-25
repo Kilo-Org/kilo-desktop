@@ -96,11 +96,15 @@ describe("resyncOnceConnected", () => {
 		for await (const event of stream) seen.push(event);
 		return seen;
 	};
-	const resync = { payload: { type: "stream.reconnected", properties: {} } };
+	const resync = { type: "stream.reconnected", data: {} };
 
 	it("asks threads to resync once the server confirms the subscription", async () => {
-		const connected = { payload: { type: "server.connected", properties: {} } };
-		const status = { directory: "/app", payload: { type: "session.idle", properties: {} } };
+		const connected = { id: "evt_1", type: "server.connected", data: {} };
+		const status = {
+			location: { directory: "/app" },
+			type: "session.idle",
+			data: { sessionID: "ses_1" },
+		};
 
 		await expect(collect(resyncOnceConnected(events(connected, status)))).resolves.toEqual([
 			connected,
@@ -110,7 +114,7 @@ describe("resyncOnceConnected", () => {
 	});
 
 	it("passes other events through untouched", async () => {
-		const heartbeat = { payload: { type: "server.heartbeat", properties: {} } };
+		const heartbeat = { type: "server.heartbeat", data: {} };
 
 		await expect(collect(resyncOnceConnected(events(heartbeat)))).resolves.toEqual([heartbeat]);
 	});

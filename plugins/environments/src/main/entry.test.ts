@@ -151,6 +151,20 @@ describe("kilo.environments in main", () => {
 		expect(openSettings).toHaveBeenCalledWith(ENVIRONMENTS_SETTINGS_SECTION);
 	});
 
+	it.each([
+		["Kilo v2", "0.0.0-v2-239", "shell"],
+		["an earlier Kilo", "7.8.27", "bash"],
+	])("names the shell permission as %s's server does", async (_, serverVersion, permission) => {
+		const { chatConfig } = await boot({ serverVersion });
+		const config = await chatConfig();
+		expect(config.permissions).toContainEqual({
+			permission,
+			pattern: "*conda install*",
+			action: "ask",
+		});
+		expect(config.permissions?.every((rule) => rule.permission === permission)).toBe(true);
+	});
+
 	it("asks before conda-family commands in every chat, and hides its tools while unavailable", async () => {
 		const ready = await boot();
 		const config = await ready.chatConfig();

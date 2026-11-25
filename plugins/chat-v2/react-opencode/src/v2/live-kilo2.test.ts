@@ -9,10 +9,26 @@ import type { AppendMessage } from "@assistant-ui/react";
 import { Definition as Settings } from "@opencode/schema/kilocode/settings";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { OpenCodeEventSource } from "../OpenCodeEventSource";
+import { kiloEventSubscriber, OpenCodeEventSource } from "../OpenCodeEventSource";
 import { OpenCodeThreadController } from "../OpenCodeThreadController";
 import { createKiloClient, listAgents, listCommands, type KiloClient } from "../kilo";
-import { v2ClientEventSubscriber } from "./v2-event-source";
+import { projectOpenCodeThreadMessages } from "../openCodeMessageProjection";
+import type { OpenCodeThreadState } from "../types";
+
+/** Every tool call in the thread's assistant messages. */
+const toolCalls = (state: OpenCodeThreadState) =>
+	Object.values(state.messagesById).flatMap((message) =>
+		message.type === "assistant" ? message.content.filter((item) => item.type === "tool") : [],
+	);
+
+/** The thread's text: prompts and replies. */
+const texts = (state: OpenCodeThreadState) =>
+	state.messageOrder.flatMap((id) => {
+		const message = state.messagesById[id]!;
+		if (message.type === "user") return [message.text];
+		if (message.type !== "assistant") return [];
+		return message.content.flatMap((item) => (item.type === "text" ? [item.text] : []));
+	});
 
 /**
  * The thread controller against a real kilo2, opt in: set `KILO2_BIN` to a
@@ -190,12 +206,12 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		expect(JSON.stringify(replies.at(-1))).toContain("Done.");
 	});
 
-	it("asks for a shell call's permission, runs it once allowed, and shows it as a bash call", async () => {
+	it("asks for a shell call's permission, runs it once allowed, and shows it as a shell call", async () => {
 		const session = await client.session.create({
 			location: { directory: project },
 			permissions: [{ action: "shell", resource: "*", effect: "ask" }],
 		});
-		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const events = new OpenCodeEventSource(kiloEventSubscriber(client));
 		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
@@ -217,17 +233,13 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		await live.replyToPermission(pending()[0]!.id, "once");
 		await vi.waitFor(
 			() => {
-				const parts = Object.values(live.getState().messagesById).flatMap(
-					(message) => message.parts,
-				);
-				expect(parts).toContainEqual(
+				expect(toolCalls(live.getState())).toContainEqual(
 					expect.objectContaining({
-						type: "tool",
-						tool: "bash",
+						name: "shell",
 						state: expect.objectContaining({
 							status: "completed",
 							input: expect.objectContaining({ command: "ls" }),
-							output: expect.stringContaining("notes.txt"),
+							content: [expect.objectContaining({ text: expect.stringContaining("notes.txt") })],
 							metadata: expect.objectContaining({ exit: 0 }),
 						}),
 					}),
@@ -243,7 +255,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 
 	it("asks a question as a form, and takes its answer", async () => {
 		const session = await client.session.create({ location: { directory: project } });
-		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const events = new OpenCodeEventSource(kiloEventSubscriber(client));
 		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
@@ -273,15 +285,12 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		await live.replyToQuestion(pending()[0]!.id, { q0: "Yes" });
 		await vi.waitFor(
 			() => {
-				const parts = Object.values(live.getState().messagesById).flatMap(
-					(message) => message.parts,
-				);
-				expect(parts).toContainEqual(
+				expect(toolCalls(live.getState())).toContainEqual(
 					expect.objectContaining({
-						tool: "question",
+						name: "question",
 						state: expect.objectContaining({
 							status: "completed",
-							output: expect.stringContaining("Yes"),
+							content: [expect.objectContaining({ text: expect.stringContaining("Yes") })],
 						}),
 					}),
 				);
@@ -296,7 +305,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 
 	it("lists agents and slash commands, reads a file, runs a composer shell command and compacts", async () => {
 		const session = await client.session.create({ location: { directory: project } });
-		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const events = new OpenCodeEventSource(kiloEventSubscriber(client));
 		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
@@ -308,17 +317,15 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		expect(new TextDecoder().decode(bytes)).toBe("hello\n");
 
 		await client.session.shell({ sessionID: session.id, command: "ls" });
-		const parts = () =>
-			Object.values(live.getState().messagesById).flatMap((message) => message.parts);
+		const messages = () => Object.values(live.getState().messagesById);
 		await vi.waitFor(
 			() =>
-				expect(parts()).toContainEqual(
+				expect(messages()).toContainEqual(
 					expect.objectContaining({
-						tool: "bash",
-						state: expect.objectContaining({
-							status: "completed",
-							output: expect.stringContaining("notes.txt"),
-						}),
+						type: "shell",
+						command: "ls",
+						status: "exited",
+						output: expect.objectContaining({ output: expect.stringContaining("notes.txt") }),
 					}),
 				),
 			{ timeout: 4_000 },
@@ -334,16 +341,24 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		});
 		await client.session.compact({ sessionID: session.id });
 		await vi.waitFor(
-			() => expect(parts()).toContainEqual(expect.objectContaining({ type: "compaction" })),
+			() =>
+				expect(messages()).toContainEqual(
+					// The stand-in model's summary may not satisfy Kilo: settled either way.
+					expect.objectContaining({
+						type: "compaction",
+						status: expect.not.stringMatching("running"),
+					}),
+				),
 			{ timeout: 4_000 },
 		);
 
-		const shape = (controller: OpenCodeThreadController) => {
-			const state = controller.getState();
-			return state.messageOrder.map((id) =>
-				state.messagesById[id]!.parts.map((part) => `${part.id}:${part.type}`),
-			);
-		};
+		// What the thread shows, streamed and loaded: the same.
+		const shape = (controller: OpenCodeThreadController) =>
+			projectOpenCodeThreadMessages(controller.getState()).map(({ id, role, content }) => ({
+				id,
+				role,
+				content,
+			}));
 		await vi.waitFor(
 			async () => {
 				const loaded = new OpenCodeThreadController(
@@ -362,7 +377,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 
 	it("sends a message, streams the reply, and loads the same transcript", async () => {
 		const session = await client.session.create({ location: { directory: project } });
-		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const events = new OpenCodeEventSource(kiloEventSubscriber(client));
 		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
@@ -382,7 +397,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 				const state = live.getState();
 				expect(state.sessionStatus).toEqual({ type: "idle" });
 				expect(
-					Object.values(state.messagesById).some((message) => message.info?.role === "assistant"),
+					Object.values(state.messagesById).some((message) => message.type === "assistant"),
 				).toBe(true);
 			},
 			{ timeout: 4_000 },
@@ -394,14 +409,8 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 			session.id,
 		);
 		await loaded.load();
-		const texts = (controller: OpenCodeThreadController) => {
-			const state = controller.getState();
-			return state.messageOrder.flatMap((id) =>
-				state.messagesById[id]!.parts.flatMap((part) => (part.type === "text" ? [part.text] : [])),
-			);
-		};
-		expect(texts(live)).toEqual(["Hi", "Done."]);
-		expect(texts(loaded)).toEqual(texts(live));
+		expect(texts(live.getState())).toEqual(["Hi", "Done."]);
+		expect(texts(loaded.getState())).toEqual(texts(live.getState()));
 		expect(live.getState().pendingUserMessages).toEqual({});
 		unsubscribe();
 		events.dispose();

@@ -7,6 +7,7 @@ import { useStableCallback, useStableValue } from "@kilo-desktop/ui/hooks/use-st
 
 import { useChatConnection } from "../runtime/chat-connection";
 import { kiloClient } from "../runtime/kilo-client";
+import { kiloThreadToolCalls } from "../runtime/kilo-transcript";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import {
 	childSessionIdFromTaskPart,
@@ -16,8 +17,6 @@ import {
 	subagentTypeLabel,
 } from "./subagent-state";
 
-const record = (value: unknown): Record<string, unknown> | undefined =>
-	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 const text = (value: unknown) =>
 	typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 
@@ -32,7 +31,7 @@ export type SubagentActivity = {
 
 const NO_ACTIVITIES: readonly SubagentActivity[] = [];
 
-/** Joins task calls (in delegation order) with their child sessions. */
+/** Joins subagent calls (in delegation order) with their child sessions. */
 function deriveActivities(
 	extras: ReturnType<typeof useOptionalOpenCodeRuntimeExtras>,
 ): readonly SubagentActivity[] {
@@ -41,19 +40,16 @@ function deriveActivities(
 		return NO_ACTIVITIES;
 	}
 	const calls = new Map<string, { toolCallId: string; title: string; typeLabel: string }>();
-	for (const messageId of state.messageOrder) {
-		const message = state.messagesById[messageId];
-		for (const part of message?.parts ?? []) {
-			const childSessionId = childSessionIdFromTaskPart(part);
-			if (!childSessionId) continue;
-			const input = record(record(record(part)?.state)?.input);
-			const rawPart = record(part);
-			const toolCallId = text(rawPart?.callID) || text(rawPart?.id);
-			if (!toolCallId) continue;
-			const agent = text(input?.subagent_type);
-			const title = subagentTaskTitle(part) ?? "Delegated task";
-			calls.set(childSessionId, { toolCallId, title, typeLabel: subagentTypeLabel(agent) });
-		}
+	for (const tool of kiloThreadToolCalls(state)) {
+		const childSessionId = childSessionIdFromTaskPart(tool);
+		if (!childSessionId) continue;
+		const input = tool.state.status === "streaming" ? undefined : tool.state.input;
+		const title = subagentTaskTitle(tool) ?? "Delegated task";
+		calls.set(childSessionId, {
+			toolCallId: tool.id,
+			title,
+			typeLabel: subagentTypeLabel(text(input?.agent)),
+		});
 	}
 	const activities: SubagentActivity[] = [];
 	for (const [childSessionId, call] of calls) {
@@ -63,7 +59,7 @@ function deriveActivities(
 			childSessionId,
 			...call,
 			status: subagentDisplayStatus(child),
-			directory: child.session?.directory,
+			directory: child.session?.location.directory,
 		});
 	}
 	return activities;

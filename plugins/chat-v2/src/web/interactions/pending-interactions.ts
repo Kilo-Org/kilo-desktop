@@ -4,6 +4,7 @@ import type {
 	OpenCodeThreadState,
 } from "@kilo-desktop/react-opencode-v2";
 
+import { kiloThreadToolCalls } from "../runtime/kilo-transcript";
 import {
 	childSessionIdFromTaskPart,
 	subagentTaskTitle,
@@ -62,12 +63,10 @@ function taskTitleForChild(
 	parent: OpenCodeThreadState,
 	childSessionId: string,
 ): string | undefined {
-	for (const messageId of parent.messageOrder) {
-		for (const part of parent.messagesById[messageId]?.parts ?? []) {
-			if (childSessionIdFromTaskPart(part) === childSessionId) return subagentTaskTitle(part);
-		}
-	}
-	return undefined;
+	const call = kiloThreadToolCalls(parent).find(
+		(tool) => childSessionIdFromTaskPart(tool) === childSessionId,
+	);
+	return call ? subagentTaskTitle(call) : undefined;
 }
 
 /**

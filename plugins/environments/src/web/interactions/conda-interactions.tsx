@@ -11,7 +11,7 @@ import {
 	summarizeCondaInvocation,
 	type CondaInvocationSummary,
 } from "../../shared/conda-invocation";
-import { condaPermissionAction } from "../../shared/conda-permissions";
+import { condaPermissionAction, isShellPermission } from "../../shared/conda-permissions";
 import { localCondaFileInstallWarning } from "../../shared/local-file-warning";
 
 function hasSummaryContent(summary: CondaInvocationSummary): boolean {
@@ -74,16 +74,19 @@ export function CondaInvocationDetail({ request }: PermissionDetailProps) {
 	);
 }
 
-/** `conda-cli` applies to every request (renderers match on tools, not Kilo's names), so it picks out `bash` itself. */
-const isBash = (request: PermissionInteraction) => request.permission === "bash";
+/**
+ * `conda-cli` applies to every request (renderers match on tools, not Kilo's
+ * names), so it picks out the shell's itself: `shell` on Kilo v2, `bash` before.
+ */
+const isShell = (request: PermissionInteraction) => isShellPermission(request.permission);
 
 /**
- * A `bash` request installing a local package file is the agent routing
+ * A shell request installing a local package file is the agent routing
  * around the gated conda tools: warn at the moment of consent, whatever the
  * agent said.
  */
 export function LocalFileInstallDetail({ request }: PermissionDetailProps) {
-	if (!isBash(request)) return null;
+	if (!isShell(request)) return null;
 	const warning = localCondaFileInstallWarning(request.patterns.join("\n"));
 	if (!warning) return null;
 	return (
@@ -98,7 +101,7 @@ export function LocalFileInstallDetail({ request }: PermissionDetailProps) {
 }
 
 /**
- * A conda mutation — a gated tool, or a conda-family command the `bash` ask
+ * A conda mutation — a gated tool, or a conda-family command the shell ask
  * rules gate — is approved one call at a time: a standing allow would let a
  * later, possibly injection-driven, call skip the prompt.
  */
@@ -112,10 +115,10 @@ export const condaToolInteractions: PermissionRendererImplementation = {
 	allowAlways: perActionOnly,
 };
 
-/** `bash` permission cards for conda-family commands and local package installs. */
+/** Shell permission cards for conda-family commands and local package installs. */
 export const condaCliInteractions: PermissionRendererImplementation = {
 	PermissionDetail: LocalFileInstallDetail,
-	allowAlways: (request) => !isBash(request) || perActionOnly(request),
+	allowAlways: (request) => !isShell(request) || perActionOnly(request),
 };
 
 /** Agent questions offering to install a local package file. */

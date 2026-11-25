@@ -45,7 +45,7 @@ describe("isSignInRefusal", () => {
 
 	it("ignores successful calls, other tools and other errors", () => {
 		expect(isSignInRefusal({ toolName: "desktop_notebook_open", result: refusal })).toBe(false);
-		expect(isSignInRefusal({ toolName: "bash", result: refusal, isError: true })).toBe(false);
+		expect(isSignInRefusal({ toolName: "shell", result: refusal, isError: true })).toBe(false);
 		expect(
 			isSignInRefusal({ toolName: "desktop_notebook_open", result: "boom", isError: true }),
 		).toBe(false);

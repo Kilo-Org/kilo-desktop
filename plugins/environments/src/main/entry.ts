@@ -23,7 +23,7 @@
  * - Writes are serialised and reads cached by one `JobQueue`, whose progress
  *   events are `conda`'s `job-progress`.
  * - Every chat is created with origin's ask rules for mutating conda-family
- *   commands run through `bash` (`chat-config` permissions); the mutating
+ *   commands run through the shell (`chat-config` permissions); the mutating
  *   conda tools ask through their own `approval`.
  * - `conda.setup.open` asks kilo.shell's `navigation` to open the settings
  *   section; without kilo.shell it opens nothing.
@@ -45,7 +45,7 @@ import {
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
-import { ChatConfigPoint, Tool } from "@kilo-desktop/plugin-core/contracts";
+import { ChatConfigPoint, KiloServer, Tool } from "@kilo-desktop/plugin-core/contracts";
 import { LlamaRuntime } from "@kilo-desktop/plugin-local-inference/contracts";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
@@ -59,7 +59,11 @@ import {
 	ENVIRONMENTS_SETTINGS_SECTION,
 	type CondaStatus,
 } from "../contracts/index";
-import { buildCondaCliPermissionRules, condaToolName } from "../shared/conda-permissions";
+import {
+	buildCondaCliPermissionRules,
+	condaToolName,
+	shellPermissionName,
+} from "../shared/conda-permissions";
 import { createCondaService, type CondaMethods } from "./conda-service";
 import { JobQueue } from "./job-queue";
 import { condaLlamaRuntime } from "./llama-runtime";
@@ -262,10 +266,12 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 			for (const [id, tool] of Object.entries(tools)) sdk.extensions.implement(Tool, id, tool);
 
 			const toolNames = Object.keys(tools).map(condaToolName);
-			const cliRules = buildCondaCliPermissionRules();
 			sdk.extensions.implement(ChatConfigPoint, CONDA_CHAT_CONFIG, {
 				configure: () => ({
-					permissions: cliRules,
+					// Named as the running server names its shell; chats are created once it is ready.
+					permissions: buildCondaCliPermissionRules(
+						shellPermissionName(sdk.domainObjects.get(KiloServer)?.getState().version),
+					),
 					...(conda.state.status === "ready" ? {} : { disableTools: toolNames }),
 				}),
 			});

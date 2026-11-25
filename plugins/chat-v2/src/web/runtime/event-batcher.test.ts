@@ -3,12 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createEventBatcher, EVENT_BATCH_INTERVAL_MS } from "./event-batcher";
 
-const delta = (text: string, partID = "part_1", sessionId = "ses_1"): OpenCodeServerEvent => ({
-	type: "message.part.delta",
-	sessionId,
-	raw: undefined,
-	properties: { sessionID: sessionId, messageID: "msg_1", partID, field: "text", delta: text },
-});
+const delta = (text: string, ordinal = 0, sessionId = "ses_1"): OpenCodeServerEvent => {
+	const properties = { sessionID: sessionId, assistantMessageID: "msg_1", ordinal, delta: text };
+	return {
+		type: "session.text.delta",
+		sessionId,
+		raw: { type: "session.text.delta", data: properties } as OpenCodeServerEvent["raw"],
+		properties,
+	};
+};
 
 const event = (type: string): OpenCodeServerEvent => ({
 	type,
@@ -19,8 +22,8 @@ const event = (type: string): OpenCodeServerEvent => ({
 
 const summary = (events: readonly OpenCodeServerEvent[]) =>
 	events.map((received) =>
-		received.type === "message.part.delta"
-			? `${received.properties.partID}:${received.properties.delta}`
+		received.type === "session.text.delta"
+			? `${received.properties.ordinal}:${received.properties.delta}`
 			: received.type,
 	);
 
@@ -39,11 +42,11 @@ describe("createEventBatcher", () => {
 		batcher.subscribe((next) => received.push(next));
 
 		batcher.push(delta("a"));
-		batcher.push(delta("b", "part_2"));
+		batcher.push(delta("b", 1));
 		expect(received).toEqual([]);
 
 		vi.advanceTimersByTime(EVENT_BATCH_INTERVAL_MS);
-		expect(summary(received)).toEqual(["part_1:a", "part_2:b"]);
+		expect(summary(received)).toEqual(["0:a", "1:b"]);
 	});
 
 	it("delivers any other event at once, after the deltas queued before it", () => {
@@ -54,10 +57,10 @@ describe("createEventBatcher", () => {
 		batcher.push(delta("a"));
 		batcher.push(event("stream.reconnected"));
 
-		expect(summary(received)).toEqual(["part_1:a", "stream.reconnected"]);
+		expect(summary(received)).toEqual(["0:a", "stream.reconnected"]);
 	});
 
-	it("joins a run of deltas to the same part into one", () => {
+	it("joins a run of deltas to the same item into one, raw event and all", () => {
 		const batcher = createEventBatcher();
 		const received: OpenCodeServerEvent[] = [];
 		batcher.subscribe((next) => received.push(next));
@@ -65,29 +68,24 @@ describe("createEventBatcher", () => {
 		for (const word of ["Hel", "lo", " wor", "ld"]) batcher.push(delta(word));
 		batcher.flush();
 
-		expect(summary(received)).toEqual(["part_1:Hello world"]);
+		expect(summary(received)).toEqual(["0:Hello world"]);
+		expect(received[0]?.raw?.data).toMatchObject({ delta: "Hello world" });
 	});
 
-	it("keeps the order of everything else, joining only adjacent deltas to one part", () => {
+	it("keeps the order of everything else, joining only adjacent deltas to one item", () => {
 		const batcher = createEventBatcher();
 		const received: OpenCodeServerEvent[] = [];
 		batcher.subscribe((next) => received.push(next));
 
 		batcher.push(delta("a"));
 		batcher.push(delta("b"));
-		batcher.push(delta("x", "part_2"));
-		batcher.push(event("message.part.updated"));
+		batcher.push(delta("x", 1));
+		batcher.push(event("session.text.ended"));
 		batcher.push(delta("c"));
-		batcher.push(delta("z", "part_1", "ses_2"));
+		batcher.push(delta("z", 0, "ses_2"));
 		batcher.flush();
 
-		expect(summary(received)).toEqual([
-			"part_1:ab",
-			"part_2:x",
-			"message.part.updated",
-			"part_1:c",
-			"part_1:z",
-		]);
+		expect(summary(received)).toEqual(["0:ab", "1:x", "session.text.ended", "0:c", "0:z"]);
 	});
 
 	it("gives a listener only the events after it subscribed, and those queued before it left", () => {
@@ -103,8 +101,8 @@ describe("createEventBatcher", () => {
 		batcher.push(delta("c"));
 		batcher.flush();
 
-		expect(summary(early)).toEqual(["part_1:a", "part_1:b"]);
-		expect(summary(late)).toEqual(["part_1:b", "part_1:c"]);
+		expect(summary(early)).toEqual(["0:a", "0:b"]);
+		expect(summary(late)).toEqual(["0:b", "0:c"]);
 	});
 
 	it("still delivers to every listener when one throws", () => {

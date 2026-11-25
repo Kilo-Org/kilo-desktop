@@ -8,182 +8,87 @@ import {
 } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it, vi } from "vitest";
 
-const serverMessage = (
-	id: string,
-	role: "user" | "assistant",
-	parts: Array<Record<string, unknown>> = [],
-): OpenCodeServerMessage => ({
+const user = (id: string, text: string): OpenCodeServerMessage => ({
 	id,
-	info: {
-		id,
-		role,
-		sessionID: "ses_1",
-		modelID: "model",
-		providerID: "provider",
-		mode: "primary",
-		path: { cwd: "/", root: "/" },
-		cost: 0,
-		tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-		time: { created: Number(id.split("-")[1] ?? 1) },
-		...(role === "assistant" ? { finish: "stop" } : {}),
-	} as never,
-	parts: parts as never,
-	shadowParts: undefined,
+	type: "user",
+	text,
+	time: { created: 1 },
 });
 
-const textPart = (id: string, text: string) => ({
+const reply = (id: string, text: string): OpenCodeServerMessage => ({
 	id,
-	sessionID: "ses_1",
-	messageID: id.split("_")[0],
-	type: "text",
-	text,
+	type: "assistant",
+	agent: "code",
+	model: { providerID: "provider", id: "model" },
+	time: { created: 1, completed: 2 },
+	finish: "stop",
+	content: [{ type: "text", text }],
 });
 
 const stateWithMessages = (
 	messages: readonly OpenCodeServerMessage[],
-	session: Record<string, unknown> | null,
+	revert?: { messageID: string },
 ): OpenCodeThreadState => ({
 	...createOpenCodeThreadState("ses_1"),
-	session: session as never,
+	session: (revert ? { id: "ses_1", revert } : { id: "ses_1" }) as never,
 	messageOrder: messages.map((message) => message.id),
 	messagesById: Object.fromEntries(messages.map((message) => [message.id, message])),
 });
 
+const projectedIds = (state: OpenCodeThreadState) =>
+	projectOpenCodeThreadMessages(state).map((message) => message.id);
+
 /*
- * `applyRevertVisibility` in kilo.chat's react-opencode fork
- * (plugins/chat-v2/react-opencode) filters reverted messages with
- * `message.id < revert.messageID` — plain string comparison.  This is safe
- * because the OpenCode server generates message IDs via
- * `Identifier.ascending("message")`: `msg_` + 12-char big-endian timestamp hex
- * + 14-char base62, fixed length and lexicographically monotonic
- * (`packages/opencode/src/id/id.ts`).  The TUI (`x.id < revert`,
- * `tui/src/routes/session/index.tsx:710`) and the VSCode webview
- * (`id < revert.messageID`, `context/session-queue.ts:62`) use the same
- * convention — this is deliberate ecosystem parity.
- *
- * The desktop renderer's own index-based `deriveRevertedUserRows` /
- * `useIsAfterPendingBoundary` diverge intentionally: they also serve
- * local/test runtimes with non-monotonic IDs.  A pending revert requires a
- * real OpenCode session, so non-monotonic IDs never reach the patch filter.
+ * A staged revert (`session.revert.messageID`) undoes its boundary message and
+ * everything after it: the thread hides them until the revert is committed or
+ * cleared. The boundary is found by its place in the transcript; a boundary the
+ * thread doesn't hold falls back to Kilo's ids, which ascend.
  */
 describe("projectOpenCodeThreadMessages revert filtering", () => {
 	it("hides the boundary message and everything after it while a revert is pending", () => {
 		const state = stateWithMessages(
 			[
-				serverMessage("msg-1", "user", [textPart("msg-1_1", "first")]),
-				serverMessage("msg-2", "assistant", [textPart("msg-2_1", "answer one")]),
-				serverMessage("msg-3", "user", [textPart("msg-3_1", "second")]),
-				serverMessage("msg-4", "assistant", [textPart("msg-4_1", "answer two")]),
+				user("msg_1", "first"),
+				reply("msg_2", "one"),
+				user("msg_3", "second"),
+				reply("msg_4", "two"),
 			],
-			{ id: "ses_1", revert: { messageID: "msg-3" } },
+			{ messageID: "msg_3" },
 		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
-	});
-
-	it("keeps the boundary message with only the parts before the boundary part", () => {
-		const state = stateWithMessages(
-			[
-				serverMessage("msg-1", "user", [textPart("msg-1_1", "first")]),
-				serverMessage("msg-2", "assistant", [
-					textPart("msg-2_1", "kept"),
-					textPart("msg-2_2", "dropped"),
-				]),
-				serverMessage("msg-3", "user", [textPart("msg-3_1", "second")]),
-			],
-			{ id: "ses_1", revert: { messageID: "msg-2", partID: "msg-2_2" } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
-		expect(projected[1]?.content).toEqual([{ type: "text", text: "kept" }]);
+		expect(projectedIds(state)).toEqual(["msg_1", "msg_2"]);
 	});
 
 	it("projects every message when no revert is pending", () => {
-		const messages = [
-			serverMessage("msg-1", "user", [textPart("msg-1_1", "first")]),
-			serverMessage("msg-2", "assistant", [textPart("msg-2_1", "answer one")]),
-			serverMessage("msg-3", "user", [textPart("msg-3_1", "second")]),
-		];
+		const state = stateWithMessages([user("msg_1", "first"), reply("msg_2", "one")]);
+		expect(projectedIds(state)).toEqual(["msg_1", "msg_2"]);
+	});
 
+	it("finds the boundary by its place, whatever its id sorts as", () => {
+		const state = stateWithMessages([user("zzz-1", "first"), user("aaa-2", "second")], {
+			messageID: "aaa-2",
+		});
+		expect(projectedIds(state)).toEqual(["zzz-1"]);
+	});
+
+	it("falls back to id order for a boundary the thread doesn't hold", () => {
+		const state = stateWithMessages([user("msg_1", "first"), user("msg_3", "third")], {
+			messageID: "msg_2",
+		});
+		expect(projectedIds(state)).toEqual(["msg_1"]);
+	});
+
+	it("does not leak post-boundary steps into the earlier reply", () => {
+		const state = stateWithMessages(
+			[reply("msg_1", "answer one"), user("msg_2", "second"), reply("msg_3", "answer two")],
+			{ messageID: "msg_2" },
+		);
+		const projected = projectOpenCodeThreadMessages(state);
+		expect(projected.map((message) => message.id)).toEqual(["msg_1"]);
 		expect(
-			projectOpenCodeThreadMessages(stateWithMessages(messages, null)).map((message) => message.id),
-		).toEqual(["msg-1", "msg-2", "msg-3"]);
-		expect(
-			projectOpenCodeThreadMessages(stateWithMessages(messages, { id: "ses_1" })).map(
-				(message) => message.id,
+			((projected[0]?.content ?? []) as unknown as { type: string }[]).filter(
+				(part) => part.type === "text",
 			),
-		).toEqual(["msg-1", "msg-2", "msg-3"]);
-	});
-
-	it("keeps pre-boundary messages and hides boundary and after with realistic monotonic ids", () => {
-		// Realistic IDs: fixed-length, ascending 12-char hex prefix so
-		// lexicographic order matches chronological order.
-		const id1 = "msg_000000000001Aaaaaaaaaaaaa";
-		const id2 = "msg_000000000002Baaaaaaaaaaaa";
-		const id3 = "msg_000000000003Caaaaaaaaaaaa";
-		const id4 = "msg_000000000004Daaaaaaaaaaaa";
-		// `serverMessage` derives time.created via id.split("-")[1]; msg_ IDs
-		// contain no "-", so all get the fallback 1 — createdAt ties are fine
-		// because ordering comes from messageOrder.
-		const state = stateWithMessages(
-			[
-				serverMessage(id1, "user", [textPart(`${id1}_1`, "first")]),
-				serverMessage(id2, "assistant", [textPart(`${id2}_1`, "answer one")]),
-				serverMessage(id3, "user", [textPart(`${id3}_1`, "second")]),
-				serverMessage(id4, "assistant", [textPart(`${id4}_1`, "answer two")]),
-			],
-			{ id: "ses_1", revert: { messageID: id3 } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected.map((message) => message.id)).toEqual([id1, id2]);
-	});
-
-	it("documents reliance on lexicographically sortable ids (TUI/VSCode parity)", () => {
-		// Intentional limitation: applyRevertVisibility uses string comparison,
-		// so non-monotonic IDs yield wrong results.  With messageOrder
-		// ["zzz-1", "aaa-2"] and boundary "aaa-2", the filter drops both:
-		// "zzz-1" is not < "aaa-2" (false — "z" > "a"), and the boundary
-		// itself with no partID returns [].  This mirrors — with the opposite
-		// outcome — the index-based counterpart in checkpoint-revert.unit.test.ts
-		// ("returns rows for ids at and after the boundary using messageOrder
-		// index, not lexicographic comparison"), which returns only "aaa-2".
-		// Ecosystem parity decision: keep lexicographic comparison to match kilo
-		// TUI and VSCode webview.  If the patch is ever changed to index-based
-		// filtering this test fails and forces a conscious decision.
-		const state = stateWithMessages(
-			[
-				serverMessage("zzz-1", "user", [textPart("zzz-1_1", "first")]),
-				serverMessage("aaa-2", "user", [textPart("aaa-2_1", "second")]),
-			],
-			{ id: "ses_1", revert: { messageID: "aaa-2" } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected).toHaveLength(0);
-	});
-
-	it("does not leak post-boundary assistant parts into earlier merged messages", () => {
-		const state = stateWithMessages(
-			[
-				serverMessage("msg-1", "assistant", [textPart("msg-1_1", "answer one")]),
-				serverMessage("msg-2", "user", [textPart("msg-2_1", "second")]),
-				serverMessage("msg-3", "assistant", [textPart("msg-3_1", "answer two")]),
-			],
-			{ id: "ses_1", revert: { messageID: "msg-2" } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected).toHaveLength(1);
-		expect(projected[0]?.id).toBe("msg-1");
-		expect(projected[0]?.content).toEqual([{ type: "text", text: "answer one" }]);
+		).toEqual([{ type: "text", text: "answer one" }]);
 	});
 });
 

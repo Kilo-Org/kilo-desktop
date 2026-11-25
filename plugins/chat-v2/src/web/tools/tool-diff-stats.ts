@@ -1,11 +1,14 @@
 import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
+
+import { findKiloToolCall, kiloToolUnifiedDiff } from "../runtime/kilo-transcript";
 import type { ActivityPart } from "./tool-categories";
 import { getPatchInfo, str } from "./tool-ui-shared";
 
 /**
  * Pure diff-stat extraction for file-mutation tool calls (edit, write,
- * apply_patch). Kept free of React and activity-row imports so activity-group
+ * patch). Kept free of React and activity-row imports so activity-group
  * can aggregate counts on the group trigger without an import cycle.
  */
 
@@ -20,27 +23,11 @@ export const getToolFilePath = (args: Record<string, unknown> | undefined): stri
 	return "";
 };
 
-/** Prefer the backend unified diff when present on the OpenCode tool part. */
-export const getToolUnifiedDiffFromParts = (
-	parts: unknown,
+/** The unified diff Kilo reports for a file tool call (its `metadata.files` patches), when it has one. */
+export const getToolUnifiedDiff = (
+	messages: readonly SessionMessageInfo[],
 	toolCallId: string,
-): string | undefined => {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		if (!part || typeof part !== "object") continue;
-		const record = part as Record<string, unknown>;
-		if (record.type !== "tool") continue;
-		const callId = record.callID ?? record.id;
-		if (callId !== toolCallId) continue;
-		const state = record.state;
-		if (!state || typeof state !== "object") continue;
-		const metadata = (state as Record<string, unknown>).metadata;
-		if (!metadata || typeof metadata !== "object") continue;
-		const diff = (metadata as Record<string, unknown>).diff;
-		return typeof diff === "string" && diff.length > 0 ? diff : undefined;
-	}
-	return undefined;
-};
+): string | undefined => kiloToolUnifiedDiff(findKiloToolCall(messages, toolCallId));
 
 export type FileDiffStats = { added: number; removed: number };
 
@@ -104,19 +91,19 @@ const statsFromUnifiedDiff = (unifiedDiff: string): FileDiffStats | null => {
 /**
  * Line-change stats for a single tool part; null for non-mutation tools.
  * Mirrors the row components: the backend unified diff wins when present,
- * apply_patch counts its patch text directly, and in-flight calls are skipped
+ * patch counts its patch text directly, and in-flight calls are skipped
  * because streaming args would make the counts jitter.
  */
 export const getPartDiffStats = (
 	part: ActivityPart,
-	opencodeParts: unknown,
+	messages: readonly SessionMessageInfo[],
 ): FileDiffStats | null => {
 	if (part.type !== "tool-call" || !part.toolName) return null;
 	if (part.status?.type === "running") return null;
 	const toolName = part.toolName.toLowerCase();
 	const args = (part.args ?? undefined) as Record<string, unknown> | undefined;
 
-	if (toolName === "apply_patch") {
+	if (toolName === "patch") {
 		const patchText = str(args?.patchText);
 		if (!patchText) return null;
 		const { added, removed } = getPatchInfo(patchText);
@@ -128,9 +115,7 @@ export const getPartDiffStats = (
 	if (!isEdit && !isWrite) return null;
 
 	const toolCallId = typeof part.toolCallId === "string" ? part.toolCallId : "";
-	const unifiedDiff = toolCallId
-		? getToolUnifiedDiffFromParts(opencodeParts, toolCallId)
-		: undefined;
+	const unifiedDiff = toolCallId ? getToolUnifiedDiff(messages, toolCallId) : undefined;
 	if (unifiedDiff) return statsFromUnifiedDiff(unifiedDiff);
 
 	if (isWrite) {
@@ -154,7 +139,7 @@ export const getPartDiffStats = (
 export const getGroupDiffStats = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
-	opencodeParts: unknown,
+	messages: readonly SessionMessageInfo[],
 ): FileDiffStats | null => {
 	let added = 0;
 	let removed = 0;
@@ -162,7 +147,7 @@ export const getGroupDiffStats = (
 	for (const index of indices) {
 		const part = parts[index];
 		if (!part) continue;
-		const stats = getPartDiffStats(part, opencodeParts);
+		const stats = getPartDiffStats(part, messages);
 		if (!stats) continue;
 		found = true;
 		added += stats.added;

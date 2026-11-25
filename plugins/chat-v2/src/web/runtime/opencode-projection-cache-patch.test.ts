@@ -4,6 +4,7 @@ import {
 	projectOpenCodeThreadRepository,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
+	type SessionMessageAssistant,
 } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it } from "vitest";
 
@@ -18,50 +19,34 @@ import { describe, expect, it } from "vitest";
 const assistant = (
 	id: string,
 	created: number,
-	parts: Array<Record<string, unknown>>,
-	info: Record<string, unknown> = {},
+	content: SessionMessageAssistant["content"],
+	patch: Partial<SessionMessageAssistant> = {},
 ): OpenCodeServerMessage => ({
 	id,
-	info: {
-		id,
-		role: "assistant",
-		sessionID: "ses_1",
-		modelID: "model",
-		providerID: "provider",
-		mode: "primary",
-		path: { cwd: "/", root: "/" },
-		cost: 0,
-		tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-		time: { created, completed: created + 1 },
-		finish: "stop",
-		...info,
-	} as never,
-	parts: parts.map((part, index) => ({
-		id: `${id}_p${index}`,
-		sessionID: "ses_1",
-		messageID: id,
-		...part,
-	})) as never,
-	shadowParts: undefined,
+	type: "assistant",
+	agent: "code",
+	model: { providerID: "provider", id: "model" },
+	cost: 0,
+	tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+	time: { created, completed: created + 1 },
+	finish: "stop",
+	content,
+	...patch,
 });
 
 const user = (id: string, created: number): OpenCodeServerMessage => ({
 	id,
-	info: { id, role: "user", sessionID: "ses_1", time: { created } } as never,
-	parts: [{ id: `${id}_p`, sessionID: "ses_1", messageID: id, type: "text", text: "go" }] as never,
-	shadowParts: undefined,
+	type: "user",
+	text: "go",
+	time: { created },
 });
 
-const tool = (callID: string) => ({
+const tool = (id: string): SessionMessageAssistant["content"][number] => ({
 	type: "tool",
-	tool: "edit",
-	callID,
-	state: {
-		status: "completed",
-		input: { filePath: "/a.ts" },
-		output: "ok",
-		time: { start: 1, end: 2 },
-	},
+	id,
+	name: "edit",
+	time: { created: 1, completed: 2 },
+	state: { status: "completed", input: { path: "/a.ts" }, content: [{ type: "text", text: "ok" }] },
 });
 
 // One base, as the reducer keeps every object a token doesn't change.
@@ -89,14 +74,20 @@ function streaming() {
 		user("msg-3", 3),
 	];
 	const step = assistant("msg-4", 4, [tool("call-b")], { finish: "tool-calls" });
-	const live = assistant("msg-5", 5, [{ type: "text", text: "Work" }], { finish: undefined });
+	const live = assistant("msg-5", 5, [{ type: "text", text: "Work" }], { time: { created: 5 } });
+	delete (live as { finish?: unknown }).finish;
 	return { messages: [...settled, step, live], live };
 }
 
-const withText = (message: OpenCodeServerMessage, text: string): OpenCodeServerMessage => ({
-	...message,
-	parts: message.parts.map((part, index) => (index === 0 ? { ...part, text } : part)) as never,
-});
+const withText = (message: OpenCodeServerMessage, text: string): OpenCodeServerMessage =>
+	message.type === "assistant"
+		? {
+				...message,
+				content: message.content.map((item, index) =>
+					index === 0 && item.type === "text" ? { ...item, text } : item,
+				),
+			}
+		: message;
 
 describe("projectOpenCodeThreadRepository with a projection cache", () => {
 	it("keeps every message a token didn't touch", () => {

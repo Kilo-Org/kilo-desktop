@@ -19,6 +19,7 @@ import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { ReadonlyThread } from "../thread/thread";
 import { TranscriptProviders } from "../thread/transcript-scope";
+import { kiloMessagesOf } from "../runtime/kilo-transcript";
 import { childSessionIdForToolCall, selectSubagentTranscript } from "./subagent-state";
 
 const EMPTY_MESSAGES: readonly never[] = [];
@@ -104,12 +105,11 @@ function SubagentTranscript({ childSessionId }: { childSessionId: string | undef
 	const messages = useAuiState((state) => {
 		if (!childSessionId) return EMPTY_MESSAGES;
 		for (const message of state.thread.messages) {
-			const rawParts = (message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined)
-				?.opencode?.parts;
+			const kiloMessages = kiloMessagesOf(message.metadata?.custom);
 			for (const part of message.content) {
 				if (
 					part.type === "tool-call" &&
-					childSessionIdForToolCall(rawParts, part.toolCallId) === childSessionId
+					childSessionIdForToolCall(kiloMessages, part.toolCallId) === childSessionId
 				) {
 					return part.messages ?? EMPTY_MESSAGES;
 				}

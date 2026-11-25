@@ -322,8 +322,8 @@
 					"tools": ["write"]
 				},
 				{
-					"id": "bash",
-					"tools": ["bash"]
+					"id": "shell",
+					"tools": ["shell"]
 				},
 				{
 					"id": "search",
@@ -342,16 +342,16 @@
 					"tools": ["webfetch", "webFetch"]
 				},
 				{
-					"id": "apply-patch",
-					"tools": ["apply_patch"]
+					"id": "patch",
+					"tools": ["patch"]
 				},
 				{
 					"id": "skill",
 					"tools": ["skill"]
 				},
 				{
-					"id": "task",
-					"tools": ["task"]
+					"id": "subagent",
+					"tools": ["subagent"]
 				},
 				{
 					"id": "question",

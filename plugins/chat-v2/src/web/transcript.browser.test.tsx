@@ -108,11 +108,17 @@ describe("the markdown-extension point", () => {
 });
 
 describe("reverting and retrying", () => {
-	const CHANGES = { summary: { diffs: [{ file: "login.ts", additions: 3, deletions: 1 }] } };
+	/** A reply whose step changed login.ts (its `snapshot.files`), answering `msg_1`. */
+	const changedLogin = (id: string, text: string) => ({
+		...assistantMessage(id, [reply(text)]),
+		snapshot: { start: "h0", end: "h1", files: ["login.ts"] },
+	});
 
-	// v2 gap (step 22): "revert to here" relies on the user message's summary.diffs, which v2 never provides
-	it.skip("reverts to a prompt that changed files and puts it back in the composer", async () => {
-		const host = await showChat(chatWith([reply("Changed login.")], CHANGES));
+	it("reverts to a prompt that changed files and puts it back in the composer", async () => {
+		const host = await showChat([
+			userMessage("msg_1", QUESTION),
+			changedLogin("msg_2", "Changed login."),
+		]);
 
 		const revert = page.getByTestId("kilo-revert-to-here-button");
 		await expect.element(revert).toBeInTheDocument();
@@ -130,21 +136,19 @@ describe("reverting and retrying", () => {
 			.toBe(1);
 	});
 
-	// v2 gap (step 22): "revert to here" relies on the user message's summary.diffs, which v2 never provides
-	it.skip("lists the reverted prompts and restores them one at a time", async () => {
+	it("lists the reverted prompts and restores them one at a time", async () => {
 		const first = userMessage("msg_1", QUESTION);
-		const firstReply = assistantMessage("msg_2", [reply("Changed login.")]);
+		const firstReply = changedLogin("msg_2", "Changed login.");
 		const second = userMessage("msg_3", "Now fix signup");
-		const secondReply = assistantMessage("msg_4", [reply("Changed signup.")]);
+		const secondReply = changedLogin("msg_4", "Changed signup.");
 		const withImage = {
 			...second,
-			...CHANGES,
 			files: [
-				{ uri: "data:image/png;base64,iVBORw0KGgo=", name: "shot.png", mime: "image/png" },
-				{ uri: "data:text/csv;base64,YSxi", name: "data.csv", mime: "text/csv" },
+				{ data: "iVBORw0KGgo=", name: "shot.png", mime: "image/png", source: { type: "inline" } },
+				{ data: "YSxi", name: "data.csv", mime: "text/csv", source: { type: "inline" } },
 			],
 		};
-		const host = await showChat([{ ...first, ...CHANGES }, firstReply, withImage, secondReply]);
+		const host = await showChat([first, firstReply, withImage, secondReply]);
 
 		const reverts = page.getByTestId("kilo-revert-to-here-button");
 		await expect.element(reverts.nth(1)).toBeInTheDocument();

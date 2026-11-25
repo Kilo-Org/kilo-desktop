@@ -42,23 +42,26 @@ export function expectPresent(selector: string): HTMLElement {
 	return element!;
 }
 
-/** A finished Kilo tool part. */
+/**
+ * A finished Kilo v2 tool call (`SessionMessageAssistantTool`); `state`
+ * overrides its completed state (`input`, `content`, `metadata`, or a whole
+ * `error` / `running` state).
+ */
 export function toolPart(
-	tool: string,
+	name: string,
 	state: Record<string, unknown>,
-	callID = `call_${tool}`,
+	id = `call_${name}`,
 ): Record<string, unknown> {
 	return {
 		type: "tool",
-		tool,
-		callID,
+		id,
+		name,
+		time: { created: 1, ran: 1, completed: 2 },
 		state: {
 			status: "completed",
 			input: {},
-			output: "",
-			title: "",
+			content: [{ type: "text", text: "" }],
 			metadata: {},
-			time: { start: 1, end: 2 },
 			...state,
 		},
 	};

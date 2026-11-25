@@ -141,16 +141,6 @@ describe("a draft agent pane", () => {
 		).toBeLessThanOrEqual(1);
 	});
 
-	// v2 gap (step 22): v2 prompts have no snapshotInitialization; the v2 wire drops it.
-	it.skip("asks the first prompt to wait for the workspace snapshot", async () => {
-		const host = await renderChat();
-
-		await send("Fix the login form");
-
-		const [prompt] = await promptsTo(host.server, "ses_new_1");
-		expect(prompt!.body).toMatchObject({ snapshotInitialization: "wait" });
-	});
-
 	it("starts an unscoped session's chat without a directory", async () => {
 		const host = await renderChat({
 			workSession: workSession({ workspaceId: null }),
@@ -888,15 +878,6 @@ describe("forking a chat", () => {
 		const pane = panes.panes.find((candidate) => candidate.object?.id === "ses_fork_1");
 		return pane && { pane, active: panes.activePaneId === pane.id };
 	};
-
-	// v2 gap (step 22): v2's /api/event has no fork replay to skip; the v2 wire sends no x-kilo-sse-skip-fork-sync.
-	it.skip("asks the window's event stream to leave out the copies a fork replays", async () => {
-		const host = await showTwoTurns();
-
-		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
-		const [stream] = host.server.requestsTo("GET", "/api/event");
-		expect(stream?.headers.get("x-kilo-sse-skip-fork-sync")).toBe("1");
-	});
 
 	it("offers a fork on each of the chat's user messages but the first", async () => {
 		await showTwoTurns();

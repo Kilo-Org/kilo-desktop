@@ -1,49 +1,64 @@
 import { describe, expect, it } from "vitest";
 
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode-v2";
+import type {
+	KiloAssistantContent,
+	KiloToolCall,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
 
 import { projectTaskThread, type TaskThreadSource } from "./task-projection";
 
-const taskWritePart = (callID: string, todos: unknown): ToolPart => ({
-	id: `part-${callID}`,
-	sessionID: "session-1",
-	messageID: "message-1",
+const taskWritePart = (id: string, todos: unknown): KiloToolCall => ({
 	type: "tool",
-	tool: "todowrite",
-	callID,
+	id,
+	name: "todowrite",
+	time: { created: 1, ran: 1, completed: 2 },
 	state: {
 		status: "completed",
-		input: { todos },
-		output: "",
-		title: "todos",
+		input: { todos } as never,
+		content: [{ type: "text", text: "todos" }],
 		metadata: {},
-		time: { start: 1, end: 2 },
 	},
 });
 
-const streamingTaskWritePart = (callID: string): ToolPart =>
-	({
-		id: `part-${callID}`,
-		sessionID: "session-1",
-		messageID: "message-1",
-		type: "tool",
-		tool: "todowrite",
-		callID,
-		state: { status: "pending" },
-	}) as ToolPart;
+const streamingTaskWritePart = (id: string): KiloToolCall => ({
+	type: "tool",
+	id,
+	name: "todowrite",
+	time: { created: 1 },
+	state: { status: "streaming", input: '{"todos":' },
+});
 
-const source = (partsByMessage: readonly (readonly Part[])[]): TaskThreadSource => ({
+const kiloMessage = (
+	id: string,
+	role: string,
+	parts: readonly KiloAssistantContent[],
+): SessionMessageInfo =>
+	role === "assistant"
+		? {
+				id,
+				type: "assistant",
+				agent: "code",
+				model: { providerID: "kilo", id: "m" },
+				time: { created: 1 },
+				content: [...parts],
+			}
+		: { id, type: "user", text: "next", time: { created: 1 } };
+
+const source = (
+	partsByMessage: readonly (readonly KiloAssistantContent[])[],
+): TaskThreadSource => ({
 	messageOrder: partsByMessage.map((_, index) => `message-${index}`),
 	messagesById: Object.fromEntries(
 		partsByMessage.map((parts, index) => [
 			`message-${index}`,
-			{ info: { role: "assistant" }, parts },
+			kiloMessage(`message-${index}`, "assistant", parts),
 		]),
 	),
 });
 
 const messageSource = (
-	messages: readonly { role: string; parts: readonly Part[] }[],
+	messages: readonly { role: string; parts: readonly KiloAssistantContent[] }[],
 	lifecycle?: Pick<TaskThreadSource, "runState" | "sessionStatus">,
 ): TaskThreadSource => ({
 	...lifecycle,
@@ -51,7 +66,7 @@ const messageSource = (
 	messagesById: Object.fromEntries(
 		messages.map((message, index) => [
 			`message-${index}`,
-			{ info: { role: message.role }, parts: message.parts },
+			kiloMessage(`message-${index}`, message.role, message.parts),
 		]),
 	),
 });

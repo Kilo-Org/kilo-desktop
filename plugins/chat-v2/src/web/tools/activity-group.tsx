@@ -10,7 +10,10 @@ import {
 	type ReactNode,
 } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode-v2";
+import type {
+	OpenCodePermissionRequest,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -43,6 +46,7 @@ import {
 import { usePendingInteractions } from "../interactions/PendingInteractionsContext";
 import { ReasoningText } from "../thread/reasoning";
 import { getGroupDiffStats } from "./tool-diff-stats";
+import { kiloMessagesOf } from "../runtime/kilo-transcript";
 import { DiffCounts } from "./tool-ui-shared";
 
 /**
@@ -101,16 +105,9 @@ const ownsPendingPermission = (
  */
 const messageStepIds = (
 	messageId: string | undefined,
-	opencodeParts: unknown,
-): ReadonlySet<string | undefined> => {
-	const ids = new Set<string | undefined>([messageId]);
-	if (Array.isArray(opencodeParts)) {
-		for (const part of opencodeParts as readonly { messageID?: unknown }[]) {
-			if (typeof part?.messageID === "string") ids.add(part.messageID);
-		}
-	}
-	return ids;
-};
+	kiloMessages: readonly SessionMessageInfo[],
+): ReadonlySet<string | undefined> =>
+	new Set<string | undefined>([messageId, ...kiloMessages.map((message) => message.id)]);
 
 const AUTO_COLLAPSE_DELAY = 1600;
 const GROUP_ANIMATION_DURATION = 200;
@@ -391,35 +388,31 @@ const NO_ACTIVE_SEGMENT: LastActiveSegment = {
 	shouldExpand: false,
 };
 
-const useOpenCodeParts = () =>
-	useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
+const useKiloMessages = () => useAuiState((s) => kiloMessagesOf(s.message.metadata?.custom));
 
 /** The group's activity summary, and whether it owns a pending question or permission. */
 function useActivityGroupSummary(group: GroupLike) {
 	const parts = useAuiState((s) => s.message.parts);
 	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
-	const opencodeParts = useOpenCodeParts();
+	const kiloMessages = useKiloMessages();
 	const { questions, permissions } = usePendingInteractions();
 	return {
 		parts,
-		opencodeParts,
+		kiloMessages,
 		summary: summarizeActivity(parts, group.indices),
 		hasPendingAsk: ownsPendingAsk(parts, group.indices, questions, messageRequiresAction),
 		hasPendingPermission: ownsPendingPermission(
 			parts,
 			group.indices,
 			permissions,
-			messageStepIds(messageId, opencodeParts),
+			messageStepIds(messageId, kiloMessages),
 		),
 	};
 }
 
 const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
-	const { parts, opencodeParts, summary, hasPendingAsk, hasPendingPermission } =
+	const { parts, kiloMessages, summary, hasPendingAsk, hasPendingPermission } =
 		useActivityGroupSummary(group);
 
 	const disclosureId = `activity:${group.indices[0] ?? 0}`;
@@ -532,7 +525,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 							<SettledGroupHeader
 								summary={summary}
 								parts={parts}
-								opencodeParts={opencodeParts}
+								kiloMessages={kiloMessages}
 								open={open}
 								label={triggerLabel}
 								settlingSegment={settlingSegment}
@@ -597,15 +590,15 @@ const StreamingGroupHeader: FC<{
 const SettledGroupHeader: FC<{
 	summary: ActivitySummary;
 	parts: readonly ActivityPart[];
-	opencodeParts: unknown;
+	kiloMessages: readonly SessionMessageInfo[];
 	open: boolean;
 	label: string;
 	settlingSegment: ActivitySegment | undefined;
-}> = ({ summary, parts, opencodeParts, open, label, settlingSegment }) => {
+}> = ({ summary, parts, kiloMessages, open, label, settlingSegment }) => {
 	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
 	const settlingDiffStats =
 		settlingSegment?.kind === "editing" || settlingSegment?.kind === "writing"
-			? getGroupDiffStats(parts, settlingSegment.indices, opencodeParts)
+			? getGroupDiffStats(parts, settlingSegment.indices, kiloMessages)
 			: null;
 	return (
 		<>
@@ -639,7 +632,7 @@ function useActivitySegment(group: GroupLike, kind: ActivityKind) {
 	const parts = useAuiState((s) => s.message.parts);
 	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
-	const opencodeParts = useOpenCodeParts();
+	const kiloMessages = useKiloMessages();
 	const { questions, permissions } = usePendingInteractions();
 	const segment = activitySegment(
 		parts,
@@ -656,12 +649,12 @@ function useActivitySegment(group: GroupLike, kind: ActivityKind) {
 			parts,
 			segment.indices,
 			permissions,
-			messageStepIds(messageId, opencodeParts),
+			messageStepIds(messageId, kiloMessages),
 		),
 		stats: getSegmentStats(parts, segment),
 		diffStats:
 			kind === "editing" || kind === "writing"
-				? getGroupDiffStats(parts, segment.indices, opencodeParts)
+				? getGroupDiffStats(parts, segment.indices, kiloMessages)
 				: null,
 	};
 }

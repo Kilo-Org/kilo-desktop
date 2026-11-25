@@ -343,7 +343,7 @@ function tokensFromCustom(message: ThreadUsageMessage): SessionModelUsageTokens 
 	const custom = message.metadata?.custom;
 	return (
 		tokensFromUnknown(custom?.tokens) ??
-		tokensFromUnknown(asRecord(asRecord(custom?.opencode)?.originalMessage)?.tokens)
+		tokensFromUnknown(asRecord(asRecord(custom?.opencode)?.message)?.tokens)
 	);
 }
 

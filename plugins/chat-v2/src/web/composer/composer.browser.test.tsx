@@ -77,7 +77,14 @@ function lastBody(host: Host, chatId: string, route: string) {
 		| undefined;
 }
 
-const promptBody = (host: Host, chatId: string) => lastBody(host, chatId, "prompt");
+/** The last prompt `host` sent the chat, without the new message id each prompt goes out under. */
+function promptBody(host: Host, chatId: string) {
+	const body = lastBody(host, chatId, "prompt");
+	if (!body) return body;
+	const { id, ...rest } = body;
+	expect(id).toMatch(/^msg_/);
+	return rest;
+}
 
 describe("the composer's pickers", () => {
 	it("sends with the picked agent and model, and remembers a draft's model for new chats", async () => {

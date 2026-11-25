@@ -7,7 +7,7 @@ import { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEv
 import { OpenCodeThreadController } from "./OpenCodeThreadController";
 import type { OpenCodeServerEvent } from "./types";
 import turn from "./v2/fixtures/read-tool-turn.json";
-import { createV2EventSubscriber } from "./v2/v2-event-source";
+import { projectOpenCodeThreadMessages } from "./openCodeMessageProjection";
 
 const SESSION = turn.session as unknown as SessionInfo;
 const EVENTS = turn.events as unknown as OpenCodeEvent[];
@@ -111,6 +111,14 @@ describe("the thread controller on Kilo v2", () => {
 		);
 		await controller.sendMessage(message([{ type: "text", text: "Note" }]), { noReply: true });
 
+		const prompts = calls.filter(([name]) => name === "session.prompt");
+		// Each prompt goes out under a new Kilo message id, which its pending copy waits for.
+		const sentIds = prompts.map(([, input]) => (input as { id: string }).id);
+		expect(sentIds).toEqual([expect.stringMatching(/^msg_/), expect.stringMatching(/^msg_/)]);
+		expect(sentIds[0]! < sentIds[1]!).toBe(true);
+		expect(
+			Object.values(controller.getState().pendingUserMessages).map((p) => p.messageId),
+		).toEqual(sentIds);
 		expect(calls.filter(([name]) => name !== "session.active")).toEqual([
 			["session.switchAgent", { sessionID: "ses_1", agent: "plan" }],
 			[
@@ -121,11 +129,12 @@ describe("the thread controller on Kilo v2", () => {
 				"session.prompt",
 				{
 					sessionID: "ses_1",
+					id: sentIds[0],
 					text: "Fix it",
 					files: [{ uri: "data:image/png;base64,AQID", name: "a.png" }],
 				},
 			],
-			["session.prompt", { sessionID: "ses_1", text: "Note", resume: false }],
+			["session.prompt", { sessionID: "ses_1", id: sentIds[1], text: "Note", resume: false }],
 		]);
 	});
 
@@ -146,7 +155,7 @@ describe("the thread controller on Kilo v2", () => {
 			"message.list",
 			{ sessionID: SESSION.id, order: "asc", limit: 200 },
 		]);
-		expect(state.session).toMatchObject({ id: SESSION.id, directory: SESSION.location.directory });
+		expect(state.session).toEqual(SESSION);
 		expect(patchHistory).toHaveBeenCalledWith(SESSION.id, expect.any(Array));
 		const loaded = patchHistory.mock.calls[0]![1];
 		expect(state.messageOrder).toHaveLength(loaded.length - 1);
@@ -240,14 +249,11 @@ describe("the thread controller on Kilo v2", () => {
 
 	it("streams a recorded turn into the transcript its history loads as", async () => {
 		const { client } = fakeKilo({});
-		const live = new OpenCodeEventSource(
-			createV2EventSubscriber(
-				async function* () {
-					for (const event of EVENTS) yield event;
-				},
-				async () => SESSION,
-			),
-		);
+		const live = new OpenCodeEventSource(async () => ({
+			stream: (async function* () {
+				for (const event of EVENTS) yield event;
+			})(),
+		}));
 		const streamed = new OpenCodeThreadController(client, () => live, SESSION.id);
 		const unsubscribe = streamed.subscribe(() => undefined);
 		await vi.waitFor(() => expect(streamed.getState().sessionStatus).toEqual({ type: "idle" }));
@@ -259,19 +265,14 @@ describe("the thread controller on Kilo v2", () => {
 		);
 		await loaded.load();
 
-		const view = (controller: OpenCodeThreadController) => {
-			const state = controller.getState();
-			return state.messageOrder.map((id) =>
-				state.messagesById[id]!.parts.map((part) => [
-					part.id,
-					part.type,
-					"text" in part ? part.text : undefined,
-				]),
-			);
-		};
-		expect(view(streamed).filter((parts) => parts.length > 0)).toEqual(
-			view(loaded).filter((parts) => parts.length > 0),
-		);
+		const view = (controller: OpenCodeThreadController) =>
+			projectOpenCodeThreadMessages(controller.getState()).map(({ id, role, content }) => ({
+				id,
+				role,
+				content,
+			}));
+		expect(view(streamed)).toEqual(view(loaded));
+		expect(view(loaded).map((message) => message.role)).toEqual(["user", "assistant"]);
 		unsubscribe();
 		live.dispose();
 	});

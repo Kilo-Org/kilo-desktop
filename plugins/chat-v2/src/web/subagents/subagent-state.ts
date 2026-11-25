@@ -1,26 +1,23 @@
 import type { ThreadMessage } from "@assistant-ui/react";
-import type { OpenCodeThreadState } from "@kilo-desktop/react-opencode-v2";
+import {
+	getOpenCodeTaskSessionId,
+	type OpenCodeThreadState,
+	type SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
+
+import { findKiloToolCall } from "../runtime/kilo-transcript";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 
-const sessionIdFromMetadata = (metadata: unknown): string | undefined => {
-	const record = asRecord(metadata);
-	const sessionId = record?.sessionId ?? record?.sessionID;
-	return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : undefined;
-};
-
-export function childSessionIdFromTaskPart(part: unknown): string | undefined {
-	const record = asRecord(part);
-	if (record?.type !== "tool" || record.tool !== "task") return undefined;
-	const state = asRecord(record.state);
-	return sessionIdFromMetadata(state?.metadata) ?? sessionIdFromMetadata(record.metadata);
-}
+/** The child session a Kilo `subagent` call runs in (its metadata's `sessionID`). */
+export const childSessionIdFromTaskPart = (item: unknown): string | undefined =>
+	getOpenCodeTaskSessionId(item);
 
 const normalizedText = (value: unknown) =>
 	typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 
-/** The delegation's description (or prompt) as the parent's `task` call phrased it. */
+/** The delegation's description (or prompt) as the parent's `subagent` call phrased it. */
 export function subagentTaskTitle(part: unknown): string | undefined {
 	const input = asRecord(asRecord(asRecord(part)?.state)?.input);
 	return normalizedText(input?.description) || normalizedText(input?.prompt) || undefined;
@@ -59,14 +56,11 @@ export function sessionTreeHasPendingInteractions(root: OpenCodeThreadState): bo
 	return false;
 }
 
-export function childSessionIdForToolCall(parts: unknown, toolCallId: string): string | undefined {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		const record = asRecord(part);
-		if ((record?.callID ?? record?.id) !== toolCallId) continue;
-		return childSessionIdFromTaskPart(part);
-	}
-	return undefined;
+export function childSessionIdForToolCall(
+	messages: readonly SessionMessageInfo[],
+	toolCallId: string,
+): string | undefined {
+	return getOpenCodeTaskSessionId(findKiloToolCall(messages, toolCallId));
 }
 
 export type SubagentTranscript =
@@ -129,7 +123,7 @@ export const isActiveSubagentStatus = (status: SubagentDisplayStatus): boolean =
 
 /**
  * A delegation row's status. The child session's live state wins while it
- * runs (a background `task` call completes immediately, long before its
+ * runs (a background `subagent` call completes immediately, long before its
  * child); afterwards the call's own outcome distinguishes stopped and failed
  * runs from an aborted child that merely went idle.
  */

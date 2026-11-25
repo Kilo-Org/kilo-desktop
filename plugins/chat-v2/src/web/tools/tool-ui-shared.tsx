@@ -95,28 +95,6 @@ const ANSI_ESCAPE = new RegExp(
 export const normalizeBashOutput = (value: string): string =>
 	value.replace(ANSI_ESCAPE, "").replace(/\r\n?/g, "\n");
 
-/** OpenCode bash metadata.output for a running (or completed) tool call. */
-export const getToolBashMetadataOutput = (
-	parts: unknown,
-	toolCallId: string,
-): string | undefined => {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		if (!part || typeof part !== "object") continue;
-		const record = part as Record<string, unknown>;
-		if (record.type !== "tool") continue;
-		const callId = record.callID ?? record.id;
-		if (callId !== toolCallId) continue;
-		const state = record.state;
-		if (!state || typeof state !== "object") continue;
-		const metadata = (state as Record<string, unknown>).metadata;
-		if (!metadata || typeof metadata !== "object") continue;
-		const output = (metadata as Record<string, unknown>).output;
-		return typeof output === "string" && output.length > 0 ? output : undefined;
-	}
-	return undefined;
-};
-
 /** Bash tool result: a JSON string or an object carrying stdout/stderr/exitCode. */
 export const parseBashResult = (result: unknown): BashResultPayload => {
 	if (!result) return {};

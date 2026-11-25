@@ -1,3 +1,4 @@
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,76 +10,101 @@ import {
 	toolImageAttachments,
 } from "./message-images";
 
-const tool = (callID: string, tool: string, state: Record<string, unknown>) => ({
+const tool = (id: string, name: string, state: Record<string, unknown>) => ({
 	type: "tool",
-	callID,
-	tool,
-	state: { status: "completed", input: {}, ...state },
+	id,
+	name,
+	time: { created: 1 },
+	state: { status: "completed", input: {}, content: [{ type: "text", text: "" }], ...state },
 });
 
+/** A step with `content`, whose snapshot lists `files` as changed and ends at `end`. */
+const step = (id: string, content: unknown[], files?: string[], end?: string) =>
+	({
+		id,
+		type: "assistant",
+		agent: "code",
+		model: { providerID: "kilo", id: "m" },
+		time: { created: 1, completed: 2 },
+		content,
+		...(files ? { snapshot: { files, ...(end ? { end } : {}) } } : {}),
+	}) as SessionMessageInfo;
+
 describe("toolImageAttachments", () => {
-	it("returns the call's image attachments only", () => {
-		const parts = [
-			tool("call_a", "screenshot", {
-				attachments: [
-					{ type: "file", mime: "image/png", url: "data:image/png;base64,AAAA", filename: "a.png" },
-					{ type: "file", mime: "text/plain", url: "data:text/plain,hi" },
-					{ type: "file", mime: "image/jpeg", url: "" },
-				],
-			}),
-			tool("call_b", "read", {
-				attachments: [{ mime: "image/gif", url: "data:image/gif;base64,R0" }],
-			}),
+	it("returns the image files in the call's content only", () => {
+		const messages = [
+			step("msg_1", [
+				tool("call_a", "screenshot", {
+					content: [
+						{ type: "text", text: "Took it" },
+						{ type: "file", mime: "image/png", uri: "data:image/png;base64,AAAA", name: "a.png" },
+						{ type: "file", mime: "text/plain", uri: "data:text/plain,hi" },
+						{ type: "file", mime: "image/jpeg", uri: "" },
+					],
+				}),
+				tool("call_b", "read", {
+					content: [{ type: "file", mime: "image/gif", uri: "data:image/gif;base64,R0" }],
+				}),
+				tool("call_d", "x", {}),
+			]),
 		];
 
-		expect(toolImageAttachments(parts, "call_a")).toEqual([
+		expect(toolImageAttachments(messages, "call_a")).toEqual([
 			{ url: "data:image/png;base64,AAAA", filename: "a.png" },
 		]);
-		expect(toolImageAttachments(parts, "call_b")).toEqual([{ url: "data:image/gif;base64,R0" }]);
-		expect(toolImageAttachments(parts, "call_c")).toEqual([]);
-		expect(toolImageAttachments(undefined, "call_a")).toEqual([]);
-		expect(toolImageAttachments([tool("call_d", "x", {})], "call_d")).toEqual([]);
+		expect(toolImageAttachments(messages, "call_b")).toEqual([{ url: "data:image/gif;base64,R0" }]);
+		expect(toolImageAttachments(messages, "call_c")).toEqual([]);
+		expect(toolImageAttachments([], "call_a")).toEqual([]);
+		expect(toolImageAttachments(messages, "call_d")).toEqual([]);
 	});
 });
 
 describe("savedImages", () => {
-	it("lists images from snapshots and file tools once, at their latest revision", () => {
-		const parts = [
-			{ type: "patch", hash: "h1", files: ["/w/plot.png", "/w/src/app.ts"] },
-			tool("call_1", "write", { input: { filePath: "/w/logo.svg" } }),
-			tool("call_2", "write", { status: "running", input: { filePath: "/w/draft.png" } }),
-			tool("call_3", "bash", { input: { command: "python plot.py -o plot.png" } }),
-			{ type: "patch", hash: "h2", files: ["/w/plot.png"] },
+	it("lists images from step snapshots and file tools once, at their latest revision", () => {
+		const messages = [
+			step("msg_1", [], ["plot.png", "src/app.ts"], "snap_1"),
+			step("msg_2", [
+				tool("call_1", "write", { input: { path: "logo.svg" } }),
+				tool("call_2", "write", { status: "running", input: { path: "draft.png" }, metadata: {} }),
+				tool("call_3", "shell", { input: { command: "python plot.py -o plot.png" } }),
+			]),
+			step("msg_3", [], ["plot.png"], "snap_2"),
 		];
 
-		expect(savedImages(parts)).toEqual({
+		expect(savedImages(messages)).toEqual({
 			images: [
-				{ path: "/w/plot.png", revision: "h2" },
-				{ path: "/w/logo.svg", revision: "call_1" },
+				{ path: "plot.png", revision: "snap_2" },
+				{ path: "logo.svg", revision: "call_1" },
 			],
 			more: 0,
 		});
-		expect(savedImages(undefined)).toEqual({ images: [], more: 0 });
+		expect(savedImages([])).toEqual({ images: [], more: 0 });
 	});
 
 	it("skips snapshot images no tool call names, like files a checkout changed", () => {
-		const parts = [
-			tool("call_1", "bash", { input: { command: "git checkout feature" } }),
-			{ type: "patch", hash: "h1", files: ["/w/e2e/fixtures/sample-receipt.png"] },
+		const messages = [
+			step(
+				"msg_1",
+				[tool("call_1", "shell", { input: { command: "git checkout feature" } })],
+				["e2e/fixtures/sample-receipt.png"],
+			),
 		];
 
-		expect(savedImages(parts)).toEqual({ images: [], more: 0 });
+		expect(savedImages(messages)).toEqual({ images: [], more: 0 });
 	});
 
 	it("caps how many it lists", () => {
 		const files = Array.from(
 			{ length: SAVED_IMAGES_LIMIT + 3 },
-			(_, index) => `/w/${String(index)}.png`,
+			(_, index) => `${String(index)}.png`,
 		);
 
 		const { images, more } = savedImages([
-			tool("call_1", "bash", { input: { command: `touch ${files.join(" ")}` } }),
-			{ type: "patch", hash: "h", files },
+			step(
+				"msg_1",
+				[tool("call_1", "shell", { input: { command: `touch ${files.join(" ")}` } })],
+				files,
+			),
 		]);
 
 		expect(images).toHaveLength(SAVED_IMAGES_LIMIT);

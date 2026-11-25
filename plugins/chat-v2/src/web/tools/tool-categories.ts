@@ -46,7 +46,7 @@ export type ActivityKind = ToolCategory | "tools" | "thinking" | McpActivityKind
 
 const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	edit: "editing",
-	apply_patch: "editing",
+	patch: "editing",
 	notebook_edit: "editing",
 	write: "writing",
 	read: "reading",
@@ -58,7 +58,7 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	semantic_search: "searching",
 	webfetch: "web",
 	websearch: "web",
-	bash: "terminal",
+	shell: "terminal",
 	interactive_terminal: "terminal",
 	background_process: "terminal",
 	todowrite: "planning",
@@ -69,7 +69,7 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	request_user_input: "asking",
 	requestuserinput: "asking",
 	skill: "skill",
-	task: "subagent",
+	subagent: "subagent",
 	board_read: "subagent",
 	board_post: "subagent",
 };
@@ -101,7 +101,8 @@ export const isComposerProjectedTool = (toolName: string): boolean =>
 	COMPOSER_PROJECTED_TOOLS.has(toolName.toLowerCase());
 
 /** Subagent delegations render in their own transcript group, never inside activity summaries. */
-export const isDelegationTool = (toolName: string): boolean => toolName.toLowerCase() === "task";
+export const isDelegationTool = (toolName: string): boolean =>
+	toolName.toLowerCase() === "subagent";
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -508,11 +509,11 @@ export const getKindMeta = (kind: ActivityKind): KindMeta =>
 
 const FILE_ARG_KEYS = ["file_path", "filePath", "path", "file"] as const;
 
-/** Files touched by a single tool-call part (multi-file for apply_patch). */
+/** Files touched by a single tool-call part (multi-file for patch). */
 export const getPartFiles = (part: ActivityPart): string[] => {
 	const args = part.args as Record<string, unknown> | undefined;
 	if (!args) return [];
-	if (part.toolName?.toLowerCase() === "apply_patch") {
+	if (part.toolName?.toLowerCase() === "patch") {
 		return getPatchInfo(str(args.patchText)).files;
 	}
 	for (const key of FILE_ARG_KEYS) {
@@ -564,17 +565,17 @@ const getPartQuestionSummary = (part: ActivityPart): string | undefined => {
 	return questionSummaryFromArgs(part.args);
 };
 
-/** OpenCode/Kilo `skill` tool takes `{ name }`. */
+/** Kilo's `skill` tool takes the skill's `{ id }`. */
 const getPartSkillName = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
 		return undefined;
 	}
 	if (!part.args || typeof part.args !== "object") return undefined;
-	const name = str((part.args as Record<string, unknown>).name);
+	const name = str((part.args as Record<string, unknown>).id);
 	return name ? truncate(name, 48) : undefined;
 };
 
-/** OpenCode/Kilo `task` tool takes `{ description, prompt, subagent_type }`. */
+/** Kilo's `subagent` tool takes `{ agent, description, prompt }`. */
 const getPartTaskDescription = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isTaskTool(part.toolName)) {
 		return undefined;
@@ -583,7 +584,7 @@ const getPartTaskDescription = (part: ActivityPart): string | undefined => {
 	const record = part.args as Record<string, unknown>;
 	const description = str(record.description).replace(/\s+/g, " ").trim();
 	if (description) return truncate(description, 72);
-	const agent = str(record.subagent_type).trim();
+	const agent = str(record.agent).trim();
 	return agent ? truncate(agent, 48) : undefined;
 };
 

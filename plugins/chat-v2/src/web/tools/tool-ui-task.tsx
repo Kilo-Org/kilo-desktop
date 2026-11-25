@@ -5,6 +5,7 @@ import { SquareIcon } from "lucide-react";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { kiloMessagesOf } from "../runtime/kilo-transcript";
 import { useOpenCodeExtrasSlice } from "../runtime/use-optional-opencode-runtime-extras";
 import {
 	useDelegationRevealNonce,
@@ -64,20 +65,17 @@ const ROW_STATUS: Record<SubagentDisplayStatus, NonNullable<ToolCallStatusLike>>
 	cancelled: { type: "incomplete", reason: "cancelled" },
 };
 
-/** A `task` call as a one-line delegation row inside its {@link DelegationGroup}. */
+/** A `subagent` call as a one-line delegation row inside its {@link DelegationGroup}. */
 export const TaskActivity: ToolCallComponent = ({ args, status, toolCallId }) => {
 	const hidden = useIsDelegationRowHidden(toolCallId);
-	const originalParts = useAuiState((state) => {
-		const custom = state.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
+	const kiloMessages = useAuiState((state) => kiloMessagesOf(state.message.metadata?.custom));
 	const { activityByToolCallId, stoppingIds, stopSubagent } = useSubagentActivity();
 	const knownChildSessionId =
 		activityByToolCallId.get(toolCallId)?.childSessionId ??
-		childSessionIdForToolCall(originalParts, toolCallId);
+		childSessionIdForToolCall(kiloMessages, toolCallId);
 	const childDirectory = useOpenCodeExtrasSlice((extras) =>
 		knownChildSessionId
-			? extras.state?.childSessionsById?.[knownChildSessionId]?.session?.directory
+			? extras.state?.childSessionsById?.[knownChildSessionId]?.session?.location.directory
 			: undefined,
 	);
 	const openPane = useOpenSubagentPane();
@@ -86,12 +84,11 @@ export const TaskActivity: ToolCallComponent = ({ args, status, toolCallId }) =>
 
 	const activity = activityByToolCallId.get(toolCallId);
 	const childSessionId =
-		activity?.childSessionId ?? childSessionIdForToolCall(originalParts, toolCallId);
+		activity?.childSessionId ?? childSessionIdForToolCall(kiloMessages, toolCallId);
 	const displayStatus = delegationStatus(activity?.status, status);
 	const active = isActiveSubagentStatus(displayStatus);
 	const title = activity?.title ?? taskTitleFromArgs(args) ?? "Delegated task";
-	const typeLabel =
-		activity?.typeLabel ?? subagentTypeLabel(str(asRecord(args)?.subagent_type).trim());
+	const typeLabel = activity?.typeLabel ?? subagentTypeLabel(str(asRecord(args)?.agent).trim());
 	const directory = activity?.directory ?? childDirectory;
 	const stopping = childSessionId ? stoppingIds.has(childSessionId) : false;
 	const canStop = active && childSessionId !== undefined;

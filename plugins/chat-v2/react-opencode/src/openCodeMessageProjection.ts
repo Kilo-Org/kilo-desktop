@@ -1,11 +1,14 @@
 import type {
-	AssistantMessage,
-	Message,
+	KiloAssistantContent,
+	KiloToolCall,
 	OpenCodeProjectedThreadMessage,
 	OpenCodeServerMessage,
 	OpenCodeThreadState,
-	Part,
 	PendingUserMessage,
+	SessionMessageAssistant,
+	SessionMessageCompaction,
+	SessionMessageShell,
+	SessionMessageUser,
 	ThreadUserMessagePart,
 } from "./types";
 import {
@@ -19,6 +22,21 @@ import {
 	projectResolvedOpenCodePermissionApproval,
 } from "./openCodePermissionApproval";
 import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
+
+/*
+ * Kilo v2's transcript as assistant-ui messages. A user message is one
+ * message; a run of assistant steps (and composer shell runs) between user
+ * messages is one assistant message, each step's text, reasoning and tool
+ * calls in order under a step marker; a compaction is its own assistant
+ * message (a "Compaction" marker, then its summary). Hidden notes, system
+ * text, skills, the agent/model/location markers and a turn's idle marker are
+ * Kilo's context, not the conversation: not shown, and a run goes on past
+ * them (a background task's note starts a turn that continues the reply).
+ *
+ * What the chat reads raw rides along as `metadata.custom.opencode`: the Kilo
+ * v2 messages a projected message stands for (`messages`) and the latest of
+ * them (`message`).
+ */
 
 type ProjectedContentPart = Exclude<OpenCodeProjectedThreadMessage["content"], string>[number];
 
@@ -37,10 +55,6 @@ let _localMcpApps: Record<string, LocalMcpApp> = {};
 export function setLocalMcpApps(registry: Record<string, LocalMcpApp>): void {
 	_localMcpApps = registry;
 }
-
-const isAssistantMessage = (message: Message | undefined): message is AssistantMessage => {
-	return message?.role === "assistant";
-};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
 	return typeof value === "object" && value !== null;
@@ -84,49 +98,27 @@ const mergeProjectedMessages = (
 	return [...merged, ...serverMessages.slice(serverIndex), ...pendingMessages.slice(pendingIndex)];
 };
 
-const mapToolState = (
-	state:
-		| {
-				status?: string;
-				input?: unknown;
-				output?: unknown;
-				error?: unknown;
-		  }
-		| null
-		| undefined,
-) => {
-	const args = isRecord(state?.input) ? state.input : {};
-	const argsText = JSON.stringify(args);
-
-	if (state?.status === "completed") {
-		return {
-			args,
-			argsText,
-			result: state.output,
-			isError: false,
-		};
-	}
-
-	if (state?.status === "error") {
-		return {
-			args,
-			argsText,
-			result: state.error,
-			isError: true,
-		};
-	}
-
-	return {
-		args,
-		argsText,
-		result: undefined,
-		isError: false,
-	};
+/** A tool call's text output (its content's text items), as the chat shows a result. */
+export const toolCallOutput = (tool: KiloToolCall): string | undefined => {
+	const content =
+		tool.state.status === "completed" || tool.state.status === "error"
+			? tool.state.content
+			: undefined;
+	if (!content) return undefined;
+	return content.flatMap((item) => (item.type === "text" ? [item.text] : [])).join("\n");
 };
 
-const getPartToolCallId = (part: Part) => {
-	if (part.type !== "tool") return undefined;
-	return typeof part.callID === "string" ? part.callID : undefined;
+const mapToolState = (tool: KiloToolCall) => {
+	const { state } = tool;
+	const args = state.status !== "streaming" && isRecord(state.input) ? state.input : {};
+	const argsText = JSON.stringify(args);
+	if (state.status === "completed") {
+		return { args, argsText, result: toolCallOutput(tool) ?? "", isError: false };
+	}
+	if (state.status === "error") {
+		return { args, argsText, result: state.error.message, isError: true };
+	}
+	return { args, argsText, result: undefined, isError: false };
 };
 
 type PermissionState = OpenCodeThreadState["interactions"]["permissions"];
@@ -174,33 +166,21 @@ const getChildMessages = (childState: OpenCodeThreadState): readonly ThreadMessa
 	return messages;
 };
 
-const getPendingPermissionForToolCall = (state: OpenCodeThreadState, toolCallId: string) =>
-	getPermissionIndex(state).pendingByCallId.get(toolCallId);
+const toolCallsOf = (messages: readonly OpenCodeServerMessage[]): KiloToolCall[] =>
+	messages.flatMap((message) =>
+		message.type === "assistant"
+			? message.content.filter((item): item is KiloToolCall => item.type === "tool")
+			: [],
+	);
 
-const getResolvedPermissionForToolCall = (state: OpenCodeThreadState, toolCallId: string) =>
-	getPermissionIndex(state).resolvedByCallId.get(toolCallId);
-
-const hasPendingInteractionForToolCall = (
+const hasPendingInteraction = (
 	state: OpenCodeThreadState,
-	toolCallId: string | undefined,
+	messages: readonly OpenCodeServerMessage[],
 ) => {
-	if (!toolCallId) return false;
-
 	// Kilo v2's forms name no tool call, so only permissions hold one up.
-	return getPermissionIndex(state).pendingByCallId.has(toolCallId);
-};
-
-const hasPendingInteractionForMessage = (
-	state: OpenCodeThreadState,
-	message: OpenCodeServerMessage,
-) => {
-	for (const part of message.parts) {
-		if (hasPendingInteractionForToolCall(state, getPartToolCallId(part))) {
-			return true;
-		}
-	}
-
-	return false;
+	const { pendingByCallId } = getPermissionIndex(state);
+	if (pendingByCallId.size === 0) return false;
+	return toolCallsOf(messages).some((tool) => pendingByCallId.has(tool.id));
 };
 
 const makeDataPart = (name: string, data: Record<string, unknown>, parentId?: string) => ({
@@ -210,16 +190,6 @@ const makeDataPart = (name: string, data: Record<string, unknown>, parentId?: st
 	...(parentId ? { parentId } : {}),
 });
 
-const makeUnsupportedPart = (part: Part, parentId?: string) =>
-	makeDataPart(
-		"opencode-unsupported-part",
-		{
-			type: (part as { type?: string }).type ?? "unknown",
-			part,
-		},
-		parentId,
-	);
-
 const sanitizeReasoningText = (text: string | undefined) =>
 	(text ?? "")
 		.replaceAll("[REDACTED]", "")
@@ -228,228 +198,140 @@ const sanitizeReasoningText = (text: string | undefined) =>
 		.replaceAll("\\t", "\t")
 		.trim();
 
-const convertFilePart = (part: Extract<Part, { type: "file" }>) => {
-	const mimeType = part.mime ?? "application/octet-stream";
-	if (mimeType.startsWith("image/")) {
-		return {
-			type: "image" as const,
-			image: part.url ?? "",
-			...(part.filename ? { filename: part.filename } : {}),
-		};
+const mcpAppOf = (tool: KiloToolCall) => {
+	const localApp = _localMcpApps[tool.name];
+	if (localApp) {
+		return { mcp: { app: { resourceUri: localApp.resourceUri, serverId: localApp.serverId } } };
 	}
-
+	const metadata = tool.state.status === "streaming" ? undefined : tool.state.metadata;
+	const app = metadata?.["mcpApp"] as { resourceUri: string; serverId?: string } | undefined;
+	if (!app) return {};
 	return {
-		type: "file" as const,
-		filename: part.filename ?? "file",
-		data: part.url ?? "",
-		mimeType,
+		mcp: {
+			app: {
+				resourceUri: app.resourceUri,
+				...(app.serverId !== undefined ? { serverId: app.serverId } : {}),
+			},
+		},
 	};
 };
 
-const projectAssistantContent = (
+const projectToolCall = (
 	state: OpenCodeThreadState,
-	message: OpenCodeServerMessage,
-): ProjectedContentPart[] => {
-	const content: ProjectedContentPart[] = [];
-	const stepStack: string[] = [];
+	tool: KiloToolCall,
+	parentId: string,
+): ProjectedContentPart => {
+	const toolState = mapToolState(tool);
+	const childSessionId = getOpenCodeTaskSessionId(tool);
+	const childState = childSessionId ? state.childSessionsById[childSessionId] : undefined;
+	const childMessages =
+		childState?.loadState.type === "ready" ? getChildMessages(childState) : undefined;
+	const { pendingByCallId, resolvedByCallId } = getPermissionIndex(state);
+	const permission = pendingByCallId.get(tool.id);
+	const resolvedPermission = permission ? undefined : resolvedByCallId.get(tool.id);
+	return {
+		type: "tool-call",
+		toolCallId: tool.id,
+		toolName: tool.name || "tool",
+		args: toolState.args as never,
+		argsText: toolState.argsText,
+		...(toolState.result !== undefined ? { result: toolState.result } : {}),
+		...(toolState.isError ? { isError: true } : {}),
+		...(childMessages !== undefined ? { messages: childMessages } : {}),
+		...(permission
+			? { approval: projectOpenCodePermissionApproval(permission) }
+			: resolvedPermission
+				? { approval: projectResolvedOpenCodePermissionApproval(resolvedPermission) }
+				: {}),
+		...mcpAppOf(tool),
+		parentId,
+	};
+};
 
-	const currentStepId = () => stepStack[stepStack.length - 1];
-
-	for (const [index, part] of message.parts.entries()) {
-		switch (part.type) {
-			case "text": {
-				const text = part.text ?? "";
-				// Kilo's synthetic text parts are server-side context, not reply text:
-				// a transient "Initializing snapshot" notice shows as progress while
-				// the message runs, and the rest stays hidden.
-				if (part.synthetic) {
-					const info = message.info as { finish?: unknown; error?: unknown } | undefined;
-					if (info?.finish || info?.error) break;
-					if (
-						part.metadata?.["kilocode.lifecycle"] === "transient" &&
-						text.includes("Initializing snapshot")
-					) {
-						content.push(makeDataPart("opencode-snapshot-progress", { text }, currentStepId()));
-						break;
-					}
-				}
-				content.push({ type: "text", text });
-				break;
-			}
-
-			case "reasoning":
-				{
-					const text = sanitizeReasoningText(part.text);
-					if (!text) break;
-					content.push({
-						type: "reasoning",
-						text,
-						...(currentStepId() ? { parentId: currentStepId() } : {}),
-					});
-				}
-				break;
-
-			case "file":
-				content.push(convertFilePart(part));
-				break;
-
-			case "tool": {
-				const toolState = mapToolState(part.state);
-				const toolCallId = part.callID ?? part.id ?? `tool-${index}`;
-				const toolName = part.tool ?? "tool";
-				const childSessionId = getOpenCodeTaskSessionId(part);
-				const childState = childSessionId ? state.childSessionsById[childSessionId] : undefined;
-				const childMessages =
-					childState?.loadState.type === "ready" ? getChildMessages(childState) : undefined;
-				const permission = getPendingPermissionForToolCall(state, toolCallId);
-				const resolvedPermission = permission
-					? undefined
-					: getResolvedPermissionForToolCall(state, toolCallId);
-				const localApp = _localMcpApps[toolName];
-				const metadataMcpApp = (part.state as { metadata?: Record<string, unknown> } | undefined)
-					?.metadata?.["mcpApp"] as { resourceUri: string; serverId?: string } | undefined;
-				const mcpAppMeta = localApp
-					? {
-							mcp: {
-								app: {
-									resourceUri: localApp.resourceUri,
-									serverId: localApp.serverId,
-								},
-							},
-						}
-					: metadataMcpApp
-						? {
-								mcp: {
-									app: {
-										resourceUri: metadataMcpApp.resourceUri,
-										...(metadataMcpApp.serverId !== undefined
-											? { serverId: metadataMcpApp.serverId }
-											: {}),
-									},
-								},
-							}
-						: {};
-				content.push({
-					type: "tool-call",
-					toolCallId,
-					toolName,
-					args: toolState.args as never,
-					argsText: toolState.argsText,
-					...(toolState.result !== undefined ? { result: toolState.result } : {}),
-					...(toolState.isError ? { isError: true } : {}),
-					...(childMessages !== undefined ? { messages: childMessages } : {}),
-					...(permission
-						? { approval: projectOpenCodePermissionApproval(permission) }
-						: resolvedPermission
-							? {
-									approval: projectResolvedOpenCodePermissionApproval(resolvedPermission),
-								}
-							: {}),
-					...mcpAppMeta,
-					...(currentStepId() ? { parentId: currentStepId() } : {}),
-				});
-				break;
-			}
-
-			case "step-start": {
-				const nestedParentId = currentStepId();
-				const stepId =
-					("id" in part && typeof part.id === "string" ? part.id : undefined) ?? `step-${index}`;
-				stepStack.push(stepId);
-				content.push(
-					makeDataPart(
-						"opencode-step-start",
-						{
-							id: stepId,
-							depth: stepStack.length - 1,
-							snapshot:
-								"snapshot" in part && typeof part.snapshot === "string" ? part.snapshot : undefined,
-						},
-						nestedParentId,
-					),
-				);
-				break;
-			}
-
-			case "step-finish": {
-				const stepId =
-					stepStack.pop() ??
-					("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-					`step-finish-${index}`;
-				content.push(
-					makeDataPart("opencode-step-finish", {
-						id: stepId,
-						reason: "reason" in part ? part.reason : undefined,
-						cost: "cost" in part ? part.cost : undefined,
-						snapshot:
-							"snapshot" in part && typeof part.snapshot === "string" ? part.snapshot : undefined,
-					}),
-				);
-				break;
-			}
-
-			case "patch":
-				content.push(
-					makeDataPart(
-						"opencode-patch",
-						{
-							id:
-								("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-								`patch-${index}`,
-							hash: "hash" in part ? part.hash : undefined,
-							files: Array.isArray((part as { files?: unknown[] }).files)
-								? (part as { files: unknown[] }).files.filter(
-										(file): file is string => typeof file === "string",
-									)
-								: [],
-							part,
-						},
-						currentStepId(),
-					),
-				);
-				break;
-
-			case "snapshot":
-				content.push(
-					makeDataPart(
-						"opencode-snapshot",
-						{
-							id:
-								("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-								`snapshot-${index}`,
-							part,
-						},
-						currentStepId(),
-					),
-				);
-				break;
-
-			case "retry":
-			case "compaction":
-			case "agent":
-			case "subtask":
-				content.push(
-					makeDataPart(
-						`opencode-${part.type}`,
-						{
-							id:
-								("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-								`${part.type}-${index}`,
-							part,
-						},
-						currentStepId(),
-					),
-				);
-				break;
-
-			default:
-				content.push(makeUnsupportedPart(part, currentStepId()));
-				break;
+const projectContentItem = (
+	state: OpenCodeThreadState,
+	item: KiloAssistantContent,
+	stepId: string,
+): ProjectedContentPart | undefined => {
+	switch (item.type) {
+		case "text":
+			return { type: "text", text: item.text };
+		case "reasoning": {
+			const text = sanitizeReasoningText(item.text);
+			return text ? { type: "reasoning", text, parentId: stepId } : undefined;
 		}
+		case "tool":
+			return projectToolCall(state, item, stepId);
 	}
+};
 
+/** One step: its marker, its content, and (once it ends) its finish with usage and snapshot. */
+const projectStep = (
+	state: OpenCodeThreadState,
+	message: SessionMessageAssistant,
+): ProjectedContentPart[] => {
+	const content: ProjectedContentPart[] = [
+		makeDataPart("opencode-step-start", {
+			id: message.id,
+			depth: 0,
+			snapshot: message.snapshot?.start,
+		}),
+	];
+	for (const item of message.content) {
+		const part = projectContentItem(state, item, message.id);
+		if (part) content.push(part);
+	}
+	if (message.retry && message.time.completed === undefined) {
+		content.push(
+			makeDataPart("opencode-retry", { id: `${message.id}:retry`, ...message.retry }, message.id),
+		);
+	}
+	if (message.time.completed !== undefined) {
+		content.push(
+			makeDataPart("opencode-step-finish", {
+				id: message.id,
+				reason: message.finish,
+				cost: message.cost,
+				tokens: message.tokens,
+				snapshot: message.snapshot?.end,
+				files: message.snapshot?.files,
+			}),
+		);
+	}
 	return content;
 };
+
+/** A composer shell run, shown as the `shell` tool call it is. */
+const projectShell = (message: SessionMessageShell): ProjectedContentPart => ({
+	type: "tool-call",
+	toolCallId: message.shellID,
+	toolName: "shell",
+	args: { command: message.command } as never,
+	argsText: JSON.stringify({ command: message.command }),
+	...(message.status !== "running" ? { result: message.output?.output ?? "" } : {}),
+});
+
+const projectRunContent = (
+	state: OpenCodeThreadState,
+	messages: readonly OpenCodeServerMessage[],
+): ProjectedContentPart[] =>
+	messages.flatMap((message) => {
+		if (message.type === "assistant") return projectStep(state, message);
+		if (message.type === "shell") return [projectShell(message)];
+		return [];
+	});
+
+const projectCompactionContent = (message: SessionMessageCompaction): ProjectedContentPart[] => [
+	makeDataPart("opencode-compaction", {
+		id: message.id,
+		status: message.status,
+		reason: message.reason,
+		...(message.status === "failed" ? { error: message.error.message } : {}),
+	}),
+	...(message.status === "completed" && message.summary
+		? [{ type: "text" as const, text: message.summary }]
+		: []),
+];
 
 type ProjectedAttachment = NonNullable<OpenCodeProjectedThreadMessage["attachments"]>[number];
 
@@ -464,7 +346,7 @@ const splitUserParts = (
 			continue;
 		}
 		// The same ladders the outbound prompt uses, so the pending copy and the
-		// reconciled server copy agree on the attachment's type and content type.
+		// server's copy agree on the attachment's type and content type.
 		const mediaType =
 			part.type === "image"
 				? resolveImageMediaType(part.image, (part as { contentType?: string }).contentType)
@@ -481,62 +363,60 @@ const splitUserParts = (
 	return { content, attachments };
 };
 
-const projectUserFileAttachment = (part: Extract<Part, { type: "file" }>): ProjectedAttachment => {
-	const content = convertFilePart(part);
+type UserFile = NonNullable<SessionMessageUser["files"]>[number];
+
+/** A prompt's attached file: its bytes inline as a data URL. */
+export const userFileUrl = (file: UserFile) => `data:${file.mime};base64,${file.data}`;
+
+const projectUserFile = (file: UserFile, index: number): ProjectedAttachment => {
+	const url = userFileUrl(file);
+	const image = file.mime.startsWith("image/");
 	return {
-		id: part.id,
-		type: content.type === "image" ? "image" : "file",
-		name: part.filename ?? "file",
-		contentType: part.mime ?? "application/octet-stream",
+		id: index.toString(),
+		type: image ? "image" : "file",
+		name: file.name ?? "file",
+		contentType: file.mime,
 		status: { type: "complete" },
-		content: [content],
+		content: [
+			image
+				? { type: "image", image: url, ...(file.name ? { filename: file.name } : {}) }
+				: { type: "file", filename: file.name ?? "file", data: url, mimeType: file.mime },
+		],
 	};
 };
 
-const projectUserMessage = (
-	message: OpenCodeServerMessage,
-): { content: ProjectedContentPart[]; attachments: ProjectedAttachment[] } => {
-	if (message.parts.length === 0) {
-		return splitUserParts(message.shadowParts ?? []);
-	}
-
-	const content: ProjectedContentPart[] = [];
-	const attachments: ProjectedAttachment[] = [];
-	for (const part of message.parts) {
-		if (part.type === "text") {
-			if (part.synthetic) continue;
-			content.push({ type: "text", text: part.text ?? "" });
-		} else if (part.type === "file") {
-			attachments.push(projectUserFileAttachment(part));
-		}
-	}
-	return { content, attachments };
-};
+const projectUserMessage = (message: SessionMessageUser) => ({
+	content: [{ type: "text" as const, text: message.text }],
+	attachments: (message.files ?? []).map(projectUserFile),
+});
 
 const CANCELLED_STATUS = { type: "incomplete", reason: "cancelled" } as const;
 
 // A turn only ends on a model reply; one whose last step handed off to tools
-// was halted before the next step (Stop kills subagents first, so their task
-// calls fail and the step closes cleanly). A completed plan_exit is the one
-// tool that ends a turn by design, mirroring the server's continuation check.
-const endsBetweenSteps = (message: OpenCodeServerMessage): boolean =>
-	message.info !== undefined &&
-	"finish" in message.info &&
-	message.info.finish === "tool-calls" &&
-	!message.parts.some(
-		(part) =>
-			part.type === "tool" && part.tool === "plan_exit" && part.state?.status === "completed",
+// was halted before the next step (Stop kills subagents first, so their
+// subagent calls fail and the step closes cleanly). A completed plan_exit is
+// the one tool that ends a turn by design, mirroring the server's
+// continuation check.
+const endsBetweenSteps = (message: SessionMessageAssistant): boolean =>
+	message.finish === "tool-calls" &&
+	!message.content.some(
+		(item) =>
+			item.type === "tool" && item.name === "plan_exit" && item.state.status === "completed",
 	);
+
+const isInterruption = (type: string) => /abort|interrupt|cancel/i.test(type);
 
 /** What every message's status reads about the run, computed once per projection. */
 interface RunActivity {
-	readonly lastAssistantId: string | undefined;
+	readonly lastRunId: string | undefined;
 	readonly isActiveRun: boolean;
 }
 
+const RUN_TYPES: ReadonlySet<string> = new Set(["assistant", "shell", "compaction"]);
+
 const getRunActivity = (state: OpenCodeThreadState): RunActivity => ({
-	lastAssistantId: state.messageOrder.findLast(
-		(messageId) => state.messagesById[messageId]?.info?.role === "assistant",
+	lastRunId: state.messageOrder.findLast((messageId) =>
+		RUN_TYPES.has(state.messagesById[messageId]?.type ?? ""),
 	),
 	isActiveRun:
 		state.runState.type === "streaming" ||
@@ -546,73 +426,62 @@ const getRunActivity = (state: OpenCodeThreadState): RunActivity => ({
 		state.sessionStatus?.type === "retry",
 });
 
+const RUNNING_STATUS = { type: "running" } as const;
+const COMPLETE_STATUS = { type: "complete", reason: "stop" } as const;
+
 const getMessageStatus = (
 	state: OpenCodeThreadState,
-	message: OpenCodeServerMessage,
-	activity: RunActivity = getRunActivity(state),
+	group: ServerMessageGroup,
+	activity: RunActivity,
 ): OpenCodeProjectedThreadMessage["status"] => {
-	if (!isAssistantMessage(message.info)) {
-		return undefined;
+	const { message } = group;
+	if (hasPendingInteraction(state, group.sources)) {
+		return { type: "requires-action", reason: "tool-calls" };
 	}
+	const isLive = activity.lastRunId === message.id && activity.isActiveRun;
 
-	if (hasPendingInteractionForMessage(state, message)) {
-		return {
-			type: "requires-action",
-			reason: "tool-calls",
-		};
-	}
-
-	if (message.info.error) {
-		const error = message.info.error;
-		if (isRecord(error) && error.name === "MessageAbortedError") {
-			return CANCELLED_STATUS;
+	if (message.type === "shell")
+		return message.status === "running" && isLive ? RUNNING_STATUS : COMPLETE_STATUS;
+	if (message.type === "compaction") {
+		if (message.status === "failed") {
+			return { type: "incomplete", reason: "error", error: message.error.message };
 		}
-		const maybeMessage =
-			isRecord(error) && isRecord(error.data) && typeof error.data.message === "string"
-				? error.data.message
-				: undefined;
-		const fallbackMessage =
-			typeof error === "string"
-				? error
-				: isRecord(error) && typeof error.name === "string"
-					? error.name
-					: "OpenCode run failed";
+		return message.status === "running"
+			? isLive
+				? RUNNING_STATUS
+				: CANCELLED_STATUS
+			: COMPLETE_STATUS;
+	}
+	if (message.type !== "assistant") return undefined;
 
+	if (message.error) {
+		if (isInterruption(message.error.type)) return CANCELLED_STATUS;
 		return {
 			type: "incomplete",
 			reason: "error",
-			error: maybeMessage ?? fallbackMessage,
+			error: message.error.message || message.error.type || "Kilo run failed",
 		};
 	}
 
-	const isActiveMessage = activity.lastAssistantId === message.id;
-	const { isActiveRun } = activity;
-
-	if (!message.info.finish) {
-		if (!isActiveMessage || !isActiveRun) return CANCELLED_STATUS;
-		return {
-			type: "running",
-		};
+	if (message.time.completed === undefined && !message.finish) {
+		return isLive ? RUNNING_STATUS : CANCELLED_STATUS;
 	}
 
 	// Only the latest turn: an earlier assistant message can legitimately end
 	// on tool calls when a queued user message took over the loop.
-	if (isActiveMessage && !isActiveRun && endsBetweenSteps(message)) {
+	if (activity.lastRunId === message.id && !activity.isActiveRun && endsBetweenSteps(message)) {
 		return CANCELLED_STATUS;
 	}
 
-	return {
-		type: "complete",
-		reason: "stop",
-	};
+	return COMPLETE_STATUS;
 };
 
 /**
- * One transcript message: a user message, or a run of assistant steps.
- * `id` is the first step's id, so the projected message keeps its identity
- * (React key, cache entry, disclosure state) as later steps join the run;
- * `message` carries the latest step's id, which status, timing and the
- * server read.
+ * One transcript message: a user message, a compaction, or a run of
+ * assistant steps and shell runs. `id` is the first source's id, so the
+ * projected message keeps its identity (React key, cache entry, disclosure
+ * state) as later steps join the run; `message` is the latest source, which
+ * status and timing read.
  */
 interface ServerMessageGroup {
 	readonly id: string;
@@ -620,109 +489,82 @@ interface ServerMessageGroup {
 	readonly message: OpenCodeServerMessage;
 }
 
-const isBackgroundUserMessage = (message: OpenCodeServerMessage) =>
-	message.info?.role === "user" &&
-	message.parts.some(
-		(part) => part.type === "text" && part.synthetic === true && part.metadata?.background === true,
-	);
-
-// Kilo-only context with nothing the person wrote (a fork's handoff note):
-// projected, it would be an empty bubble with its own actions.
-const isHiddenUserMessage = (message: OpenCodeServerMessage) =>
-	message.info?.role === "user" &&
-	message.parts.length > 0 &&
-	message.parts.every((part) => part.type === "text" && part.synthetic === true);
-
-const mergeAssistantSteps = (steps: readonly OpenCodeServerMessage[]): OpenCodeServerMessage => {
-	if (steps.length === 1) return steps[0]!;
-	const first = steps[0]!;
-	const last = steps[steps.length - 1]!;
-	const hasShadowParts = steps.some((step) => step.shadowParts);
-	return {
-		id: last.id,
-		info: {
-			...last.info!,
-			time: {
-				...last.info!.time,
-				created: first.info!.time?.created ?? last.info!.time?.created,
-			},
-		} as OpenCodeServerMessage["info"],
-		parts: steps.flatMap((step) => step.parts),
-		shadowParts: hasShadowParts ? steps.flatMap((step) => step.shadowParts ?? []) : undefined,
-	};
-};
+const isRunMessage = (message: OpenCodeServerMessage) =>
+	message.type === "assistant" || message.type === "shell";
 
 const groupServerMessages = (messages: readonly OpenCodeServerMessage[]): ServerMessageGroup[] => {
 	const groups: OpenCodeServerMessage[][] = [];
+	let runOpen = false;
 	for (const message of messages) {
-		if (isBackgroundUserMessage(message) || isHiddenUserMessage(message)) continue;
-		const previous = groups[groups.length - 1];
-		if (previous?.[0]?.info?.role === "assistant" && message.info?.role === "assistant") {
-			previous.push(message);
+		if (isRunMessage(message)) {
+			if (runOpen) groups[groups.length - 1]!.push(message);
+			else groups.push([message]);
+			runOpen = true;
 			continue;
 		}
-		groups.push([message]);
+		if (message.type === "user" || message.type === "compaction") {
+			groups.push([message]);
+			runOpen = false;
+		}
+		// Notes, system text, skills, markers and idle markers are Kilo's context: not shown.
 	}
 	return groups.map((sources) => ({
 		id: sources[0]!.id,
 		sources,
-		message: sources[0]?.info?.role === "assistant" ? mergeAssistantSteps(sources) : sources[0]!,
+		message: sources[sources.length - 1]!,
 	}));
+};
+
+/** The usage the chat reads from the latest step of a run. */
+const assistantCustom = (group: ServerMessageGroup) => {
+	const step = group.sources.findLast(
+		(source): source is SessionMessageAssistant => source.type === "assistant",
+	);
+	if (!step) return {};
+	return {
+		modelID: step.model.id,
+		providerID: step.model.providerID,
+		cost: step.cost,
+		tokens: step.tokens,
+		agent: step.agent,
+	};
 };
 
 const projectServerMessage = (
 	state: OpenCodeThreadState,
-	id: string,
-	message: OpenCodeServerMessage,
+	group: ServerMessageGroup,
 	timing: MessageTiming | undefined,
 	activity: RunActivity,
 ): OpenCodeProjectedThreadMessage | null => {
-	if (!message.info) return null;
+	const { id, sources, message } = group;
+	const opencode = { message, messages: sources };
+	const createdAt = new Date(sources[0]!.time.created);
 
-	const metadata = {
-		custom: {
-			opencode: {
-				originalMessage: message.info,
-				parts: message.parts,
-			},
-		},
-	};
-
-	if (message.info.role === "assistant") {
-		const assistantInfo = message.info as AssistantMessage;
-		return {
-			id,
-			role: "assistant",
-			createdAt: new Date(message.info.time?.created ?? Date.now()),
-			content: projectAssistantContent(state, message),
-			status: getMessageStatus(state, message, activity),
-			metadata: {
-				custom: {
-					...metadata.custom,
-					modelID: assistantInfo.modelID,
-					providerID: assistantInfo.providerID,
-					cost: assistantInfo.cost,
-					tokens: assistantInfo.tokens,
-					mode: assistantInfo.mode,
-				},
-				...(timing && { timing }),
-			},
-		};
-	}
-
-	if (message.info.role === "user") {
-		const { content, attachments } = projectUserMessage(message);
+	if (message.type === "user") {
 		return {
 			id,
 			role: "user",
-			createdAt: new Date(message.info.time?.created ?? Date.now()),
-			content,
-			attachments,
-			metadata,
+			createdAt,
+			...projectUserMessage(message),
+			metadata: { custom: { opencode } },
 		};
 	}
 
-	return null;
+	const content =
+		message.type === "compaction"
+			? projectCompactionContent(message)
+			: projectRunContent(state, sources);
+	return {
+		id,
+		role: "assistant",
+		createdAt,
+		content,
+		status: getMessageStatus(state, group, activity),
+		metadata: {
+			custom: { opencode, ...assistantCustom(group) },
+			...(timing && { timing }),
+		},
+	};
 };
 
 const projectPendingMessage = (pending: PendingUserMessage): OpenCodeProjectedThreadMessage => ({
@@ -746,34 +588,17 @@ const projectPendingMessage = (pending: PendingUserMessage): OpenCodeProjectedTh
 	},
 });
 
-type SessionRevert = NonNullable<OpenCodeThreadState["session"]>["revert"];
-
-const applyRevertVisibility = (
-	messages: readonly OpenCodeServerMessage[],
-	revert: SessionRevert,
-): OpenCodeServerMessage[] => {
-	if (!revert?.messageID) return [...messages];
-	return messages.flatMap((message) => {
-		if (message.id < revert.messageID) return [message];
-		if (message.id !== revert.messageID || !revert.partID) return [];
-		const boundaryIndex = message.parts.findIndex((part) => part.id === revert.partID);
-		return [
-			{
-				...message,
-				parts: boundaryIndex < 0 ? [] : message.parts.slice(0, boundaryIndex),
-			},
-		];
+/** Messages from the session's revert boundary on are undone: not shown while the revert stands. */
+const visibleServerMessages = (state: OpenCodeThreadState): OpenCodeServerMessage[] => {
+	const messages = state.messageOrder.flatMap((messageId: string) => {
+		const message = state.messagesById[messageId];
+		return message ? [message] : [];
 	});
+	const boundary = state.session?.revert?.messageID;
+	if (!boundary) return messages;
+	const at = messages.findIndex((message) => message.id === boundary);
+	return at >= 0 ? messages.slice(0, at) : messages.filter((message) => message.id < boundary);
 };
-
-const visibleServerMessages = (state: OpenCodeThreadState) =>
-	applyRevertVisibility(
-		state.messageOrder.flatMap((messageId: string) => {
-			const message = state.messagesById[messageId];
-			return message ? [message] : [];
-		}),
-		state.session?.revert,
-	);
 
 const sortedPendingMessages = (state: OpenCodeThreadState) =>
 	(Object.values(state.pendingUserMessages) as PendingUserMessage[]).sort(
@@ -786,9 +611,7 @@ export function projectOpenCodeThreadMessages(
 ): OpenCodeProjectedThreadMessage[] {
 	const activity = getRunActivity(state);
 	const serverMessages = groupServerMessages(visibleServerMessages(state))
-		.map(({ id, message }) =>
-			projectServerMessage(state, id, message, messageTiming[message.id], activity),
-		)
+		.map((group) => projectServerMessage(state, group, messageTiming[group.message.id], activity))
 		.filter((message): message is OpenCodeProjectedThreadMessage => message !== null);
 
 	const pendingMessages = sortedPendingMessages(state).map(projectPendingMessage);
@@ -837,9 +660,9 @@ const projectionInputs = (
 ): unknown[] => {
 	const { message } = group;
 	const inputs: unknown[] = [...group.sources, timing];
-	if (message.info?.role !== "assistant") return inputs;
+	if (message.type === "user") return inputs;
 	// Status reads the run's activity only for the turn's latest message.
-	const isActiveMessage = activity.lastAssistantId === message.id;
+	const isActiveMessage = activity.lastRunId === message.id;
 	inputs.push(
 		isActiveMessage,
 		isActiveMessage && activity.isActiveRun,
@@ -847,8 +670,8 @@ const projectionInputs = (
 		state.interactions.questions.pending,
 		_localMcpApps,
 	);
-	for (const part of message.parts) {
-		const childSessionId = getOpenCodeTaskSessionId(part);
+	for (const tool of toolCallsOf(group.sources)) {
+		const childSessionId = getOpenCodeTaskSessionId(tool);
 		if (childSessionId) inputs.push(state.childSessionsById[childSessionId]);
 	}
 	return inputs;
@@ -869,7 +692,7 @@ const projectCachedThreadMessages = (
 		const inputs = projectionInputs(state, group, timing, activity);
 		let entry = cache.server.get(id);
 		if (!entry || !sameInputs(entry.inputs, inputs)) {
-			const projected = projectServerMessage(state, id, group.message, timing, activity);
+			const projected = projectServerMessage(state, group, timing, activity);
 			entry = { inputs, message: projected ? toThreadMessage(projected) : null };
 			cache.server.set(id, entry);
 		}

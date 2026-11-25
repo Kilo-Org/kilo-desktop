@@ -1,4 +1,8 @@
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode-v2";
+import type {
+	KiloAssistantContent,
+	KiloToolCall,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
 
 import { isPlanFilePath, normalizePlanPath, pathsMatch } from "./plan-paths";
 
@@ -17,23 +21,7 @@ export type PlanThreadSource = {
 	runState?: { type: string } | undefined;
 	sessionStatus?: { type: string } | null | undefined;
 	messageOrder: readonly string[];
-	messagesById: Readonly<
-		Record<
-			string,
-			| {
-					info:
-						| {
-								role: string;
-								agent?: string | undefined;
-								finish?: unknown;
-								error?: unknown;
-						  }
-						| undefined;
-					parts: readonly Part[];
-			  }
-			| undefined
-		>
-	>;
+	messagesById: Readonly<Record<string, SessionMessageInfo | undefined>>;
 };
 
 export type PlanThreadProjection = {
@@ -57,27 +45,34 @@ const getString = (
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
 
+type ToolPart = KiloToolCall;
+type Part = KiloAssistantContent;
+
+/** A tool call's input once it is called (`{}` while its arguments still stream). */
+const inputOf = (part: ToolPart): Record<string, unknown> =>
+	part.state.status === "streaming" ? {} : part.state.input;
+
 const getToolPath = (part: ToolPart): string => {
-	const input = part.state.input;
+	const input = inputOf(part);
 	const directPath = getString(input, ["filePath", "filepath", "path", "file_path", "file"]);
 	if (directPath) return normalizePlanPath(directPath);
 
 	const nested = getString(asRecord(input.metadata), ["plan", "path"]);
 	if (nested) return normalizePlanPath(nested);
 
-	const stateMetadata = "metadata" in part.state ? part.state.metadata : undefined;
+	const stateMetadata = part.state.status === "streaming" ? undefined : part.state.metadata;
 	return normalizePlanPath(getString(stateMetadata, ["plan", "path"]));
 };
 
 const getDirectPlanMarkdown = (part: ToolPart): string =>
-	getString(part.state.input, ["content", "contents", "text", "markdown"]);
+	getString(inputOf(part), ["content", "contents", "text", "markdown"]);
 
 const getEditOldString = (part: ToolPart): string =>
-	getString(part.state.input, ["oldString", "old_string", "oldText", "old_text"]);
+	getString(inputOf(part), ["oldString", "old_string", "oldText", "old_text"]);
 
 const getEditNewString = (part: ToolPart): string | undefined => {
 	for (const key of ["newString", "new_string", "newText", "new_text"] as const) {
-		const candidate = part.state.input[key];
+		const candidate = inputOf(part)[key];
 		if (typeof candidate === "string") return candidate;
 	}
 	return undefined;
@@ -101,7 +96,7 @@ export function resolvePlanMarkdownFromWrites(
 			markdown = direct;
 			continue;
 		}
-		if (part.tool !== "edit") continue;
+		if (part.name !== "edit") continue;
 		const oldString = getEditOldString(part);
 		if (!markdown || !oldString) continue;
 		const newString = getEditNewString(part);
@@ -112,8 +107,8 @@ export function resolvePlanMarkdownFromWrites(
 }
 
 const getToolError = (part: ToolPart): string =>
-	part.state.status === "error" && part.state.error
-		? part.state.error
+	part.state.status === "error" && part.state.error.message
+		? part.state.error.message
 		: "Kilo could not complete the plan.";
 
 const isToolPart = (part: Part): part is ToolPart => part.type === "tool";
@@ -129,7 +124,7 @@ type GetPlanProjectionOptions = {
 const isMarkdownPath = (path: string): boolean => /\.md$/i.test(path);
 
 const hasPlanExitPart = (parts: readonly Part[]): boolean =>
-	parts.some((part) => isToolPart(part) && part.tool === "plan_exit");
+	parts.some((part) => isToolPart(part) && part.name === "plan_exit");
 
 export function getPlanProjectionFromParts(
 	parts: readonly Part[],
@@ -137,11 +132,11 @@ export function getPlanProjectionFromParts(
 ): PlanProjection | undefined {
 	const treatWritesAsPlan = options?.treatWritesAsPlan === true;
 	const tools = parts.filter(isToolPart);
-	const exits = tools.filter((part) => part.tool === "plan_exit");
+	const exits = tools.filter((part) => part.name === "plan_exit");
 	// Like Kilo's own clients, the file named by plan_exit is the plan once it is known.
 	const handoffPath = exits.map(getToolPath).findLast(Boolean) ?? "";
 	const writes = tools.filter((part) => {
-		if (part.tool !== "write" && part.tool !== "edit") return false;
+		if (part.name !== "write" && part.name !== "edit") return false;
 		// A rejected or failed write never changed the file on disk.
 		if (part.state.status === "error") return false;
 		const path = getToolPath(part);
@@ -183,12 +178,12 @@ export function getPlanProjectionFromParts(
 		status = "ready";
 	}
 
-	const hiddenCallIds = new Set([...writes, ...exits].map((part) => part.callID));
+	const hiddenCallIds = new Set([...writes, ...exits].map((part) => part.id));
 	return {
 		status,
 		path,
 		markdown,
-		anchorCallId: anchor.callID,
+		anchorCallId: anchor.id,
 		hiddenCallIds,
 		...(error ? { error } : {}),
 	};
@@ -229,7 +224,7 @@ const findPriorMarkdown = (
 const planThreadProjectionCache = new WeakMap<PlanThreadSource, PlanThreadProjection>();
 
 /**
- * Every OpenCode step is its own message and gets `time.completed`; `tool-calls`
+ * Every Kilo step is its own message and gets `time.completed`; `tool-calls`
  * and `unknown` finishes mean the loop may continue. Mirrors Kilo's clients.
  */
 const endsAssistantRun = (info: { finish?: unknown; error?: unknown }): boolean =>
@@ -244,7 +239,7 @@ const isPlanningAgent = (agent: string | undefined): boolean => {
 	return normalized === "plan" || normalized === "architect";
 };
 
-/** Project canonical OpenCode messages once per immutable thread-state object. */
+/** Project Kilo's messages once per immutable thread-state object. */
 export function projectPlanThread(source: PlanThreadSource): PlanThreadProjection {
 	const cached = planThreadProjectionCache.get(source);
 	if (cached) return cached;
@@ -290,22 +285,26 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 
 	for (const messageId of source.messageOrder) {
 		const message = source.messagesById[messageId];
-		if (!message || message.info?.role !== "assistant") {
-			if (assistantRun) assistantRun.settled = true;
-			projectAssistantRun();
+		if (!message) continue;
+		if (message.type !== "assistant") {
+			// A prompt, compaction or the turn's end closes the run; Kilo's context notes don't.
+			if (message.type === "user" || message.type === "compaction" || message.type === "idle") {
+				if (assistantRun) assistantRun.settled = true;
+				projectAssistantRun();
+			}
 			continue;
 		}
 		if (assistantRun) {
 			assistantRun.messageIds.push(messageId);
-			assistantRun.parts.push(...message.parts);
-			assistantRun.planningAgent ||= isPlanningAgent(message.info.agent);
-			assistantRun.settled ||= endsAssistantRun(message.info);
+			assistantRun.parts.push(...message.content);
+			assistantRun.planningAgent ||= isPlanningAgent(message.agent);
+			assistantRun.settled ||= endsAssistantRun(message);
 		} else {
 			assistantRun = {
 				messageIds: [messageId],
-				parts: [...message.parts],
-				planningAgent: isPlanningAgent(message.info.agent),
-				settled: endsAssistantRun(message.info),
+				parts: [...message.content],
+				planningAgent: isPlanningAgent(message.agent),
+				settled: endsAssistantRun(message),
 			};
 		}
 	}

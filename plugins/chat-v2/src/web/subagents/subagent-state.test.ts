@@ -10,22 +10,19 @@ import {
 } from "./subagent-state";
 
 describe("subagent state", () => {
-	it("reads child identity from both supported metadata locations", () => {
+	const subagentCall = (id: string, metadata: Record<string, string>) => ({
+		type: "tool" as const,
+		id,
+		name: "subagent",
+		time: { created: 1 },
+		state: { status: "running" as const, input: { agent: "explore" }, metadata },
+	});
+
+	it("reads a subagent call's child session from its metadata", () => {
+		expect(childSessionIdFromTaskPart(subagentCall("c", { sessionID: "child-1" }))).toBe("child-1");
 		expect(
-			childSessionIdFromTaskPart({
-				type: "tool",
-				tool: "task",
-				state: { metadata: { sessionId: "child-1" } },
-			}),
-		).toBe("child-1");
-		expect(
-			childSessionIdFromTaskPart({
-				type: "tool",
-				tool: "task",
-				metadata: { sessionID: "child-2" },
-			}),
-		).toBe("child-2");
-		expect(childSessionIdFromTaskPart({ type: "tool", tool: "read" })).toBeUndefined();
+			childSessionIdFromTaskPart({ ...subagentCall("c", { sessionID: "x" }), name: "read" }),
+		).toBeUndefined();
 	});
 
 	it("finds a child by tool call and builds stable pane identity", () => {
@@ -33,10 +30,12 @@ describe("subagent state", () => {
 			childSessionIdForToolCall(
 				[
 					{
-						type: "tool",
-						tool: "task",
-						callID: "call-1",
-						state: { metadata: { sessionId: "child-1" } },
+						id: "msg_a",
+						type: "assistant",
+						agent: "code",
+						model: { providerID: "kilo", id: "m" },
+						time: { created: 1 },
+						content: [subagentCall("call-1", { sessionID: "child-1" })],
 					},
 				],
 				"call-1",

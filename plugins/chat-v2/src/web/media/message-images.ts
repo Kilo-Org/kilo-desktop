@@ -1,3 +1,11 @@
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
+
+import {
+	kiloSteps,
+	kiloToolCalls,
+	kiloToolContent,
+	findKiloToolCall,
+} from "../runtime/kilo-transcript";
 import { getToolFilePath } from "../tools/tool-diff-stats";
 
 const IMAGE_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
@@ -24,40 +32,24 @@ export function imageMimeForPath(path: string): string | null {
 
 export const fileName = (path: string): string => path.split(/[\\/]/u).at(-1) ?? path;
 
-const record = (value: unknown): Record<string, unknown> | null =>
-	value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-
 export interface ImageAttachment {
 	readonly url: string;
 	readonly filename?: string;
 }
 
 /**
- * The images a tool call returned (OpenCode `state.attachments`): a screenshot,
- * an image an MCP tool made, a picture the agent read.
+ * The images a tool call returned (the image files in its content): a
+ * screenshot, an image an MCP tool made, a picture the agent read.
  */
-export function toolImageAttachments(parts: unknown, toolCallId: string): ImageAttachment[] {
-	if (!Array.isArray(parts)) return [];
-	for (const part of parts) {
-		const tool = record(part);
-		if (tool?.type !== "tool" || (tool.callID ?? tool.id) !== toolCallId) continue;
-		const attachments = record(tool.state)?.attachments;
-		if (!Array.isArray(attachments)) return [];
-		return attachments.flatMap((attachment) => {
-			const file = record(attachment);
-			if (!file || typeof file.url !== "string" || !file.url) return [];
-			if (typeof file.mime !== "string" || !file.mime.startsWith("image/")) return [];
-			return [
-				{
-					url: file.url,
-					...(typeof file.filename === "string" && file.filename
-						? { filename: file.filename }
-						: {}),
-				},
-			];
-		});
-	}
-	return [];
+export function toolImageAttachments(
+	messages: readonly SessionMessageInfo[],
+	toolCallId: string,
+): ImageAttachment[] {
+	return kiloToolContent(findKiloToolCall(messages, toolCallId)).flatMap((item) =>
+		item.type === "file" && item.mime.startsWith("image/") && item.uri
+			? [{ url: item.uri, ...(item.name ? { filename: item.name } : {}) }]
+			: [],
+	);
 }
 
 export interface SavedImage {
@@ -68,40 +60,35 @@ export interface SavedImage {
 
 /**
  * The image files a turn wrote: those its steps' snapshots list as changed
- * (`patch` parts, which cover scripts and shell commands too) and those its
- * file tools wrote. A snapshot image counts only when a tool call's input
+ * (`snapshot.files`, which cover scripts and shell commands too) and those
+ * its file tools wrote. A snapshot image counts only when a tool call's input
  * names it, so a checkout or pull that swaps fixture images in shows none.
  * Each path once, at its latest revision, in first-written order; at most
  * `SAVED_IMAGES_LIMIT`, with how many more there were.
  */
-export function savedImages(parts: unknown): { images: SavedImage[]; more: number } {
-	const list = Array.isArray(parts) ? parts : [];
+export function savedImages(messages: readonly SessionMessageInfo[]): {
+	images: SavedImage[];
+	more: number;
+} {
+	const tools = kiloToolCalls(messages);
 	// shortcut: a script that builds the file name at runtime isn't matched; parse its output paths if that matters.
-	const toolInputs = list
-		.map((part) => {
-			const entry = record(part);
-			return entry?.type === "tool" ? JSON.stringify(record(entry.state)?.input ?? "") : "";
-		})
+	const toolInputs = tools
+		.map((tool) => (tool.state.status === "streaming" ? "" : JSON.stringify(tool.state.input)))
 		.join("\n");
 	const byPath = new Map<string, string>();
 	const note = (path: string, revision: string) => {
 		if (!path || !imageMimeForPath(path)) return;
 		byPath.set(path, revision);
 	};
-	for (const part of list) {
-		const entry = record(part);
-		if (!entry) continue;
-		if (entry.type === "patch" && Array.isArray(entry.files)) {
-			const revision = typeof entry.hash === "string" ? entry.hash : "";
-			for (const file of entry.files) {
-				if (typeof file === "string" && toolInputs.includes(fileName(file))) note(file, revision);
-			}
+	for (const step of kiloSteps(messages)) {
+		for (const item of step.content) {
+			if (item.type !== "tool" || !FILE_WRITING_TOOLS.has(item.name)) continue;
+			if (item.state.status !== "completed") continue;
+			note(getToolFilePath(item.state.input), item.id);
 		}
-		if (entry.type === "tool" && typeof entry.tool === "string") {
-			const state = record(entry.state);
-			if (!FILE_WRITING_TOOLS.has(entry.tool) || state?.status !== "completed") continue;
-			const revision = typeof entry.callID === "string" ? entry.callID : "";
-			note(getToolFilePath(record(state.input) ?? undefined), revision);
+		const revision = step.snapshot?.end ?? step.id;
+		for (const file of step.snapshot?.files ?? []) {
+			if (toolInputs.includes(fileName(file))) note(file, revision);
 		}
 	}
 	const images = [...byPath].map(([path, revision]) => ({ path, revision }));

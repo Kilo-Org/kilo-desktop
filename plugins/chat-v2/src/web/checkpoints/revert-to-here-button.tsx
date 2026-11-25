@@ -46,10 +46,7 @@ export const RevertToHereButton: FC = () => {
 			}
 			// The projected ThreadMessage (not messagesById) is the source here.
 			// User-message projections are immutable once created, so the
-			// click-time snapshot is safe.  The projected path is deliberate: it
-			// retains shadowParts-derived content for messages whose server-side
-			// `parts` are empty, which the server-side
-			// serverMessageToComposerPrompt cannot recover.
+			// click-time snapshot is safe.
 			await restoreToComposer(aui, messageToComposerPrompt(message));
 		} catch {
 			// Clears on revert failure AND on post-revert composer-restore failure.

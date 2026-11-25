@@ -1,10 +1,11 @@
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it } from "vitest";
 
 import {
 	getEditNewString,
 	getEditOldString,
 	getToolFilePath,
-	getToolUnifiedDiffFromParts,
+	getToolUnifiedDiff,
 	getWriteContent,
 	hasEditStringArgs,
 } from "./tool-diff-stats";
@@ -39,23 +40,42 @@ describe("reading tool args", () => {
 	});
 
 	it("takes the server's unified diff for the call when there is one", () => {
-		const parts = [
-			null,
-			{ type: "text" },
-			{ type: "tool", callID: "other", state: { metadata: { diff: "x" } } },
-			{ type: "tool", id: "c0", state: null },
-			{ type: "tool", callID: "c2", state: { metadata: null } },
-			{ type: "tool", callID: "c1", state: { metadata: { diff: DIFF } } },
-		];
-		expect(getToolUnifiedDiffFromParts("nope", "c1")).toBeUndefined();
-		expect(getToolUnifiedDiffFromParts(parts, "c0")).toBeUndefined();
-		expect(getToolUnifiedDiffFromParts(parts, "c2")).toBeUndefined();
-		expect(getToolUnifiedDiffFromParts(parts, "c1")).toBe(DIFF);
-		expect(
-			getToolUnifiedDiffFromParts(
-				[{ type: "tool", callID: "c1", state: { metadata: { diff: "" } } }],
-				"c1",
-			),
-		).toBeUndefined();
+		const tool = (id: string, state: Record<string, unknown>) => ({
+			type: "tool",
+			id,
+			name: "edit",
+			time: { created: 1 },
+			state,
+		});
+		const messages = [
+			{ id: "msg_u", type: "user", text: "edit it", time: { created: 1 } },
+			{
+				id: "msg_a",
+				type: "assistant",
+				agent: "code",
+				model: { providerID: "kilo", id: "m" },
+				time: { created: 2 },
+				content: [
+					{ type: "text", text: "On it" },
+					tool("c0", { status: "streaming", input: "{" }),
+					tool("c2", { status: "running", input: {}, metadata: {} }),
+					tool("c1", {
+						status: "completed",
+						input: {},
+						content: [{ type: "text", text: "ok" }],
+						metadata: {
+							files: [
+								{ file: "a.ts", patch: DIFF },
+								{ file: "b.ts", patch: "" },
+							],
+						},
+					}),
+				],
+			},
+		] as unknown as SessionMessageInfo[];
+		expect(getToolUnifiedDiff([], "c1")).toBeUndefined();
+		expect(getToolUnifiedDiff(messages, "c0")).toBeUndefined();
+		expect(getToolUnifiedDiff(messages, "c2")).toBeUndefined();
+		expect(getToolUnifiedDiff(messages, "c1")).toBe(DIFF);
 	});
 });

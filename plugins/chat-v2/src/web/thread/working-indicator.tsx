@@ -7,10 +7,6 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import "./assistant-working-indicator.css";
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
-const SNAPSHOT_PROGRESS_STATUS = "Initializing snapshot…";
-/** react-opencode's synthetic data part for a snapshot still being taken. */
-const SNAPSHOT_PROGRESS_PART = "opencode-snapshot-progress";
-const SNAPSHOT_INDICATOR_DELAY_MS = 200;
 const CONSIDERING_INDICATOR_DELAY_MS = 750;
 const WORKING_INDICATOR_PIXEL_DELAYS = Array.from({ length: 9 }, (_, index) => {
 	const row = Math.floor(index / 3);
@@ -44,37 +40,27 @@ export function useTurnStartedAt(): number {
 }
 
 /**
- * "Considering next steps" (or the snapshot status) while a running turn is
- * between steps, revealed after a short delay so quick gaps don't flash.
+ * "Considering next steps" while a running turn is between steps, revealed
+ * after a short delay so quick gaps don't flash.
  */
 export const AssistantWorkingIndicator: FC<{ active: boolean; overlay: boolean }> = ({
 	active,
 	overlay,
 }) => {
 	const turnStartedAt = useTurnStartedAt();
-	const label = useAuiState((s) => {
-		const last = s.message.parts.at(-1);
-		return last?.type === "data" && last.name === SNAPSHOT_PROGRESS_PART
-			? SNAPSHOT_PROGRESS_STATUS
-			: CONSIDERING_NEXT_STEPS;
-	});
+	const label = CONSIDERING_NEXT_STEPS;
 	const [isRevealed, setIsRevealed] = useState(false);
 	const [elapsedDeciseconds, setElapsedDeciseconds] = useState(() =>
 		elapsedDecisecondsSince(turnStartedAt),
 	);
 
-	// The delay only debounces inactive→active gaps; a label swap once shown
-	// changes the text in place.
+	// The delay only debounces inactive→active gaps.
 	if (!active && isRevealed) setIsRevealed(false);
 	useEffect(() => {
 		if (!active || isRevealed) return;
-		const delay =
-			label === CONSIDERING_NEXT_STEPS
-				? CONSIDERING_INDICATOR_DELAY_MS
-				: SNAPSHOT_INDICATOR_DELAY_MS;
-		const timeoutId = window.setTimeout(() => setIsRevealed(true), delay);
+		const timeoutId = window.setTimeout(() => setIsRevealed(true), CONSIDERING_INDICATOR_DELAY_MS);
 		return () => window.clearTimeout(timeoutId);
-	}, [active, isRevealed, label]);
+	}, [active, isRevealed]);
 
 	useEffect(() => {
 		if (!active) return;

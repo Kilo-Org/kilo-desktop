@@ -81,6 +81,7 @@ import {
 	createTurnWorkGroupBy,
 } from "../tools/activity-grouping";
 import { DelegationGroup } from "../tools/delegation-group";
+import { kiloMessagesOf } from "../runtime/kilo-transcript";
 import { activityKindFromGroupKey, isDelegationTool } from "../tools/tool-categories";
 import { ToolCallSignInGate } from "../tools/tool-sign-in-card";
 import { ToolCallFallback } from "../tools/tool-ui-inline";
@@ -174,7 +175,7 @@ const KiloMessageErrorBanner: FC = () => {
 							retryFailedTurn({
 								connection,
 								sessionID: session.id,
-								directory: session.directory,
+								directory: session.location.directory,
 								messageID: userMessageId,
 								...(model ? { model } : {}),
 							}),
@@ -391,10 +392,9 @@ const AssistantMessage: FC = () => {
 	const pendingUserInteractions =
 		pendingInteractions.questions.length + pendingInteractions.permissions.length;
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
-	const isStreamingText = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return openCodeTextIsStreaming(custom?.opencode?.parts);
-	});
+	const isStreamingText = useAuiState((s) =>
+		openCodeTextIsStreaming(kiloMessagesOf(s.message.metadata?.custom)),
+	);
 	const hasRenderablePart = useAuiState((s) =>
 		s.message.parts.some(
 			(part) =>
@@ -406,11 +406,8 @@ const AssistantMessage: FC = () => {
 	const status = useAuiState((s) => s.message.status);
 	const turnStartedAt = useTurnStartedAt();
 	const turnCompletedAt = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as
-			| { opencode?: { originalMessage?: { time?: { completed?: unknown } } } }
-			| undefined;
-		const completed = custom?.opencode?.originalMessage?.time?.completed;
-		return typeof completed === "number" ? completed : undefined;
+		const latest = kiloMessagesOf(s.message.metadata?.custom).at(-1);
+		return latest?.type === "assistant" ? latest.time.completed : undefined;
 	});
 	const threadOwnsRun = useAuiState(
 		(s) => s.thread.isRunning && s.message.index === s.thread.messages.length - 1,

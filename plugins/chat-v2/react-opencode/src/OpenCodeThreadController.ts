@@ -2,17 +2,17 @@ import type { AppendMessage, ThreadUserMessagePart } from "@assistant-ui/react";
 import type {
 	FormAnswer,
 	FormInfo,
+	OpenCodeEvent,
 	PermissionRequest as KiloPermissionRequest,
+	SessionMessageInfo,
 } from "@kilocode/client";
-import type { SessionStatus } from "./sdk";
-import { readHistory, type KiloClient } from "./kilo";
+import { newMessageId, readHistory, type KiloClient } from "./kilo";
+import { streamedAssistantId } from "./kiloTranscript";
 import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState";
 import type {
-	MessageWithParts,
 	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
 	OpenCodeQuestionRequest,
-	Part,
 	OpenCodeServerEvent,
 	OpenCodeStateEvent,
 	OpenCodeThreadControllerLike,
@@ -29,14 +29,16 @@ import {
 } from "@assistant-ui/core/internal";
 import { serializeOpenCodeParts } from "./serializeUserParts";
 import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
-import { toV1Messages, toV1Session } from "./v2/v2-messages";
 
 type OpenCodeEventSourceProvider = () => Pick<OpenCodeEventSource, "subscribe">;
 
 export type OpenCodeThreadControllerOptions = {
 	/** Adjusts a loaded history before the thread shows it (`OpenCodeRuntimeBackend.patchHistory`). */
 	patchHistory?:
-		| ((sessionId: string, messages: readonly MessageWithParts[]) => readonly MessageWithParts[])
+		| ((
+				sessionId: string,
+				messages: readonly SessionMessageInfo[],
+		  ) => readonly SessionMessageInfo[])
 		| undefined;
 };
 
@@ -130,19 +132,6 @@ const normalizeUnhandledEvent = (event: OpenCodeServerEvent): OpenCodeUnhandledE
 	seenAt: Date.now(),
 });
 
-const isSupportedDelta = (
-	state: OpenCodeThreadState,
-	messageId: string,
-	partId: string,
-	field: string,
-) => {
-	const message = state.messagesById[messageId];
-	const part = message?.parts.find((candidate) => candidate.id === partId);
-	if (!part) return false;
-
-	return field === "text" && (part.type === "text" || part.type === "reasoning");
-};
-
 const STATUS_EVENT_TYPES: ReadonlySet<OpenCodeStateEvent["type"]> = new Set([
 	"session.status",
 	"session.idle",
@@ -150,6 +139,27 @@ const STATUS_EVENT_TYPES: ReadonlySet<OpenCodeStateEvent["type"]> = new Set([
 	"run.cancelling",
 	"run.reverting",
 ]);
+
+const setsStatus = (event: OpenCodeStateEvent) =>
+	STATUS_EVENT_TYPES.has(event.type) ||
+	(event.type === "kilo.event" && /^session\.(execution\.|retry\.|idle$)/.test(event.event.type));
+
+/** Events that change which child sessions a message's subagent calls run in. */
+const CHILD_SESSION_EVENTS: ReadonlySet<string> = new Set([
+	"session.tool.called",
+	"session.tool.progress",
+	"session.tool.success",
+	"session.tool.failed",
+]);
+
+/** Each subagent call's child session in a message, keyed by message and call id. */
+const childSessionsOf = (message: SessionMessageInfo | undefined): [string, string][] => {
+	if (message?.type !== "assistant") return [];
+	return message.content.flatMap((item) => {
+		const sessionId = getOpenCodeTaskSessionId(item);
+		return sessionId && item.type === "tool" ? [[`${message.id}:${item.id}`, sessionId]] : [];
+	});
+};
 
 const isThreadRunning = (state: OpenCodeThreadState): boolean =>
 	state.runState.type === "streaming" ||
@@ -192,7 +202,8 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	// that resolves after a newer live event cannot overwrite it.
 	private statusEpoch = 0;
 	private readonly childControllersById = new Map<string, ChildControllerEntry>();
-	private readonly childSessionIdByPartId = new Map<string, string>();
+	/** Child session ids by `messageId:callId` of the subagent call running them. */
+	private readonly childSessionIdByCallKey = new Map<string, string>();
 	private ancestorSessionIds: ReadonlySet<string>;
 	private isChildSession = false;
 	private readonly stagedMessages = new Map<
@@ -276,43 +287,37 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			entry.controller.discard();
 		}
 		this.childControllersById.clear();
-		this.childSessionIdByPartId.clear();
+		this.childSessionIdByCallKey.clear();
 		this.listeners.clear();
 	}
 
 	private rebuildChildSessionIndex() {
-		this.childSessionIdByPartId.clear();
+		this.childSessionIdByCallKey.clear();
 		for (const message of Object.values(this.state.messagesById)) {
-			for (const part of message.parts) {
-				const sessionId = getOpenCodeTaskSessionId(part);
-				if (sessionId) {
-					this.childSessionIdByPartId.set(part.id, sessionId);
-				}
+			for (const [key, sessionId] of childSessionsOf(message)) {
+				this.childSessionIdByCallKey.set(key, sessionId);
 			}
 		}
 		this.syncChildControllers();
 	}
 
-	private updateChildSessionIndex(part: Part) {
-		const previousSessionId = this.childSessionIdByPartId.get(part.id);
-		const sessionId = getOpenCodeTaskSessionId(part);
-		if (sessionId === previousSessionId) return;
-
-		if (sessionId) {
-			this.childSessionIdByPartId.set(part.id, sessionId);
-		} else {
-			this.childSessionIdByPartId.delete(part.id);
+	private updateChildSessionIndex(messageId: string) {
+		const prefix = `${messageId}:`;
+		const previous = [...this.childSessionIdByCallKey].filter(([key]) => key.startsWith(prefix));
+		const next = childSessionsOf(this.state.messagesById[messageId]);
+		if (
+			previous.length === next.length &&
+			previous.every(([key, id], index) => next[index]?.[0] === key && next[index]?.[1] === id)
+		) {
+			return;
 		}
-		this.syncChildControllers();
-	}
-
-	private removeFromChildSessionIndex(partId: string) {
-		if (!this.childSessionIdByPartId.delete(partId)) return;
+		for (const [key] of previous) this.childSessionIdByCallKey.delete(key);
+		for (const [key, sessionId] of next) this.childSessionIdByCallKey.set(key, sessionId);
 		this.syncChildControllers();
 	}
 
 	private syncChildControllers() {
-		const sessionIds = new Set(this.childSessionIdByPartId.values());
+		const sessionIds = new Set(this.childSessionIdByCallKey.values());
 		for (const sessionId of this.ancestorSessionIds) {
 			sessionIds.delete(sessionId);
 		}
@@ -363,21 +368,18 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	}
 
 	private syncChildSessionIndex(event: OpenCodeStateEvent) {
-		switch (event.type) {
-			case "history.loaded":
-			case "history.prepended":
-			case "message.removed":
-				this.rebuildChildSessionIndex();
-				break;
-			case "part.updated":
-				this.updateChildSessionIndex(event.part);
-				break;
-			case "part.removed":
-				this.removeFromChildSessionIndex(event.partId);
-				break;
-			default:
-				break;
+		if (event.type === "history.loaded" || event.type === "history.prepended") {
+			this.rebuildChildSessionIndex();
+			return;
 		}
+		if (event.type !== "kilo.event") return;
+		if (event.event.type === "session.revert.committed") {
+			this.rebuildChildSessionIndex();
+			return;
+		}
+		if (!CHILD_SESSION_EVENTS.has(event.event.type)) return;
+		const messageId = streamedAssistantId(event.event);
+		if (messageId) this.updateChildSessionIndex(messageId);
 	}
 
 	// `applied` is the event being handled when the watch starts: a source may
@@ -530,11 +532,10 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		])
 			.then(([info, history]) => {
 				if (this.loadPromise !== request) return;
-				const messages = toV1Messages(this.sessionId, info.location.directory, history);
 				this.dispatch({
 					type: "history.loaded",
-					session: toV1Session(info),
-					messages: this.options.patchHistory?.(this.sessionId, messages) ?? messages,
+					session: info,
+					messages: this.options.patchHistory?.(this.sessionId, history) ?? history,
 					olderHistory: { type: "complete" },
 				});
 			})
@@ -562,6 +563,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 
 		return {
 			clientId: createLocalId("local"),
+			messageId: newMessageId(),
 			sessionId: this.sessionId,
 			createdAt: Date.now(),
 			parentId: message.parentId,
@@ -600,6 +602,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			const { text, files } = getPromptInput(message);
 			await this.client.session.prompt({
 				sessionID,
+				id: pending.messageId,
 				text,
 				...(files.length > 0 ? { files } : {}),
 				...(options?.noReply ? { resume: false } : {}),
@@ -668,7 +671,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			// The session as it is now, with its revert, is the authoritative state:
 			// the boundary lands at once rather than waiting for its event.
 			const info = await this.client.session.get({ sessionID: this.sessionId });
-			this.dispatch({ type: "session.updated", session: toV1Session(info) });
+			this.dispatch({ type: "session.updated", session: info });
 			// Revert requires an already-idle session, so no session.idle SSE
 			// follows the HTTP call — clear the reverting state here or the
 			// runtime stays "running" forever.
@@ -685,7 +688,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			await this.client.session.revert.clear({ sessionID: this.sessionId });
 			// Apply the session (its revert now cleared) before returning to idle.
 			const info = await this.client.session.get({ sessionID: this.sessionId });
-			this.dispatch({ type: "session.updated", session: toV1Session(info) });
+			this.dispatch({ type: "session.updated", session: info });
 			this.dispatch({ type: "session.idle", sessionId: this.sessionId });
 		} catch (error) {
 			this.dispatch({ type: "run.failed", error });
@@ -746,131 +749,6 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 
 	private handleServerEvent(event: OpenCodeServerEvent) {
 		switch (event.type) {
-			case "session.updated": {
-				const session = event.properties.info;
-				if (session && typeof session === "object") {
-					this.dispatch({
-						type: "session.updated",
-						session: session as never,
-					});
-				}
-				return;
-			}
-
-			case "session.status":
-				if (event.properties.status) {
-					this.dispatch({
-						type: "session.status",
-						status: event.properties.status as SessionStatus,
-					});
-				}
-				return;
-
-			case "session.idle":
-				this.dispatch({ type: "session.idle", sessionId: this.sessionId });
-				return;
-
-			case "session.compacted":
-				this.dispatch({ type: "session.compacted", sessionId: this.sessionId });
-				this.refreshInBackground();
-				return;
-
-			case "session.error":
-				if (event.properties.error !== undefined) {
-					this.dispatch({
-						type: "run.failed",
-						error: event.properties.error,
-					});
-					return;
-				}
-				break;
-
-			case "message.updated": {
-				const info = event.properties.info;
-				if (info && typeof info === "object" && "id" in info) {
-					this.dispatch({
-						type: "message.updated",
-						info: info as never,
-					});
-				}
-				return;
-			}
-
-			case "message.removed":
-				if (typeof event.properties.messageID === "string") {
-					this.dispatch({
-						type: "message.removed",
-						messageId: event.properties.messageID,
-					});
-				}
-				return;
-
-			case "message.part.updated": {
-				const part = event.properties.part;
-				const messageId =
-					part &&
-					typeof part === "object" &&
-					"messageID" in part &&
-					typeof part.messageID === "string"
-						? part.messageID
-						: undefined;
-
-				if (messageId && part && typeof part === "object") {
-					if (!(messageId in this.state.messagesById)) {
-						this.refreshInBackground();
-						return;
-					}
-
-					this.dispatch({
-						type: "part.updated",
-						messageId,
-						part: part as never,
-					});
-				}
-				return;
-			}
-
-			case "message.part.delta":
-				if (
-					typeof event.properties.messageID === "string" &&
-					typeof event.properties.partID === "string" &&
-					typeof event.properties.field === "string" &&
-					typeof event.properties.delta === "string"
-				) {
-					const { messageID, partID, field, delta } = event.properties;
-
-					if (isSupportedDelta(this.state, messageID, partID, field)) {
-						this.dispatch({
-							type: "part.delta",
-							messageId: messageID,
-							partId: partID,
-							field,
-							delta,
-						});
-					} else {
-						this.refreshInBackground();
-					}
-				}
-				return;
-
-			case "message.part.removed":
-				if (
-					typeof event.properties.messageID === "string" &&
-					typeof event.properties.partID === "string"
-				) {
-					if (!(event.properties.messageID in this.state.messagesById)) {
-						this.refreshInBackground();
-						return;
-					}
-
-					this.dispatch({
-						type: "part.removed",
-						messageId: event.properties.messageID,
-						partId: event.properties.partID,
-					});
-				}
-				return;
-
 			case "permission.asked": {
 				const request = toPermissionRequest(event.properties as KiloPermissionRequest);
 				if (request) {
@@ -926,14 +804,30 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				return;
 		}
 
+		if (event.raw && this.applyKiloEvent(event.raw)) return;
+
 		this.dispatch({
 			type: "unhandled.event",
 			event: normalizeUnhandledEvent(event),
 		});
 	}
 
+	/** Folds a Kilo v2 event into the thread; false when it changes nothing. */
+	private applyKiloEvent(event: OpenCodeEvent): boolean {
+		// A step this thread never saw start (it joined mid-turn, or missed
+		// events) streams into nothing: the history has it.
+		const assistantId = streamedAssistantId(event);
+		if (assistantId && !(assistantId in this.state.messagesById)) {
+			if (this.state.loadState.type === "ready") this.refreshInBackground();
+			return true;
+		}
+		const before = this.state;
+		this.dispatch({ type: "kilo.event", event });
+		return this.state !== before;
+	}
+
 	private dispatch(event: Parameters<typeof reduceOpenCodeThreadState>[1]) {
-		if (STATUS_EVENT_TYPES.has(event.type)) this.statusEpoch += 1;
+		if (setsStatus(event)) this.statusEpoch += 1;
 		const nextState = reduceOpenCodeThreadState(this.state, event);
 		if (nextState === this.state) return;
 		this.state = nextState;

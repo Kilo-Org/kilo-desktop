@@ -1,19 +1,13 @@
-import type { Part } from "./types";
+import type { KiloAssistantContent } from "./types";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
 
-const getSessionId = (metadata: unknown) => {
-	if (!isRecord(metadata)) return undefined;
-
-	const value = metadata.sessionId ?? metadata.sessionID;
+/** The child session a Kilo v2 `subagent` call runs in (its metadata's `sessionID`). */
+export const getOpenCodeTaskSessionId = (item: KiloAssistantContent | unknown) => {
+	if (!isRecord(item) || item.type !== "tool" || item.name !== "subagent") return undefined;
+	const state = isRecord(item.state) ? item.state : undefined;
+	const metadata = isRecord(state?.metadata) ? state.metadata : undefined;
+	const value = metadata?.sessionID ?? metadata?.sessionId;
 	return typeof value === "string" && value.length > 0 ? value : undefined;
-};
-
-export const getOpenCodeTaskSessionId = (part: Part) => {
-	if (part.type !== "tool" || part.tool !== "task") return undefined;
-
-	const state: unknown = part.state;
-	const stateSessionId = isRecord(state) ? getSessionId(state.metadata) : undefined;
-	return stateSessionId ?? getSessionId(part.metadata);
 };

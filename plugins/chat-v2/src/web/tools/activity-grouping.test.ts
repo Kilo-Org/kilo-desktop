@@ -93,7 +93,7 @@ describe("createActivityGroupBy", () => {
 		const parts = [
 			toolPart("web-1", "websearch"),
 			dataPart("opencode-step-finish"),
-			toolPart("bash-1", "bash"),
+			toolPart("bash-1", "shell"),
 		];
 
 		expect(groupPaths(parts)).toEqual([
@@ -106,8 +106,8 @@ describe("createActivityGroupBy", () => {
 	it("seals consecutive delegations into their own group, apart from surrounding work", () => {
 		const parts = [
 			toolPart("read-1", "read"),
-			toolPart("task-1", "task"),
-			toolPart("task-2", "task"),
+			toolPart("task-1", "subagent"),
+			toolPart("task-2", "subagent"),
 			toolPart("read-2", "read"),
 		];
 
@@ -121,11 +121,11 @@ describe("createActivityGroupBy", () => {
 
 	it("keeps a delegation run together across parts that render nothing", () => {
 		const parts = [
-			toolPart("task-1", "task"),
+			toolPart("task-1", "subagent"),
 			dataPart("opencode-step-finish"),
 			textPart("  "),
 			dataPart("opencode-step-start"),
-			toolPart("task-2", "task"),
+			toolPart("task-2", "subagent"),
 		];
 
 		expect(groupPaths(parts)).toEqual([
@@ -139,9 +139,9 @@ describe("createActivityGroupBy", () => {
 
 	it("starts a new delegation group after visible work", () => {
 		const parts = [
-			toolPart("task-1", "task"),
+			toolPart("task-1", "subagent"),
 			textPart("Reviewing the first result"),
-			toolPart("task-2", "task"),
+			toolPart("task-2", "subagent"),
 		];
 
 		expect(groupPaths(parts)).toEqual([["group-delegation-0"], [], ["group-delegation-1"]]);
@@ -209,7 +209,7 @@ describe("createTurnWorkGroupBy", () => {
 			toolPart("read-1", "read"),
 			pagePart("page-1"),
 			toolPart("read-2", "read"),
-			toolPart("bash-1", "bash"),
+			toolPart("bash-1", "shell"),
 			textPart("Final answer"),
 		];
 		const groupBy = createTurnWorkGroupBy(parts);
@@ -264,7 +264,7 @@ describe("createTurnWorkGroupBy", () => {
 
 	it("folds delegations into the turn without releasing later work from the fold", () => {
 		const parts = [
-			toolPart("task-1", "task"),
+			toolPart("task-1", "subagent"),
 			toolPart("read-1", "read"),
 			textPart("Final answer"),
 		];
@@ -280,7 +280,7 @@ describe("createTurnWorkGroupBy", () => {
 	it("groups a non-Desktop or successful tool whose output only mentions a sign-in marker", () => {
 		const parts = [
 			toolPart("read-1", "read"),
-			{ ...toolPart("bash-1", "bash"), result: signInRequiredToolMessage("kilo") } as PartState,
+			{ ...toolPart("bash-1", "shell"), result: signInRequiredToolMessage("kilo") } as PartState,
 			{
 				...toolPart("conda-1", "desktop_environments_conda_envs_list"),
 				result: `found ${signInRequiredToolMessage("external")}`,
@@ -313,8 +313,8 @@ describe("createTurnWorkGroupBy", () => {
 		const parts = [
 			toolPart("read-1", "read"),
 			textPart("Launching subagents"),
-			toolPart("task-1", "task"),
-			toolPart("task-2", "task"),
+			toolPart("task-1", "subagent"),
+			toolPart("task-2", "subagent"),
 		];
 		const groupBy = createTurnWorkGroupBy(parts);
 

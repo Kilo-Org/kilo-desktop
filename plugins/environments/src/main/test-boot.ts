@@ -29,6 +29,7 @@ import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import {
 	ChatConfigPoint,
+	KiloServer,
 	CORE_DEFINITIONS,
 	Tool,
 	type ChatConfig,
@@ -117,8 +118,11 @@ export async function stopEnvironmentsMains(): Promise<void> {
 	await Promise.all(directories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 }
 
-/** kilo.core with its points and a flag source whose values the test sets. */
-function coreStandIn(initial: Record<string, FlagValue>) {
+/**
+ * kilo.core with its points, a flag source whose values the test sets, and
+ * its server's status (`serverVersion`, when given).
+ */
+function coreStandIn(initial: Record<string, FlagValue>, serverVersion?: string) {
 	let values = initial;
 	const listeners = new Set<() => void>();
 	const registration: PluginRegistration = {
@@ -133,6 +137,19 @@ function coreStandIn(initial: Record<string, FlagValue>) {
 						return () => listeners.delete(listener);
 					},
 					identify: () => undefined,
+				});
+				if (serverVersion === undefined) return;
+				const unused = () => {
+					throw new Error("not in this test");
+				};
+				sdk.domainObjects.provide(KiloServer, {
+					initialState: { status: "ready", version: serverVersion },
+					methods: {
+						connect: unused,
+						restart: unused,
+						disposeInstance: unused,
+						userConfigFile: unused,
+					},
 				});
 			},
 		}),
@@ -185,6 +202,8 @@ export interface BootOptions {
 	readonly withoutChat?: boolean;
 	readonly withoutLocalInference?: boolean;
 	readonly logger?: KernelLogger;
+	/** The running Kilo server's version, as kilo.core reports it (no server when absent). */
+	readonly serverVersion?: string;
 }
 
 /** kilo.environments' main entry with its stand-ins, and a window. */
@@ -194,7 +213,7 @@ export async function bootEnvironmentsMain(options: BootOptions = {}) {
 	const bridges: FakeBridge[] = [];
 	let resolves = 0;
 	const flagValues = { [ENVIRONMENTS_FLAG]: options.flag ?? true };
-	const core = coreStandIn(flagValues);
+	const core = coreStandIn(flagValues, options.serverVersion);
 	const openSettings = vi.fn<(section: string | undefined) => void>();
 	const stub = (registration: PluginRegistration): PluginRegistration => ({
 		...registration,

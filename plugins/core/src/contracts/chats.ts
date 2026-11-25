@@ -111,18 +111,23 @@ export type PromptChatInput = z.input<typeof promptChatInputSchema>;
 export const permissionRequestSchema = z.object({
 	id: z.string(),
 	chatId: z.string(),
-	/** What is asked for: a tool (`bash`, `edit`, a `kilo.core/tool` by wire name) or `external_directory`. */
+	/**
+	 * What is asked for, in the running Kilo server's own names: one of its
+	 * built-in tools or permissions, a `kilo.core/tool` by wire name, or
+	 * `external_directory`.
+	 */
 	permission: z.string(),
 	/** The `kilo.core/tool` contribution key when `permission` names one of the app's tools. */
 	toolKey: z.string().optional(),
 	patterns: z.array(z.string()),
-	/** The server's flags (`sandboxEscalation`, `configProtected`, `skillShell`…). */
+	/** The running server's own flags for the request. */
 	metadata: z.record(z.string(), z.unknown()),
 });
 export type PermissionRequest = z.output<typeof permissionRequestSchema>;
 
 /** A Kilo permission rule, as chats are created with. */
 export const permissionRuleSchema = z.object({
+	/** The permission, in the running Kilo server's own names (as `PermissionRequest.permission`). */
 	permission: z.string(),
 	pattern: z.string(),
 	action: z.enum(["allow", "ask", "deny"]),
@@ -269,8 +274,9 @@ export interface ChatConfig {
 	/** Extra system instructions. */
 	readonly instructions?: readonly string[];
 	/**
-	 * Kilo permission rules for the chat (`bash` commands that must ask,
-	 * folders to allow). Applied after the workspace's folders and before the
+	 * Kilo permission rules for the chat (shell commands that must ask,
+	 * folders to allow), named as the running Kilo server names its
+	 * permissions. Applied after the workspace's folders and before the
 	 * tools' ask and deny rules.
 	 */
 	readonly permissions?: readonly PermissionRule[];

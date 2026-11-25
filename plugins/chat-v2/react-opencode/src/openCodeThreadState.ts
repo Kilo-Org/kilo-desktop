@@ -1,47 +1,30 @@
+import type { OpenCodeEvent, SessionMessageInfo } from "@kilocode/client";
+
+import { foldKiloEvent, foldKiloSessionEvent } from "./kiloTranscript";
 import type {
-	Message,
-	MessageWithParts,
+	OpenCodeInboxEntry,
 	OpenCodeOlderHistory,
 	OpenCodeServerMessage,
 	OpenCodeStateEvent,
 	OpenCodeThreadState,
-	Part,
 	PendingUserMessage,
-	ThreadUserMessagePart,
 	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
 	OpenCodeQuestionRequest,
 	FormAnswer,
 } from "./types";
-import { serializeOpenCodeParts } from "./serializeUserParts";
 
-const PENDING_MATCH_WINDOW_MS = 2 * 60 * 1000;
 const MAX_UNHANDLED_EVENTS = 25;
 
-const extractCreatedAt = (message: Message | undefined): number | undefined => {
-	const created = message?.time?.created;
-	return typeof created === "number" ? created : undefined;
-};
-
-const normalizeText = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-
-const pendingFingerprint = (pending: PendingUserMessage) => normalizeText(pending.contentText);
-
-const partTextFingerprint = (parts: readonly ThreadUserMessagePart[]) =>
-	normalizeText(serializeOpenCodeParts(parts));
-
-const serverFingerprint = (message: MessageWithParts) =>
-	normalizeText(serializeOpenCodeParts(message.parts));
-
-/** Transcript order: by creation time, ids breaking ties. */
+/** Transcript order for messages from different reads: by creation time, ids breaking ties. */
 const compareMessages = (
 	left: OpenCodeServerMessage | undefined,
 	right: OpenCodeServerMessage | undefined,
 	leftId: string,
 	rightId: string,
 ) => {
-	const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;
-	const rightCreated = extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;
+	const leftCreated = left?.time.created ?? Number.MAX_SAFE_INTEGER;
+	const rightCreated = right?.time.created ?? Number.MAX_SAFE_INTEGER;
 	if (leftCreated !== rightCreated) return leftCreated - rightCreated;
 	return leftId.localeCompare(rightId);
 };
@@ -55,49 +38,29 @@ const sortMessageIds = (
 	);
 };
 
-const toServerMessage = (message: MessageWithParts): OpenCodeServerMessage => ({
-	id: message.info.id,
-	info: message.info,
-	parts: message.parts,
-});
-
-const upsertMessage = (
+/**
+ * Drops the pending copies of prompts the transcript now holds, matched by the
+ * id they were sent with. A slash command goes out without one (Kilo v2 names
+ * the prompt it expands to), so a prompt `delivered` under an id no pending
+ * copy waits for stands for the one pending copy sent before it, if only one.
+ */
+const reconcilePending = (
 	state: OpenCodeThreadState,
-	messageId: string,
-	updater: (current: OpenCodeServerMessage | undefined) => OpenCodeServerMessage,
+	deliveredId?: string,
 ): OpenCodeThreadState => {
-	const current = state.messagesById[messageId];
-	const nextMessage = updater(current);
-	const messagesById = {
-		...state.messagesById,
-		[messageId]: nextMessage,
-	};
-	const messageOrder = current
-		? state.messageOrder
-		: sortMessageIds(messagesById, [...state.messageOrder, messageId]);
-
-	return {
-		...state,
-		messagesById,
-		messageOrder,
-	};
-};
-
-const updateExistingMessage = (
-	state: OpenCodeThreadState,
-	messageId: string,
-	updater: (current: OpenCodeServerMessage) => OpenCodeServerMessage,
-): OpenCodeThreadState => {
-	const current = state.messagesById[messageId];
-	if (!current) return state;
-
-	return {
-		...state,
-		messagesById: {
-			...state.messagesById,
-			[messageId]: updater(current),
-		},
-	};
+	const pending = Object.values(state.pendingUserMessages);
+	let delivered = pending.filter((item) => item.messageId in state.messagesById);
+	const message = deliveredId ? state.messagesById[deliveredId] : undefined;
+	if (delivered.length === 0 && message?.type === "user") {
+		const sentBefore = pending.filter(
+			(item) => item.status === "pending" && item.createdAt <= message.time.created,
+		);
+		if (sentBefore.length === 1) delivered = sentBefore;
+	}
+	if (delivered.length === 0) return state;
+	const pendingUserMessages = { ...state.pendingUserMessages };
+	for (const pending of delivered) delete pendingUserMessages[pending.clientId];
+	return { ...state, pendingUserMessages };
 };
 
 const removePending = (state: OpenCodeThreadState, clientId: string): OpenCodeThreadState => {
@@ -108,39 +71,6 @@ const removePending = (state: OpenCodeThreadState, clientId: string): OpenCodeTh
 		...state,
 		pendingUserMessages,
 	};
-};
-
-const findPendingMatchByHistory = (state: OpenCodeThreadState, message: MessageWithParts) => {
-	const createdAt = extractCreatedAt(message.info);
-	const fingerprint = serverFingerprint(message);
-	const candidates = (Object.values(state.pendingUserMessages) as PendingUserMessage[]).filter(
-		(pending) =>
-			pending.status === "pending" &&
-			(createdAt === undefined ||
-				Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS) &&
-			(fingerprint.length === 0 ||
-				pendingFingerprint(pending) === fingerprint ||
-				partTextFingerprint(pending.parts) === fingerprint),
-	);
-
-	if (candidates.length === 1) return candidates[0];
-	if (candidates.length > 1) {
-		return candidates.sort((left, right) => left.createdAt - right.createdAt)[0];
-	}
-	return undefined;
-};
-
-const findPendingMatchByMessageInfo = (state: OpenCodeThreadState, message: Message) => {
-	const createdAt = extractCreatedAt(message);
-	const candidates = (Object.values(state.pendingUserMessages) as PendingUserMessage[]).filter(
-		(pending) =>
-			pending.status === "pending" &&
-			(createdAt === undefined ||
-				Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS),
-	);
-
-	if (candidates.length === 1) return candidates[0];
-	return undefined;
 };
 
 /*
@@ -154,56 +84,40 @@ const findPendingMatchByMessageInfo = (state: OpenCodeThreadState, message: Mess
 const historyLoaded = (
 	state: OpenCodeThreadState,
 	session: OpenCodeThreadState["session"],
-	messages: readonly MessageWithParts[],
+	messages: readonly SessionMessageInfo[],
 	olderHistory: OpenCodeOlderHistory = { type: "complete" },
 ): OpenCodeThreadState => {
-	let nextState: OpenCodeThreadState = {
+	const messagesById: Record<string, OpenCodeServerMessage> = {};
+	for (const message of messages) messagesById[message.id] = message;
+	let messageOrder = messages.map((message) => message.id);
+
+	const oldestId = messages[0]?.id;
+	if (olderHistory.type !== "complete" && oldestId) {
+		const oldest = messagesById[oldestId];
+		const kept: string[] = [];
+		for (const id of state.messageOrder) {
+			const held = state.messagesById[id];
+			if (compareMessages(held, oldest, id, oldestId) >= 0) break;
+			if (held && !(id in messagesById)) {
+				messagesById[id] = held;
+				kept.push(id);
+			}
+		}
+		messageOrder = [...kept, ...messageOrder];
+	}
+
+	return reconcilePending({
 		...state,
 		session,
 		loadState: { type: "ready" },
 		olderHistory,
-		messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,
-		messageOrder: [],
+		messagesById,
+		messageOrder,
 		sync: {
 			...state.sync,
 			lastHistoryLoadAt: Date.now(),
 		},
-	};
-
-	const nextMessagesById: Record<string, OpenCodeServerMessage> = {};
-	for (const message of messages) {
-		const pendingMatch =
-			message.info.role === "user" ? findPendingMatchByHistory(nextState, message) : undefined;
-
-		nextMessagesById[message.info.id] = {
-			id: message.info.id,
-			info: message.info,
-			parts: message.parts,
-			shadowParts: message.parts.length === 0 && pendingMatch ? pendingMatch.parts : undefined,
-		};
-
-		if (pendingMatch) {
-			nextState = removePending(nextState, pendingMatch.clientId);
-		}
-	}
-
-	const oldestId = messages[0]?.info.id;
-	if (olderHistory.type !== "complete" && oldestId) {
-		const oldest = nextMessagesById[oldestId];
-		for (const id of state.messageOrder) {
-			const kept = state.messagesById[id];
-			if (compareMessages(kept, oldest, id, oldestId) >= 0) break;
-			if (kept) nextMessagesById[id] = kept;
-		}
-	}
-
-	nextState = {
-		...nextState,
-		messagesById: nextMessagesById,
-		messageOrder: sortMessageIds(nextMessagesById, Object.keys(nextMessagesById)),
-	};
-
-	return nextState;
+	});
 };
 
 /**
@@ -213,70 +127,32 @@ const historyLoaded = (
  */
 const historyPrepended = (
 	state: OpenCodeThreadState,
-	messages: readonly MessageWithParts[],
+	messages: readonly SessionMessageInfo[],
 	boundaryId: string,
 ): OpenCodeThreadState => {
 	const boundary = state.messagesById[boundaryId];
+	const held = state.messageOrder.filter((id) => {
+		const message = state.messagesById[id];
+		return message && !(boundary && compareMessages(message, boundary, id, boundaryId) < 0);
+	});
 	const messagesById: Record<string, OpenCodeServerMessage> = {};
-	for (const id of state.messageOrder) {
-		const held = state.messagesById[id];
-		if (!held) continue;
-		if (boundary && compareMessages(held, boundary, id, boundaryId) < 0) {
-			continue;
-		}
-		messagesById[id] = held;
-	}
-	for (const message of messages) {
-		if (message.info.id in messagesById) continue;
-		messagesById[message.info.id] = toServerMessage(message);
-	}
+	for (const id of held) messagesById[id] = state.messagesById[id]!;
+	const older = messages.filter((message) => !(message.id in messagesById));
+	for (const message of older) messagesById[message.id] = message;
 	return {
 		...state,
 		olderHistory: { type: "complete" },
 		messagesById,
-		messageOrder: sortMessageIds(messagesById, Object.keys(messagesById)),
+		messageOrder: boundary
+			? [...older.map((message) => message.id), ...held]
+			: sortMessageIds(messagesById, Object.keys(messagesById)),
 	};
 };
 
-const removeMessagePart = (parts: readonly Part[], partId: string) =>
-	parts.filter((part) => part.id !== partId);
-
-const upsertMessagePart = (parts: readonly Part[], part: Part) => {
-	if (!part.id) return [...parts, part];
-	const index = parts.findIndex((candidate) => candidate.id === part.id);
-	if (index === -1) return [...parts, part];
-	const nextParts = [...parts];
-	nextParts[index] = part;
-	return nextParts;
-};
-
-const applyMessagePartDelta = (
-	parts: readonly Part[],
-	partId: string,
-	field: string,
-	delta: string,
-) => {
-	const index = parts.findIndex((candidate) => candidate.id === partId);
-	if (index === -1) return null;
-
-	const current = parts[index];
-	if (!current) return null;
-	if (field === "text" && (current.type === "text" || current.type === "reasoning")) {
-		const nextParts = [...parts];
-		nextParts[index] = {
-			...current,
-			text: (current.text ?? "") + delta,
-		};
-		return nextParts;
-	}
-
-	return null;
-};
-
-// Parts imply activity only while status is unknown or busy. While cancelling,
-// reverting, or after an explicit idle they are cleanup output, not a new turn;
-// a new turn always announces itself with a busy session.status first.
-const activityFromPartEvent = (
+// A step's events imply activity only while status is unknown or busy. While
+// cancelling, reverting, or after an explicit idle they are cleanup output, not
+// a new turn; a new turn always announces itself with its execution first.
+const activityFromStepEvent = (
 	state: OpenCodeThreadState,
 ): Pick<OpenCodeThreadState, "runState" | "sessionStatus"> => {
 	if (
@@ -300,6 +176,7 @@ export const createOpenCodeThreadState = (sessionId: string): OpenCodeThreadStat
 	runState: { type: "idle" },
 	messageOrder: [],
 	messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,
+	inbox: {} as Readonly<Record<string, OpenCodeInboxEntry>>,
 	childSessionsById: {} as Readonly<Record<string, OpenCodeThreadState>>,
 	pendingUserMessages: {} as Readonly<Record<string, PendingUserMessage>>,
 	interactions: {
@@ -342,6 +219,67 @@ export const createOpenCodeThreadState = (sessionId: string): OpenCodeThreadStat
 	unhandledEvents: [],
 	sync: {},
 });
+
+const STEP_EVENT = /^session\.(step|text|reasoning|tool)\./;
+
+const runStatusFromEvent = (
+	state: OpenCodeThreadState,
+	event: OpenCodeEvent,
+): Pick<OpenCodeThreadState, "runState" | "sessionStatus"> | undefined => {
+	switch (event.type) {
+		case "session.execution.started":
+			return {
+				sessionStatus: { type: "busy" },
+				runState:
+					state.runState.type === "cancelling" || state.runState.type === "reverting"
+						? state.runState
+						: { type: "streaming" },
+			};
+		case "session.execution.succeeded":
+		case "session.execution.failed":
+		case "session.execution.interrupted":
+		case "session.idle":
+			return { sessionStatus: { type: "idle" }, runState: { type: "idle" } };
+		case "session.retry.scheduled":
+			return {
+				sessionStatus: {
+					type: "retry",
+					attempt: event.data.attempt,
+					message: event.data.error.message,
+					next: event.data.at,
+				},
+				runState: state.runState.type === "idle" ? { type: "streaming" } : state.runState,
+			};
+		default:
+			return STEP_EVENT.test(event.type) ? activityFromStepEvent(state) : undefined;
+	}
+};
+
+/** A Kilo v2 event for this session: its transcript, session and status. */
+const reduceKiloEvent = (state: OpenCodeThreadState, event: OpenCodeEvent): OpenCodeThreadState => {
+	const transcript = foldKiloEvent(state, event);
+	const session = foldKiloSessionEvent(state.session, event);
+	const status = runStatusFromEvent(state, event);
+	const compacted = event.type === "session.compaction.ended";
+	if (transcript === state && session === state.session && !status && !compacted) return state;
+	const now = Date.now();
+	return reconcilePending(
+		{
+			...state,
+			messageOrder: transcript.messageOrder,
+			messagesById: transcript.messagesById,
+			inbox: transcript.inbox,
+			session,
+			...status,
+			sync: {
+				...state.sync,
+				lastEventAt: now,
+				...(compacted ? { lastCompactionAt: now } : {}),
+			},
+		},
+		event.type === "session.inbox.delivered" ? event.data.inboxID : undefined,
+	);
+};
 
 export const reduceOpenCodeThreadState = (
 	state: OpenCodeThreadState,
@@ -434,116 +372,8 @@ export const reduceOpenCodeThreadState = (
 				},
 			};
 
-		case "session.compacted":
-			return {
-				...state,
-				sync: {
-					...state.sync,
-					lastCompactionAt: Date.now(),
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "message.updated": {
-			const pendingMatch =
-				event.info.role === "user" ? findPendingMatchByMessageInfo(state, event.info) : undefined;
-
-			let nextState = upsertMessage(state, event.info.id, (current) => ({
-				id: event.info.id,
-				info: event.info,
-				parts: current?.parts ?? [],
-				shadowParts:
-					current?.shadowParts ??
-					(pendingMatch && (current?.parts?.length ?? 0) === 0 ? pendingMatch.parts : undefined),
-			}));
-
-			if (pendingMatch) {
-				nextState = removePending(nextState, pendingMatch.clientId);
-			}
-
-			return {
-				...nextState,
-				sync: {
-					...nextState.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "message.removed": {
-			if (!(event.messageId in state.messagesById)) return state;
-			const messagesById = { ...state.messagesById };
-			delete messagesById[event.messageId];
-			return {
-				...state,
-				messagesById,
-				messageOrder: state.messageOrder.filter((id) => id !== event.messageId),
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "part.updated": {
-			const nextState = updateExistingMessage(state, event.messageId, (current) => ({
-				id: event.messageId,
-				info: current.info,
-				parts: upsertMessagePart(current.parts, event.part),
-				shadowParts: current.shadowParts,
-			}));
-
-			if (nextState === state) return state;
-
-			return {
-				...nextState,
-				...activityFromPartEvent(state),
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "part.delta": {
-			const current = state.messagesById[event.messageId];
-			const nextParts = current
-				? applyMessagePartDelta(current.parts, event.partId, event.field, event.delta)
-				: null;
-
-			if (!current || !nextParts) return state;
-
-			return {
-				...updateExistingMessage(state, event.messageId, () => ({
-					...current,
-					parts: nextParts,
-				})),
-				...activityFromPartEvent(state),
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "part.removed": {
-			const nextState = updateExistingMessage(state, event.messageId, (current) => ({
-				id: event.messageId,
-				info: current.info,
-				parts: removeMessagePart(current.parts, event.partId),
-				shadowParts: current.shadowParts,
-			}));
-
-			if (nextState === state) return state;
-
-			return {
-				...nextState,
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
+		case "kilo.event":
+			return reduceKiloEvent(state, event.event);
 
 		case "permission.asked":
 			return {

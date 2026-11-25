@@ -25,15 +25,11 @@ const getSummary = (name: string, data: unknown) => {
 	return name.replace(/^opencode-/, "").replace(/-/g, " ");
 };
 
-/** Transient snapshot-init progress projected by the react-opencode fork. */
-export const OPENCODE_SNAPSHOT_PROGRESS_PART = "opencode-snapshot-progress";
-
 const HIDDEN_DATA_PARTS = new Set([
 	"opencode-step-start",
 	"opencode-step-finish",
 	"opencode-patch",
 	"opencode-subtask",
-	OPENCODE_SNAPSHOT_PROGRESS_PART,
 ]);
 
 export const isHiddenOpenCodeDataPart = (name: string): boolean => HIDDEN_DATA_PARTS.has(name);

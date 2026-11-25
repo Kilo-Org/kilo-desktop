@@ -1,181 +1,136 @@
-import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode-v2";
+import type { OpenCodeServerEvent, SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
 
 /*
- * The text of every part the window's stream is streaming, so a history read
- * made mid-stream shows it.
+ * The text of every step item (text or reasoning) the window's stream is
+ * streaming, so a history read made mid-stream shows it.
  *
- * - The server stores a text or reasoning part empty when it starts and only
- *   stores its text when it ends; in between the text exists only as
- *   `message.part.delta` events. A thread that reads its history mid-stream (a
- *   pane opened again, a hidden work session shown again and refreshed, a
- *   resync after the stream reconnects) would show just the deltas after the
- *   read until the part's end replaced it whole.
- * - Kept per part from its first `message.part.updated` (so its text is
- *   whole). An ending update keeps the ended part for `ENDED_PART_TTL_MS`: a
- *   read the server answered before the end but the thread reads after it
- *   would otherwise put the unfinished text back over the ended part.
- * - Dropped when the part or its message is removed, when its chat goes idle
- *   (a part still streaming then was cut off), or when a read shows it ended
- *   before its ending update arrived (lost to a reconnect).
+ * - Kilo v2 streams a step's text and reasoning as `session.text.*` /
+ *   `session.reasoning.*` events (`started`, `delta`, `ended`), naming the item
+ *   by its step (`assistantMessageID`) and `ordinal`. A history read mid-step
+ *   holds the item as far as the server had it; a thread that reads its
+ *   history then (a pane opened again, a hidden work session shown again and
+ *   refreshed, a resync after the stream reconnects) would show just the
+ *   deltas after the read until the step's next read.
+ * - Kept per item from its `started` event (so its text is whole). An `ended`
+ *   event keeps the final text for `ENDED_PART_TTL_MS`: a read the server
+ *   answered before the end but the thread reads after it would otherwise put
+ *   the unfinished text back.
+ * - Dropped when its chat's turn ends (an item still streaming then was cut
+ *   off) or the chat is deleted, and when a read shows its step finished: a
+ *   finished step is the server's final word.
  * - Kept across a reconnect, which makes every thread reload: what the stream
- *   gave before the drop is still the start of the text, and a reload whose
- *   part has ended carries the whole text, which wins.
+ *   gave before the drop is still the start of the text.
  * - Fed by the same batched listener as the threads, so at any moment it holds
  *   exactly what a subscribed thread has been given: a history read patched
  *   from it and the deltas delivered after it add up without overlap.
- * - A read's part is only replaced while it is unfinished and the live text
- *   extends it; a stored part that has ended is the server's final word.
+ * - A read's item is only replaced while the live text extends it.
  */
 
-/** How long an ended part still patches reads answered before it ended. */
+/** How long an ended item still patches reads answered before it ended. */
 export const ENDED_PART_TTL_MS = 10_000;
 
-interface LivePart {
+type Kind = "text" | "reasoning";
+
+interface LiveItem {
 	readonly sessionId: string;
 	readonly messageId: string;
 	text: string;
-	/** The whole ending update, once the part has ended. */
-	ended?: { readonly part: UnknownRecord; readonly expires: number };
+	/** When the ended item stops patching reads, once it has ended. */
+	expires?: number;
 }
 
 type UnknownRecord = Record<string, unknown>;
 
-const asRecord = (value: unknown): UnknownRecord | null =>
-	typeof value === "object" && value !== null ? (value as UnknownRecord) : null;
+const STREAM_EVENT = /^session\.(text|reasoning)\.(started|delta|ended)$/;
+const TURN_ENDED = /^session\.(execution\.(succeeded|failed|interrupted)|idle)$/;
 
-const isStreamedText = (part: UnknownRecord) =>
-	part["type"] === "text" || part["type"] === "reasoning";
-
-const hasEnded = (part: UnknownRecord) => asRecord(part["time"])?.["end"] != null;
-
-const textOf = (part: UnknownRecord) => (typeof part["text"] === "string" ? part["text"] : "");
+const keyOf = (sessionId: string, messageId: string, kind: Kind, ordinal: number) =>
+	`${sessionId}:${messageId}:${kind}:${ordinal}`;
 
 export class LiveParts {
-	readonly #parts = new Map<string, LivePart>();
-	/** Applies one event from the window's (batched) stream. */
+	readonly #items = new Map<string, LiveItem>();
+
 	apply(event: OpenCodeServerEvent): void {
 		this.#dropExpired();
-		const properties = event.properties;
-		switch (event.type) {
-			case "message.part.updated": {
-				const part = asRecord(properties["part"]);
-				const id = part?.["id"];
-				if (!part || typeof id !== "string") return;
-				const sessionId = part["sessionID"];
-				const messageId = part["messageID"];
-				if (
-					!isStreamedText(part) ||
-					typeof sessionId !== "string" ||
-					typeof messageId !== "string"
-				) {
-					this.#parts.delete(id);
-					return;
-				}
-				const text = textOf(part);
-				const ended = hasEnded(part)
-					? { part, expires: Date.now() + ENDED_PART_TTL_MS }
-					: undefined;
-				this.#parts.set(id, { sessionId, messageId, text, ...(ended ? { ended } : {}) });
-				return;
-			}
-			case "message.part.delta": {
-				const { partID, field, delta } = properties;
-				if (field !== "text" || typeof partID !== "string" || typeof delta !== "string") return;
-				const live = this.#parts.get(partID);
-				if (live && !live.ended) live.text += delta;
-				return;
-			}
-			case "message.part.removed": {
-				const { partID } = properties;
-				if (typeof partID === "string") this.#parts.delete(partID);
-				return;
-			}
-			case "message.removed": {
-				const { messageID } = properties;
-				for (const [id, live] of this.#parts) {
-					if (live.messageId === messageID) this.#parts.delete(id);
-				}
-				return;
-			}
-			case "session.idle":
-				if (event.sessionId) this.#dropStreaming(event.sessionId);
-				return;
-			case "session.deleted":
-				if (event.sessionId) this.#dropSession(event.sessionId);
-				return;
+		const sessionId = event.sessionId;
+		if (!sessionId) return;
+		const match = STREAM_EVENT.exec(event.type);
+		if (match) {
+			this.#stream(sessionId, match[1] as Kind, match[2]!, event.properties);
+			return;
 		}
+		if (TURN_ENDED.test(event.type)) this.#drop(sessionId, (item) => item.expires === undefined);
+		else if (event.type === "session.deleted") this.#drop(sessionId, () => true);
 	}
 
-	/**
-	 * `messages` (a history as the thread shows it) with live text filled in.
-	 * The thread patches its history when it is about to show it, so deltas
-	 * that arrived while it was read are in here (and applied to the thread's
-	 * old state) by then.
-	 */
-	patchMessages<T>(chatId: string, messages: readonly T[]): readonly T[] {
+	/** `messages` with each unfinished step's items as far as they have streamed. */
+	patchMessages(
+		chatId: string,
+		messages: readonly SessionMessageInfo[],
+	): readonly SessionMessageInfo[] {
 		this.#dropExpired();
-		if (!this.#hasSession(chatId)) return messages;
-		return messages.map((message): T => {
-			const record = asRecord(message);
-			const parts = record?.["parts"];
-			if (!record || !Array.isArray(parts)) return message;
-			let changed = false;
-			const nextParts = parts.map((part: unknown) => {
-				const patched = this.#patchPart(chatId, part);
-				if (patched !== part) changed = true;
-				return patched;
-			});
-			return changed ? ({ ...record, parts: nextParts } as T) : message;
-		});
+		if (![...this.#items.values()].some((item) => item.sessionId === chatId)) return messages;
+		return messages.map((message) => this.#patchMessage(chatId, message));
 	}
 
 	clear(): void {
-		this.#parts.clear();
+		this.#items.clear();
 	}
 
-	#patchPart(chatId: string, part: unknown): unknown {
-		const record = asRecord(part);
-		const id = record?.["id"];
-		if (!record || typeof id !== "string") return part;
-		const live = this.#parts.get(id);
-		if (!live || live.sessionId !== chatId) return part;
-		if (hasEnded(record)) {
-			// Its ending update was lost to a reconnect. A buffered one is kept for
-			// other reads (another pane's, a prefetch) answered before the end.
-			if (!live.ended) this.#parts.delete(id);
-			return part;
+	#stream(sessionId: string, kind: Kind, phase: string, data: UnknownRecord): void {
+		const { assistantMessageID: messageId, ordinal } = data;
+		if (typeof messageId !== "string" || typeof ordinal !== "number") return;
+		const key = keyOf(sessionId, messageId, kind, ordinal);
+		if (phase === "started") {
+			this.#items.set(key, { sessionId, messageId, text: "" });
+			return;
 		}
-		if (!isStreamedText(record)) return part;
-		const stored = textOf(record);
-		if (!live.text.startsWith(stored)) return part;
-		if (live.ended) return live.ended.part;
-		if (live.text.length <= stored.length) return part;
-		return { ...record, text: live.text };
-	}
-
-	#hasSession(chatId: string): boolean {
-		for (const live of this.#parts.values()) {
-			if (live.sessionId === chatId) return true;
+		const live = this.#items.get(key);
+		if (phase === "delta") {
+			if (live && live.expires === undefined && typeof data.delta === "string") {
+				live.text += data.delta;
+			}
+			return;
 		}
-		return false;
+		if (typeof data.text !== "string") return;
+		this.#items.set(key, {
+			sessionId,
+			messageId,
+			text: data.text,
+			expires: Date.now() + ENDED_PART_TTL_MS,
+		});
 	}
 
-	#dropStreaming(chatId: string): void {
-		for (const [id, live] of this.#parts) {
-			if (live.sessionId === chatId && !live.ended) this.#parts.delete(id);
+	#patchMessage(chatId: string, message: SessionMessageInfo): SessionMessageInfo {
+		if (message.type !== "assistant") return message;
+		if (message.time.completed !== undefined) {
+			this.#drop(chatId, (item) => item.messageId === message.id && item.expires === undefined);
+			return message;
 		}
+		const ordinals = { text: 0, reasoning: 0 };
+		let changed = false;
+		const content = message.content.map((item) => {
+			if (item.type === "tool") return item;
+			const live = this.#items.get(keyOf(chatId, message.id, item.type, ordinals[item.type]++));
+			if (!live || live.text.length <= item.text.length || !live.text.startsWith(item.text)) {
+				return item;
+			}
+			changed = true;
+			return { ...item, text: live.text };
+		});
+		return changed ? { ...message, content } : message;
 	}
 
-	#dropSession(chatId: string): void {
-		for (const [id, live] of this.#parts) {
-			if (live.sessionId === chatId) this.#parts.delete(id);
+	#drop(sessionId: string, matches: (item: LiveItem) => boolean): void {
+		for (const [key, item] of this.#items) {
+			if (item.sessionId === sessionId && matches(item)) this.#items.delete(key);
 		}
 	}
 
 	#dropExpired(): void {
 		const now = Date.now();
-		for (const [id, live] of this.#parts) {
-			if (live.ended && live.ended.expires <= now) this.#parts.delete(id);
+		for (const [key, item] of this.#items) {
+			if (item.expires !== undefined && item.expires <= now) this.#items.delete(key);
 		}
 	}
 }

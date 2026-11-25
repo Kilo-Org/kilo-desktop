@@ -149,6 +149,8 @@ describe("kilo.environments in the window", () => {
 		expect(cli.implementation.allowAlways?.({ ...request, permission: "edit" })).toBe(true);
 		expect(cli.implementation.allowAlways?.(request)).toBe(false);
 		expect(cli.implementation.allowAlways?.({ ...request, patterns: ["ls"] })).toBe(true);
+		// Kilo v2 names the shell permission `shell`.
+		expect(cli.implementation.allowAlways?.({ ...request, permission: "shell" })).toBe(false);
 
 		const { baseElement } = host.render(
 			<RenderContribution<PermissionDetailProps>
@@ -162,7 +164,30 @@ describe("kilo.environments in the window", () => {
 			.toBeVisible();
 	});
 
-	it("leaves requests other than bash to their own renderers", async () => {
+	it("warns on Kilo v2's shell request the same way", async () => {
+		const host = await boot();
+		const cli = renderer(host, "kilo.environments/conda-cli");
+
+		const { baseElement } = host.render(
+			<RenderContribution<PermissionDetailProps>
+				contribution={cli.contribution}
+				props={{
+					request: {
+						permission: "shell",
+						patterns: ["conda install ./evil-1.0.tar.bz2"],
+						metadata: {},
+						args: undefined,
+					},
+				}}
+				select={selectDetail}
+			/>,
+		);
+		await expect
+			.element(page.elementLocator(baseElement).getByTestId("conda-local-file-warning"))
+			.toBeVisible();
+	});
+
+	it("leaves requests other than the shell to their own renderers", async () => {
 		const host = await boot();
 		const cli = renderer(host, "kilo.environments/conda-cli");
 

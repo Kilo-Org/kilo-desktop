@@ -227,6 +227,8 @@ describe("summarizeCondaInvocation", () => {
 		expect(isPerActionCondaMutation("bash", ["/opt/anaconda3/bin/mamba env create -f e.yml"])).toBe(
 			true,
 		);
+		// Kilo v2 names the same shell permission `shell`.
+		expect(isPerActionCondaMutation("shell", ["conda install numpy"])).toBe(true);
 		// Read-only tool and a non-conda bash command keep the standing allow.
 		expect(isPerActionCondaMutation("desktop_environments_conda_envs_list", ["*"])).toBe(false);
 		expect(isPerActionCondaMutation("bash", ["rm -rf /tmp/x"])).toBe(false);

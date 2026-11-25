@@ -1,10 +1,9 @@
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
+
 type StatusPart = {
 	type: string;
 	status?: { type: string } | undefined;
 };
-
-const asRecord = (value: unknown): Record<string, unknown> | null =>
-	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 
 /**
  * True when a tool call or reasoning part is still running, so the activity
@@ -20,17 +19,16 @@ export function messageHasInFlightActivity(parts: readonly StatusPart[]): boolea
 /**
  * The assistant-ui projection marks the last text part "running" for as long
  * as the message runs, so it cannot tell streaming text from a finished
- * paragraph. The raw OpenCode parts (message.metadata.custom.opencode.parts)
- * can: a text part gets `time.end` once the model stops emitting it.
+ * paragraph. Kilo's messages behind it (`metadata.custom.opencode.messages`)
+ * can: a step still running whose latest content is text is streaming it.
  */
-export function openCodeTextIsStreaming(rawParts: unknown): boolean {
-	if (!Array.isArray(rawParts)) return false;
-	return rawParts.some((part) => {
-		const record = asRecord(part);
-		if (record?.type !== "text" || record.synthetic === true) return false;
-		const time = asRecord(record.time);
-		return typeof time?.start === "number" && time.end == null;
-	});
+export function openCodeTextIsStreaming(messages: readonly SessionMessageInfo[]): boolean {
+	return messages.some(
+		(message) =>
+			message.type === "assistant" &&
+			message.time.completed === undefined &&
+			message.content.at(-1)?.type === "text",
+	);
 }
 
 /**

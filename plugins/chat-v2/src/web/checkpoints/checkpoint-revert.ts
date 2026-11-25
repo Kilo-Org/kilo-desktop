@@ -1,7 +1,11 @@
 import { type useAui, useAuiState, type ThreadMessage } from "@assistant-ui/react";
-import type { OpenCodeServerMessage } from "@kilo-desktop/react-opencode-v2";
 import type { CreateAttachment } from "@assistant-ui/core";
-import type { SnapshotFileDiff } from "@kilo-desktop/react-opencode-v2";
+import {
+	userFileUrl,
+	type FileDiffInfo,
+	type OpenCodeServerMessage,
+	type SessionMessageUser,
+} from "@kilo-desktop/react-opencode-v2";
 
 import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { userPromptText } from "./retry-failed-prompt";
@@ -30,19 +34,19 @@ export const useRevertWorkspace = ():
 	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.revert?.workspace);
 
 /**
- * Raw `session.summary.diffs` array by reference — safe for `Object.is` because
- * the patched runtime replaces `state.session` only on `session.updated` /
- * `history.loaded`, never on streaming deltas. Callers filter/sum during
- * render; deriving here would re-render on every store update.
+ * The pending revert's file changes (`session.revert.files`) by reference —
+ * safe for `Object.is` because the session is replaced only when it changes,
+ * never on streaming deltas. Callers filter/sum during render; deriving here
+ * would re-render on every store update.
  */
-export const useRevertDiffs = (): SnapshotFileDiff[] | undefined =>
-	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.summary?.diffs);
+export const useRevertDiffs = (): readonly FileDiffInfo[] | undefined =>
+	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.revert?.files);
 
 /**
- * Whether any user turn at or after this message recorded file changes
- * (`info.summary.diffs`). Gates RevertToHereButton so ranges without recorded
+ * Whether any user turn at or after this message changed files (its steps'
+ * `snapshot.files`). Gates RevertToHereButton so ranges without recorded
  * workspace changes keep the button hidden. Boolean primitive — safe for
- * `Object.is`; short-circuits on the first hit.
+ * `Object.is`.
  */
 export const useRevertRangeHasFileChanges = (): boolean =>
 	useAuiState((s) => {
@@ -73,11 +77,13 @@ function fileChangeIndex(state: ThreadState): FileChangeIndex {
 	if (cached) return cached;
 	const indexById = new Map<string, number>();
 	let lastChangedUserIndex = -1;
+	let userIndex = -1;
 	state.messageOrder.forEach((messageId, index) => {
 		indexById.set(messageId, index);
-		const info = state.messagesById[messageId]?.info;
-		if (info?.role === "user" && (info.summary?.diffs?.length ?? 0) > 0) {
-			lastChangedUserIndex = index;
+		const message = state.messagesById[messageId];
+		if (message?.type === "user") userIndex = index;
+		else if (message?.type === "assistant" && (message.snapshot?.files?.length ?? 0) > 0) {
+			lastChangedUserIndex = userIndex;
 		}
 	});
 	const index = { indexById, lastChangedUserIndex };
@@ -147,7 +153,7 @@ export async function restoreThroughUserMessage(aui: AuiClient, targetId: string
 		const msgId = extras.state.messageOrder[i];
 		if (msgId === undefined) continue;
 		const message = extras.state.messagesById[msgId];
-		if (message?.info?.role === "user") {
+		if (message?.type === "user") {
 			next = message;
 			break;
 		}
@@ -165,58 +171,43 @@ export async function restoreThroughUserMessage(aui: AuiClient, targetId: string
 	}
 }
 
-// Mirrors the projection's convertFilePart so restored attachments match how
-// the original message rendered them.
-export const attachmentFromServerFilePart = (
-	part: Extract<OpenCodeServerMessage["parts"][number], { type: "file" }>,
-): CreateAttachment => {
-	const mimeType = part.mime ?? "application/octet-stream";
-	if (mimeType.startsWith("image/")) {
+type UserFile = NonNullable<SessionMessageUser["files"]>[number];
+
+// Mirrors the projection's attachments so restored attachments match how the
+// original message rendered them.
+export const attachmentFromUserFile = (file: UserFile, index: number): CreateAttachment => {
+	const url = userFileUrl(file);
+	const name = file.name ?? "file";
+	if (file.mime.startsWith("image/")) {
 		return {
-			id: part.id,
+			id: String(index),
 			type: "image",
-			name: part.filename ?? "file",
-			contentType: mimeType,
-			content: [{ type: "image", image: part.url ?? "" }],
+			name,
+			contentType: file.mime,
+			content: [{ type: "image", image: url }],
 		};
 	}
 	return {
-		id: part.id,
+		id: String(index),
 		type: "file",
-		name: part.filename ?? "file",
-		contentType: mimeType,
-		content: [{ type: "file", data: part.url ?? "", mimeType }],
+		name,
+		contentType: file.mime,
+		content: [{ type: "file", data: url, mimeType: file.mime }],
 	};
 };
 
-/**
- * Known limitation: messages whose server-side `parts` are empty restore as
- * empty text because `shadowParts` — a client-side projection fallback — are
- * not visible here.
- * Accepted: this path targets the *next* user message during a Restore step,
- * not the clicked boundary message; the primary revert-to-here flow goes
- * through `messageToComposerPrompt`, which reads the projected ThreadMessage
- * and retains shadowParts-derived content.
- */
+/** A prompt as the composer takes it back: its text and attached files. */
 export function serverMessageToComposerPrompt(message: OpenCodeServerMessage): ComposerPrompt {
-	const attachments: CreateAttachment[] = [];
-	for (const part of message.parts) {
-		if (part.type === "file") {
-			attachments.push(attachmentFromServerFilePart(part));
-		}
-	}
-	return { text: serverMessageText(message), attachments };
+	if (message.type !== "user") return { text: "", attachments: [] };
+	return {
+		text: serverMessageText(message),
+		attachments: (message.files ?? []).map(attachmentFromUserFile),
+	};
 }
 
-/** Joined text parts of a server message — the text half of the composer prompt. */
+/** A prompt's text — the text half of the composer prompt. */
 export function serverMessageText(message: OpenCodeServerMessage): string {
-	const texts: string[] = [];
-	for (const part of message.parts) {
-		if (part.type === "text") {
-			texts.push(part.text ?? "");
-		}
-	}
-	return texts.join("\n").trim();
+	return message.type === "user" ? message.text.trim() : "";
 }
 
 export type RevertedUserRow = {
@@ -227,28 +218,52 @@ export type RevertedUserRow = {
 	hasDiffs: boolean;
 };
 
+/** The files each prompt's turn changed (its steps' `snapshot.files`), by prompt id. */
+function turnFiles(
+	order: readonly string[],
+	messagesById: Record<string, OpenCodeServerMessage> | undefined,
+	from: number,
+): Map<string, Set<string>> {
+	const files = new Map<string, Set<string>>();
+	let current: Set<string> | undefined;
+	for (let i = from; i < order.length; i++) {
+		const message = messagesById?.[order[i]!];
+		if (message?.type === "user") {
+			current = new Set();
+			files.set(message.id, current);
+		} else if (message?.type === "assistant") {
+			for (const file of message.snapshot?.files ?? []) current?.add(file);
+		}
+	}
+	return files;
+}
+
 export function deriveRevertedUserRows(
 	boundaryId: string | undefined,
 	messageOrder: readonly string[] | undefined,
 	messagesById: Record<string, OpenCodeServerMessage> | undefined,
+	revertFiles: readonly FileDiffInfo[] = [],
 ): RevertedUserRow[] {
 	if (boundaryId === undefined) return [];
 	const order = messageOrder ?? [];
 	const boundaryIndex = order.indexOf(boundaryId);
 	if (boundaryIndex === -1) return [];
+	const changed = turnFiles(order, messagesById, boundaryIndex);
 	const rows: RevertedUserRow[] = [];
 	for (let i = boundaryIndex; i < order.length; i++) {
 		const id = order[i];
 		if (id === undefined) continue;
 		const message = messagesById?.[id];
-		if (message?.info?.role !== "user") continue;
-		const diffs = message.info.summary?.diffs ?? [];
+		if (message?.type !== "user") continue;
+		const files = changed.get(id) ?? new Set<string>();
+		// The revert reports each file's line counts; a turn counts the files it changed.
+		const diffs = revertFiles.filter((diff) => files.has(diff.file));
 		rows.push({
 			id,
 			text: serverMessageText(message),
-			additions: diffs.reduce((total: number, diff) => total + diff.additions, 0),
-			deletions: diffs.reduce((total: number, diff) => total + diff.deletions, 0),
-			hasDiffs: diffs.length > 0,
+			additions: diffs.reduce((total, diff) => total + diff.additions, 0),
+			deletions: diffs.reduce((total, diff) => total + diff.deletions, 0),
+			hasDiffs: files.size > 0,
 		});
 	}
 	return rows;
@@ -271,7 +286,8 @@ export const useRevertedUserRows = (): RevertedUserRow[] => {
 	const messagesById = useAuiState(
 		(s) => selectOpenCodeExtras(s.thread.extras)?.state.messagesById,
 	);
-	return deriveRevertedUserRows(boundaryId, messageOrder, messagesById);
+	const revertFiles = useRevertDiffs();
+	return deriveRevertedUserRows(boundaryId, messageOrder, messagesById, revertFiles);
 };
 
 /**

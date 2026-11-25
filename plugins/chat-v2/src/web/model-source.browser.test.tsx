@@ -130,7 +130,7 @@ describe("the model-source point", () => {
 			timeout: 10_000,
 		});
 		const model = host.server.requestsTo("POST", "/api/session/ses_new_1/model");
-		// v1 sent the variant beside the model; v2 sends it inside.
+		// Kilo v2 sends the variant inside the model.
 		expect(model.at(-1)?.body).toMatchObject({ model: { providerID: "acme", id: "deep-2" } });
 		expect(prepare).not.toHaveBeenCalled();
 	});

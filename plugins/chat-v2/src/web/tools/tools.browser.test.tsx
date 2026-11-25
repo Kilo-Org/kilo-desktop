@@ -375,14 +375,14 @@ describe("the tool-renderer point", () => {
 	const plugin = contributor(
 		{
 			"kilo.chat/tool-renderer": [
-				{ id: "framed-bash", tools: ["bash"], priority: 10 },
+				{ id: "framed-shell", tools: ["shell"], priority: 10 },
 				{ id: "ping", tools: ["acme.tools/ping"], standalone: true, category: "web" },
 			],
 		},
 		{
 			web: {
 				activate(sdk) {
-					sdk.extensions.implement(ToolRenderer, "framed-bash", { component: Framed });
+					sdk.extensions.implement(ToolRenderer, "framed-shell", { component: Framed });
 					sdk.extensions.implement(ToolRenderer, "ping", { component: Ping });
 				},
 			},

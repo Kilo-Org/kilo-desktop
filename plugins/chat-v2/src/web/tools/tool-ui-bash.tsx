@@ -6,28 +6,30 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
 import {
 	getCommandSummary,
-	getToolBashMetadataOutput,
 	isCancelledToolStatus,
 	normalizeBashOutput,
 	parseBashResult,
 	ToolOutputBlock,
 } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
+import { kiloMessagesOf, kiloShellReport } from "../runtime/kilo-transcript";
 
 export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const command = typeof args?.command === "string" ? args.command : "";
 	const isRunning = status?.type === "running";
 	const isCancelled = isCancelledToolStatus(status);
-	const liveOutput = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return getToolBashMetadataOutput(custom?.opencode?.parts, toolCallId);
-	});
+	const liveOutput = useAuiState(
+		(s) => kiloShellReport(kiloMessagesOf(s.message.metadata?.custom), toolCallId).output,
+	);
+	const reportedExit = useAuiState(
+		(s) => kiloShellReport(kiloMessagesOf(s.message.metadata?.custom), toolCallId).exit,
+	);
 
 	const parsed = parseBashResult(result);
-	const stdoutRaw = parsed.stdout ?? liveOutput;
+	const stdoutRaw = parsed.stdout || liveOutput;
 	const stdout = stdoutRaw ? normalizeBashOutput(stdoutRaw) : undefined;
 	const stderr = parsed.stderr ? normalizeBashOutput(parsed.stderr) : undefined;
-	const exitCode = parsed.exitCode ?? 0;
+	const exitCode = parsed.exitCode ?? reportedExit ?? 0;
 	const hasOutput = Boolean(stdout || stderr);
 	const isError = !isRunning && exitCode !== 0;
 

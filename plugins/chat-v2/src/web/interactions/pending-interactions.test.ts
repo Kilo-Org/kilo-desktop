@@ -45,17 +45,21 @@ const session = (
 		messagesById: {
 			message: {
 				id: "message",
-				info: undefined,
-				shadowParts: undefined,
-				parts: Object.entries(taskCalls).map(
-					([childSessionId, description]) =>
-						({
-							id: `task-${childSessionId}`,
-							type: "tool",
-							tool: "task",
-							state: { input: { description }, metadata: { sessionId: childSessionId } },
-						}) as never,
-				),
+				type: "assistant",
+				agent: "code",
+				model: { providerID: "kilo", id: "m" },
+				time: { created: 1 },
+				content: Object.entries(taskCalls).map(([childSessionId, description]) => ({
+					type: "tool" as const,
+					id: `call-${childSessionId}`,
+					name: "subagent",
+					time: { created: 1 },
+					state: {
+						status: "running" as const,
+						input: { agent: "explore", description },
+						metadata: { sessionID: childSessionId },
+					},
+				})),
 			},
 		},
 		childSessionsById: children,

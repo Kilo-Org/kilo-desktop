@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
+
 import type { ActivityPart } from "./tool-categories";
 import { getGroupDiffStats, getPartDiffStats } from "./tool-diff-stats";
 
@@ -25,14 +27,35 @@ const BACKEND_DIFF = `diff --git a/x.ts b/x.ts
 +c
 `;
 
-const opencodePartsWithDiff = (callID: string, diff: string) => [
-	{ type: "tool", callID, state: { metadata: { diff } } },
+/** Kilo's step holding a finished `edit` call that reports `patch` for x.ts. */
+const messagesWithDiff = (id: string, patch: string): SessionMessageInfo[] => [
+	{
+		id: "msg_a",
+		type: "assistant",
+		agent: "code",
+		model: { providerID: "kilo", id: "m" },
+		time: { created: 1, completed: 2 },
+		content: [
+			{
+				type: "tool",
+				id,
+				name: "edit",
+				time: { created: 1 },
+				state: {
+					status: "completed",
+					input: {},
+					content: [{ type: "text", text: "Edit applied" }],
+					metadata: { files: [{ file: "x.ts", patch, additions: 2, deletions: 1 }] },
+				},
+			},
+		],
+	},
 ];
 
 describe("getPartDiffStats", () => {
 	it("counts write content as pure additions", () => {
 		const part = toolPart("write", { file_path: "/a.txt", content: "one\ntwo\n" });
-		expect(getPartDiffStats(part, undefined)).toEqual({ added: 2, removed: 0 });
+		expect(getPartDiffStats(part, [])).toEqual({ added: 2, removed: 0 });
 	});
 
 	it("counts edit old/new string replacements", () => {
@@ -41,7 +64,7 @@ describe("getPartDiffStats", () => {
 			oldString: "one\ntwo\nthree\n",
 			newString: "one\n2\nthree\nfour\n",
 		});
-		expect(getPartDiffStats(part, undefined)).toEqual({ added: 2, removed: 1 });
+		expect(getPartDiffStats(part, [])).toEqual({ added: 2, removed: 1 });
 	});
 
 	it("prefers the backend unified diff over args", () => {
@@ -50,15 +73,17 @@ describe("getPartDiffStats", () => {
 			{ file_path: "/x.ts", oldString: "a", newString: "b" },
 			{ toolCallId: "call_1" },
 		);
-		const opencodeParts = opencodePartsWithDiff("call_1", BACKEND_DIFF);
-		expect(getPartDiffStats(part, opencodeParts)).toEqual({ added: 2, removed: 1 });
+		expect(getPartDiffStats(part, messagesWithDiff("call_1", BACKEND_DIFF))).toEqual({
+			added: 2,
+			removed: 1,
+		});
 	});
 
-	it("counts apply_patch additions and deletions from the patch text", () => {
-		const part = toolPart("apply_patch", {
+	it("counts patch additions and deletions from the patch text", () => {
+		const part = toolPart("patch", {
 			patchText: "*** Begin Patch\n*** Update File: x.ts\n@@\n-old\n+new\n+more\n*** End Patch",
 		});
-		expect(getPartDiffStats(part, undefined)).toEqual({ added: 2, removed: 1 });
+		expect(getPartDiffStats(part, [])).toEqual({ added: 2, removed: 1 });
 	});
 
 	it("skips in-flight calls whose args are still streaming", () => {
@@ -67,23 +92,20 @@ describe("getPartDiffStats", () => {
 			{ file_path: "/a.txt", content: "one\n" },
 			{ status: { type: "running" } },
 		);
-		expect(getPartDiffStats(part, undefined)).toBeNull();
+		expect(getPartDiffStats(part, [])).toBeNull();
 	});
 
 	it("returns null for non-mutation tools", () => {
-		expect(getPartDiffStats(toolPart("bash", { command: "ls" }), undefined)).toBeNull();
-		expect(getPartDiffStats({ type: "text" }, undefined)).toBeNull();
+		expect(getPartDiffStats(toolPart("shell", { command: "ls" }), [])).toBeNull();
+		expect(getPartDiffStats({ type: "text" }, [])).toBeNull();
 	});
 
 	it("returns null for mutation calls without content or with an empty patch", () => {
-		expect(getPartDiffStats(toolPart("write", {}), undefined)).toBeNull();
-		expect(getPartDiffStats(toolPart("edit", {}), undefined)).toBeNull();
-		expect(getPartDiffStats(toolPart("apply_patch", {}), undefined)).toBeNull();
+		expect(getPartDiffStats(toolPart("write", {}), [])).toBeNull();
+		expect(getPartDiffStats(toolPart("edit", {}), [])).toBeNull();
+		expect(getPartDiffStats(toolPart("patch", {}), [])).toBeNull();
 		expect(
-			getPartDiffStats(
-				toolPart("apply_patch", { patchText: "*** Begin Patch\n*** End Patch" }),
-				undefined,
-			),
+			getPartDiffStats(toolPart("patch", { patchText: "*** Begin Patch\n*** End Patch" }), []),
 		).toBeNull();
 	});
 });
@@ -99,11 +121,11 @@ describe("getGroupDiffStats", () => {
 				newString: "y\n",
 			}),
 		];
-		expect(getGroupDiffStats(parts, [0, 1, 2], undefined)).toEqual({ added: 3, removed: 1 });
+		expect(getGroupDiffStats(parts, [0, 1, 2], [])).toEqual({ added: 3, removed: 1 });
 	});
 
 	it("returns null when the group has no mutation parts", () => {
-		const parts = [toolPart("bash", { command: "ls" })];
-		expect(getGroupDiffStats(parts, [0], undefined)).toBeNull();
+		const parts = [toolPart("shell", { command: "ls" })];
+		expect(getGroupDiffStats(parts, [0], [])).toBeNull();
 	});
 });

@@ -8,7 +8,11 @@
  * surfaced as warnings, since they bypass the channel list.
  */
 
-import { MUTATING_CONDA_TOOL_NAMES, matchesMutatingCondaCli } from "./conda-permissions";
+import {
+	isShellPermission,
+	MUTATING_CONDA_TOOL_NAMES,
+	matchesMutatingCondaCli,
+} from "./conda-permissions";
 
 const CONDA_TOOL_PREFIX = "desktop_environments_conda_";
 
@@ -113,7 +117,8 @@ export function isMutatingCondaTool(toolName: string): boolean {
 
 /**
  * Whether a permission request is a conda mutation that must stay **per-action**
- * — either one of the gated MCP tools, or a `bash` command that runs a
+ * — either one of the gated MCP tools, or a shell command (`shell`, or `bash`
+ * before Kilo v2) that runs a
  * mutating conda-family CLI (`conda install …`). Both are approved one call at
  * a time: a standing "Always allow" would let a later, possibly injection-
  * driven, call skip this dialog.
@@ -123,7 +128,7 @@ export function isPerActionCondaMutation(
 	patterns: readonly string[],
 ): boolean {
 	if (isMutatingCondaTool(permissionLabel)) return true;
-	return permissionLabel === "bash" && matchesMutatingCondaCli(patterns.join("\n"));
+	return isShellPermission(permissionLabel) && matchesMutatingCondaCli(patterns.join("\n"));
 }
 
 export interface CondaInvocationSummary {

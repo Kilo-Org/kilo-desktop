@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
 	MUTATING_CONDA_TOOL_NAMES,
 	buildCondaCliPermissionRules,
+	isShellPermission,
+	shellPermissionName,
 	condaPermissionAction,
 	matchesMutatingCondaCli,
 } from "./conda-permissions";
@@ -42,13 +44,32 @@ describe("mutating conda tool permissions", () => {
 	});
 });
 
-describe("conda CLI (bash) permissions", () => {
-	const rules = buildCondaCliPermissionRules();
+describe("the shell permission's name", () => {
+	it("is the running Kilo server's own: `shell` on Kilo v2, `bash` before it", () => {
+		expect(shellPermissionName("0.0.0-v2-239")).toBe("shell");
+		expect(shellPermissionName("7.8.27")).toBe("bash");
+		expect(shellPermissionName("1.0.0")).toBe("bash");
+		expect(shellPermissionName("8.0.0")).toBe("shell");
+		expect(shellPermissionName(undefined)).toBe("bash");
+	});
+
+	it("reads either name as the shell", () => {
+		expect(isShellPermission("shell")).toBe(true);
+		expect(isShellPermission("bash")).toBe(true);
+		expect(isShellPermission("edit")).toBe(false);
+	});
+});
+
+describe("conda CLI (shell) permissions", () => {
+	const rules = buildCondaCliPermissionRules("shell");
 	const patterns = rules.map((rule) => rule.pattern);
 
-	it("asks before every mutating conda-family command", () => {
-		expect(rules.every((rule) => rule.permission === "bash")).toBe(true);
+	it("asks before every mutating conda-family command, under the server's shell name", () => {
+		expect(rules.every((rule) => rule.permission === "shell")).toBe(true);
 		expect(rules.every((rule) => rule.action === "ask")).toBe(true);
+		expect(buildCondaCliPermissionRules("bash").every((rule) => rule.permission === "bash")).toBe(
+			true,
+		);
 	});
 
 	it("covers install/create/update/remove for conda, mamba, and micromamba", () => {

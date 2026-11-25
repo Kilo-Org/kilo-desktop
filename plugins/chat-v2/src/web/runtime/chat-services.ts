@@ -20,12 +20,9 @@ type ServerHandle = DomainObjectHandle<typeof KiloServer>;
 
 /** What the server sends first on every (re)connect, once it publishes to that subscription. */
 const SERVER_CONNECTED = "server.connected";
-const RESYNC_EVENT = { payload: { type: STREAM_RECONNECTED_EVENT_TYPE, properties: {} } };
+const RESYNC_EVENT = { type: STREAM_RECONNECTED_EVENT_TYPE, data: {} };
 
-const eventType = (event: unknown): unknown => {
-	const outer = event as { type?: unknown; payload?: { type?: unknown } } | null;
-	return outer?.payload?.type ?? outer?.type;
-};
+const eventType = (event: unknown): unknown => (event as { type?: unknown } | null)?.type;
 
 /**
  * `stream` with a resync for every thread after each `server.connected`.

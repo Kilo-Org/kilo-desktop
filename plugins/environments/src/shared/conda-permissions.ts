@@ -73,8 +73,27 @@ function condaCliMutationPatterns(): string[] {
 	return condaCliMutationFragments().map((fragment) => `*${fragment}*`);
 }
 
+/** What the running Kilo server calls its shell tool and permission. */
+export type ShellPermissionName = "shell" | "bash";
+
 /**
- * Whether a `bash` command matches one of the mutating conda-CLI patterns
+ * The running Kilo server's own name for its shell permission, from the
+ * version kilo.core reports: Kilo v2 (`0.0.0-v2-…` builds, and releases after
+ * the 7.x line) says `shell`; earlier lines, and an unknown server, `bash`.
+ */
+export function shellPermissionName(serverVersion: string | undefined): ShellPermissionName {
+	if (!serverVersion) return "bash";
+	if (/(^|[-.])v2([-.]|$)/u.test(serverVersion)) return "shell";
+	const major = Number(/^(\d+)\./u.exec(serverVersion)?.[1]);
+	return Number.isFinite(major) && major >= 8 ? "shell" : "bash";
+}
+
+/** Whether a permission request is the shell's, by either line's name for it. */
+export const isShellPermission = (permission: string): boolean =>
+	permission === "shell" || permission === "bash";
+
+/**
+ * Whether a shell command matches one of the mutating conda-CLI patterns
  * above — i.e. the agent is running a conda mutation through the shell rather
  * than the gated MCP tools. Mirrors the `*<fragment>*` glob so the UI can treat
  * such a permission request as per-action-only (no standing "Always allow").
@@ -85,22 +104,23 @@ export function matchesMutatingCondaCli(command: string): boolean {
 
 /**
  * Session permission rules requiring **per-action user approval** (`ask`)
- * before the agent runs a mutating conda-family command through `bash`.
+ * before the agent runs a mutating conda-family command through the shell,
+ * under the running server's name for it (`shell`).
  *
  * The MCP conda tools are gated above, but the agent can instead shell out to
  * `conda`/`mamba`/`micromamba` (e.g. to install a local package file the tool
- * refuses). Bash may still be allowed — by the user's config, an earlier
+ * refuses). The shell may still be allowed — by the user's config, an earlier
  * "Always allow", or Auto mode — so the CLI path could run a privileged install
  * with no prompt. These rules keep conda mutations on per-action ask whatever
- * bash's own rule is, closing that substitution gap.
+ * the shell's own rule is, closing that substitution gap.
  *
  * Command-string matching is bypassable (wrappers, `sh -c`, aliases); this is
  * the app-side prompt, not a boundary. Pair with the bridge policy (gate 4),
  * isolation (gate 3), and agent-shell PATH/env scrubbing where available.
  */
-export function buildCondaCliPermissionRules(): PermissionRule[] {
+export function buildCondaCliPermissionRules(shell: ShellPermissionName): PermissionRule[] {
 	return condaCliMutationPatterns().map((pattern) => ({
-		permission: "bash",
+		permission: shell,
 		pattern,
 		action: "ask" as const,
 	}));

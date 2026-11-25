@@ -20,6 +20,7 @@ function makeState(
 		runState: { type: "idle" },
 		messageOrder: overrides.messageOrder ?? [],
 		messagesById: overrides.messagesById ?? {},
+		inbox: {},
 		childSessionsById: {},
 		pendingUserMessages: {},
 		interactions: {
@@ -33,13 +34,15 @@ function makeState(
 
 function msg(
 	id: string,
-	parts: { type: string; text?: string }[],
+	parts: { type: string; text?: string }[] = [],
 ): OpenCodeThreadState["messagesById"][string] {
 	return {
 		id,
-		info: { id, role: "assistant" } as never,
-		parts: parts as never,
-		shadowParts: undefined,
+		type: "assistant",
+		agent: "code",
+		model: { providerID: "kilo", id: "m" },
+		time: { created: 1 },
+		content: parts as never,
 	};
 }
 

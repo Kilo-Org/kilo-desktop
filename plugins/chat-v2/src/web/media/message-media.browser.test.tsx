@@ -67,18 +67,6 @@ const answer = (text: string) => textContent(text);
 const viewer = () => page.getByTestId("chat-media-pane");
 
 describe("images in a reply", () => {
-	// v2 gap (step 22): v2 assistant messages carry only text, reasoning and tool content; a reply can't attach a file.
-	it.skip("shows an image the assistant attached and opens it in the viewer", async () => {
-		await showReply([
-			{ type: "file", mime: "image/png", name: "chart.png", uri: pngDataUrl(40, 20) },
-			answer("Here is the chart."),
-		]);
-
-		await page.getByRole("button", { name: "Open chart.png in viewer" }).click();
-
-		await expect.element(viewer().getByRole("heading", { name: "chart.png" })).toBeVisible();
-	});
-
 	it("shows the images a tool returned under its row while the turn runs", async () => {
 		const server = new FakeKiloServer();
 		const reply = assistantMessage("msg_2", [
@@ -128,10 +116,9 @@ describe("images in a reply", () => {
 		expect(document.querySelectorAll('[data-qa-id="chat-tool-images"]')).toHaveLength(1);
 	});
 
-	// v2 gap (step 22): the files a step changed are its `snapshot.files`, which the translation drops (v1 sent a `patch` part).
-	it.skip("reads an image file the turn saved and opens it in the viewer", async () => {
+	it("reads an image file the turn saved and opens it in the viewer", async () => {
 		const server = new FakeKiloServer();
-		server.files["/projects/app/out/plot.png"] = Uint8Array.from(
+		server.files["out/plot.png"] = Uint8Array.from(
 			atob(pngDataUrl(40, 20).split(",")[1]!),
 			(char) => char.charCodeAt(0),
 		);

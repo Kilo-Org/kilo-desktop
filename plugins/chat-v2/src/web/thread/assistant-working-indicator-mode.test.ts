@@ -1,3 +1,4 @@
+import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -38,21 +39,44 @@ describe("messageHasInFlightActivity", () => {
 });
 
 describe("openCodeTextIsStreaming", () => {
-	it("is true while an OpenCode text part has started but not ended", () => {
-		expect(openCodeTextIsStreaming([{ type: "text", time: { start: 1 } }])).toBe(true);
+	const step = (content: unknown[], completed?: number) =>
+		({
+			id: "msg_a",
+			type: "assistant",
+			agent: "code",
+			model: { providerID: "kilo", id: "m" },
+			content,
+			time: completed === undefined ? { created: 1 } : { created: 1, completed },
+		}) as SessionMessageInfo;
+
+	it("is true while a running step's latest content is text", () => {
+		expect(openCodeTextIsStreaming([step([{ type: "text", text: "Hel" }])])).toBe(true);
 	});
 
-	it("is false once every text part has ended", () => {
-		expect(openCodeTextIsStreaming([{ type: "text", time: { start: 1, end: 2 } }])).toBe(false);
+	it("is false once the step ends or moves on to a tool call", () => {
+		expect(openCodeTextIsStreaming([step([{ type: "text", text: "Hello" }], 2)])).toBe(false);
+		expect(
+			openCodeTextIsStreaming([
+				step([
+					{ type: "text", text: "Let me look" },
+					{
+						type: "tool",
+						id: "c",
+						name: "read",
+						time: { created: 1 },
+						state: { status: "streaming", input: "" },
+					},
+				]),
+			]),
+		).toBe(false);
 	});
 
-	it("ignores synthetic text, non-text parts, and missing part data", () => {
-		expect(openCodeTextIsStreaming([{ type: "text", synthetic: true, time: { start: 1 } }])).toBe(
-			false,
-		);
-		expect(openCodeTextIsStreaming([{ type: "reasoning", time: { start: 1 } }])).toBe(false);
-		expect(openCodeTextIsStreaming([{ type: "text" }])).toBe(false);
-		expect(openCodeTextIsStreaming(undefined)).toBe(false);
+	it("ignores reasoning and messages that are not steps", () => {
+		expect(openCodeTextIsStreaming([step([{ type: "reasoning", text: "hm" }])])).toBe(false);
+		expect(
+			openCodeTextIsStreaming([{ id: "u", type: "user", text: "hi", time: { created: 1 } }]),
+		).toBe(false);
+		expect(openCodeTextIsStreaming([])).toBe(false);
 	});
 });
 

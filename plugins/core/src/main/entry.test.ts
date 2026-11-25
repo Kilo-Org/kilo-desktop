@@ -30,7 +30,7 @@ import type { KiloAccountClient } from "./account";
 import { inMemoryTerms } from "./account/terms";
 import { createCoreMainEntry } from "./entry";
 import { DefaultsOnlyProvider } from "./flags/defaults-provider";
-import { createFakeKiloClient } from "./models/test-kilo-client";
+import { createFakeKiloClient, model, provider } from "./models/test-kilo-client";
 import { createFakeWorkStyleClient } from "./work-style/test-work-style-client";
 
 const PROFILE: KiloProfile = {
@@ -59,10 +59,7 @@ async function bootCore() {
 	const storage = await tempDir("kilo-core-entry-");
 	const delivered: string[] = [];
 	const models = createFakeKiloClient({
-		list: {
-			all: [{ id: "kilo", name: "Kilo", source: "api", env: [], models: {} }],
-			connected: ["kilo"],
-		},
+		catalog: { providers: [provider("kilo", { name: "Kilo" })], models: [model("kilo", "auto")] },
 	});
 	const entry = createCoreMainEntry({
 		account: () => ({

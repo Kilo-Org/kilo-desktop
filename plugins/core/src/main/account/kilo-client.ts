@@ -1,35 +1,55 @@
+import type { IntegrationAttemptStatus } from "@kilocode/client";
 import { KiloGatewayRpc } from "@kilocode/schema/kilocode/gateway";
-import { createKiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloProfile, ServerConnection } from "../../contracts";
-import { callLocationRpc, createServerClient } from "../agent/server-client";
+import { callLocationRpc, createServerClient, locationPluginsReady } from "../agent/server-client";
 import type { KiloAccountClient } from "./account-service";
 
-const KILO_PROVIDER = "kilo";
-/** Kilo's device sign-in method for its own provider. */
-const DEVICE_METHOD = 0;
+/** Kilo v2's integration for Kilo's own gateway, and its device sign-in method. */
+export const KILO_INTEGRATION_ID = "kilo";
+const DEVICE_METHOD_ID = "device";
+const ATTEMPT_POLL_MS = 1_000;
 
-/** The account API of a running Kilo server, through its SDK. */
-export function createKiloAccountClient(connection: ServerConnection): KiloAccountClient {
-	const directory = connection.globalDirectory;
-	const client = createKiloClient({
-		baseUrl: connection.baseUrl,
-		headers: {
-			Authorization: `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`,
-		},
-		directory,
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(resolve, ms);
+		signal.addEventListener(
+			"abort",
+			() => {
+				clearTimeout(timer);
+				reject(signal.reason ?? new Error("Sign-in was cancelled."));
+			},
+			{ once: true },
+		);
 	});
-	const options = { throwOnError: true } as const;
+}
+
+/** The attempt's failure for a person: Kilo's message, or what ended it. */
+function attemptFailure(attempt: IntegrationAttemptStatus): Error {
+	if (attempt.status === "failed") return new Error(attempt.message || "Sign-in failed.");
+	if (attempt.status === "expired") return new Error("The sign-in code expired. Start again.");
+	return new Error("Sign-in did not complete.");
+}
+
+/**
+ * The account API of a running Kilo v2 server: the Kilo gateway's RPC
+ * (`kilocode.gateway`) for status, profile and organisation, Kilo's `kilo`
+ * integration for device sign-in, and its credential store for sign-out. Calls
+ * run in `directory`'s location (kilo.core's global directory); RPCs wait out
+ * a location that is still loading its plugins.
+ */
+export function createKiloAccountClient(
+	connection: ServerConnection,
+	directory: string = connection.globalDirectory,
+): KiloAccountClient {
 	const server = createServerClient(connection);
 	const gateway = server.rpc(KiloGatewayRpc.Definition);
 	const location = { location: { directory } };
 	const read = <T>(call: () => Promise<T>) => callLocationRpc(server, directory, call);
+	let attemptId: string | undefined;
 
 	return {
-		async authStatus() {
-			const { data } = await client.kilo.authStatus({ directory }, options);
-			return { authenticated: data.authenticated === true };
-		},
+		authStatus: () => read(() => gateway.authStatus({}, location)),
 		async profile(): Promise<KiloProfile> {
 			// Balance and Kilo Pass are extras: an account without them still has a profile.
 			const [profile, balance, kiloPass] = await Promise.all([
@@ -48,26 +68,55 @@ export function createKiloAccountClient(connection: ServerConnection): KiloAccou
 			};
 		},
 		async authorize() {
-			const { data } = await client.provider.oauth.authorize(
-				{ providerID: KILO_PROVIDER, method: DEVICE_METHOD, directory },
-				options,
-			);
-			return { url: data.url, instructions: data.instructions };
+			await locationPluginsReady(server, directory);
+			const { data: attempt } = await server.integration.oauth.connect({
+				integrationID: KILO_INTEGRATION_ID,
+				methodID: DEVICE_METHOD_ID,
+				...location,
+			});
+			attemptId = attempt.attemptID;
+			return {
+				url: attempt.url,
+				...(attempt.instructions ? { instructions: attempt.instructions } : {}),
+			};
 		},
 		async callback(signal) {
-			await client.provider.oauth.callback(
-				{ providerID: KILO_PROVIDER, method: DEVICE_METHOD, directory },
-				{ ...options, signal },
-			);
+			const id = attemptId;
+			if (!id) throw new Error("No sign-in is in progress.");
+			const attempt = { integrationID: KILO_INTEGRATION_ID, attemptID: id, ...location };
+			const cancel = () => void server.integration.oauth.cancel(attempt).catch(() => undefined);
+			signal.addEventListener("abort", cancel, { once: true });
+			try {
+				for (;;) {
+					const { data: status } = await server.integration.oauth
+						.status(attempt)
+						.catch((error: unknown) => {
+							// Cancelling removes the attempt, so a poll in flight then fails.
+							signal.throwIfAborted();
+							throw error;
+						});
+					signal.throwIfAborted();
+					if (status.status === "complete") return;
+					if (status.status !== "pending") throw attemptFailure(status);
+					await delay(ATTEMPT_POLL_MS, signal);
+				}
+			} finally {
+				signal.removeEventListener("abort", cancel);
+				if (attemptId === id) attemptId = undefined;
+			}
 		},
 		async signOut() {
-			await client.auth.remove({ providerID: KILO_PROVIDER }, options);
+			const credentials = await server.credential.list();
+			await Promise.all(
+				credentials
+					.filter((credential) => credential.integrationID === KILO_INTEGRATION_ID)
+					.map((credential) => server.credential.remove({ credentialID: credential.id })),
+			);
 		},
 		async setOrganization(organizationId) {
-			await client.kilo.organization.set({ organizationId, directory }, options);
+			// Null selects the personal account.
+			await read(() => gateway["organization.set"]({ organizationID: organizationId }, location));
 		},
-		async dispose() {
-			await client.global.dispose();
-		},
+		dispose: () => server.location.reload(),
 	};
 }

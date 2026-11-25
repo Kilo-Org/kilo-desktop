@@ -1,168 +1,130 @@
-import type { WorkStyle } from "../../contracts";
+import type { PermissionRule, WorkStyle } from "../../contracts";
 
-type PermissionLevel = "allow" | "ask" | "deny";
-type PermissionRule = PermissionLevel | null | Record<string, PermissionLevel | null>;
-export type PermissionConfig = Partial<Record<string, PermissionRule>>;
+// Copied from kilocode's v2 packages/kilo-vscode/src/shared/work-style-presets.ts
+// (`HUMAN_PERMISSIONS`). Keep in sync with it.
+const SHELL_ALLOW = [
+	"cat *",
+	"head *",
+	"tail *",
+	"less *",
+	"ls *",
+	"tree *",
+	"pwd *",
+	"echo *",
+	"wc *",
+	"which *",
+	"type *",
+	"file *",
+	"diff *",
+	"du *",
+	"df *",
+	"date *",
+	"uname *",
+	"whoami *",
+	"printenv *",
+	"man *",
+	"grep *",
+	"rg *",
+	"ag *",
+	"uniq *",
+	"cut *",
+	"tr *",
+	"jq *",
+];
 
-// Copied verbatim from kilocode packages/kilo-vscode/src/shared/work-style-presets.ts
-// (the "human-in-the-loop" preset's `permission` block). Keep in sync with it.
-const BASH: Record<string, PermissionLevel> = {
-	"*": "ask",
-	"cat *": "allow",
-	"head *": "allow",
-	"tail *": "allow",
-	"less *": "allow",
-	"ls *": "allow",
-	"tree *": "allow",
-	"pwd *": "allow",
-	"echo *": "allow",
-	"wc *": "allow",
-	"which *": "allow",
-	"type *": "allow",
-	"file *": "allow",
-	"diff *": "allow",
-	"du *": "allow",
-	"df *": "allow",
-	"date *": "allow",
-	"uname *": "allow",
-	"whoami *": "allow",
-	"printenv *": "allow",
-	"man *": "allow",
-	"grep *": "allow",
-	"rg *": "allow",
-	"ag *": "allow",
-	"uniq *": "allow",
-	"cut *": "allow",
-	"tr *": "allow",
-	"jq *": "allow",
-	"*>*": "ask",
-};
+/** Review first: ask before edits, commands and leaving the workspace, with read-only exceptions. */
+export const REVIEW_FIRST_PERMISSIONS: readonly PermissionRule[] = [
+	{ action: "read", resource: "*", effect: "allow" },
+	{ action: "read", resource: "*.env", effect: "ask" },
+	{ action: "read", resource: "*.env.*", effect: "ask" },
+	{ action: "read", resource: "*.env.example", effect: "allow" },
+	{ action: "edit", resource: "*", effect: "ask" },
+	{ action: "external_directory", resource: "*", effect: "ask" },
+	{ action: "shell", resource: "*", effect: "ask" },
+	...SHELL_ALLOW.map((resource): PermissionRule => ({
+		action: "shell",
+		resource,
+		effect: "allow",
+	})),
+	{ action: "shell", resource: "*>*", effect: "ask" },
+];
 
-export const REVIEW_FIRST_PERMISSION: PermissionConfig = {
-	read: {
-		"*": "allow",
-		"*.env": "ask",
-		"*.env.*": "ask",
-		"*.env.example": "allow",
-	},
-	grep: "allow",
-	glob: "allow",
-	list: "allow",
-	question: "allow",
-	webfetch: "allow",
-	websearch: "allow",
-	codesearch: "allow",
-	external_directory: "ask",
-	edit: "ask",
-	bash: BASH,
-	doom_loop: "ask",
-};
-
-export type WorkStylePatch = { permission: PermissionConfig };
-
-/** What this onboarding run overwrote: each preset key's prior value (`undefined` = absent). */
-export type AppliedWorkStyle = { previous: PermissionConfig };
+/** What this run replaced: the user's global `permissions` before review first was written. */
+export type AppliedWorkStyle = { previous: readonly PermissionRule[] };
 
 export type WorkStylePlan = {
-	/** Global-config patches to apply in order; empty when nothing should be written. */
-	patches: WorkStylePatch[];
+	/** The global `permissions` to write; undefined when nothing should be written. */
+	permissions: readonly PermissionRule[] | undefined;
 	/** This run's review-first write, if it is in the global config afterwards. */
 	applied: AppliedWorkStyle | null;
 };
 
-const PRESET_KEYS = Object.keys(REVIEW_FIRST_PERMISSION);
+const PRESET_ACTIONS = new Set(REVIEW_FIRST_PERMISSIONS.map((rule) => rule.action));
+
+function sameRule(left: PermissionRule, right: PermissionRule): boolean {
+	return (
+		left.action === right.action && left.resource === right.resource && left.effect === right.effect
+	);
+}
+
+/** Whether `rules` ends with exactly the review-first preset. */
+function endsWithPreset(rules: readonly PermissionRule[]): boolean {
+	const offset = rules.length - REVIEW_FIRST_PERMISSIONS.length;
+	return (
+		offset >= 0 &&
+		REVIEW_FIRST_PERMISSIONS.every((rule, index) => sameRule(rule, rules[offset + index]!))
+	);
+}
 
 /**
- * Decides what (if anything) to write to the user's global Kilo config.
+ * Decides what (if anything) to write to the user's global Kilo config, whose
+ * `permissions` Kilo v2 reads as an ordered list where the last matching rule
+ * wins.
  *
- * - Review first always wins: every key the preset defines is set to exactly
- *   the preset. Kilo merges pattern maps (`bash`, `read`) per pattern, so any
- *   existing pattern the preset lacks is sent as `null` (Kilo's delete
- *   sentinel) — one patch, no partial states. Keys the preset doesn't define
- *   (e.g. MCP tool rules) are left alone. The overwritten values are recorded.
+ * - Review first always wins: the preset is appended after the user's rules,
+ *   so it decides every action it covers while the user's other rules (an MCP
+ *   tool's, say) still apply. The list it replaced is recorded.
  * - High autonomy writes nothing — Kilo's defaults apply. The one exception is
- *   undoing this run's own write: if the preset keys still hold exactly the
- *   preset, they are restored to what they were before — deleted first, then
- *   rewritten, because Kilo promotes a scalar to `{ "*": scalar }` when an
- *   object is merged over it, which would leave a stray `"*"`. Anything the
- *   user changed since is left alone.
+ *   undoing this run's own write: if the rules still end with exactly the
+ *   preset, the recorded list is restored. Anything the user changed since is
+ *   left alone.
  */
 export function planWorkStylePatch(input: {
 	style: WorkStyle;
-	globalPermission: PermissionConfig | undefined;
+	globalPermissions: readonly PermissionRule[] | undefined;
 	applied: AppliedWorkStyle | null;
 }): WorkStylePlan {
-	const current = input.globalPermission ?? {};
+	const current = input.globalPermissions ?? [];
 	if (input.style === "autonomous") {
-		if (input.applied && holdsPreset(current)) {
-			return { patches: restorePatches(input.applied.previous), applied: null };
+		if (input.applied && endsWithPreset(current)) {
+			return { permissions: input.applied.previous, applied: null };
 		}
-		return { patches: [], applied: null };
+		return { permissions: undefined, applied: null };
 	}
-	const applied = input.applied ?? { previous: pick(current, PRESET_KEYS) };
-	if (holdsPreset(current)) return { patches: [], applied };
-	return { patches: [{ permission: replaceKeys(current, REVIEW_FIRST_PERMISSION) }], applied };
-}
-
-/** Preset keys already set in the global config with values other than the preset's. */
-export function conflictingPermissionKeys(permission: PermissionConfig | undefined): string[] {
-	const current = permission ?? {};
-	return PRESET_KEYS.filter(
-		(key) => current[key] !== undefined && !isDeepEqual(current[key], REVIEW_FIRST_PERMISSION[key]),
-	);
-}
-
-function holdsPreset(current: PermissionConfig): boolean {
-	return PRESET_KEYS.every((key) => isDeepEqual(current[key], REVIEW_FIRST_PERMISSION[key]));
-}
-
-function restorePatches(previous: PermissionConfig): WorkStylePatch[] {
-	const cleared = Object.fromEntries(PRESET_KEYS.map((key) => [key, null]));
-	const restored = Object.fromEntries(
-		PRESET_KEYS.flatMap((key) => (previous[key] == null ? [] : [[key, previous[key]]])),
-	);
-	return Object.keys(restored).length > 0
-		? [{ permission: cleared }, { permission: restored }]
-		: [{ permission: cleared }];
-}
-
-function pick(permission: PermissionConfig, keys: readonly string[]): PermissionConfig {
-	return Object.fromEntries(keys.map((key) => [key, permission[key]]));
+	if (endsWithPreset(current)) {
+		return {
+			permissions: undefined,
+			applied: input.applied ?? { previous: current.slice(0, -REVIEW_FIRST_PERMISSIONS.length) },
+		};
+	}
+	return {
+		permissions: [...current, ...REVIEW_FIRST_PERMISSIONS],
+		applied: input.applied ?? { previous: current },
+	};
 }
 
 /**
- * A patch that leaves every preset key holding exactly `target[key]` after
- * Kilo's merge: absent targets delete the key, scalars replace, and pattern
- * maps null out any existing pattern the target lacks.
+ * Actions with the user's own global rules that applying review first would
+ * override, in first-seen order; none once the preset already ends the rules.
  */
-function replaceKeys(current: PermissionConfig, target: PermissionConfig): PermissionConfig {
-	const patch: PermissionConfig = {};
-	for (const key of PRESET_KEYS) {
-		const next = target[key];
-		const existing = current[key];
-		if (next === undefined || next === null) {
-			patch[key] = null;
-		} else if (typeof next === "string" || typeof existing !== "object" || existing === null) {
-			patch[key] = next;
-		} else {
-			const stale = Object.keys(existing).filter((pattern) => !(pattern in next));
-			patch[key] = { ...Object.fromEntries(stale.map((pattern) => [pattern, null])), ...next };
-		}
-	}
-	return patch;
-}
-
-function isDeepEqual(left: unknown, right: unknown): boolean {
-	if (left === right) return true;
-	if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
-		return false;
-	}
-	const leftKeys = Object.keys(left);
-	const rightKeys = Object.keys(right);
-	if (leftKeys.length !== rightKeys.length) return false;
-	return leftKeys.every(
-		(key) =>
-			Object.hasOwn(right, key) &&
-			isDeepEqual((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]),
-	);
+export function conflictingPermissionKeys(
+	permissions: readonly PermissionRule[] | undefined,
+): string[] {
+	const current = permissions ?? [];
+	if (endsWithPreset(current)) return [];
+	return [
+		...new Set(
+			current.filter((rule) => PRESET_ACTIONS.has(rule.action)).map((rule) => rule.action),
+		),
+	];
 }

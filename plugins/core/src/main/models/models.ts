@@ -183,6 +183,8 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 		},
 	});
 
+	let watching: AbortController | undefined;
+	sdk.onDispose(() => stopWatching());
 	followServer();
 	followAccount();
 	followAiProviderContributions();
@@ -259,15 +261,16 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 		const client = await connectClient().finally(() => {
 			connecting = false;
 		});
-		const [list, config] = await Promise.all([client.listAiProviders(), client.readGlobalConfig()]);
-		if (list.all.length === 0 && emptyListReads < EMPTY_LIST_RETRIES) {
+		const [catalog, config] = await Promise.all([client.readCatalog(), client.readGlobalConfig()]);
+		// Kilo fills its catalog in after startup, so an empty first answer is read again.
+		if (catalog.models.length === 0 && emptyListReads < EMPTY_LIST_RETRIES) {
 			emptyListReads += 1;
 			clearTimeout(emptyListTimer);
 			emptyListTimer = setTimeout(readAutomatically, emptyListRetryMs);
 			return;
 		}
 		emptyListReads = 0;
-		const mapped = mapAiProviderList({ list, config, contributed: contributedAiProviders() });
+		const mapped = mapAiProviderList({ catalog, config, contributed: contributedAiProviders() });
 		models.update(({ configuredModel: _previous, ...state }) => ({
 			...state,
 			ready: true,
@@ -286,15 +289,38 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 		sdk.domainObjects.track(KiloServer, {
 			added(server) {
 				let status = server.getState().status;
-				if (status === "ready") readAutomatically();
+				if (status === "ready") {
+					readAutomatically();
+					watchCatalog();
+				}
 				server.subscribe((next) => {
 					const becameReady = next.status === "ready" && status !== "ready";
 					status = next.status;
-					if (becameReady && !connecting) readAutomatically();
+					if (next.status !== "ready") stopWatching();
+					if (!becameReady) return;
+					if (!connecting) readAutomatically();
+					watchCatalog();
 				});
 			},
-			removed() {},
+			removed: stopWatching,
 		});
+	}
+
+	function stopWatching(): void {
+		watching?.abort();
+		watching = undefined;
+	}
+
+	/** Kilo fills its catalog in after startup and on credential changes; each change is read again. */
+	function watchCatalog(): void {
+		stopWatching();
+		const controller = new AbortController();
+		watching = controller;
+		void connectClient()
+			.then((client) => client.watchCatalog(readAutomatically, controller.signal))
+			.catch((error: unknown) => {
+				if (!controller.signal.aborted) sdk.logger.warn("Stopped following Kilo's catalog", error);
+			});
 	}
 
 	function followAccount(): void {

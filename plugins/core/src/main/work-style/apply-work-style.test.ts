@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import { applyWorkStyle } from "./apply-work-style";
 import { createFakeWorkStyleClient } from "./test-work-style-client";
-import { REVIEW_FIRST_PERMISSION } from "./work-style-presets";
+import { REVIEW_FIRST_PERMISSIONS } from "./work-style-presets";
 
 describe("applyWorkStyle", () => {
 	it("skips the write and the reload when there is nothing to change", async () => {
-		const existing = createFakeWorkStyleClient(REVIEW_FIRST_PERMISSION);
+		const existing = createFakeWorkStyleClient(REVIEW_FIRST_PERMISSIONS);
 		await applyWorkStyle(existing.client, "human-in-the-loop", null);
 		expect(existing.calls).toEqual(["read"]);
 
-		const autonomous = createFakeWorkStyleClient({ edit: "allow" });
+		const autonomous = createFakeWorkStyleClient([
+			{ action: "edit", resource: "*", effect: "allow" },
+		]);
 		await expect(applyWorkStyle(autonomous.client, "autonomous", null)).resolves.toEqual({
 			applied: null,
 		});
@@ -19,11 +21,11 @@ describe("applyWorkStyle", () => {
 
 	it("propagates a failed write and does not reload", async () => {
 		const fake = createFakeWorkStyleClient();
-		fake.failNextUpdate = new Error("EACCES: kilo.jsonc");
+		fake.failNextWrite = new Error("EACCES: kilo2.jsonc");
 
 		await expect(applyWorkStyle(fake.client, "human-in-the-loop", null)).rejects.toThrow(
-			"EACCES: kilo.jsonc",
+			"EACCES: kilo2.jsonc",
 		);
-		expect(fake.calls).toEqual(["read", "update"]);
+		expect(fake.calls).toEqual(["read", "write"]);
 	});
 });

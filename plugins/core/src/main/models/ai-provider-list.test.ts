@@ -3,56 +3,44 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { aiProviderSchema, modelSchema } from "../../contracts";
-import { mapAiProviderList } from "./ai-provider-list";
-import type { KiloProvider, KiloProviderModel } from "./kilo-models-client";
-
-function model(id: string, patch: Partial<KiloProviderModel> = {}): KiloProviderModel {
-	return { id, name: id, ...patch };
-}
-
-function provider(
-	id: string,
-	source: NonNullable<KiloProvider["source"]>,
-	patch: Partial<KiloProvider> = {},
-): KiloProvider {
-	return { id, name: id, source, models: {}, ...patch };
-}
-
-const kilo = provider("kilo", "custom", {
-	name: "Kilo Gateway",
-	models: {
-		"kilo-auto/free": model("kilo-auto/free", {
-			name: "Auto Free (free)",
-			isFree: true,
-			capabilities: { reasoning: false, attachment: true },
-			limit: { context: 200_000, output: 32_000 },
-		}),
-	},
-});
-const anthropic = provider("anthropic", "api", {
-	name: "Anthropic",
-	key: "sk-ant",
-	models: {
-		sonnet: model("sonnet", {
-			name: "Sonnet ($$$)",
-			variants: { low: {}, high: {} },
-			capabilities: { reasoning: true, attachment: true },
-			limit: { context: 1_000_000, output: 0 },
-		}),
-	},
-});
-const groq = provider("groq", "env", { name: "Groq", env: ["GROQ_API_KEY"] });
-const openai = provider("openai", "api", { name: "OpenAI", models: { gpt: model("gpt") } });
+import { mapAiProviderList, type AiProviderListInput } from "./ai-provider-list";
+import type { KiloCatalog } from "./kilo-models-client";
+import { EMPTY_CATALOG, integration, model, provider } from "./test-kilo-client";
 
 const providersSchema = z.record(z.string(), aiProviderSchema);
 const modelsSchema = z.record(z.string(), modelSchema);
 
+function map(
+	catalog: Partial<KiloCatalog>,
+	rest: Partial<Omit<AiProviderListInput, "catalog">> = {},
+) {
+	return mapAiProviderList({
+		catalog: { ...EMPTY_CATALOG, ...catalog },
+		config: rest.config ?? {},
+		contributed: rest.contributed ?? new Set(),
+	});
+}
+
+const kilo = provider("kilo", { name: "Kilo Gateway" });
+const anthropic = provider("anthropic", { name: "Anthropic" });
+const freeAuto = model("kilo", "kilo-auto/free", {
+	name: "Auto Free (free)",
+	capabilities: { tools: true, input: ["text", "image"], output: ["text"] },
+	limit: { context: 200_000, output: 32_000 },
+});
+const sonnet = model("anthropic", "sonnet", {
+	name: "Sonnet ($$$)",
+	variants: [{ id: "low" }, { id: "high" }],
+	capabilities: { tools: true, input: ["text", "pdf"], output: ["text"] },
+	limit: { context: 1_000_000, output: 0 },
+});
+
 describe("mapAiProviderList", () => {
-	it("lists models of connected AI providers only, keyed <aiProviderId>/<modelId>", () => {
-		const { models } = mapAiProviderList({
-			list: { all: [kilo, anthropic, openai], connected: ["kilo", "anthropic"] },
-			config: {},
-			contributed: new Set(),
+	it("lists models Kilo enables, keyed <aiProviderId>/<modelId>, with the gateway's free flag", () => {
+		const { models } = map({
+			providers: [kilo, anthropic],
+			models: [freeAuto, sonnet, model("anthropic", "retired", { enabled: false })],
+			gateway: [{ id: "kilo-auto/free", isFree: true }],
 		});
 
 		expect(models).toEqual({
@@ -83,50 +71,47 @@ describe("mapAiProviderList", () => {
 		expect(modelsSchema.safeParse(models).success).toBe(true);
 	});
 
-	it("reads efforts from reasoning options when a model has no variants", () => {
-		const { models } = mapAiProviderList({
-			list: {
-				all: [
-					provider("acme", "api", {
-						models: {
-							deep: model("deep", {
-								reasoning_options: [
-									{ type: "budget", values: ["1k"] },
-									{ type: "effort", values: ["low", "medium"] },
-								],
-							}),
-						},
-					}),
-				],
-				connected: ["acme"],
-			},
-			config: {},
-			contributed: new Set(),
+	it("leaves out models of a provider Kilo has disabled", () => {
+		const { models, aiProviders } = map({
+			providers: [provider("acme", { activation: "disabled" })],
+			models: [model("acme", "m")],
 		});
-		expect(models["acme/deep"]).toMatchObject({
-			variants: ["low", "medium"],
-			attachments: false,
-			reasoning: false,
-		});
+		expect(models).toEqual({});
+		expect(aiProviders.acme).toBeUndefined();
 	});
 
 	it("describes where each AI provider comes from and whether the user can disconnect it", () => {
-		const bedrock = provider("amazon-bedrock", "custom", {
-			name: "Amazon Bedrock",
-			env: ["AWS_ACCESS_KEY_ID", "AWS_PROFILE"],
-		});
-		const vllm = provider("vllm", "config", { name: "Local vLLM" });
-		const configured = provider("azure", "config", { name: "Azure" });
-		const local = provider("local-server", "config", { name: "Local Model Server" });
-
-		const { aiProviders } = mapAiProviderList({
-			list: {
-				all: [kilo, anthropic, groq, bedrock, vllm, configured, local],
-				connected: ["kilo", "anthropic", "groq", "amazon-bedrock", "vllm", "azure", "local-server"],
+		const { aiProviders } = map(
+			{
+				providers: [
+					kilo,
+					anthropic,
+					provider("groq", { name: "Groq" }),
+					provider("amazon-bedrock", { name: "Amazon Bedrock" }),
+					provider("vllm", { name: "Local vLLM", integrationID: undefined }),
+					provider("azure", { name: "Azure", integrationID: undefined }),
+					provider("local-server", { name: "Local Model Server", integrationID: undefined }),
+				],
+				integrations: [
+					integration("kilo", { connections: [{ type: "credential" }] }),
+					integration("anthropic", { connections: [{ type: "credential" }] }),
+					integration("groq", {
+						methods: [{ type: "env", names: ["GROQ_API_KEY"] }],
+						connections: [{ type: "env" }],
+					}),
+					integration("amazon-bedrock", {
+						methods: [{ type: "env", names: ["AWS_ACCESS_KEY_ID", "AWS_PROFILE"] }],
+						connections: [{ type: "env" }],
+					}),
+				],
 			},
-			config: { provider: { vllm: { npm: "@ai-sdk/openai-compatible", name: "Local vLLM" } } },
-			contributed: new Set(["local-server"]),
-		});
+			{
+				config: {
+					providers: { vllm: { package: "@ai-sdk/openai-compatible", name: "Local vLLM" } },
+				},
+				contributed: new Set(["local-server"]),
+			},
+		);
 
 		expect(aiProviders.kilo).toEqual({
 			id: "kilo",
@@ -142,7 +127,6 @@ describe("mapAiProviderList", () => {
 			env: ["GROQ_API_KEY"],
 			canDisconnect: false,
 		});
-		expect(aiProviders["amazon-bedrock"]).toMatchObject({ source: "env", canDisconnect: false });
 		expect(aiProviders["amazon-bedrock"]?.env).toEqual([
 			"AWS_ACCESS_KEY_ID",
 			"AWS_PROFILE",
@@ -159,11 +143,10 @@ describe("mapAiProviderList", () => {
 		expect(providersSchema.safeParse(aiProviders).success).toBe(true);
 	});
 
-	it("keeps popular AI providers reconnectable when the list omits them", () => {
-		const { aiProviders } = mapAiProviderList({
-			list: { all: [kilo], connected: ["kilo"] },
-			config: {},
-			contributed: new Set(),
+	it("keeps popular AI providers connectable when Kilo hasn't enabled them", () => {
+		const { aiProviders } = map({
+			providers: [kilo],
+			integrations: [integration("openai", { name: "OpenAI" })],
 		});
 
 		expect(Object.keys(aiProviders).toSorted()).toEqual([
@@ -179,50 +162,26 @@ describe("mapAiProviderList", () => {
 			id: "openai",
 			name: "OpenAI",
 			connected: false,
-			source: "api",
-			env: [],
-			canDisconnect: true,
-		});
-	});
-
-	it("lists unconnected catalog AI providers and connected ones the catalog omits", () => {
-		const { aiProviders, models } = mapAiProviderList({
-			list: { all: [openai], connected: ["vllm", "mystery"] },
-			config: { provider: { vllm: { npm: "@ai-sdk/openai-compatible", name: " My vLLM " } } },
-			contributed: new Set(),
-		});
-
-		expect(aiProviders.openai).toMatchObject({ connected: false, source: "api" });
-		expect(aiProviders.vllm).toMatchObject({
-			name: "My vLLM",
-			connected: true,
-			source: "custom",
-			canDisconnect: true,
-		});
-		expect(aiProviders.mystery).toEqual({
-			id: "mystery",
-			name: "mystery",
-			connected: true,
 			env: [],
 			canDisconnect: false,
 		});
-		expect(models).toEqual({});
 	});
 
-	it("lists custom AI providers in the config that Kilo didn't load, so they can be edited", () => {
-		const { aiProviders } = mapAiProviderList({
-			list: { all: [], connected: [] },
-			config: {
-				provider: {
-					broken: { npm: "@ai-sdk/openai-compatible" },
-					plain: { options: {} },
-					gone: null,
+	it("lists custom AI providers in the config that Kilo didn't enable, so they can be edited", () => {
+		const { aiProviders } = map(
+			{},
+			{
+				config: {
+					providers: {
+						broken: { package: "@ai-sdk/openai-compatible", name: " My vLLM " },
+						plain: { settings: {} },
+						gone: null,
+					},
 				},
 			},
-			contributed: new Set(),
-		});
+		);
 		expect(aiProviders.broken).toMatchObject({
-			name: "broken",
+			name: "My vLLM",
 			connected: false,
 			source: "custom",
 			canDisconnect: true,
@@ -231,35 +190,34 @@ describe("mapAiProviderList", () => {
 		expect(aiProviders.gone).toBeUndefined();
 	});
 
-	it("passes on what pickers rank and describe models by, and each AI provider's default", () => {
-		const mapped = mapAiProviderList({
-			list: {
-				all: [
-					provider("acme", "api", {
-						models: {
-							fast: model("fast", {
-								recommendedIndex: 2,
-								options: { description: "Quick answers." },
-								cost: { output: 4.5 },
-								hasUserByokAvailable: true,
-							}),
-							plain: model("plain", { recommendedIndex: -1, cost: { output: -1 } }),
-						},
-					}),
-				],
-				connected: ["acme"],
-				default: { acme: "fast", gone: "x" },
-			},
-			config: { model: "acme/fast" },
-			contributed: new Set(),
+	it("passes on the gateway's ranking, description and BYOK, and prices from the base tier", () => {
+		const mapped = map({
+			providers: [kilo, provider("acme")],
+			models: [
+				model("kilo", "fast", {
+					cost: [
+						{ input: 1, output: 4.5 },
+						{ tier: { type: "context", size: 200_000 }, input: 2, output: 9 },
+					],
+				}),
+				model("acme", "plain", { cost: [{ input: 1, output: -1 }] }),
+			],
+			gateway: [
+				{
+					id: "fast",
+					isFree: false,
+					recommendedIndex: 2,
+					description: "Quick answers.",
+					hasUserByokAvailable: true,
+				},
+			],
 		});
 
-		expect(mapped.models["acme/fast"]).toMatchObject({
+		expect(mapped.models["kilo/fast"]).toMatchObject({
 			recommendedIndex: 2,
 			description: "Quick answers.",
 			outputPricePerMillion: 4.5,
-			// Only Kilo Gateway models can use the user's own keys.
-			byok: false,
+			byok: true,
 		});
 		const plain = mapped.models["acme/plain"]!;
 		expect([plain.recommendedIndex, plain.outputPricePerMillion, plain.byok]).toEqual([
@@ -267,48 +225,45 @@ describe("mapAiProviderList", () => {
 			undefined,
 			false,
 		]);
-		expect(mapped.defaults).toEqual({ acme: "fast" });
-		expect(
-			mapAiProviderList({
-				list: {
-					all: [
-						provider("kilo", "custom", {
-							models: { m: model("m", { hasUserByokAvailable: true }) },
-						}),
-					],
-					connected: ["kilo"],
-				},
-				config: {},
-				contributed: new Set(),
-			}).models["kilo/m"]?.byok,
-		).toBe(true);
-		expect(mapped.configuredModel).toEqual({ aiProviderId: "acme", modelId: "fast" });
 		expect(() => z.array(modelSchema).parse(Object.values(mapped.models))).not.toThrow();
 	});
 
-	it("ignores a configured model that isn't <aiProviderId>/<modelId>", () => {
-		const mapped = mapAiProviderList({
-			list: { all: [], connected: [] },
-			config: { model: "no-slash" },
-			contributed: new Set(),
+	it("takes Kilo's default from the gateway's recommendation, and Kilo's own default otherwise", () => {
+		const mapped = map(
+			{
+				providers: [kilo, anthropic],
+				models: [model("kilo", "auto"), model("kilo", "fast"), sonnet],
+				gateway: [
+					{ id: "fast", isFree: false },
+					{ id: "auto", isFree: false, recommended: true },
+				],
+				defaultModel: { providerID: "anthropic", id: "sonnet" },
+			},
+			{ config: { model: { providerID: "anthropic", id: "sonnet" } } },
+		);
+
+		expect(mapped.defaults).toEqual({ kilo: "auto", anthropic: "sonnet" });
+		expect(mapped.configuredModel).toEqual({ aiProviderId: "anthropic", modelId: "sonnet" });
+		expect(map({}, { config: { model: "anthropic/sonnet" } }).configuredModel).toEqual({
+			aiProviderId: "anthropic",
+			modelId: "sonnet",
 		});
+	});
+
+	it("ignores a configured model that isn't a provider and model", () => {
+		const mapped = map(
+			{ defaultModel: { providerID: "gone", id: "x" } },
+			{ config: { model: "no-slash" } },
+		);
 
 		expect(mapped.configuredModel).toBeUndefined();
 		expect(mapped.defaults).toEqual({});
 	});
 
 	it("drops limits that aren't positive integers", () => {
-		const { models } = mapAiProviderList({
-			list: {
-				all: [
-					provider("acme", "api", {
-						models: { m: model("m", { limit: { context: -1, output: 1.5 } }) },
-					}),
-				],
-				connected: ["acme"],
-			},
-			config: {},
-			contributed: new Set(),
+		const { models } = map({
+			providers: [provider("acme")],
+			models: [model("acme", "m", { limit: { context: -1, output: 1.5 } })],
 		});
 		expect(models["acme/m"]).not.toHaveProperty("contextWindow");
 		expect(models["acme/m"]).not.toHaveProperty("maxOutputTokens");

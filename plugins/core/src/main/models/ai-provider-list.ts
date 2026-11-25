@@ -7,13 +7,14 @@ import {
 } from "../../contracts";
 import { isCustomProviderPackage } from "./custom-ai-provider";
 import type {
+	KiloCatalog,
+	KiloGatewayModel,
 	KiloGlobalConfig,
-	KiloProvider,
-	KiloProviderList,
-	KiloProviderModel,
+	KiloIntegration,
+	KiloModel,
 } from "./kilo-models-client";
 
-/** AI providers offered for connecting even when Kilo's list omits them (e.g. after a disconnect). */
+/** AI providers offered for connecting even when nothing connects them yet. */
 export const POPULAR_AI_PROVIDERS: Readonly<Record<string, string>> = {
 	anthropic: "Anthropic",
 	deepseek: "DeepSeek",
@@ -29,7 +30,7 @@ const EXTRA_ENV: Readonly<Record<string, readonly string[]>> = {
 };
 
 export interface AiProviderListInput {
-	readonly list: KiloProviderList;
+	readonly catalog: KiloCatalog;
 	readonly config: KiloGlobalConfig;
 	/** AI providers contributed by plugins (`kilo.core/ai-provider`). */
 	readonly contributed: ReadonlySet<string>;
@@ -47,60 +48,64 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function configEntry(config: KiloGlobalConfig, id: string): Record<string, unknown> | undefined {
-	const entry = config.provider?.[id];
+	const entry = config.providers?.[id];
 	return isRecord(entry) ? entry : undefined;
 }
 
 function isCustom(config: KiloGlobalConfig, id: string): boolean {
-	return isCustomProviderPackage(configEntry(config, id)?.npm);
+	return isCustomProviderPackage(configEntry(config, id)?.package);
 }
 
-/**
- * Kilo's own source, from the user's point of view. Kilo calls providers it
- * autoloads from a credential chain (Amazon Bedrock via `AWS_PROFILE`)
- * "custom"; they come back after `auth.remove`, so they count as environment.
- */
+/** Where an AI provider comes from, from the user's point of view. */
 function sourceOf(
 	id: string,
-	kiloSource: KiloProvider["source"],
+	integration: KiloIntegration | undefined,
 	input: AiProviderListInput,
 ): AiProvider["source"] {
 	if (id === KILO_AI_PROVIDER_ID) return "kilo";
 	if (input.contributed.has(id)) return "plugin";
 	if (isCustom(input.config, id)) return "custom";
-	if (kiloSource === "custom") return "env";
-	return kiloSource;
+	const connections = integration?.connections ?? [];
+	if (connections.some((connection) => connection.type === "credential")) return "api";
+	if (connections.some((connection) => connection.type === "env")) return "env";
+	return integration ? undefined : "config";
+}
+
+function envOf(id: string, integration: KiloIntegration | undefined): string[] {
+	const env = (integration?.methods ?? []).flatMap((method) =>
+		method.type === "env" ? [...(method.names ?? [])] : [],
+	);
+	const listed = new Set(env);
+	return [...env, ...(EXTRA_ENV[id] ?? []).filter((name) => !listed.has(name))];
 }
 
 function row(
-	provider: Pick<KiloProvider, "id" | "name" | "source" | "env">,
+	id: string,
+	name: string,
 	connected: boolean,
+	integration: KiloIntegration | undefined,
 	input: AiProviderListInput,
 ): AiProvider {
-	const source = sourceOf(provider.id, provider.source, input);
-	const env = [...(provider.env ?? [])];
-	for (const name of EXTRA_ENV[provider.id] ?? []) if (!env.includes(name)) env.push(name);
+	const source = sourceOf(id, integration, input);
 	return {
-		id: provider.id,
-		name: provider.name,
+		id,
+		name,
 		connected,
 		...(source ? { source } : {}),
-		env,
+		env: envOf(id, integration),
 		canDisconnect: source === "custom" || source === "api",
 	};
 }
 
-/** A provider Kilo didn't list, described from the config or the popular names. */
-function unlisted(
+/** A provider Kilo hasn't enabled, named from its integration, the config, or the popular names. */
+function unlistedName(
 	id: string,
+	integration: KiloIntegration | undefined,
 	input: AiProviderListInput,
-): Pick<KiloProvider, "id" | "name" | "source"> {
+) {
 	const configured = configEntry(input.config, id)?.name;
 	const configuredName = typeof configured === "string" ? configured.trim() : "";
-	const popularName = POPULAR_AI_PROVIDERS[id];
-	const name = configuredName || popularName || id;
-	if (popularName && !isCustom(input.config, id)) return { id, name, source: "api" };
-	return { id, name };
+	return configuredName || integration?.name || POPULAR_AI_PROVIDERS[id] || id;
 }
 
 const PRICE_MARKER = /\s*\((?:\$+\+?|free)\)/gi;
@@ -113,13 +118,6 @@ function displayModelName(name: string): string {
 	return name.replace(PRICE_MARKER, "").trim() || name;
 }
 
-/** Named variants (reasoning levels), or the effort values of older payloads. */
-function variantsOf(model: KiloProviderModel): string[] {
-	const variants = Object.keys(model.variants ?? {});
-	if (variants.length > 0) return variants;
-	return [...(model.reasoning_options?.find((option) => option.type === "effort")?.values ?? [])];
-}
-
 function positiveInteger(value: number | undefined): number | undefined {
 	return value !== undefined && Number.isInteger(value) && value > 0 ? value : undefined;
 }
@@ -128,71 +126,104 @@ function nonNegative(value: number | undefined): number | undefined {
 	return value !== undefined && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-/** `<aiProviderId>/<modelId>` as a model ref; undefined when it isn't one. */
-function parseModelKey(key: string | undefined): ModelRef | undefined {
-	const slash = key?.indexOf("/") ?? -1;
-	if (!key || slash <= 0 || slash === key.length - 1) return undefined;
-	return { aiProviderId: key.slice(0, slash), modelId: key.slice(slash + 1) };
+/** A config model selection, `<providerID>/<id>` or `{ providerID, id }`, as a model ref. */
+function parseModelSelection(value: unknown): ModelRef | undefined {
+	if (isRecord(value)) {
+		const { providerID, id } = value;
+		return typeof providerID === "string" && providerID && typeof id === "string" && id
+			? { aiProviderId: providerID, modelId: id }
+			: undefined;
+	}
+	if (typeof value !== "string") return undefined;
+	const slash = value.indexOf("/");
+	if (slash <= 0 || slash === value.length - 1) return undefined;
+	return { aiProviderId: value.slice(0, slash), modelId: value.slice(slash + 1) };
 }
 
-function modelInfo(aiProviderId: string, model: KiloProviderModel): ModelInfo {
-	const contextWindow = positiveInteger(model.limit?.context);
-	const maxOutputTokens = positiveInteger(model.limit?.output);
+/** The base tier's price: the one without a context tier. */
+function basePrice(model: KiloModel) {
+	return model.cost.find((cost) => cost.tier === undefined) ?? model.cost[0];
+}
+
+function modelInfo(model: KiloModel, gateway: KiloGatewayModel | undefined): ModelInfo {
+	const isKilo = model.providerID === KILO_AI_PROVIDER_ID;
+	const contextWindow = positiveInteger(model.limit.context);
+	const maxOutputTokens = positiveInteger(model.limit.output);
 	const recommendedIndex =
-		model.recommendedIndex !== undefined && Number.isInteger(model.recommendedIndex)
-			? nonNegative(model.recommendedIndex)
+		gateway?.recommendedIndex !== undefined && Number.isInteger(gateway.recommendedIndex)
+			? nonNegative(gateway.recommendedIndex)
 			: undefined;
-	const outputPricePerMillion = nonNegative(model.cost?.output);
-	const description = model.options?.description?.trim();
+	const price = basePrice(model);
+	const outputPricePerMillion = nonNegative(price?.output);
+	const description = gateway?.description?.trim();
+	const variants = model.variants.map((variant) => variant.id).filter((id) => id !== "none");
+	const free = gateway
+		? gateway.isFree
+		: isKilo && price !== undefined && price.input === 0 && price.output === 0;
 	return {
-		aiProviderId,
+		aiProviderId: model.providerID,
 		modelId: model.id,
 		name: displayModelName(model.name),
-		variants: variantsOf(model),
+		variants,
 		...(contextWindow ? { contextWindow } : {}),
 		...(maxOutputTokens ? { maxOutputTokens } : {}),
-		attachments: model.capabilities?.attachment === true,
-		reasoning: model.capabilities?.reasoning === true,
-		free: model.isFree === true,
+		attachments: model.capabilities.input.some((input) => input !== "text"),
+		reasoning: gateway?.reasoning ?? variants.length > 0,
+		free,
 		...(recommendedIndex !== undefined ? { recommendedIndex } : {}),
 		...(description ? { description } : {}),
 		...(outputPricePerMillion !== undefined ? { outputPricePerMillion } : {}),
-		byok: aiProviderId === KILO_AI_PROVIDER_ID && model.hasUserByokAvailable === true,
+		byok: isKilo && gateway?.hasUserByokAvailable === true,
 	};
 }
 
 /**
- * Kilo's provider list as the contract's AI providers and models: every
- * listed AI provider, plus connected ones the list omits, popular ones to
- * connect, and custom ones in the config Kilo couldn't load (so they can be
- * edited); models only of connected AI providers.
+ * Kilo v2's catalog as the contract's AI providers and models: every provider
+ * Kilo has enabled (connected), plus popular ones to connect and custom ones
+ * in the user's config Kilo couldn't enable (so they can be edited); models
+ * only of connected providers, and only those Kilo enables.
  */
 export function mapAiProviderList(input: AiProviderListInput): AiProviderListState {
-	const connected = new Set(input.list.connected);
+	const { catalog } = input;
+	const integrations = new Map(
+		catalog.integrations.map((integration) => [integration.id, integration]),
+	);
+	const gateway = new Map(catalog.gateway.map((entry) => [entry.id, entry]));
 	const aiProviders: Record<string, AiProvider> = {};
 	const models: Record<string, ModelInfo> = {};
 
-	for (const provider of input.list.all) {
-		const isConnected = connected.has(provider.id);
-		aiProviders[provider.id] = row(provider, isConnected, input);
-		if (!isConnected) continue;
-		for (const model of Object.values(provider.models)) {
-			const info = modelInfo(provider.id, model);
-			models[modelKey(info)] = info;
-		}
+	for (const provider of catalog.providers) {
+		if (provider.activation === "disabled") continue;
+		const integration = integrations.get(provider.integrationID ?? provider.id);
+		aiProviders[provider.id] = row(provider.id, provider.name, true, integration, input);
 	}
-	for (const id of connected) {
-		aiProviders[id] ??= row(unlisted(id, input), true, input);
+	for (const model of catalog.models) {
+		if (!model.enabled || !aiProviders[model.providerID]) continue;
+		const info = modelInfo(
+			model,
+			model.providerID === KILO_AI_PROVIDER_ID ? gateway.get(model.id) : undefined,
+		);
+		models[modelKey(info)] = info;
 	}
-	for (const id of Object.keys(POPULAR_AI_PROVIDERS)) {
-		aiProviders[id] ??= row(unlisted(id, input), false, input);
+	const unlisted = [
+		...Object.keys(POPULAR_AI_PROVIDERS),
+		...Object.keys(input.config.providers ?? {}).filter((id) => isCustom(input.config, id)),
+	];
+	for (const id of unlisted) {
+		if (aiProviders[id]) continue;
+		const integration = integrations.get(id);
+		aiProviders[id] = row(id, unlistedName(id, integration, input), false, integration, input);
 	}
-	for (const id of Object.keys(input.config.provider ?? {})) {
-		if (isCustom(input.config, id)) aiProviders[id] ??= row(unlisted(id, input), false, input);
+
+	const defaults: Record<string, string> = {};
+	const recommended = catalog.gateway.find((entry) => entry.recommended);
+	if (recommended && models[`${KILO_AI_PROVIDER_ID}/${recommended.id}`]) {
+		defaults[KILO_AI_PROVIDER_ID] = recommended.id;
 	}
-	const defaults = Object.fromEntries(
-		Object.entries(input.list.default ?? {}).filter(([id]) => connected.has(id)),
-	);
-	const configuredModel = parseModelKey(input.config.model);
+	const fallback = catalog.defaultModel;
+	if (fallback && models[`${fallback.providerID}/${fallback.id}`]) {
+		defaults[fallback.providerID] ??= fallback.id;
+	}
+	const configuredModel = parseModelSelection(input.config.model);
 	return { aiProviders, models, defaults, ...(configuredModel ? { configuredModel } : {}) };
 }

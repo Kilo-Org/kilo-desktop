@@ -13,6 +13,7 @@ import isEqual from "lodash/isEqual.js";
 
 import type { KiloServerConnection, KiloServerStatus } from "./types.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
+import { DESKTOP_KILO_CONFIG_FILE } from "./desktop-config-file.js";
 import { kiloInlineConfigContent } from "./kilo-inline-config.js";
 import { listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
 import { WEBMCP_ENDPOINT_TOKEN_ENV, WEBMCP_ENDPOINT_URL_ENV } from "./webmcp-relay-config.js";
@@ -30,12 +31,7 @@ const DEFAULT_KILO_GATEWAY_ORIGIN = "https://api.kilo.ai";
 /** The HTTP Basic user every Kilo v2 server expects; the password is per launch. */
 export const KILO_SERVER_USERNAME = "opencode";
 
-/**
- * Desktop's own Kilo config file inside the app-owned config directory, passed
- * as `KILO2_CONFIG`: Kilo v2 loads it after the user's global config and below
- * project config, so it adds to the user's config rather than replacing it.
- */
-export const DESKTOP_KILO_CONFIG_FILE = "kilo2.jsonc";
+export { DESKTOP_KILO_CONFIG_FILE } from "./desktop-config-file.js";
 
 /** The name Kilo v2 reports for this client (`KILO_CLIENT`); some Kilo plugins gate on it. */
 const KILO_CLIENT_NAME = "desktop";

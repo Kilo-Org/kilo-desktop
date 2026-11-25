@@ -24,31 +24,37 @@ import {
 	type ServerConnection,
 } from "../../contracts";
 import { GATEWAY_CATALOG_FRESH_MS } from "./gateway-catalog";
-import type { KiloProvider, KiloProviderList } from "./kilo-models-client";
+import type { KiloCatalog } from "./kilo-models-client";
 import { activateModels, type ModelsOptions } from "./models";
-import { createFakeKiloClient, type FakeKiloClient } from "./test-kilo-client";
+import {
+	createFakeKiloClient,
+	EMPTY_CATALOG,
+	model,
+	provider,
+	type FakeKiloClient,
+} from "./test-kilo-client";
 
 const acme = (modelId: string) => ({ aiProviderId: "acme", modelId });
 
-const anthropic: KiloProvider = {
-	id: "anthropic",
-	name: "Anthropic",
-	source: "api",
-	models: { sonnet: { id: "sonnet", name: "Sonnet" } },
-};
-const kilo: KiloProvider = {
-	id: "kilo",
-	name: "Kilo Gateway",
-	source: "custom",
-	models: { "kilo-auto/free": { id: "kilo-auto/free", name: "Auto Free", isFree: true } },
-};
-const local: KiloProvider = {
-	id: "local-server",
-	name: "Local Model Server",
-	source: "config",
-	models: { qwen: { id: "qwen", name: "Qwen" } },
-};
-const LIST: KiloProviderList = { all: [kilo, anthropic], connected: ["kilo", "anthropic"] };
+/** Kilo's catalog with these AI providers enabled, each offering one model. */
+function catalogOf(...ids: ("kilo" | "anthropic" | "local-server" | "openai")[]): KiloCatalog {
+	const offered = {
+		kilo: { name: "Kilo Gateway", model: model("kilo", "kilo-auto/free", { name: "Auto Free" }) },
+		anthropic: { name: "Anthropic", model: model("anthropic", "sonnet", { name: "Sonnet" }) },
+		"local-server": {
+			name: "Local Model Server",
+			model: model("local-server", "qwen", { name: "Qwen" }),
+		},
+		openai: { name: "OpenAI", model: model("openai", "gpt", { name: "GPT" }) },
+	};
+	return {
+		...EMPTY_CATALOG,
+		providers: ids.map((id) => provider(id, { name: offered[id].name })),
+		models: ids.map((id) => offered[id].model),
+		gateway: ids.includes("kilo") ? [{ id: "kilo-auto/free", isFree: true }] : [],
+	};
+}
+const CATALOG = catalogOf("kilo", "anthropic");
 
 const SIGNED_OUT: AccountState = {
 	connection: "connected",
@@ -91,7 +97,7 @@ interface BootOptions extends Partial<ModelsOptions> {
 
 /** kilo.core's models area in a main kernel, with fakes of kilo.core's server and account. */
 async function bootModels(options: BootOptions = {}) {
-	const fake = options.fake ?? createFakeKiloClient({ list: LIST });
+	const fake = options.fake ?? createFakeKiloClient({ catalog: CATALOG });
 	const storage = options.storage ?? createMemoryStorage("/data/plugins/kilo.core");
 	const connections: ServerConnection[] = [];
 	let server: DomainObjectProvider<typeof KiloServer> | undefined;
@@ -347,9 +353,23 @@ describe("AI providers and models", () => {
 		await readsSettled(2);
 	});
 
+	it("reads again when Kilo announces a change to its catalog", async () => {
+		const { models, fake, readsSettled } = await bootModels();
+		await readsSettled(1);
+		await vi.waitFor(() => expect(models.getState().ready).toBe(true));
+
+		fake.catalog = catalogOf("anthropic");
+		fake.announce();
+
+		await readsSettled(2);
+		await vi.waitFor(() =>
+			expect(Object.keys(models.getState().models)).toEqual(["anthropic/sonnet"]),
+		);
+	});
+
 	it("reads again on refresh, starting the server if needed", async () => {
 		const { models, fake } = await bootModels({ serverStatus: "stopped" });
-		fake.list = { all: [anthropic], connected: ["anthropic"] };
+		fake.catalog = catalogOf("anthropic");
 
 		await models.methods.refresh(undefined);
 
@@ -366,7 +386,7 @@ describe("AI providers and models", () => {
 		const first = models.methods.refresh(undefined);
 		const second = models.methods.refresh(undefined);
 		const third = models.methods.refresh(undefined);
-		fake.list = { all: [anthropic], connected: ["anthropic"] };
+		fake.catalog = catalogOf("anthropic");
 		open();
 		await Promise.all([first, second, third]);
 
@@ -385,18 +405,18 @@ describe("AI providers and models", () => {
 	});
 
 	it("reads an empty list again before believing it", async () => {
-		const fake = createFakeKiloClient({ list: { all: [], connected: [] } });
+		const fake = createFakeKiloClient();
 		const { models, readsSettled } = await bootModels({ fake });
 		await readsSettled(1);
 		expect(models.getState().ready).toBe(false);
 
-		fake.list = LIST;
+		fake.catalog = CATALOG;
 		await readsSettled(2);
 		await vi.waitFor(() => expect(models.getState().ready).toBe(true));
 	});
 
 	it("is ready with no AI providers when the list stays empty", async () => {
-		const fake = createFakeKiloClient({ list: { all: [], connected: [] } });
+		const fake = createFakeKiloClient();
 		const { models } = await bootModels({ fake });
 
 		await vi.waitFor(() => expect(models.getState().ready).toBe(true));
@@ -437,7 +457,7 @@ describe("AI providers and models", () => {
 
 		// Before the account's change reaches anyone else, so no window sees it without this.
 		expect(models.getState().followingAccount).toBe(true);
-		fake.list = { all: [anthropic], connected: ["anthropic"] };
+		fake.catalog = catalogOf("anthropic");
 		open();
 		await vi.waitFor(() => expect(models.getState().followingAccount).toBe(false));
 		expect(Object.keys(models.getState().models)).toEqual(["anthropic/sonnet"]);
@@ -514,7 +534,7 @@ describe("AI providers and models", () => {
 
 	it("marks plugin-contributed AI providers and follows contribution changes", async () => {
 		const fake = createFakeKiloClient({
-			list: { all: [kilo, local], connected: ["kilo", "local-server"] },
+			catalog: catalogOf("kilo", "local-server"),
 		});
 		const { kernel, models, readsSettled } = await bootModels({ fake, localServer: true });
 		// The first read precedes acme.local's activation; its implementation is a change.
@@ -541,22 +561,19 @@ describe("AI providers and models", () => {
 });
 
 describe("AI provider mutations", () => {
-	it("connects and disconnects an AI provider, disposing the server and reading again", async () => {
+	it("connects and disconnects an AI provider, reloading the server and reading again", async () => {
 		const { asShell, fake, readsSettled, models } = await bootModels();
 		await readsSettled(1);
 
-		fake.list = {
-			all: [kilo, anthropic, { ...anthropic, id: "openai", name: "OpenAI" }],
-			connected: ["kilo", "anthropic", "openai"],
-		};
+		fake.catalog = catalogOf("kilo", "anthropic", "openai");
 		await asShell.methods.connectAiProvider({ aiProviderId: "openai", apiKey: " sk-o " });
 		expect(fake.calls.set).toEqual([{ aiProviderId: "openai", key: "sk-o" }]);
-		expect(fake.calls.dispose).toBe(1);
+		expect(fake.calls.reload).toBe(1);
 		expect(models.getState().aiProviders.openai).toMatchObject({ connected: true });
 
 		await asShell.methods.disconnectAiProvider({ aiProviderId: "openai" });
 		expect(fake.calls.remove).toEqual(["openai"]);
-		expect(fake.calls.dispose).toBe(2);
+		expect(fake.calls.reload).toBe(2);
 		expect(fake.calls.list).toBe(3);
 	});
 
@@ -571,14 +588,14 @@ describe("AI provider mutations", () => {
 			apiKey: "sk-v",
 			models: [{ modelId: "llama", name: "Llama", attachments: true, contextWindow: 32_000 }],
 		});
-		expect(fake.config.provider?.vllm).toEqual({
-			npm: "@ai-sdk/openai-compatible",
+		expect(fake.config.providers?.vllm).toEqual({
+			package: "@ai-sdk/openai-compatible",
 			name: "vLLM",
-			options: { baseURL: "http://127.0.0.1:8000/v1" },
+			settings: { baseURL: "http://127.0.0.1:8000/v1" },
 			models: {
 				llama: {
 					name: "Llama",
-					modalities: { input: ["text", "image"], output: ["text"] },
+					capabilities: { input: ["text", "image"], output: ["text"] },
 					limit: { context: 32_000, output: 0 },
 				},
 			},

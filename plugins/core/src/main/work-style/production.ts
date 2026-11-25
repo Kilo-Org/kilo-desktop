@@ -1,45 +1,38 @@
-import { createKiloClient, type KiloClientConfig } from "@kilocode/sdk/v2/client";
+import { KiloSettingsRpc } from "@kilocode/schema/kilocode/settings";
 
 import type { PluginSdk } from "@kilo-desktop/kernel";
 
-import type { ServerConnection } from "../../contracts";
+import { permissionRuleSchema, type ServerConnection } from "../../contracts";
+import { callLocationRpc, createServerClient } from "../agent/server-client";
 import type { KiloWorkStyleClient, WorkStyleOptions } from "./index";
-import type { PermissionConfig } from "./work-style-presets";
 
-type GlobalConfigUpdate = NonNullable<
-	NonNullable<
-		Parameters<ReturnType<typeof createKiloClient>["global"]["config"]["update"]>[0]
-	>["config"]
->;
-
-/** The global config API of a running Kilo server, through its SDK, scoped to its global directory. */
+/** The user's global Kilo config through `kilocode.settings`, in kilo.core's global directory's location. */
 export function createKiloWorkStyleClient(connection: ServerConnection): KiloWorkStyleClient {
-	const credentials = Buffer.from(`${connection.username}:${connection.password}`).toString(
-		"base64",
-	);
-	const config: KiloClientConfig & { directory: string } = {
-		baseUrl: connection.baseUrl,
-		headers: { Authorization: `Basic ${credentials}` },
-		directory: connection.globalDirectory,
-	};
-	const client = createKiloClient(config);
-	const options = { throwOnError: true } as const;
+	const server = createServerClient(connection);
+	const directory = connection.globalDirectory;
+	const location = { location: { directory } };
+	const settings = server.rpc(KiloSettingsRpc.Definition);
+	const rpc = <T>(call: () => Promise<T>) => callLocationRpc(server, directory, call);
 	return {
-		async readGlobalPermission() {
-			const { data } = await client.global.config.get(options);
-			return (data as { permission?: PermissionConfig } | undefined)?.permission;
+		async readGlobalPermissions() {
+			const { document } = await rpc(() => settings.read({ scope: "global" }, location));
+			const permissions = (document as { permissions?: unknown } | undefined)?.permissions;
+			if (!Array.isArray(permissions)) return undefined;
+			return permissions.flatMap((rule) => {
+				const parsed = permissionRuleSchema.safeParse(rule);
+				return parsed.success ? [parsed.data] : [];
+			});
 		},
-		async updateGlobalConfig(patch) {
-			// Kilo deep-merges the patch; its `null`s delete, which the SDK's config type can't express.
-			await client.global.config.update({ config: patch as GlobalConfigUpdate }, options);
+		async writeGlobalPermissions(permissions) {
+			await rpc(() =>
+				settings.write({ scope: "global", set: { permissions: permissions as never } }, location),
+			);
 		},
-		async disposeInstances() {
-			await client.global.dispose();
-		},
+		reload: () => server.location.reload(),
 	};
 }
 
-/** Production wiring: the real Kilo SDK client. */
+/** Production wiring: the running Kilo v2 server. */
 export function productionWorkStyleOptions(_sdk: PluginSdk): WorkStyleOptions {
 	return { createClient: createKiloWorkStyleClient };
 }

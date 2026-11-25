@@ -23,23 +23,22 @@ export function renderModelPreset(models: readonly LocalModel[]): string {
 	return available(models).map(renderPresetSection).join("\n");
 }
 
+/** The local server as a provider in Kilo v2's config (`Config.Provider`). */
 export function createProviderEntry(
 	models: readonly LocalModel[],
 	baseURL: string,
 ): Readonly<Record<string, unknown>> {
 	return {
-		npm: "@ai-sdk/openai-compatible",
+		package: "@ai-sdk/openai-compatible",
 		name: LOCAL_PROVIDER_NAME,
-		options: {
-			baseURL,
-			headers: { Authorization: `Bearer {env:${LLAMA_API_KEY_ENV}}` },
-		},
+		settings: { baseURL },
+		headers: { Authorization: `Bearer {env:${LLAMA_API_KEY_ENV}}` },
 		models: Object.fromEntries(
 			available(models).map((model) => [
 				model.id,
 				{
 					name: model.name,
-					modalities: { input: ["text"], output: ["text"] },
+					capabilities: { input: ["text"], output: ["text"] },
 				},
 			]),
 		),

@@ -2,10 +2,10 @@ import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { parse } from "jsonc-parser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { KiloConfigManager } from "./KiloConfigManager.js";
+import { desktopConfigDocument, readDesktopConfig } from "../../test/agent/desktop-config.js";
+import { KILO_CONFIG_FILENAME, KiloConfigManager } from "./KiloConfigManager.js";
 import { KiloConfiguration } from "./KiloConfiguration.js";
 import { KiloPluginConfig } from "./KiloPluginConfig.js";
 import { KiloSkillConfig } from "./KiloSkillConfig.js";
@@ -32,7 +32,7 @@ describe("KiloConfiguration", () => {
 	let configuration: KiloConfiguration;
 
 	const readConfig = async () =>
-		parse(await readFile(path.join(configDirectory, "kilo.jsonc"), "utf8")) as Record<
+		(await readDesktopConfig(path.join(configDirectory, KILO_CONFIG_FILENAME))) as Record<
 			string,
 			Record<string, unknown> | undefined
 		>;
@@ -44,7 +44,7 @@ describe("KiloConfiguration", () => {
 
 	const everything: KiloConfigurationState = {
 		mcpEntries: { tools: { type: "local", command: ["tools"] } },
-		agents: { reviewer: { description: "Reviews", prompt: "Review.", mode: "subagent" } },
+		agents: { reviewer: { description: "Reviews", system: "Review.", mode: "subagent" } },
 		commands: { review: { template: "Review $ARGUMENTS" } },
 		plugins: {},
 		skills: {},
@@ -103,7 +103,7 @@ describe("KiloConfiguration", () => {
 		await configuration.set("acme.tools", everything);
 		await configuration.set("acme.other", {
 			...NOTHING,
-			agents: { other: { description: "Other", prompt: "Other.", mode: "all" } },
+			agents: { other: { description: "Other", system: "Other.", mode: "all" } },
 		});
 		onChanged.mockClear();
 
@@ -111,7 +111,7 @@ describe("KiloConfiguration", () => {
 
 		expect(await readConfig()).toEqual({
 			mcp: {},
-			agent: { other: { description: "Other", prompt: "Other.", mode: "all" } },
+			agent: { other: { description: "Other", system: "Other.", mode: "all" } },
 			command: {},
 		});
 		expect(await exists(path.join(pluginDirectory, "anaconda-notebooks.js"))).toBe(false);
@@ -123,8 +123,8 @@ describe("KiloConfiguration", () => {
 	it("leaves an entry the user owns under the same name alone, warning once", async () => {
 		await mkdir(configDirectory, { recursive: true });
 		await writeFile(
-			path.join(configDirectory, "kilo.jsonc"),
-			JSON.stringify({ command: { review: { template: "Mine" } } }),
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			JSON.stringify(desktopConfigDocument({ command: { review: { template: "Mine" } } })),
 		);
 		await mkdir(path.join(skillDirectory, "review"), { recursive: true });
 

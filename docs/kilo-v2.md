@@ -136,6 +136,41 @@ v1 boundary (e.g. `kilo-chat-client.ts`'s `toV1Rules`).
   Writes: `kilocode.settings.write({ scope, set, unset, expected })`.
 - Inline config: permission rules use v2 actions (`shell`, not `bash`).
 
+## Account, models, work style and config: what Desktop does
+
+These areas are on v2 (`account/kilo-client.ts`, `models/kilo-models-client.ts`,
+`work-style/production.ts`, `KiloConfigManager.ts`):
+
+- **Account:** status, profile, balance, Kilo Pass and organisation through
+  `kilocode.gateway`; device sign-in through `integration.oauth.connect`
+  (`kilo` / `device`) and `status` polling (cancel through `oauth.cancel`);
+  sign-out removes the `kilo` integration's credentials; changes are applied
+  with `location.reload()`.
+- **Models:** one read of `provider.list`, `model.list`, `integration.list`,
+  `model.default` and `kilocode.gateway.models` (free flag, ranking,
+  description, BYOK). Kilo fills the catalog in after startup, so the models
+  area re-reads on `provider.updated`, `model.updated`, `integration.updated`,
+  `credential.*` and on every stream (re)connect.
+- **Keys:** `integration.connect.key` against the provider's integration;
+  removal deletes that integration's credentials.
+- **Custom AI providers:** entries under `providers` in the user's global
+  config (`Config.Provider`: `package`, `settings.baseURL`, `headers`,
+  `models.<id>.capabilities` / `limit`), written with `kilocode.settings`
+  (leaf writes; removed keys sent as `null`). The entry is written before the
+  key, because Kilo creates the provider's integration from it.
+- **Work style:** v2 permission rules are an ordered list where the last match
+  wins, so Review first appends the preset (VS Code's v2 `HUMAN_PERMISSIONS`)
+  after the user's global `permissions`; switching back restores the list it
+  replaced.
+- **Desktop's config file** is `<app config dir>/kilo2.jsonc` in v2 keys
+  (`mcp.servers`, `agents`, `commands`, `providers`). The WebMCP relay entry is
+  a v2 remote server without `enabled`. Global writes go to the user's
+  `~/.config/kilo2` file, never to Desktop's layer, so the two never collide.
+- **Starting locations:** integration calls (Kilo's own `kilo` sign-in comes
+  from a plugin) fail with an unexplained 500 until the location's plugins
+  load; Desktop waits with `locationPluginsReady` first. Lists are empty until
+  then too.
+
 ## Account, models, work style (kilo.core)
 
 | v1                                              | v2                                                                                                          | Status  |

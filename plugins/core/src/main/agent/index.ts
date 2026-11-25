@@ -42,7 +42,7 @@ import { createAgentToolGateway, type KiloToolEndpointConnection } from "./tool-
 import { DeclinedSignIns } from "./tool-gateway/declined-sign-ins";
 import { reconcileKiloCallerContextPlugin } from "./tool-gateway/kilo-caller-context-plugin";
 import type { KiloServerConnection, KiloServerStatus } from "./types";
-import { MCP_ENTRY_SOURCE_ID, reconcileWebMcpRelayConfig } from "./webmcp-relay-config";
+import { reconcileWebMcpRelayConfig } from "./webmcp-relay-config";
 
 export type { AgentDirectories } from "./storage";
 export type { KiloChatClient } from "./conversations";
@@ -86,12 +86,6 @@ export interface AgentOptions {
 	readonly disposeInstance?: InstanceDisposer;
 }
 
-/**
- * The source id of kilo.core's own entries in the app-owned Kilo config. It
- * is kilo.agent's, which wrote them first: config ownership is persisted, so
- * keeping the id keeps those entries ours.
- */
-const OWN_SOURCE_ID = MCP_ENTRY_SOURCE_ID;
 const CONFIG_SYNC = "config-sync";
 const SERVER = "server";
 
@@ -327,10 +321,6 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 				await step("Applying agent extensions", () => agentExtensions.reconcile());
 				await step("Applying AI providers", () => providers.reconcile());
 				await step("Applying server environment", () => serverEnv.reconcile());
-				// Kilo's `suggest` tool has no UI here; left on it blocks the turn.
-				await step("Disabling Kilo's suggest tool", () =>
-					kiloConfig.setPermissionEntry(OWN_SOURCE_ID, "suggest", "deny"),
-				);
 				await gateway.firstStart;
 				await step("Registering the agent tools", registerToolEndpoint);
 			} finally {

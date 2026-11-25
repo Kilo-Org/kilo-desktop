@@ -1,70 +1,41 @@
+import type { PermissionRule } from "../../contracts";
 import type { KiloWorkStyleClient } from "./apply-work-style";
-import type { PermissionConfig } from "./work-style-presets";
 
 export interface FakeWorkStyleClient {
 	readonly client: KiloWorkStyleClient;
-	/** The `permission` block of the user's global config. */
-	permission: PermissionConfig | undefined;
+	/** The `permissions` of the user's global config. */
+	permissions: readonly PermissionRule[] | undefined;
 	readonly calls: string[];
-	readonly updates: PermissionConfig[];
+	readonly writes: (readonly PermissionRule[])[];
 	/** While set, the next config write fails with it (once). */
-	failNextUpdate?: Error | undefined;
+	failNextWrite?: Error | undefined;
 }
 
-/**
- * Merges a patch the way Kilo's `global.config.update` merges `permission`:
- * `null` deletes, pattern maps merge per pattern, and a scalar merged under
- * a map is promoted to `{ "*": scalar }`.
- */
-export function mergePermission(
-	current: PermissionConfig,
-	patch: PermissionConfig,
-): PermissionConfig {
-	const next: PermissionConfig = structuredClone(current);
-	for (const [key, rule] of Object.entries(patch)) {
-		if (rule === null || rule === undefined) {
-			delete next[key];
-		} else if (typeof rule === "string") {
-			next[key] = rule;
-		} else {
-			const existing = next[key];
-			const merged: Record<string, string> =
-				typeof existing === "string"
-					? { "*": existing }
-					: { ...(existing as Record<string, string> | undefined) };
-			for (const [pattern, action] of Object.entries(rule)) {
-				if (action === null) delete merged[pattern];
-				else merged[pattern] = action;
-			}
-			next[key] = merged as PermissionConfig[string];
-		}
-	}
-	return next;
-}
-
-/** The user's global Kilo config's `permission` block in memory, behind the client. */
-export function createFakeWorkStyleClient(permission?: PermissionConfig): FakeWorkStyleClient {
+/** The user's global Kilo config's `permissions` in memory, behind the client. */
+export function createFakeWorkStyleClient(
+	permissions?: readonly PermissionRule[],
+): FakeWorkStyleClient {
 	const fake: FakeWorkStyleClient = {
-		permission: permission ? structuredClone(permission) : undefined,
+		permissions: permissions ? structuredClone(permissions) : undefined,
 		calls: [],
-		updates: [],
+		writes: [],
 		client: {
-			readGlobalPermission: async () => {
+			readGlobalPermissions: async () => {
 				fake.calls.push("read");
-				return fake.permission;
+				return fake.permissions;
 			},
-			updateGlobalConfig: async ({ permission: patch }) => {
-				fake.calls.push("update");
-				if (fake.failNextUpdate) {
-					const error = fake.failNextUpdate;
-					fake.failNextUpdate = undefined;
+			writeGlobalPermissions: async (next) => {
+				fake.calls.push("write");
+				if (fake.failNextWrite) {
+					const error = fake.failNextWrite;
+					fake.failNextWrite = undefined;
 					throw error;
 				}
-				fake.updates.push(patch);
-				fake.permission = mergePermission(fake.permission ?? {}, patch);
+				fake.writes.push(next);
+				fake.permissions = structuredClone(next);
 			},
-			disposeInstances: async () => {
-				fake.calls.push("dispose");
+			reload: async () => {
+				fake.calls.push("reload");
 			},
 		},
 	};

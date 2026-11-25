@@ -6,9 +6,11 @@ import { applyEdits, modify, parseTree, printParseErrorCode } from "jsonc-parser
 import isEqual from "lodash/isEqual.js";
 
 import type { Node, ParseError } from "jsonc-parser";
+import { DESKTOP_KILO_CONFIG_FILE } from "./desktop-config-file.js";
 import type { KiloLogger } from "./KiloServerManager.js";
 
-export const KILO_CONFIG_FILENAME = "kilo.jsonc";
+/** Desktop's Kilo v2 config file, which the server loads as `KILO2_CONFIG`. */
+export const KILO_CONFIG_FILENAME = DESKTOP_KILO_CONFIG_FILE;
 export const OWNERSHIP_SIDECAR_FILENAME = ".kilo-desktop-ownership.json";
 const LEGACY_OWNERSHIP_SIDECAR_FILENAMES = [
 	".anaconda-desktop-ownership.json",
@@ -24,9 +26,8 @@ export type KiloOwnedMcpEntry = {
 	readonly id: string;
 	readonly sourceId: string | undefined;
 };
-export type KiloPermissionAction = "allow" | "ask" | "deny";
 /** The sections of Kilo's config whose entries Desktop writes, each entry owned by one source. */
-export type KiloConfigSection = "mcp" | "provider" | "permission" | "agent" | "command";
+export type KiloConfigSection = "mcp" | "provider" | "agent" | "command";
 /** The sections whose entries are whole objects, written and pruned per source generically. */
 export type KiloEntrySection = Extract<KiloConfigSection, "mcp" | "agent" | "command">;
 
@@ -183,11 +184,12 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 		// Its entries were still written by Desktop, so fold them in; ignoring
 		// them orphans those entries in kilo.jsonc forever.
 		let { sidecar, requiresMigration } = current.result;
-		for (const filename of LEGACY_OWNERSHIP_SIDECAR_FILENAMES) {
-			const legacy = await readSidecarFile(
-				path.join(configDirectory, filename),
-				legacyFlatKey(filename),
-			);
+		const legacies = await Promise.all(
+			LEGACY_OWNERSHIP_SIDECAR_FILENAMES.map((filename) =>
+				readSidecarFile(path.join(configDirectory, filename), legacyFlatKey(filename)),
+			),
+		);
+		for (const legacy of legacies) {
 			if (legacy.kind !== "parsed") continue;
 			sidecar = mergeLegacyOwnership(sidecar, legacy.result.sidecar);
 			requiresMigration = true;
@@ -284,23 +286,31 @@ function nodeToValue(node: Node | undefined): unknown {
 	return node.value;
 }
 
-function readEntry(root: Node | undefined, section: KiloConfigSection, name: string): unknown {
-	if (!root?.children) return undefined;
-	const sectionProperty = root.children.find(
-		(child) =>
-			child.type === "property" &&
-			child.children?.[0]?.type === "string" &&
-			child.children[0].value === section,
-	);
-	const sectionNode = sectionProperty?.children?.[1];
-	if (sectionNode?.type !== "object" || !sectionNode.children) return undefined;
-	const entryProperty = sectionNode.children.find(
+/**
+ * Where each section's entries live in Kilo v2's config. Ownership keys keep
+ * the section names (`mcp:<id>`), so the sidecar doesn't depend on the layout.
+ */
+const SECTION_PATHS: Readonly<Record<KiloConfigSection, readonly string[]>> = {
+	mcp: ["mcp", "servers"],
+	provider: ["providers"],
+	agent: ["agents"],
+	command: ["commands"],
+};
+
+function property(node: Node | undefined, name: string): Node | undefined {
+	if (node?.type !== "object" || !node.children) return undefined;
+	return node.children.find(
 		(child) =>
 			child.type === "property" &&
 			child.children?.[0]?.type === "string" &&
 			child.children[0].value === name,
-	);
-	return nodeToValue(entryProperty?.children?.[1]);
+	)?.children?.[1];
+}
+
+function readEntry(root: Node | undefined, section: KiloConfigSection, name: string): unknown {
+	let node = root;
+	for (const segment of [...SECTION_PATHS[section], name]) node = property(node, segment);
+	return nodeToValue(node);
 }
 
 function applyModification(
@@ -310,7 +320,7 @@ function applyModification(
 	value: unknown,
 ): string {
 	let result = text || "{}\n";
-	const edits = modify(result, [section, entryName], value, {
+	const edits = modify(result, [...SECTION_PATHS[section], entryName], value, {
 		formattingOptions: { insertSpaces: true, tabSize: 2 },
 	});
 	result = applyEdits(result, edits);
@@ -336,8 +346,8 @@ function tryApplyModification(
 /**
  * Owns serialized mutations of Desktop's Kilo config and its ownership sidecar.
  * Unknown entries and JSONC formatting remain user-owned; only sidecar-owned
- * MCP, agent, command, provider, and permission entries may be updated or
- * removed, and MCP, agent and command entries may be enumerated by their
+ * MCP (`mcp.servers`), agent (`agents`), command (`commands`) and provider
+ * (`providers`) entries, in Kilo v2's layout, may be updated or removed, and MCP, agent and command entries may be enumerated by their
  * owning source. Each section-qualified entry is bound to
  * the source that first claimed it. Flat historical ownership records are
  * migrated as MCP ownership. The queue prevents independent features and the
@@ -443,19 +453,6 @@ export class KiloConfigManager {
 		return this.#enqueue(() => this.#replaceProviderEntry(sourceId, entryName, snapshot));
 	}
 
-	/** A user-authored rule for the same tool is left alone. */
-	setPermissionEntry(
-		sourceId: string,
-		toolName: string,
-		action: KiloPermissionAction,
-	): Promise<KiloConfigMutationOutcome> {
-		return this.#enqueue(() =>
-			this.#updateEntry("permission", sourceId, toolName, action, {
-				adoptExisting: (current) => current === action,
-			}),
-		);
-	}
-
 	#enqueue<T>(operation: () => Promise<T>): Promise<T> {
 		const result = this.#pending.then(operation, operation);
 		this.#pending = result.then(
@@ -469,7 +466,7 @@ export class KiloConfigManager {
 		section: KiloConfigSection,
 		sourceId: string,
 		entryName: string,
-		entry: KiloConfigEntry | KiloPermissionAction | undefined,
+		entry: KiloConfigEntry | undefined,
 		options?: KiloEntryOptions,
 	): Promise<KiloConfigMutationOutcome> {
 		if (!sourceId.trim()) {

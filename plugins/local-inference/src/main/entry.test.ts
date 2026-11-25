@@ -42,10 +42,10 @@ describe("kilo.local-inference in main", () => {
 		await vi.waitFor(() => {
 			const config = host.provider()!.implementation!.read()!;
 			const entry = config.entry as {
-				options: { baseURL: string };
+				settings: { baseURL: string };
 				models: Record<string, unknown>;
 			};
-			expect(entry.options.baseURL).toBe("http://127.0.0.1:42000/v1");
+			expect(entry.settings.baseURL).toBe("http://127.0.0.1:42000/v1");
 			expect(Object.keys(entry.models)).toHaveLength(1);
 			expect(config.env).toEqual({ ANACONDA_LOCAL_LLAMA_API_KEY: "router-secret" });
 		}, WAIT);

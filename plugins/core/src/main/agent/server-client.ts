@@ -71,6 +71,20 @@ export async function callLocationRpc<T>(
 	}
 }
 
+/**
+ * Waits until `directory`'s location lists its plugins (or the wait times
+ * out). Calls that plugins answer but that aren't RPCs, such as an
+ * integration a plugin registers (Kilo's own `kilo` sign-in), fail unexplained
+ * while a location is starting rather than answering `rpc.unavailable`.
+ */
+export function locationPluginsReady(
+	client: Pick<OpenCodeClient, "plugin">,
+	directory: string,
+	options: LocationPluginsOptions = {},
+): Promise<void> {
+	return waitForLocationPlugins(client, directory, options.active ?? (() => true), options);
+}
+
 async function waitForLocationPlugins(
 	client: Pick<OpenCodeClient, "plugin">,
 	directory: string,

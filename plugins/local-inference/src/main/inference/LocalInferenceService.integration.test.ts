@@ -264,7 +264,7 @@ describe("LocalInferenceService", () => {
 			"kilo-desktop-model-server",
 			expect.objectContaining({
 				name: "Local",
-				options: expect.objectContaining({ baseURL: "http://127.0.0.1:44123/v1" }),
+				settings: { baseURL: "http://127.0.0.1:44123/v1" },
 				models: { [model.id]: expect.objectContaining({ name: "Tiny" }) },
 			}),
 		);
@@ -656,7 +656,7 @@ describe("LocalInferenceService", () => {
 			"local-inference",
 			"kilo-desktop-model-server",
 			expect.objectContaining({
-				options: expect.objectContaining({ baseURL: "http://127.0.0.1:44123/v1" }),
+				settings: { baseURL: "http://127.0.0.1:44123/v1" },
 			}),
 		);
 		service.dispose();

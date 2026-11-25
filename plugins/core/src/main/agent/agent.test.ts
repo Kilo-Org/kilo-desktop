@@ -1,7 +1,6 @@
 import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parse } from "jsonc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PluginSdk } from "@kilo-desktop/kernel";
@@ -27,6 +26,7 @@ import {
 	tempDir,
 	type BootOptions,
 } from "../../test/agent/boot";
+import { desktopConfigDocument, readDesktopConfig } from "../../test/agent/desktop-config";
 import { CONNECTION } from "../../test/agent/fake-server";
 
 afterEach(async () => {
@@ -34,7 +34,7 @@ afterEach(async () => {
 	await cleanUpAgents();
 });
 
-const CONFIG_FILE = "agent/runtime/config/kilo2/kilo.jsonc";
+const CONFIG_FILE = "agent/runtime/config/kilo2/kilo2.jsonc";
 
 /** A plugin contributing an AI provider it can change later. */
 function aiProviderContributor(id: string, initial: AiProviderConfig | undefined) {
@@ -102,9 +102,7 @@ const boot = (plugins: BootOptions["plugins"] = [], options: Omit<BootOptions, "
 const serverOf = (kernel: MainKernel) => kernel.kernelSdk.domainObjects.get(KiloServer)!;
 const serviceStatus = (kernel: MainKernel) => statusOf(kernel, SERVER_SERVICE_KEY);
 
-async function readJsonc(file: string) {
-	return parse(await readFile(file, "utf8")) as Record<string, unknown>;
-}
+const readJsonc = readDesktopConfig;
 
 describe("the Kilo server", () => {
 	it("starts the server once the window shows, after its config is written", async () => {
@@ -116,7 +114,7 @@ describe("the Kilo server", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		expect(serverOf(kernel).getState()).toEqual({ status: "ready", version: CONNECTION.version });
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config).toMatchObject({ permission: { suggest: "deny" } });
+		expect(config).toMatchObject({ mcp: { desktop: { type: "remote" } } });
 	});
 
 	it("waits for the terms to be accepted before starting the server", async () => {
@@ -523,7 +521,7 @@ describe("agent extensions", () => {
 		await mkdir(path.join(storage, "agent/runtime/config/kilo2"), { recursive: true });
 		await writeFile(
 			path.join(storage, CONFIG_FILE),
-			JSON.stringify({ agent: { analyst: { prompt: "Mine." } } }),
+			JSON.stringify(desktopConfigDocument({ agent: { analyst: { system: "Mine." } } })),
 		);
 		const { kernel } = await boot(notebook.plugins, {
 			storage,
@@ -532,7 +530,7 @@ describe("agent extensions", () => {
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 
 		const config = await readJsonc(path.join(storage, CONFIG_FILE));
-		expect(config.agent).toEqual({ analyst: { prompt: "Mine." } });
+		expect(config.agent).toEqual({ analyst: { system: "Mine." } });
 		expect(config.command).toHaveProperty("analyse");
 	});
 

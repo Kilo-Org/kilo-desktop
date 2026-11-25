@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { callLocationRpc, createServerClient } from "./server-client.js";
+import { callLocationRpc, createServerClient, locationPluginsReady } from "./server-client.js";
 
 const connection = {
 	baseUrl: "http://127.0.0.1:4321",
@@ -85,5 +85,15 @@ describe("callLocationRpc", () => {
 			callLocationRpc(client, "/projects/app", call, { pollMs: 1, active: () => false }),
 		).rejects.toEqual(unavailable);
 		expect(call).toHaveBeenCalledOnce();
+	});
+});
+
+describe("locationPluginsReady", () => {
+	it("waits until the location lists its plugins", async () => {
+		const client = pluginsListing(0, 0, 2);
+
+		await locationPluginsReady(client, "/projects/app", { pollMs: 1 });
+
+		expect(client.plugin.list).toHaveBeenCalledTimes(3);
 	});
 });

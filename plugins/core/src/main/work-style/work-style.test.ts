@@ -9,11 +9,14 @@ import {
 	CORE_DEFINITIONS,
 	KiloServer,
 	KiloWorkStyle,
+	type PermissionRule,
 	type ServerConnection,
 } from "../../contracts";
 import { activateWorkStyle } from "./index";
 import { createFakeWorkStyleClient, type FakeWorkStyleClient } from "./test-work-style-client";
-import { REVIEW_FIRST_PERMISSION, type PermissionConfig } from "./work-style-presets";
+import { REVIEW_FIRST_PERMISSIONS } from "./work-style-presets";
+
+const EDIT_ALLOWED: PermissionRule[] = [{ action: "edit", resource: "*", effect: "allow" }];
 
 const CONNECTION: ServerConnection = {
 	baseUrl: "http://127.0.0.1:4096",
@@ -24,14 +27,14 @@ const CONNECTION: ServerConnection = {
 };
 
 interface BootOptions {
-	readonly permission?: PermissionConfig;
+	readonly permissions?: readonly PermissionRule[];
 	/** Leaves kilo.core/server unprovided. */
 	readonly withoutServer?: boolean;
 }
 
 /** kilo.core's work-style area in a main kernel, with a fake of kilo.core's server. */
 async function bootWorkStyle(options: BootOptions = {}) {
-	const fake: FakeWorkStyleClient = createFakeWorkStyleClient(options.permission);
+	const fake: FakeWorkStyleClient = createFakeWorkStyleClient(options.permissions);
 	const connect = vi.fn(() => CONNECTION);
 	const createClient = vi.fn(() => fake.client);
 	const core: PluginRegistration = {
@@ -78,60 +81,63 @@ describe("kilo.core/work-style", () => {
 
 	it("reports the permission keys Review first would replace, through the server's connection", async () => {
 		const { asShell, connect, createClient } = await bootWorkStyle({
-			permission: { bash: "allow", mcp_tool: "allow" },
+			permissions: [
+				{ action: "shell", resource: "*", effect: "allow" },
+				{ action: "mcp_tool", resource: "*", effect: "allow" },
+			],
 		});
 
-		await expect(asShell.methods.conflicts(undefined)).resolves.toEqual({ keys: ["bash"] });
+		await expect(asShell.methods.conflicts(undefined)).resolves.toEqual({ keys: ["shell"] });
 		expect(connect).toHaveBeenCalledOnce();
 		expect(createClient).toHaveBeenCalledWith(CONNECTION);
 	});
 
 	it("writes Review first and records the style", async () => {
-		const { asShell, fake } = await bootWorkStyle({ permission: { edit: "allow" } });
+		const { asShell, fake } = await bootWorkStyle({ permissions: EDIT_ALLOWED });
 
 		await asShell.methods.apply({ style: "human-in-the-loop" });
 
-		expect(fake.permission).toEqual(REVIEW_FIRST_PERMISSION);
-		expect(fake.calls).toEqual(["read", "update", "dispose"]);
+		expect(fake.permissions).toEqual([...EDIT_ALLOWED, ...REVIEW_FIRST_PERMISSIONS]);
+		expect(fake.calls).toEqual(["read", "write", "reload"]);
 		expect(asShell.getState()).toEqual({ style: "human-in-the-loop" });
 		await expect(asShell.methods.conflicts(undefined)).resolves.toEqual({ keys: [] });
 	});
 
 	it("restores the replaced rules when switching back to High autonomy in the same session", async () => {
-		const { asShell, fake } = await bootWorkStyle({ permission: { edit: "allow" } });
+		const { asShell, fake } = await bootWorkStyle({ permissions: EDIT_ALLOWED });
 
 		await asShell.methods.apply({ style: "human-in-the-loop" });
 		await asShell.methods.apply({ style: "autonomous" });
 
-		expect(fake.permission).toEqual({ edit: "allow" });
+		expect(fake.permissions).toEqual(EDIT_ALLOWED);
 		expect(asShell.getState()).toEqual({ style: "autonomous" });
 	});
 
 	it("leaves the user's config alone for High autonomy without an earlier Review first", async () => {
-		const { asShell, fake } = await bootWorkStyle({ permission: REVIEW_FIRST_PERMISSION });
+		const { asShell, fake } = await bootWorkStyle({ permissions: REVIEW_FIRST_PERMISSIONS });
 
 		await asShell.methods.apply({ style: "autonomous" });
 
-		expect(fake.updates).toEqual([]);
-		expect(fake.permission).toEqual(REVIEW_FIRST_PERMISSION);
+		expect(fake.writes).toEqual([]);
+		expect(fake.permissions).toEqual(REVIEW_FIRST_PERMISSIONS);
 		expect(asShell.getState()).toEqual({ style: "autonomous" });
 	});
 
 	it("runs applies one at a time, each planning from the config the last one wrote", async () => {
-		const { asShell, fake } = await bootWorkStyle({ permission: { edit: "allow" } });
+		const { asShell, fake } = await bootWorkStyle({ permissions: EDIT_ALLOWED });
 
 		await Promise.all([
 			asShell.methods.apply({ style: "human-in-the-loop" }),
 			asShell.methods.apply({ style: "autonomous" }),
 		]);
 
-		expect(fake.permission).toEqual({ edit: "allow" });
+		expect(fake.permissions).toEqual(EDIT_ALLOWED);
 		expect(asShell.getState()).toEqual({ style: "autonomous" });
 	});
 
 	it("keeps the last style when a write fails, and a retry still works", async () => {
 		const { asShell, fake } = await bootWorkStyle();
-		fake.failNextUpdate = new Error("Config is read-only.");
+		fake.failNextWrite = new Error("Config is read-only.");
 
 		await expect(asShell.methods.apply({ style: "human-in-the-loop" })).rejects.toThrow(
 			"Config is read-only.",
@@ -144,7 +150,7 @@ describe("kilo.core/work-style", () => {
 
 	it("explains a failure Kilo gave no reason for", async () => {
 		const { asShell, fake } = await bootWorkStyle();
-		fake.failNextUpdate = new Error("");
+		fake.failNextWrite = new Error("");
 
 		await expect(asShell.methods.apply({ style: "human-in-the-loop" })).rejects.toThrow(
 			"Could not save your work style.",

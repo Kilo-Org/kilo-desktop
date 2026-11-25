@@ -67,16 +67,14 @@ ctx-size = 16384
 
 	it("creates one OpenAI-compatible provider containing every available model", () => {
 		expect(createProviderEntry(models, "http://127.0.0.1:43123/v1")).toEqual({
-			npm: "@ai-sdk/openai-compatible",
+			package: "@ai-sdk/openai-compatible",
 			name: "Local",
-			options: {
-				baseURL: "http://127.0.0.1:43123/v1",
-				headers: { Authorization: "Bearer {env:ANACONDA_LOCAL_LLAMA_API_KEY}" },
-			},
+			settings: { baseURL: "http://127.0.0.1:43123/v1" },
+			headers: { Authorization: "Bearer {env:ANACONDA_LOCAL_LLAMA_API_KEY}" },
 			models: {
 				"qwen-3-a1b2c3d4": {
 					name: "Qwen 3",
-					modalities: { input: ["text"], output: ["text"] },
+					capabilities: { input: ["text"], output: ["text"] },
 				},
 			},
 		});

@@ -60,6 +60,10 @@ test.describe("Chat welcome menu keyboard", () => {
 		await chatComposerPage.pressKey("Enter");
 
 		await chatComposerPage.verifyComposerCommand("init");
+		// The args landing proves the composer still accepts keys: a send Enter
+		// started would have left the starter inert.
+		await chatComposerPage.typeMessageSequentially(" build");
+		await chatComposerPage.verifyComposerHoldsText("build");
 		await chatComposerPage.verifyTriggerMenuClosed();
 		await chatComposerPage.verifyStillOnDraft();
 	});
@@ -110,7 +114,7 @@ test.describe("Chat welcome menu keyboard", () => {
 
 		await chatComposerPage.typeMessageSequentially("/nosuchcommand");
 		await chatComposerPage.verifyTriggerMenuOpen();
-		await chatComposerPage.verifyTriggerMenuHasNoRows();
+		await chatComposerPage.verifyTriggerMenuHasNoRows("No matching items");
 
 		await chatComposerPage.typeMessageSequentially(` ${marker}`);
 		await chatComposerPage.verifyTriggerMenuClosed();

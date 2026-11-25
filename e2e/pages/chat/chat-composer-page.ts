@@ -252,8 +252,15 @@ export class ChatComposerPage {
 		});
 	}
 
-	/** An open menu with nothing to offer, e.g. an unknown `/` command or a workspace with no files. */
-	async verifyTriggerMenuHasNoRows(): Promise<void> {
+	/**
+	 * The menu settled with nothing to offer, e.g. an unknown `/` command. Its
+	 * resolved empty-state label (rather than the loading one) is what makes the
+	 * zero row count meaningful.
+	 */
+	async verifyTriggerMenuHasNoRows(emptyLabel: string): Promise<void> {
+		await expectElementToBeVisible(this.triggerMenu().getByText(emptyLabel, { exact: true }), {
+			message: `The trigger menu should show "${emptyLabel}" once its results settle`,
+		});
 		await expectElementToHaveCount(this.triggerMenu().locator('[role="option"]'), 0, {
 			message: "The trigger menu should show no rows",
 		});

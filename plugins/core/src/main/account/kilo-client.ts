@@ -49,7 +49,7 @@ export function createKiloAccountClient(connection: ServerConnection): KiloAccou
 		// For servers whose profile route reports every failure alike: the model catalog keeps
 		// why it failed. Only an organisation's catalog does (a personal one falls back to the
 		// free models), and the catalog is only fetched again when the server reloads.
-		async signInRefused() {
+		async catalogRefusesSignIn() {
 			const { data } = await client.provider.list({ directory }, options);
 			return data.failures.some(
 				(failure) => failure.providerID === KILO_PROVIDER && REFUSED.has(failure.kind),

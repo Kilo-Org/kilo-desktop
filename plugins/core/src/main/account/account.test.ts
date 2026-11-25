@@ -82,7 +82,7 @@ class FakeKiloAccount implements KiloAccountClient {
 		if (this.profileResult instanceof Error) throw this.profileResult;
 		return this.profileResult;
 	}
-	async signInRefused() {
+	async catalogRefusesSignIn() {
 		return this.authenticated && this.refused;
 	}
 	async authorize() {
@@ -347,6 +347,7 @@ describe("the Kilo account", () => {
 		account.authenticated = true;
 		const { kernel, endTurn } = await boot({ account });
 		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(true));
+		account.profileResult = new Error("Bad Request");
 
 		endTurn({ name: "APIError", message: "Signed out", status: 401, code: "INVALID_TOKEN" });
 
@@ -358,6 +359,30 @@ describe("the Kilo account", () => {
 			}),
 		);
 		expect(account.authenticated).toBe(false);
+	});
+
+	it("keeps a sign-in another app renewed after the server's copy was refused", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		const { kernel, endTurn } = await boot({ account });
+		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(true));
+		// The server still holds the refused sign-in; reloading picks up the renewed one.
+		account.profileResult = new Error("Bad Request");
+		account.disposed.mockImplementation(async () => {
+			account.profileResult = PROFILE;
+		});
+
+		endTurn({ name: "APIError", message: "Signed out", status: 401, code: "INVALID_TOKEN" });
+
+		await vi.waitFor(() => expect(account.disposed).toHaveBeenCalled());
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState()).toMatchObject({
+				signedIn: true,
+				signInExpired: false,
+				profile: PROFILE,
+			}),
+		);
+		expect(account.authenticated).toBe(true);
 	});
 
 	it("keeps the sign-in through other failed chat requests", async () => {

@@ -17,7 +17,7 @@ export interface KiloAccountClient {
 	 */
 	profile(): Promise<KiloProfile>;
 	/** Whether Kilo's model catalog records that it refuses the stored credentials. */
-	signInRefused(): Promise<boolean>;
+	catalogRefusesSignIn(): Promise<boolean>;
 	/** Starts device sign-in; the server opens the browser itself. */
 	authorize(): Promise<{ readonly url: string; readonly instructions?: string | undefined }>;
 	/** Resolves once the person approves in the browser. */
@@ -97,7 +97,9 @@ export interface AccountServiceOptions {
  * account reads signed out with `signInExpired`, which the next successful
  * read clears. Any other failure stays a `profileError` the person can retry.
  * Mid-session the profile is not read again, so a chat request Kilo refuses
- * for the same reason (`signInRefused`) takes the same way out.
+ * for the same reason (`signInRefused`) takes the same way out, after the
+ * server reloads and the sign-in still fails: another Kilo app may already
+ * have stored a renewed one.
  */
 export class AccountService {
 	readonly #options: AccountServiceOptions;
@@ -146,8 +148,28 @@ export class AccountService {
 		if (!client || this.#state.signedIn !== true || this.#signInInProgress()) {
 			return Promise.resolve();
 		}
-		this.#expiring ??= this.#signOutRefused(client).finally(() => (this.#expiring = undefined));
+		this.#expiring ??= this.#recheckRefused(client).finally(() => (this.#expiring = undefined));
 		return this.#expiring;
+	}
+
+	/**
+	 * The server keeps the sign-in it loaded, while the stored one is shared
+	 * with every Kilo app: another may already have stored a renewed sign-in,
+	 * which removing would delete. So the server reloads first, and only a
+	 * sign-in that still fails is removed.
+	 */
+	async #recheckRefused(client: KiloAccountClient): Promise<void> {
+		await client.dispose().catch(() => undefined);
+		try {
+			if ((await client.authStatus()).authenticated !== true) {
+				this.#set({ signedIn: false, profile: null, profileError: null });
+				return;
+			}
+			const profile = await client.profile();
+			this.#set({ signedIn: true, profile, profileError: null, signInExpired: false });
+		} catch {
+			if (!this.#signInInProgress()) await this.#signOutRefused(client);
+		}
 	}
 
 	signIn(): Promise<{ signedIn: boolean }> {
@@ -278,7 +300,7 @@ export class AccountService {
 	 */
 	async #refused(client: KiloAccountClient, refusedProfile: boolean): Promise<boolean> {
 		if (this.#signInInProgress()) return false;
-		return refusedProfile || client.signInRefused().catch(() => false);
+		return refusedProfile || client.catalogRefusesSignIn().catch(() => false);
 	}
 
 	#signInInProgress(): boolean {

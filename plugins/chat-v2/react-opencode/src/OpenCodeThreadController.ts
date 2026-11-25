@@ -1,5 +1,11 @@
 import type { AppendMessage, ThreadUserMessagePart } from "@assistant-ui/react";
-import type { OpencodeClient, PermissionRequest, QuestionRequest, SessionStatus } from "./sdk";
+import type {
+	FormAnswer,
+	FormInfo,
+	PermissionRequest as KiloPermissionRequest,
+} from "@kilocode/client";
+import type { SessionStatus } from "./sdk";
+import { readHistory, type KiloClient } from "./kilo";
 import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState";
 import type {
 	MessageWithParts,
@@ -7,7 +13,6 @@ import type {
 	OpenCodePermissionResponse,
 	OpenCodeQuestionRequest,
 	Part,
-	QuestionAnswer,
 	OpenCodeServerEvent,
 	OpenCodeStateEvent,
 	OpenCodeThreadControllerLike,
@@ -22,11 +27,18 @@ import {
 	resolveImageMediaType,
 	toMediaWireUrl,
 } from "@assistant-ui/core/internal";
-import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
 import { serializeOpenCodeParts } from "./serializeUserParts";
 import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
+import { toV1Messages, toV1Session } from "./v2/v2-messages";
 
 type OpenCodeEventSourceProvider = () => Pick<OpenCodeEventSource, "subscribe">;
+
+export type OpenCodeThreadControllerOptions = {
+	/** Adjusts a loaded history before the thread shows it (`OpenCodeRuntimeBackend.patchHistory`). */
+	patchHistory?:
+		| ((sessionId: string, messages: readonly MessageWithParts[]) => readonly MessageWithParts[])
+		| undefined;
+};
 
 type ChildControllerEntry = {
 	controller: OpenCodeThreadController;
@@ -57,104 +69,59 @@ const flattenMessageParts = (message: AppendMessage) => [
 	) ?? []),
 ];
 
-const getPromptParts = (message: AppendMessage) => {
-	const content = flattenMessageParts(message);
-
-	const promptParts: Array<Record<string, unknown>> = [];
-	for (const part of content) {
+/**
+ * The message as Kilo v2's prompt: its text, and its images and files as
+ * file references (data URLs for inline content).
+ */
+const getPromptInput = (message: AppendMessage) => {
+	const text: string[] = [];
+	const files: { uri: string; name?: string }[] = [];
+	for (const part of flattenMessageParts(message)) {
 		if (part.type === "text") {
-			promptParts.push({ type: "text", text: part.text });
+			text.push(part.text);
 			continue;
 		}
 
 		if (part.type === "image") {
-			// OpenCode has no image part: its input union is text, file, agent and
-			// subtask, so an `image` part never reached the model.
 			const mime = resolveImageMediaType(
 				part.image,
 				(part as { contentType?: string }).contentType,
 			);
-			promptParts.push({
-				type: "file",
-				...(part.filename != null && { filename: part.filename }),
-				mime,
-				url: toMediaWireUrl(part.image, mime),
+			files.push({
+				uri: toMediaWireUrl(part.image, mime),
+				...(part.filename != null && { name: part.filename }),
 			});
 			continue;
 		}
 
 		if (part.type === "file") {
 			const fileMime = resolveFileMediaType(part.data, part.mimeType);
-			promptParts.push({
-				type: "file",
-				filename: part.filename,
-				mime: fileMime,
+			files.push({
 				// An `id` reference is an opaque handle this adapter cannot send, left
 				// unwrapped so it fails loudly rather than shipping a corrupt payload.
-				url: part.sourceType === "id" ? part.data : toMediaWireUrl(part.data, fileMime),
+				uri: part.sourceType === "id" ? part.data : toMediaWireUrl(part.data, fileMime),
+				...(part.filename != null && { name: part.filename }),
 			});
 		}
 	}
 
-	return promptParts;
+	return { text: text.join("\n"), files };
 };
 
-const getRecordValue = (record: Record<string, unknown>, keys: readonly string[]) => {
-	for (const key of keys) {
-		if (key in record) {
-			return record[key];
-		}
-	}
+const toPermissionRequest = (request: KiloPermissionRequest): OpenCodePermissionRequest | null =>
+	typeof request.id === "string" && typeof request.sessionID === "string"
+		? { ...request, askedAt: Date.now() }
+		: null;
 
-	return undefined;
-};
+const toQuestionRequest = (form: FormInfo | undefined): OpenCodeQuestionRequest | null =>
+	typeof form?.id === "string" && typeof form.sessionID === "string"
+		? { ...form, askedAt: Date.now() }
+		: null;
 
-const toPermissionRequest = (request: PermissionRequest): OpenCodePermissionRequest | null => {
-	if (typeof request.id !== "string" || typeof request.sessionID !== "string") {
-		return null;
-	}
+const record = (value: unknown): Record<string, unknown> =>
+	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 
-	const metadata =
-		typeof request.metadata === "object" && request.metadata !== null
-			? (request.metadata as Record<string, unknown>)
-			: {};
-
-	const titleValue = getRecordValue(metadata, ["title", "message", "prompt"]);
-	const toolNameValue = getRecordValue(metadata, ["toolName", "tool", "name", "permission"]);
-	const toolInputValue = getRecordValue(metadata, ["toolInput", "input", "args", "arguments"]);
-
-	return {
-		id: request.id,
-		sessionId: request.sessionID,
-		permission: request.permission,
-		patterns: request.patterns,
-		metadata,
-		always: Array.isArray(request.always) ? request.always : [],
-		tool: request.tool,
-		toolName: typeof toolNameValue === "string" ? toolNameValue : request.permission,
-		toolInput: toolInputValue,
-		title: typeof titleValue === "string" ? titleValue : undefined,
-		askedAt: Date.now(),
-		raw: request,
-	};
-};
-
-const extractPermissionRequest = (event: OpenCodeServerEvent): OpenCodePermissionRequest | null =>
-	toPermissionRequest(event.properties as PermissionRequest);
-
-const toQuestionRequest = (request: QuestionRequest): OpenCodeQuestionRequest | null => {
-	if (typeof request.id !== "string" || typeof request.sessionID !== "string") {
-		return null;
-	}
-
-	return {
-		...request,
-		askedAt: Date.now(),
-	};
-};
-
-const extractQuestionRequest = (event: OpenCodeServerEvent): OpenCodeQuestionRequest | null =>
-	toQuestionRequest(event.properties as unknown as QuestionRequest);
+const PERMISSION_REPLIES: ReadonlySet<unknown> = new Set(["once", "always", "reject"]);
 
 const normalizeUnhandledEvent = (event: OpenCodeServerEvent): OpenCodeUnhandledEvent => ({
 	type: event.type,
@@ -175,26 +142,6 @@ const isSupportedDelta = (
 
 	return field === "text" && (part.type === "text" || part.type === "reasoning");
 };
-
-/** Messages a session's history opens with; the older ones follow in the background. */
-export const OPEN_CODE_HISTORY_PAGE_SIZE = 50;
-
-/** A `limit` covering every older message: the server takes `before` only with one. */
-const OLDER_HISTORY_LIMIT = 1_000_000;
-
-/** The cursor to the messages older than a page, absent once there are none. */
-const nextHistoryCursor = (result: unknown): string | undefined =>
-	(result as { response?: Response } | undefined)?.response?.headers?.get("X-Next-Cursor") ??
-	undefined;
-
-const whenIdle = () =>
-	new Promise<void>((resolve) => {
-		if (typeof requestIdleCallback === "function") {
-			requestIdleCallback(() => resolve(), { timeout: 1_000 });
-		} else {
-			setTimeout(resolve, 0);
-		}
-	});
 
 const STATUS_EVENT_TYPES: ReadonlySet<OpenCodeStateEvent["type"]> = new Set([
 	"session.status",
@@ -237,13 +184,9 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	 */
 	private loadPromise: Promise<void> | null = null;
 	/*
-	 * A history loads its newest page, shows it, then fetches everything older
-	 * once the browser is idle and adds it in one dispatch: a long session opens
-	 * at the cost of a page, and its full history (for the conversation map,
-	 * find and revert) follows without stalling the first paint. Each load bumps
-	 * the epoch, so older history fetched for a superseded load is dropped.
+	 * A history loads whole: Kilo v2's markers early in a session (agent and
+	 * model switches) set what the messages after them carry.
 	 */
-	private historyEpoch = 0;
 	private reconnectSyncToken = 0;
 	// Bumped by every event that sets run/session status, so a status fetch
 	// that resolves after a newer live event cannot overwrite it.
@@ -261,16 +204,19 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		}
 	>();
 
-	private readonly client: OpencodeClient;
+	private readonly client: KiloClient;
 	private readonly sessionId: string;
+	private readonly options: OpenCodeThreadControllerOptions;
 
 	constructor(
-		client: OpencodeClient,
+		client: KiloClient,
 		getEventSource: OpenCodeEventSourceProvider,
 		sessionId: string,
+		options: OpenCodeThreadControllerOptions = {},
 	) {
 		this.client = client;
 		this.sessionId = sessionId;
+		this.options = options;
 		this.state = createOpenCodeThreadState(sessionId);
 		this.getEventSource = getEventSource;
 		this.ancestorSessionIds = new Set([sessionId]);
@@ -320,7 +266,6 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 
 	private discard() {
 		this.loadPromise = null;
-		this.historyEpoch += 1;
 		this.reconnectSyncToken += 1;
 		this.statusEpoch += 1;
 		this.unsubscribeFromEvents?.();
@@ -387,7 +332,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		for (const sessionId of sessionIds) {
 			if (this.childControllersById.has(sessionId)) continue;
 
-			const controller = new OpenCodeThreadController(this.client, this.getEventSource, sessionId);
+			const controller = new OpenCodeThreadController(
+				this.client,
+				this.getEventSource,
+				sessionId,
+				this.options,
+			);
 			controller.ancestorSessionIds = new Set([...this.ancestorSessionIds, sessionId]);
 			controller.isChildSession = true;
 			const entry: ChildControllerEntry = {
@@ -474,13 +424,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	private syncSessionStatus() {
 		const epoch = this.statusEpoch;
 		void Promise.resolve()
-			.then(() => this.client.session.status(undefined, OPEN_CODE_REQUEST_OPTIONS))
+			.then(() => this.client.session.active())
 			.catch(() => null)
-			.then((response) => {
-				if (!response?.data || epoch !== this.statusEpoch) return;
-				const status = response.data[this.sessionId];
-				if (status) {
-					this.dispatch({ type: "session.status", status });
+			.then((active) => {
+				if (!active || epoch !== this.statusEpoch) return;
+				if (active[this.sessionId]) {
+					this.dispatch({ type: "session.status", status: { type: "busy" } });
 				} else {
 					this.dispatch({ type: "session.idle", sessionId: this.sessionId });
 				}
@@ -495,13 +444,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		if (this.isChildSession) return;
 
 		void this.client.permission
-			.list(undefined, OPEN_CODE_REQUEST_OPTIONS)
+			.list({ sessionID: this.sessionId })
 			.catch(() => null)
-			.then((response) => {
-				if (!response || token !== this.reconnectSyncToken) return;
-				for (const item of response.data ?? []) {
+			.then((requests) => {
+				if (!requests || token !== this.reconnectSyncToken) return;
+				for (const item of requests) {
 					const request = toPermissionRequest(item);
-					if (!request || request.sessionId !== this.sessionId) continue;
+					if (!request || request.sessionID !== this.sessionId) continue;
 					if (request.id in this.state.interactions.permissions.pending) {
 						continue;
 					}
@@ -509,12 +458,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				}
 			});
 
-		void this.client.question
-			.list(undefined, OPEN_CODE_REQUEST_OPTIONS)
+		void this.client.session.form
+			.list({ sessionID: this.sessionId })
 			.catch(() => null)
-			.then((response) => {
-				if (!response || token !== this.reconnectSyncToken) return;
-				for (const item of response.data ?? []) {
+			.then((forms) => {
+				if (!forms || token !== this.reconnectSyncToken) return;
+				for (const item of forms) {
 					const request = toQuestionRequest(item);
 					if (!request || request.sessionID !== this.sessionId) continue;
 					if (request.id in this.state.interactions.questions.pending) {
@@ -574,39 +523,20 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		if (this.loadPromise && !force) return this.loadPromise;
 
 		this.dispatch({ type: "history.loading" });
-		const epoch = ++this.historyEpoch;
 
 		const request = Promise.all([
-			this.client.session.get({ sessionID: this.sessionId }, OPEN_CODE_REQUEST_OPTIONS),
-			this.client.session.messages(
-				{ sessionID: this.sessionId, limit: OPEN_CODE_HISTORY_PAGE_SIZE },
-				OPEN_CODE_REQUEST_OPTIONS,
-			),
+			this.client.session.get({ sessionID: this.sessionId }),
+			readHistory(this.client, this.sessionId),
 		])
-			.then(async ([sessionResponse, messagesResponse]) => {
+			.then(([info, history]) => {
 				if (this.loadPromise !== request) return;
-				const session = sessionResponse.data ?? null;
-				let messages = ((messagesResponse.data ?? []) as MessageWithParts[]).slice();
-				let cursor = nextHistoryCursor(messagesResponse);
-				// A reverted session hides everything from its revert point on, so a
-				// page that starts at or after it would show nothing: load it all.
-				const revertId = session?.revert?.messageID;
-				const oldestId = messages[0]?.info.id;
-				if (cursor && revertId && oldestId && revertId <= oldestId) {
-					const older = await this.fetchOlderHistory(cursor);
-					if (this.loadPromise !== request) return;
-					messages = [...older, ...messages];
-					cursor = undefined;
-				}
+				const messages = toV1Messages(this.sessionId, info.location.directory, history);
 				this.dispatch({
 					type: "history.loaded",
-					session,
-					messages,
-					olderHistory: cursor ? { type: "loading" } : { type: "complete" },
+					session: toV1Session(info),
+					messages: this.options.patchHistory?.(this.sessionId, messages) ?? messages,
+					olderHistory: { type: "complete" },
 				});
-				if (cursor && oldestId) {
-					void this.loadOlderHistory(cursor, oldestId, epoch);
-				}
 			})
 			.catch((error) => {
 				if (this.loadPromise !== request) throw error;
@@ -625,29 +555,6 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 
 	public refresh() {
 		return this.load(true);
-	}
-
-	private async loadOlderHistory(cursor: string, boundaryId: string, epoch: number) {
-		// After the first page has painted: parsing and merging a long history
-		// is a long task of its own.
-		await whenIdle();
-		if (epoch !== this.historyEpoch) return;
-		try {
-			const messages = await this.fetchOlderHistory(cursor);
-			if (epoch !== this.historyEpoch) return;
-			this.dispatch({ type: "history.prepended", messages, boundaryId });
-		} catch (error) {
-			if (epoch !== this.historyEpoch) return;
-			this.dispatch({ type: "history.olderFailed", error });
-		}
-	}
-
-	private async fetchOlderHistory(before: string) {
-		const response = await this.client.session.messages(
-			{ sessionID: this.sessionId, limit: OLDER_HISTORY_LIMIT, before },
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
-		return ((response.data ?? []) as MessageWithParts[]).slice();
 	}
 
 	private createPendingMessage(message: AppendMessage): PendingUserMessage {
@@ -679,19 +586,24 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		this.dispatch({ type: "run.started" });
 
 		try {
-			await this.client.session.promptAsync(
-				{
-					sessionID: this.sessionId,
-					// The SDK currently infers a narrower payload shape than the runtime
-					// accepts here, so we cast at the boundary instead of widening types
-					// throughout the caller stack.
-					parts: getPromptParts(message) as never,
-					...(options?.model ? { model: options.model } : {}),
-					...(options?.agent ? { agent: options.agent } : {}),
-					...(options?.noReply ? { noReply: options.noReply } : {}),
-				},
-				OPEN_CODE_REQUEST_OPTIONS,
-			);
+			// A v2 prompt carries no agent or model: the session is switched first.
+			const sessionID = this.sessionId;
+			if (options?.agent)
+				await this.client.session.switchAgent({ sessionID, agent: options.agent });
+			if (options?.model) {
+				const { providerID, id, variant } = options.model;
+				await this.client.session.switchModel({
+					sessionID,
+					model: { providerID, id, ...(variant ? { variant } : {}) },
+				});
+			}
+			const { text, files } = getPromptInput(message);
+			await this.client.session.prompt({
+				sessionID,
+				text,
+				...(files.length > 0 ? { files } : {}),
+				...(options?.noReply ? { resume: false } : {}),
+			});
 		} catch (error) {
 			this.dispatch({
 				type: "local.message.failed",
@@ -742,12 +654,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	public async cancel() {
 		this.dispatch({ type: "run.cancelling" });
 		try {
-			await this.client.session.abort(
-				{
-					sessionID: this.sessionId,
-				},
-				OPEN_CODE_REQUEST_OPTIONS,
-			);
+			await this.client.session.interrupt({ sessionID: this.sessionId });
 		} catch (error) {
 			this.dispatch({ type: "run.failed", error });
 			throw error;
@@ -757,19 +664,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	public async revert(messageId: string) {
 		this.dispatch({ type: "run.reverting" });
 		try {
-			const response = await this.client.session.revert(
-				{
-					sessionID: this.sessionId,
-					messageID: messageId,
-				},
-				OPEN_CODE_REQUEST_OPTIONS,
-			);
-			// The server always returns Session.Info on 2xx — match the extension's
-			// error handling (KiloProvider.ts:4463).
-			if (!response.data) throw new Error("Revert returned no session");
-			// Dispatch the REST response as the authoritative session state so
-			// the boundary lands synchronously rather than waiting for an SSE.
-			this.dispatch({ type: "session.updated", session: response.data as never });
+			await this.client.session.revert.stage({ sessionID: this.sessionId, messageID: messageId });
+			// The session as it is now, with its revert, is the authoritative state:
+			// the boundary lands at once rather than waiting for its event.
+			const info = await this.client.session.get({ sessionID: this.sessionId });
+			this.dispatch({ type: "session.updated", session: toV1Session(info) });
 			// Revert requires an already-idle session, so no session.idle SSE
 			// follows the HTTP call — clear the reverting state here or the
 			// runtime stays "running" forever.
@@ -783,16 +682,10 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	public async unrevert() {
 		this.dispatch({ type: "run.reverting" });
 		try {
-			const response = await this.client.session.unrevert(
-				{
-					sessionID: this.sessionId,
-				},
-				OPEN_CODE_REQUEST_OPTIONS,
-			);
-			// Mirror revert / extension (KiloProvider.ts:4478): no-data is an error.
-			if (!response.data) throw new Error("Redo returned no session");
-			// Apply the REST response (revert field now cleared) before returning to idle.
-			this.dispatch({ type: "session.updated", session: response.data as never });
+			await this.client.session.revert.clear({ sessionID: this.sessionId });
+			// Apply the session (its revert now cleared) before returning to idle.
+			const info = await this.client.session.get({ sessionID: this.sessionId });
+			this.dispatch({ type: "session.updated", session: toV1Session(info) });
 			this.dispatch({ type: "session.idle", sessionId: this.sessionId });
 		} catch (error) {
 			this.dispatch({ type: "run.failed", error });
@@ -801,36 +694,19 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 	}
 
 	public async fork(messageId: string) {
-		const response = await this.client.session.fork(
-			{
-				sessionID: this.sessionId,
-				messageID: messageId,
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
-		if (!response.data?.id) {
+		const fork = await this.client.session.fork({ sessionID: this.sessionId, before: messageId });
+		if (!fork?.id) {
 			throw new Error("Failed to fork OpenCode session");
 		}
-		return response.data.id;
+		return fork.id;
 	}
 
 	public async replyToPermission(permissionId: string, response: OpenCodePermissionResponse) {
-		await this.client.permission.reply(
-			{
-				// Kilo v2 replies name the request's session.
-				sessionID: this.sessionId,
-				requestID: permissionId,
-				reply: response,
-				// A human answered this prompt. The server refuses non-reject
-				// approvals of sensitive (skill-shell / sandbox-escalation)
-				// permissions unless `interactive` is set, silently leaving them
-				// pending — which later gets swept to "rejected" when a sibling
-				// permission in the same session is answered. Mirror the TUI, which
-				// sets interactive:true on Allow/Always and omits it on reject.
-				...(response !== "reject" ? { interactive: true } : {}),
-			} as never,
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+		await this.client.permission.reply({
+			sessionID: this.sessionId,
+			requestID: permissionId,
+			decision: response,
+		});
 
 		this.dispatch({
 			type: "permission.replied",
@@ -839,31 +715,22 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		});
 	}
 
-	public async replyToQuestion(questionId: string, answers: readonly QuestionAnswer[]) {
-		await this.client.question.reply(
-			{
-				sessionID: this.sessionId,
-				requestID: questionId,
-				answers: answers.slice(),
-			} as never,
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+	public async replyToQuestion(questionId: string, answer: FormAnswer) {
+		await this.client.session.form.reply({
+			sessionID: this.sessionId,
+			formID: questionId,
+			answer: answer as Record<string, string | number | boolean | readonly string[]>,
+		});
 
 		this.dispatch({
 			type: "question.replied",
 			questionId,
-			answers,
+			answer,
 		});
 	}
 
 	public async rejectQuestion(questionId: string) {
-		await this.client.question.reject(
-			{
-				sessionID: this.sessionId,
-				requestID: questionId,
-			} as never,
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+		await this.client.session.form.cancel({ sessionID: this.sessionId, formID: questionId });
 
 		this.dispatch({
 			type: "question.rejected",
@@ -1005,7 +872,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				return;
 
 			case "permission.asked": {
-				const request = extractPermissionRequest(event);
+				const request = toPermissionRequest(event.properties as KiloPermissionRequest);
 				if (request) {
 					this.dispatch({
 						type: "permission.asked",
@@ -1018,20 +885,18 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			case "permission.replied":
 				if (
 					typeof event.properties.requestID === "string" &&
-					(event.properties.reply === "once" ||
-						event.properties.reply === "always" ||
-						event.properties.reply === "reject")
+					PERMISSION_REPLIES.has(event.properties.reply)
 				) {
 					this.dispatch({
 						type: "permission.replied",
 						permissionId: event.properties.requestID,
-						reply: event.properties.reply,
+						reply: event.properties.reply as OpenCodePermissionResponse,
 					});
 				}
 				return;
 
-			case "question.asked": {
-				const request = extractQuestionRequest(event);
+			case "form.created": {
+				const request = toQuestionRequest(event.properties.form as FormInfo | undefined);
 				if (request) {
 					this.dispatch({
 						type: "question.asked",
@@ -1041,24 +906,21 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				return;
 			}
 
-			case "question.replied":
-				if (
-					typeof event.properties.requestID === "string" &&
-					Array.isArray(event.properties.answers)
-				) {
+			case "form.replied":
+				if (typeof event.properties.id === "string") {
 					this.dispatch({
 						type: "question.replied",
-						questionId: event.properties.requestID,
-						answers: event.properties.answers as never,
+						questionId: event.properties.id,
+						answer: record(event.properties.answer) as FormAnswer,
 					});
 				}
 				return;
 
-			case "question.rejected":
-				if (typeof event.properties.requestID === "string") {
+			case "form.cancelled":
+				if (typeof event.properties.id === "string") {
 					this.dispatch({
 						type: "question.rejected",
-						questionId: event.properties.requestID,
+						questionId: event.properties.id,
 					});
 				}
 				return;

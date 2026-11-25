@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useChatConnection } from "../runtime/chat-connection";
-import { directoryClient } from "../runtime/kilo-client";
+import { kiloClient } from "../runtime/kilo-client";
 import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import type { PlanProjection } from "./plan-projection";
 
@@ -33,11 +33,11 @@ export function usePlanContent(projection: PlanProjection): PlanContentState {
 		],
 		enabled: needsFile && Boolean(connection) && Boolean(directory),
 		queryFn: async () => {
-			const { data } = await directoryClient(connection!, directory!).file.read(
-				{ path: projection.path },
-				{ throwOnError: true },
-			);
-			return typeof data?.content === "string" ? data.content : "";
+			const bytes = await kiloClient(connection!).file.read({
+				path: projection.path,
+				location: { directory: directory! },
+			});
+			return new TextDecoder().decode(bytes);
 		},
 		retry: false,
 	});

@@ -32,6 +32,30 @@ import { visiblePermissionPatterns } from "./permission-labels";
 const selectDetail = (implementation: PermissionRendererImplementation) =>
 	implementation.PermissionDetail;
 
+const stringOf = (value: unknown) => (typeof value === "string" ? value : undefined);
+
+/** The first of `keys` the record has. */
+const firstOf = (record: Readonly<Record<string, unknown>>, keys: readonly string[]) =>
+	record[keys.find((key) => key in record) ?? ""];
+
+/** What a Kilo v2 tool attached to its request, without the bare `*` a tool-level rule matches on. */
+function describeRequest(request: OpenCodePermissionRequest) {
+	const metadata: Readonly<Record<string, unknown>> = request.metadata ?? {};
+	return {
+		metadata,
+		// A tool may name itself more kindly than its action (`metadata.toolName`).
+		label: stringOf(metadata["toolName"]) ?? request.action,
+		title: stringOf(firstOf(metadata, ["title", "message", "prompt"])),
+		description: stringOf(metadata["description"]) ?? request.message,
+		toolInput: firstOf(metadata, ["toolInput", "input", "args", "arguments"]),
+		patterns: visiblePermissionPatterns(request.resources),
+		// The call it is about, as the transcript names it.
+		tool: request.source
+			? { messageID: request.source.messageID, callID: request.source.id }
+			: undefined,
+	};
+}
+
 /**
  * A permission request waiting on the person, answered through kilo.core's
  * chats (to the chat that asked: a subagent's request goes to its chat). The
@@ -63,7 +87,7 @@ export const OpenCodePermissionCard = ({
 
 		try {
 			await chats.methods.replyPermission({
-				chatId: request.sessionId,
+				chatId: request.sessionID,
 				permissionId: request.id,
 				reply: nextReply,
 				interactive: true,
@@ -107,31 +131,29 @@ export const OpenCodePermissionCard = ({
 		return () => document.removeEventListener("keydown", acceptOnEnterKey);
 	});
 
-	const permissionLabel = request.toolName ?? request.permission;
+	const described = describeRequest(request);
+	const { label: permissionLabel, patterns, toolInput, description } = described;
 	// The request carries no arguments, so read them from the call in the thread.
 	const threadArgs = useAuiState((state) =>
-		findPermissionToolArgs(state.thread.messages, request.tool),
+		findPermissionToolArgs(state.thread.messages, described.tool),
 	);
-	const args = threadArgs ?? request.toolInput;
+	const args = threadArgs ?? toolInput;
 	const renderers = usePermissionRenderers();
 	const tools = useDesktopTools();
-	const toolKey = toolKeyOf(tools, request.permission);
-	// A bare `*` (a tool-level rule's wildcard) means nothing to the person.
-	const patterns = visiblePermissionPatterns(request.patterns);
-	// Renderers see Kilo's permission name; the label may be a tool's friendlier `metadata.toolName`.
+	const toolKey = toolKeyOf(tools, request.action);
+	// Renderers see Kilo's permission name (v2's action); the label may be a tool's friendlier one.
 	const interaction: PermissionInteraction = {
-		permission: request.permission,
+		permission: request.action,
 		...(toolKey ? { toolKey } : {}),
 		patterns,
-		metadata: request.metadata,
+		metadata: described.metadata,
 		args,
 	};
 	const presentation = presentPermission(renderers, interaction);
 	const shownPatterns = presentation.showPatterns ? patterns : [];
-	const description = request.metadata["description"];
-	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as
+	// "Always allow" remembers exactly `request.save`; with nothing to remember it would only act as
 	// "Allow once". A contribution may withhold it so the request is answered one call at a time.
-	const canRemember = request.always.length > 0 && presentation.allowAlways;
+	const canRemember = (request.save ?? []).length > 0 && presentation.allowAlways;
 	const requester = origin
 		? origin.title
 			? `The subagent “${origin.title}” is`
@@ -152,17 +174,15 @@ export const OpenCodePermissionCard = ({
 				</div>
 				<div className="space-y-1.5">
 					<h3 className="text-base leading-snug font-medium tracking-tight text-pretty">
-						{request.title ?? `Allow ${presentation.title ?? permissionLabel}?`}
+						{described.title ?? `Allow ${presentation.title ?? permissionLabel}?`}
 					</h3>
 					<p className="text-muted-foreground text-sm text-pretty">
-						{typeof description === "string"
-							? description
-							: `${requester} requesting permission to use ${permissionLabel}.`}
+						{description ?? `${requester} requesting permission to use ${permissionLabel}.`}
 					</p>
 				</div>
 			</div>
 
-			{(shownPatterns.length > 0 || request.toolInput !== undefined) && (
+			{(shownPatterns.length > 0 || toolInput !== undefined) && (
 				<div className="grid min-w-0 gap-2">
 					{shownPatterns.length > 0 ? (
 						<div className="grid min-w-0 gap-2">
@@ -176,12 +196,10 @@ export const OpenCodePermissionCard = ({
 							))}
 						</div>
 					) : null}
-					{request.toolInput !== undefined ? (
+					{toolInput !== undefined ? (
 						<div className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5">
 							<p className="text-muted-foreground mb-2 text-xs font-medium">Tool input</p>
-							<pre className="overflow-x-auto text-xs">
-								{JSON.stringify(request.toolInput, null, 2)}
-							</pre>
+							<pre className="overflow-x-auto text-xs">{JSON.stringify(toolInput, null, 2)}</pre>
 						</div>
 					) : null}
 				</div>

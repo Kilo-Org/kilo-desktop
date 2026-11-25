@@ -6,7 +6,7 @@ import { projectOpenCodeThreadMessages } from "../openCodeMessageProjection";
 import type { OpenCodeStateEvent, OpenCodeThreadState, Part } from "../types";
 import turn from "./fixtures/read-tool-turn.json";
 import { createV2EventSubscriber } from "./v2-event-source";
-import { formAnswers, V2EventTranslator, type V1Event } from "./v2-events";
+import { V2EventTranslator, type V1Event } from "./v2-events";
 import { toV1Messages, type V2Message } from "./v2-messages";
 
 /**
@@ -262,70 +262,36 @@ describe("V2EventTranslator", () => {
 		expect(tool[4]).toMatchObject({ id: "m:tool:c1", tool: "bash", state: { error: "exit 1" } });
 	});
 
-	it("turns permission requests and forms into v1 permissions and questions", async () => {
+	it("passes permission requests and forms through as Kilo v2 sends them", async () => {
+		const asked = {
+			id: "per_1",
+			sessionID: "s",
+			action: "shell",
+			resources: ["ls"],
+			save: ["ls *"],
+			source: { type: "tool", messageID: "m", id: "c1" },
+		};
+		const form = {
+			id: "frm_1",
+			sessionID: "s",
+			title: "Questions",
+			fields: [{ key: "q0", type: "multiselect", options: [{ value: "A", label: "A" }] }],
+		};
 		const out = await translate(
-			event("permission.asked", {
-				id: "per_1",
-				sessionID: "s",
-				action: "shell",
-				resources: ["ls"],
-				save: ["ls *"],
-				source: { type: "tool", messageID: "m", id: "c1" },
-			}),
+			event("permission.asked", asked),
 			event("permission.replied", { sessionID: "s", requestID: "per_1", reply: "always" }),
-			{
-				...event("form.created", {
-					form: {
-						id: "frm_1",
-						sessionID: "s",
-						title: "Questions",
-						fields: [
-							{
-								key: "q0",
-								type: "multiselect",
-								title: "Pick",
-								description: "Which ones?",
-								options: [{ value: "A", label: "A", description: "first" }],
-								custom: true,
-							},
-						],
-					},
-				}),
-			} as OpenCodeEvent,
+			event("form.created", { form }),
 			event("form.replied", { id: "frm_1", sessionID: "s", answer: { q0: ["A"] } }),
 			event("form.cancelled", { id: "frm_2", sessionID: "s" }),
 		);
 
-		expect(out.map(({ type }) => type)).toEqual([
-			"permission.asked",
-			"permission.replied",
-			"question.asked",
-			"question.replied",
-			"question.rejected",
+		expect(out.map(({ type, properties }) => [type, properties])).toEqual([
+			["permission.asked", asked],
+			["permission.replied", { sessionID: "s", requestID: "per_1", reply: "always" }],
+			["form.created", { form }],
+			["form.replied", { id: "frm_1", sessionID: "s", answer: { q0: ["A"] } }],
+			["form.cancelled", { id: "frm_2", sessionID: "s" }],
 		]);
-		expect(out[0]!.properties).toEqual({
-			id: "per_1",
-			sessionID: "s",
-			permission: "bash",
-			patterns: ["ls"],
-			metadata: {},
-			always: ["ls *"],
-			tool: { messageID: "m", callID: "c1" },
-		});
-		expect(out[2]!.properties).toEqual({
-			id: "frm_1",
-			sessionID: "s",
-			questions: [
-				{
-					question: "Which ones?",
-					header: "Pick",
-					options: [{ label: "A", description: "first" }],
-					multiple: true,
-					custom: true,
-				},
-			],
-		});
-		expect(out[3]!.properties).toMatchObject({ requestID: "frm_1", answers: [["A"]] });
 	});
 
 	it("announces a session's changes with the session read again", async () => {
@@ -343,6 +309,13 @@ describe("V2EventTranslator", () => {
 			properties: { info: { id: SESSION.id, directory: DIRECTORY } },
 		});
 		expect(renamed?.type).toBe("session.updated");
+		await expect(
+			translator.translate(
+				event("session.agent.selected", { sessionID: SESSION.id, agent: "code" }),
+			),
+		).resolves.toMatchObject([
+			{ type: "session.updated", properties: { info: { id: SESSION.id } } },
+		]);
 		await expect(
 			new V2EventTranslator().translate(event("session.renamed", { sessionID: "x" })),
 		).resolves.toEqual([]);
@@ -488,13 +461,6 @@ describe("shell runs, skills and compactions", () => {
 				properties: { sessionID: "s", error: { name: "x", data: { message: "Too long" } } },
 			}),
 		]);
-	});
-});
-
-describe("formAnswers", () => {
-	it("orders answers by question and lists single answers", () => {
-		expect(formAnswers({ q1: ["b", "c"], q0: "a", other: "x" })).toEqual([["a"], ["b", "c"]]);
-		expect(formAnswers({ q1: "b" })).toEqual([[], ["b"]]);
 	});
 });
 

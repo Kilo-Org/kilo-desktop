@@ -8,17 +8,13 @@ import type { OpenCodePermissionRequest } from "./types";
 
 const request: OpenCodePermissionRequest = {
 	id: "permission-1",
-	sessionId: "session-1",
-	permission: "bash",
-	patterns: ["git status"],
+	sessionID: "session-1",
+	action: "shell",
+	resources: ["git status"],
 	metadata: {},
-	always: ["git *"],
-	tool: {
-		messageID: "message-1",
-		callID: "call-1",
-	},
+	save: ["git *"],
+	source: { type: "tool", messageID: "message-1", id: "call-1" },
 	askedAt: 1,
-	raw: {} as never,
 };
 
 describe("OpenCode permission approvals", () => {
@@ -46,7 +42,7 @@ describe("OpenCode permission approvals", () => {
 	});
 
 	it("omits the always option when the request grants nothing", () => {
-		expect(projectOpenCodePermissionApproval({ ...request, always: [] }).options).toEqual([
+		expect(projectOpenCodePermissionApproval({ ...request, save: [] }).options).toEqual([
 			{ id: "once", kind: "allow-once" },
 			{ id: "reject", kind: "reject-once" },
 		]);

@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { OpenCodeQuestionRequest, QuestionAnswer } from "@kilo-desktop/react-opencode-v2";
+import type { FormInfo, OpenCodeQuestionRequest } from "@kilo-desktop/react-opencode-v2";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -27,20 +27,39 @@ import type { SubagentOrigin } from "./pending-interactions";
 
 const questionName = (index: number) => `question-${index}`;
 
+type FormField = FormInfo["fields"][number];
+
+/** A field's choices: a string or multiselect field's options. */
+const optionsOf = (field: FormField) =>
+	(field.type === "string" || field.type === "multiselect" ? field.options : undefined) ?? [];
+
+const isMultiple = (field: FormField) => field.type === "multiselect";
+
+/** Whether a typed answer is offered: any field that doesn't refuse one. */
+const allowsCustom = (field: FormField) => !("custom" in field) || field.custom !== false;
+
+/** What the field asks, as Kilo's question tool puts it in a form. */
+const questionText = (field: FormField, request: OpenCodeQuestionRequest) =>
+	field.description ?? field.title ?? request.title;
+
 const buildQuestionnaireItems = (request: OpenCodeQuestionRequest) =>
-	request.questions.map((question, index) => ({
+	request.fields.map((field, index) => ({
 		name: questionName(index),
 		required: true as const,
-		choices: question.options.map((option) => ({ value: option.label })),
+		choices: optionsOf(field).map((option) => ({ value: option.value })),
 	}));
 
+/**
+ * The form's answers as kilo.core's chats take them: one list per field, in
+ * order (an option's value, or what was typed).
+ */
 export const encodeAnswersFromFormData = (
 	request: OpenCodeQuestionRequest,
 	formData: FormData,
-): QuestionAnswer[] =>
-	request.questions.map((question, index) => {
+): string[][] =>
+	request.fields.map((field, index) => {
 		const name = questionName(index);
-		const rawValues = question.multiple ? formData.getAll(name) : [formData.get(name)];
+		const rawValues = isMultiple(field) ? formData.getAll(name) : [formData.get(name)];
 
 		return rawValues.flatMap((value) => {
 			if (typeof value !== "string") return [];
@@ -128,23 +147,18 @@ export const OpenCodeQuestionQuestionnaire = ({
 				aria-label="Agent questions"
 			>
 				<QuestionnaireProgress />
-				{request.questions.map((question, index) => {
+				{request.fields.map((field, index) => {
 					const name = questionName(index);
-					const customAllowed = question.custom !== false;
-					const hasChoices = question.options.length > 0;
+					const customAllowed = allowsCustom(field);
+					const options = optionsOf(field);
 
 					return (
-						<QuestionnaireItem
-							key={name}
-							name={name}
-							required
-							multiple={question.multiple === true}
-						>
-							<QuestionnaireTitle>{question.question}</QuestionnaireTitle>
-							{hasChoices || customAllowed ? (
+						<QuestionnaireItem key={name} name={name} required multiple={isMultiple(field)}>
+							<QuestionnaireTitle>{questionText(field, request)}</QuestionnaireTitle>
+							{options.length > 0 || customAllowed ? (
 								<QuestionnaireChoices>
-									{question.options.map((option) => (
-										<QuestionnaireChoice key={option.label} value={option.label}>
+									{options.map((option) => (
+										<QuestionnaireChoice key={option.value} value={option.value}>
 											<span className="font-medium">{option.label}</span>
 											{option.description ? (
 												<QuestionnaireChoiceDescription>

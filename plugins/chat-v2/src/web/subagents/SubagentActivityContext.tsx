@@ -6,7 +6,7 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { useStableCallback, useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
 import { useChatConnection } from "../runtime/chat-connection";
-import { directoryClient } from "../runtime/kilo-client";
+import { kiloClient } from "../runtime/kilo-client";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import {
 	childSessionIdFromTaskPart,
@@ -120,28 +120,23 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 	const [stoppingIds, setStoppingIds] = useState<ReadonlySet<string>>(() => new Set());
 	const parentSessionId = extras?.session?.id;
 
-	// Aborts use the server's default "tree" scope: "session" scope leaves the
-	// target's descendants and background jobs running, which then wake the
-	// parent back up when they finish. kilo.core stops the chats it knows (in
-	// their own folder); others go to the server from here.
-	const abortChat = async (sessionID: string, directory: string | undefined) => {
+	// kilo.core stops the chats it knows; others are interrupted from here.
+	const abortChat = async (sessionID: string) => {
 		if (chats?.getState().chats[sessionID]) {
 			await chats.methods.abort({ id: sessionID });
 			return;
 		}
-		const target = directory ?? extras?.session?.directory;
-		if (!connection || !target) throw new Error();
-		await directoryClient(connection, target).session.abort({ sessionID }, { throwOnError: true });
+		if (!connection) throw new Error();
+		await kiloClient(connection).session.interrupt({ sessionID });
 	};
 	const abortSessionTree = async (
 		sessionID: string,
-		directory: string | undefined,
 		stoppingSessionIds: readonly string[],
 		failureMessage: string,
 	) => {
 		setStoppingIds((current) => new Set([...current, ...stoppingSessionIds]));
 		try {
-			await abortChat(sessionID, directory);
+			await abortChat(sessionID);
 		} catch (error) {
 			toast.error(error instanceof Error && error.message ? error.message : failureMessage);
 		}
@@ -152,12 +147,7 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 		});
 	};
 	const stopSubagent = useStableCallback((target: SubagentStopTarget) =>
-		abortSessionTree(
-			target.childSessionId,
-			target.directory,
-			[target.childSessionId],
-			"Could not stop subagent",
-		),
+		abortSessionTree(target.childSessionId, [target.childSessionId], "Could not stop subagent"),
 	);
 	// Stopping the parent's tree also catches subagents the UI does not see as
 	// active (stale status, nested subagents) and keeps the parent from resuming.
@@ -168,7 +158,6 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 		}
 		await abortSessionTree(
 			parentSessionId,
-			extras?.session?.directory,
 			activeActivities.map((activity) => activity.childSessionId),
 			"Could not stop subagents",
 		);

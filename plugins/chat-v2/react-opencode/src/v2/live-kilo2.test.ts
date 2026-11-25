@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { OpenCodeEventSource } from "../OpenCodeEventSource";
 import { OpenCodeThreadController } from "../OpenCodeThreadController";
-import { createKiloV2Client, createV1Client } from "./v1-client";
+import { createKiloClient, listAgents, listCommands, type KiloClient } from "../kilo";
 import { v2ClientEventSubscriber } from "./v2-event-source";
 
 /**
@@ -26,16 +26,20 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 	let project: string;
 	let model: Server;
 	let kilo: ChildProcess;
-	let client: ReturnType<typeof createKiloV2Client>;
+	let client: KiloClient;
+	let refusing = false;
+	let modelRequests = 0;
 
 	beforeAll(async () => {
 		home = realpathSync(mkdtempSync(path.join(tmpdir(), "k2live-")));
 		project = path.join(home, "project");
 		mkdirSync(project);
 		writeFileSync(path.join(project, "notes.txt"), "hello\n");
-		// Answers "Done.", except that a turn asked to "run ls" first calls the shell tool.
+		// Answers "Done.", except that a turn asked to "run ls" first calls the shell tool, and
+		// while `refusing`, every request is refused (a 400, which kilo2 doesn't retry).
 		model = createServer(async (request, response) => {
 			const chunks: Buffer[] = [];
+			modelRequests += 1;
 			for await (const chunk of request) chunks.push(chunk as Buffer);
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
 				messages: { role: string; content: unknown }[];
@@ -44,6 +48,13 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 			const asked = last?.role === "user" ? JSON.stringify(last.content) : "";
 			const callShell = asked.includes("run ls");
 			const callQuestion = asked.includes("ask me");
+			if (refusing) {
+				response.writeHead(400, { "content-type": "application/json" });
+				response.end(
+					JSON.stringify({ error: { message: "Refused", type: "invalid_request_error" } }),
+				);
+				return;
+			}
 			const chunk = (delta: object, finish: string | null) =>
 				`data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 			response.writeHead(200, { "content-type": "text/event-stream" });
@@ -100,7 +111,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 				resolve(JSON.parse(data.toString().split("\n")[0]!).url),
 			),
 		);
-		client = createKiloV2Client({
+		client = createKiloClient({
 			baseUrl: url,
 			headers: { authorization: `Basic ${Buffer.from("opencode:x").toString("base64")}` },
 		});
@@ -152,21 +163,56 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 			metadata: { custom: {} },
 		} as unknown as AppendMessage);
 
-	it("asks for a shell call's permission as bash, runs it once allowed, and shows it as a bash call", async () => {
+	it("retries a failed turn by sending its prompt again, so the model runs again", async () => {
+		const session = await client.session.create({ location: { directory: project } });
+		const history = async () =>
+			(await client.message.list({ sessionID: session.id, order: "asc" })).data;
+		const outcomes = async () =>
+			(await history()).flatMap((message) => (message.type === "idle" ? [message.outcome] : []));
+
+		refusing = true;
+		await client.session.prompt({ sessionID: session.id, text: "Please fail once" });
+		await vi.waitFor(async () => expect(await outcomes()).toEqual(["failed"]), { timeout: 4_000 });
+		refusing = false;
+		const requestsBefore = modelRequests;
+
+		await client.session.prompt({ sessionID: session.id, text: "Please fail once" });
+		await vi.waitFor(async () => expect(await outcomes()).toEqual(["failed", "succeeded"]), {
+			timeout: 4_000,
+		});
+
+		const users = (await history()).flatMap((message) =>
+			message.type === "user" ? [message.text] : [],
+		);
+		expect(users).toEqual(["Please fail once", "Please fail once"]);
+		expect(modelRequests).toBeGreaterThan(requestsBefore);
+		const replies = (await history()).filter((message) => message.type === "assistant");
+		expect(JSON.stringify(replies.at(-1))).toContain("Done.");
+	});
+
+	it("asks for a shell call's permission, runs it once allowed, and shows it as a bash call", async () => {
 		const session = await client.session.create({
 			location: { directory: project },
 			permissions: [{ action: "shell", resource: "*", effect: "ask" }],
 		});
-		const v1 = createV1Client(client, { directory: project });
-		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
-		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
 
 		await send(live, "Please run ls");
 		const pending = () => Object.values(live.getState().interactions.permissions.pending);
 		await vi.waitFor(() => expect(pending()).toHaveLength(1), { timeout: 4_000 });
-		expect(pending()[0]).toMatchObject({ permission: "bash", patterns: ["ls"] });
+		expect(pending()[0]).toMatchObject({
+			action: "shell",
+			resources: ["ls"],
+			source: { type: "tool", messageID: expect.any(String), id: expect.any(String) },
+		});
+
+		// What a thread reads back after the stream reconnects.
+		await expect(client.permission.list({ sessionID: session.id })).resolves.toEqual([
+			expect.objectContaining({ id: pending()[0]!.id, action: "shell" }),
+		]);
 
 		await live.replyToPermission(pending()[0]!.id, "once");
 		await vi.waitFor(
@@ -195,11 +241,10 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		events.dispose();
 	});
 
-	it("asks a question as a v1 question, and takes its answer", async () => {
+	it("asks a question as a form, and takes its answer", async () => {
 		const session = await client.session.create({ location: { directory: project } });
-		const v1 = createV1Client(client, { directory: project });
-		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
-		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
 
@@ -207,20 +252,25 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		const pending = () => Object.values(live.getState().interactions.questions.pending);
 		await vi.waitFor(() => expect(pending()).toHaveLength(1), { timeout: 4_000 });
 		expect(pending()[0]).toMatchObject({
-			questions: [
+			fields: [
 				{
-					question: "Ship it?",
-					header: "Ship",
+					key: "q0",
+					title: "Ship",
+					description: "Ship it?",
 					options: [
 						{ label: "Yes", description: "Go" },
 						{ label: "No", description: "Wait" },
 					],
-					multiple: false,
 				},
 			],
 		});
+		expect(pending()[0]!.fields[0]!.type).not.toBe("multiselect");
 
-		await live.replyToQuestion(pending()[0]!.id, [["Yes"]]);
+		await expect(client.session.form.list({ sessionID: session.id })).resolves.toEqual([
+			expect.objectContaining({ id: pending()[0]!.id }),
+		]);
+
+		await live.replyToQuestion(pending()[0]!.id, { q0: "Yes" });
 		await vi.waitFor(
 			() => {
 				const parts = Object.values(live.getState().messagesById).flatMap(
@@ -246,20 +296,18 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 
 	it("lists agents and slash commands, reads a file, runs a composer shell command and compacts", async () => {
 		const session = await client.session.create({ location: { directory: project } });
-		const v1 = createV1Client(client, { directory: project });
-		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
-		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
 
-		const agents = (await v1.app.agents({} as never)).data ?? [];
-		expect(agents.map((agent) => agent.name)).toContain("code");
-		expect(Array.isArray((await v1.command.list({} as never)).data)).toBe(true);
-		await expect(v1.file.read({ path: "notes.txt" } as never)).resolves.toEqual({
-			data: { type: "text", content: "hello\n" },
-		});
+		const agents = await listAgents(client, project);
+		expect(agents.map((agent) => agent.id)).toContain("code");
+		expect(Array.isArray(await listCommands(client, project))).toBe(true);
+		const bytes = await client.file.read({ path: "notes.txt", location: { directory: project } });
+		expect(new TextDecoder().decode(bytes)).toBe("hello\n");
 
-		await v1.session.shell({ sessionID: session.id, command: "ls" } as never);
+		await client.session.shell({ sessionID: session.id, command: "ls" });
 		const parts = () =>
 			Object.values(live.getState().messagesById).flatMap((message) => message.parts);
 		await vi.waitFor(
@@ -280,11 +328,11 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		await vi.waitFor(() => expect(live.getState().sessionStatus).toEqual({ type: "idle" }), {
 			timeout: 4_000,
 		});
-		await v1.session.summarize({
+		await client.session.switchModel({
 			sessionID: session.id,
-			providerID: "standin",
-			modelID: "m",
-		} as never);
+			model: { providerID: "standin", id: "m" },
+		});
+		await client.session.compact({ sessionID: session.id });
 		await vi.waitFor(
 			() => expect(parts()).toContainEqual(expect.objectContaining({ type: "compaction" })),
 			{ timeout: 4_000 },
@@ -299,7 +347,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		await vi.waitFor(
 			async () => {
 				const loaded = new OpenCodeThreadController(
-					v1,
+					client,
 					() => ({ subscribe: () => () => undefined }),
 					session.id,
 				);
@@ -314,9 +362,8 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 
 	it("sends a message, streams the reply, and loads the same transcript", async () => {
 		const session = await client.session.create({ location: { directory: project } });
-		const v1 = createV1Client(client, { directory: project });
-		const events = new OpenCodeEventSource(v1, v2ClientEventSubscriber(client));
-		const live = new OpenCodeThreadController(v1, () => events, session.id);
+		const events = new OpenCodeEventSource(v2ClientEventSubscriber(client));
+		const live = new OpenCodeThreadController(client, () => events, session.id);
 		const unsubscribe = live.subscribe(() => undefined);
 		await live.load();
 
@@ -342,7 +389,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		);
 
 		const loaded = new OpenCodeThreadController(
-			v1,
+			client,
 			() => ({ subscribe: () => () => undefined }),
 			session.id,
 		);

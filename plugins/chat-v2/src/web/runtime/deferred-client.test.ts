@@ -1,4 +1,4 @@
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { KiloClient } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDeferredKiloClient } from "./deferred-client";

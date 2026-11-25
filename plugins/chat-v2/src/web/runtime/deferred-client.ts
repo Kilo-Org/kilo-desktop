@@ -1,4 +1,4 @@
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { KiloClient } from "@kilo-desktop/react-opencode-v2";
 
 /**
  * A Kilo client usable at once whose calls wait for the real one, resolved

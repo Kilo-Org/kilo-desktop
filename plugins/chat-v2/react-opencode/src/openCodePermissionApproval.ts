@@ -12,13 +12,13 @@ export const projectOpenCodePermissionApproval = (
 			id: "once",
 			kind: "allow-once",
 		},
-		...(request.always.length > 0
+		...((request.save ?? []).length > 0
 			? [
 					{
 						id: "always",
 						kind: "allow-always",
 						description: "Allow these patterns until OpenCode is restarted.",
-						grants: request.always,
+						grants: request.save ?? [],
 						confirm: true,
 					},
 				]

@@ -1,7 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
-import { Chats, KiloServer } from "@kilo-desktop/plugin-core/contracts";
+import { KiloServer } from "@kilo-desktop/plugin-core/contracts";
 import {
 	PaneKind,
 	WorkSessionAction,
@@ -49,13 +49,9 @@ export const chatWebEntry = definePlugin({
 			component: createAgentPane({ chat, focus, queries }),
 			icon: AgentIcon,
 			// Loads the chat the pane would show, so opening the work session shows it at once.
-			prefetch: ({ workSession, pane }) => {
+			prefetch: ({ pane }) => {
 				const chatId = paneChatId(pane);
-				if (!chatId) return;
-				const directory =
-					sdk.domainObjects.get(Chats)?.getState().chats[chatId]?.directory ??
-					workSession.directory;
-				chat.prefetchHistory(chatId, directory);
+				if (chatId) chat.prefetchHistory(chatId);
 			},
 		});
 		sdk.extensions.implement(PaneKind, "plan", {

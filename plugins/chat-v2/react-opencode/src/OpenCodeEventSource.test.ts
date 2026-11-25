@@ -33,23 +33,19 @@ const createAbortableStream = (signal: AbortSignal) =>
 
 describe("OpenCodeEventSource", () => {
 	it("reconnects immediately when a listener returns after disconnect", async () => {
-		const client = {
-			event: {
-				subscribe: vi.fn((_: unknown, options: { signal: AbortSignal }) =>
-					Promise.resolve({
-						stream: createAbortableStream(options.signal),
-					}),
-				),
-			},
-		};
-		const source = new OpenCodeEventSource(client as never);
+		const subscribe = vi.fn((options: { signal: AbortSignal; sseMaxRetryAttempts: number }) =>
+			Promise.resolve({
+				stream: createAbortableStream(options.signal),
+			}),
+		);
+		const source = new OpenCodeEventSource(subscribe);
 
 		const unsubscribe = source.subscribe(vi.fn());
 
 		await waitFor(() => {
-			expect(client.event.subscribe).toHaveBeenCalledTimes(1);
+			expect(subscribe).toHaveBeenCalledTimes(1);
 		});
-		expect(client.event.subscribe).toHaveBeenLastCalledWith(undefined, {
+		expect(subscribe).toHaveBeenLastCalledWith({
 			signal: expect.any(AbortSignal),
 			sseMaxRetryAttempts: 1,
 		});
@@ -58,27 +54,23 @@ describe("OpenCodeEventSource", () => {
 		source.subscribe(vi.fn());
 
 		await waitFor(() => {
-			expect(client.event.subscribe).toHaveBeenCalledTimes(2);
+			expect(subscribe).toHaveBeenCalledTimes(2);
 		});
 	});
 
 	it("notifies listeners on reconnect but not on the first connection", async () => {
-		const client = {
-			event: {
-				subscribe: vi.fn((_: unknown, options: { signal: AbortSignal }) =>
-					Promise.resolve({
-						stream: createAbortableStream(options.signal),
-					}),
-				),
-			},
-		};
-		const source = new OpenCodeEventSource(client as never);
+		const subscribe = vi.fn((options: { signal: AbortSignal; sseMaxRetryAttempts: number }) =>
+			Promise.resolve({
+				stream: createAbortableStream(options.signal),
+			}),
+		);
+		const source = new OpenCodeEventSource(subscribe);
 
 		const firstListener = vi.fn();
 		const unsubscribe = source.subscribe(firstListener);
 
 		await waitFor(() => {
-			expect(client.event.subscribe).toHaveBeenCalledTimes(1);
+			expect(subscribe).toHaveBeenCalledTimes(1);
 		});
 		expect(firstListener).not.toHaveBeenCalled();
 
@@ -94,10 +86,29 @@ describe("OpenCodeEventSource", () => {
 		expect(secondListener).toHaveBeenCalledTimes(1);
 	});
 
+	it("finds the session of a Kilo v2 form", async () => {
+		const subscribe = vi.fn(async () => ({
+			stream: (async function* () {
+				yield { type: "form.created", properties: { form: { id: "frm_1", sessionID: "ses_1" } } };
+			})(),
+		}));
+		const source = new OpenCodeEventSource(subscribe);
+		const listener = vi.fn();
+		const unsubscribe = source.subscribe(listener);
+
+		await waitFor(() => {
+			expect(listener).toHaveBeenCalledWith(
+				expect.objectContaining({ type: "form.created", sessionId: "ses_1" }),
+			);
+		});
+		unsubscribe();
+		source.dispose();
+	});
+
 	it("continues notifying listeners when one throws", () => {
 		// Reaches into the private listener set to make one listener throw.
 		// oxlint-disable-next-line typescript/no-explicit-any
-		const source = new OpenCodeEventSource({} as never) as any;
+		const source = new OpenCodeEventSource(vi.fn()) as any;
 		const listener = vi.fn();
 		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 

@@ -3,7 +3,12 @@ import { useEffect, useState } from "react";
 
 import type { Contribution, DomainObjectState, PluginSdk } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainObjectState } from "@kilo-desktop/kernel/web";
-import { SIGNED_IN_KEY, Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
+import {
+	SIGNED_IN_KEY,
+	Tool,
+	toolWireName,
+	type PermissionRequest,
+} from "@kilo-desktop/plugin-core/contracts";
 import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 import {
 	PERMISSION_AUTO_ANSWER_TIMEOUT_MS,
@@ -36,9 +41,12 @@ export interface AutoAnswerRules {
 	readonly signInTools: ReadonlySet<string>;
 }
 
-/** Whether main's auto-approver will take this request (mirrors its rules). */
+/**
+ * Whether main's auto-approver will take this request (mirrors its rules),
+ * as kilo.core describes requests: Kilo v2's `action` is its `permission`.
+ */
 export function autoAnswers(
-	request: Pick<OpenCodePermissionRequest, "permission" | "metadata">,
+	request: Pick<PermissionRequest, "permission" | "metadata">,
 	rules: AutoAnswerRules,
 ): boolean {
 	if (rules.mode === "auto") return !needsPerson(request.metadata);
@@ -85,7 +93,7 @@ export function hiddenPermissions(
 			holding.has(request.id) ||
 			(!state.released.has(request.id) &&
 				state.now - request.askedAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS &&
-				autoAnswers(request, state.rules)),
+				autoAnswers({ permission: request.action, metadata: request.metadata ?? {} }, state.rules)),
 	);
 }
 

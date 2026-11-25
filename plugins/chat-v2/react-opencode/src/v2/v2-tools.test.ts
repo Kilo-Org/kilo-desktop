@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { getOpenCodeTaskSessionId } from "../openCodeTaskSession";
 import { toV1ContentParts } from "./v2-messages";
-import { toV1PermissionRequest } from "./v2-events";
-import { toV1PermissionName, toV1ToolInput, toV1ToolMetadata, toV1ToolName } from "./v2-tools";
+import { toV1ToolInput, toV1ToolMetadata, toV1ToolName } from "./v2-tools";
 
 type Content = SessionMessageAssistant["content"][number];
 
@@ -45,8 +44,6 @@ describe("v2 tool names", () => {
 		]) {
 			expect(toV1ToolName(name)).toBe(name);
 		}
-		expect(toV1PermissionName("shell")).toBe("bash");
-		expect(toV1PermissionName("external_directory")).toBe("external_directory");
 	});
 
 	it("names a skill and a subagent's agent as v1 did", () => {
@@ -127,24 +124,6 @@ describe("v2 tool calls as kilo.chat's renderers read them", () => {
 		expect(patch).toMatchObject({
 			tool: "apply_patch",
 			state: { input: { patchText: "*** Begin Patch" }, metadata: { diff: "diff" } },
-		});
-	});
-
-	it("asks permission for shell and subagent under v1's names, linked to their call", () => {
-		expect(
-			toV1PermissionRequest({
-				id: "per",
-				sessionID: "ses",
-				action: "subagent",
-				resources: ["explore"],
-				save: ["explore"],
-				source: { type: "tool", messageID: "msg", id: "call" },
-			}),
-		).toMatchObject({
-			permission: "task",
-			patterns: ["explore"],
-			always: ["explore"],
-			tool: { callID: "call" },
 		});
 	});
 });

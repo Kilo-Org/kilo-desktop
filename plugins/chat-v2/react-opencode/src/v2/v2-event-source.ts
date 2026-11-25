@@ -1,13 +1,13 @@
-import type { OpenCode, OpenCodeEvent } from "@kilocode/client";
+import type { OpenCodeEvent } from "@kilocode/client";
 
+import type { KiloClient } from "../kilo";
 import type { OpenCodeEventSubscriber } from "../OpenCodeEventSource";
 import { V2EventTranslator, type ReadSession } from "./v2-events";
 
-type V2Client = ReturnType<typeof OpenCode.make>;
-
 /**
- * An `OpenCodeEventSubscriber` over Kilo v2's event stream, its events
- * translated to v1's (`v2-events.ts`), for `OpenCodeEventSource`, which keeps
+ * An `OpenCodeEventSubscriber` over Kilo v2's event stream, its transcript
+ * events translated to v1's (`v2-events.ts`; permissions and forms pass
+ * through as Kilo v2 sends them), for `OpenCodeEventSource`, which keeps
  * reconnecting and announcing reconnects as before. Each connection starts a
  * fresh translator: what was in flight is reloaded with the history.
  */
@@ -28,7 +28,7 @@ export function createV2EventSubscriber(
 }
 
 /** `createV2EventSubscriber` for a `@kilocode/client`, reading sessions with it. */
-export function v2ClientEventSubscriber(client: V2Client): OpenCodeEventSubscriber {
+export function v2ClientEventSubscriber(client: KiloClient): OpenCodeEventSubscriber {
 	return createV2EventSubscriber(
 		(signal) => client.event.subscribe({ signal }),
 		async (sessionID) => {

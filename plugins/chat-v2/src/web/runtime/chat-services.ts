@@ -2,9 +2,9 @@ import {
 	OpenCodeEventSource,
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeEventSourceLike,
+	type KiloClient,
 	type OpenCodeEventSubscriber,
 } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/contracts";
@@ -93,9 +93,9 @@ export class ChatServices {
 		return this.#connection;
 	}
 
-	/** A global client (no directory) that follows the current connection. */
+	/** The window's Kilo client, following the current connection. */
 	readonly globalClient: KiloClient = createDeferredKiloClient(async () =>
-		this.clients.global(await this.connection()),
+		this.clients.client(await this.connection()),
 	);
 
 	/**
@@ -124,19 +124,12 @@ export class ChatServices {
 	 * without a round trip. Best effort: a failure is the opening thread's to
 	 * report when it loads.
 	 */
-	prefetchHistory(chatId: string, directory: string | null): void {
+	prefetchHistory(chatId: string): void {
 		// The stream must be open for an event about the chat to drop a stale prefetch.
 		this.events();
-		void (async () => {
-			const connection = await this.connection();
-			const where = directory ?? (await this.#directoryOf(chatId));
-			if (where) this.history.prefetch(chatId, this.clients.directory(connection, where));
-		})().catch(() => undefined);
-	}
-
-	async #directoryOf(chatId: string): Promise<string | null> {
-		const { data } = await this.globalClient.session.get({ sessionID: chatId });
-		return data?.directory ?? null;
+		void this.connection()
+			.then((connection) => this.history.prefetch(chatId, this.clients.client(connection)))
+			.catch(() => undefined);
 	}
 
 	dispose(): void {
@@ -155,7 +148,7 @@ export class ChatServices {
 			const subscription = await kiloWire().subscribe(await this.connection(), options);
 			return { stream: resyncOnceConnected(subscription.stream as AsyncIterable<unknown>) };
 		};
-		const source = new OpenCodeEventSource(this.globalClient as never, subscribe);
+		const source = new OpenCodeEventSource(subscribe);
 		// The batcher is the source's one listener, which also keeps it connected.
 		// Anything about a chat (or a reconnect) makes its prefetched history stale.
 		const batcher = this.#batcher;

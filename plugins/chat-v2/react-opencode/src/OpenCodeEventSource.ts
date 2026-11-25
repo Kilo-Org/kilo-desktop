@@ -1,4 +1,3 @@
-import type { OpencodeClient } from "./sdk";
 import type { OpenCodeServerEvent } from "./types";
 
 type Listener = (event: OpenCodeServerEvent) => void;
@@ -37,6 +36,12 @@ const extractSessionId = (
 	const part = asRecord(properties.part);
 	if (part && typeof part.sessionID === "string") {
 		return part.sessionID;
+	}
+
+	// Kilo v2's `form.created` carries its form whole.
+	const form = asRecord(properties.form);
+	if (form && typeof form.sessionID === "string") {
+		return form.sessionID;
 	}
 
 	return undefined;
@@ -80,18 +85,15 @@ export class OpenCodeEventSource {
 	private nextReconnectDelayMs = this.reconnectDelayMs;
 	private hadConnection = false;
 
-	private readonly client: OpencodeClient;
 	private readonly subscribeToEvents: OpenCodeEventSubscriber;
 	private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;
 
+	/** `subscribeToEvents` opens the stream (for Kilo v2, `v2ClientEventSubscriber`). */
 	constructor(
-		client: OpencodeClient,
-		subscribeToEvents?: OpenCodeEventSubscriber,
+		subscribeToEvents: OpenCodeEventSubscriber,
 		onEvent?: (event: OpenCodeServerEvent) => void,
 	) {
-		this.client = client;
-		this.subscribeToEvents =
-			subscribeToEvents ?? ((options) => this.client.event.subscribe(undefined, options));
+		this.subscribeToEvents = subscribeToEvents;
 		this.onEvent = onEvent;
 	}
 

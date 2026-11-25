@@ -15,14 +15,14 @@ import type {
 	ThreadMessage,
 	ThreadMessageLike,
 } from "@assistant-ui/react";
-import { createOpencodeClient } from "./sdk";
+import { createKiloClient } from "./kilo";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
 	OpenCodeRuntimeBackend,
 	OpenCodeRuntimeOptions,
 	OpenCodeThreadControllerLike,
 	OpenCodeThreadState,
-	QuestionAnswer,
+	FormAnswer,
 } from "./types";
 import { OpenCodeEventSource } from "./OpenCodeEventSource";
 import { toOpenCodePermissionResponse } from "./openCodePermissionApproval";
@@ -34,13 +34,13 @@ import {
 import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState";
 import { openCodeExtras } from "./openCodeExtras";
 import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter";
-import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
 import {
 	type OpenCodeMessageQueueController,
 	type OpenCodeMessageQueueControls,
 } from "./openCodeMessageQueue";
 import { useOpenCodeControllerState } from "./useOpenCodeControllerState";
 import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
+import { v2ClientEventSubscriber } from "./v2/v2-event-source";
 
 type OpenCodeControllerRegistry = {
 	getEventSource(): ReturnType<OpenCodeRuntimeBackend["createEventSource"]>;
@@ -125,6 +125,16 @@ const withMessageQueueExtras = (
 	};
 };
 
+/** Keeps a thread's optimistic messages in the registry, dropping an empty list. */
+const rememberOptimisticMessages = (
+	byThreadId: Map<string, readonly ThreadMessageLike[]>,
+	threadId: string,
+	messages: readonly ThreadMessageLike[],
+) => {
+	if (messages.length === 0) byThreadId.delete(threadId);
+	else byThreadId.set(threadId, messages);
+};
+
 const getController = (
 	registry: OpenCodeControllerRegistry,
 	backend: OpenCodeRuntimeBackend,
@@ -137,6 +147,7 @@ const getController = (
 		backend.getSessionClient({ id: sessionId }),
 		registry.getEventSource,
 		sessionId,
+		{ patchHistory: backend.patchHistory?.bind(backend) },
 	);
 	registry.controllers.set(sessionId, controller);
 	return controller;
@@ -273,8 +284,8 @@ const useOpenCodeThreadStore = (
 				refresh: () => controller.refresh(),
 				replyToPermission: (permissionId: string, response: "once" | "always" | "reject") =>
 					controller.replyToPermission(permissionId, response),
-				replyToQuestion: (questionId: string, answers: readonly QuestionAnswer[]) =>
-					controller.replyToQuestion(questionId, answers),
+				replyToQuestion: (questionId: string, answer: FormAnswer) =>
+					controller.replyToQuestion(questionId, answer),
 				rejectQuestion: (questionId: string) => controller.rejectQuestion(questionId),
 			}),
 		[controller, state],
@@ -354,20 +365,16 @@ const useRuntimeHook = (
 	const [optimisticMessages, setOptimisticMessagesState] = useState<readonly ThreadMessageLike[]>(
 		() => optimisticMessagesByThreadId.get(localThreadId) ?? [],
 	);
+	// The registry's copy is the source of truth (it outlives remounts); the state mirrors it.
 	const setOptimisticMessages = (
-		updater:
+		change:
 			| readonly ThreadMessageLike[]
-			| ((previous: readonly ThreadMessageLike[]) => readonly ThreadMessageLike[]),
+			| ((current: readonly ThreadMessageLike[]) => readonly ThreadMessageLike[]),
 	) => {
-		setOptimisticMessagesState((previous) => {
-			const next = typeof updater === "function" ? updater(previous) : updater;
-			if (next.length === 0) {
-				optimisticMessagesByThreadId.delete(localThreadId);
-			} else {
-				optimisticMessagesByThreadId.set(localThreadId, next);
-			}
-			return next;
-		});
+		const current = optimisticMessagesByThreadId.get(localThreadId) ?? [];
+		const next = typeof change === "function" ? change(current) : change;
+		rememberOptimisticMessages(optimisticMessagesByThreadId, localThreadId, next);
+		setOptimisticMessagesState(next);
 	};
 
 	const initializeController = () => {
@@ -514,7 +521,7 @@ const useRuntimeHook = (
 export const useOpenCodeRuntime = (options: OpenCodeRuntimeOptions = {}): AssistantRuntime => {
 	const baseUrl = options.baseUrl ?? "http://localhost:4096";
 	const client = useMemo(
-		() => options.backend?.globalClient ?? options.client ?? createOpencodeClient({ baseUrl }),
+		() => options.backend?.globalClient ?? options.client ?? createKiloClient({ baseUrl }),
 		[baseUrl, options.backend, options.client],
 	);
 	const backend = useMemo<OpenCodeRuntimeBackend>(
@@ -523,16 +530,16 @@ export const useOpenCodeRuntime = (options: OpenCodeRuntimeOptions = {}): Assist
 				globalClient: client,
 				getSessionClient: () => client,
 				initializeSession: async () => {
-					const response = await client.session.create({}, OPEN_CODE_REQUEST_OPTIONS);
-					if (!response.data?.id) {
+					const session = await client.session.create({});
+					if (!session?.id) {
 						throw new Error("Failed to create OpenCode session");
 					}
 					return {
-						id: response.data.id,
-						directory: response.data.directory,
+						id: session.id,
+						directory: session.location.directory,
 					};
 				},
-				createEventSource: () => new OpenCodeEventSource(client),
+				createEventSource: () => new OpenCodeEventSource(v2ClientEventSubscriber(client)),
 			},
 		[client, options.backend],
 	);

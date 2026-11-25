@@ -122,8 +122,7 @@ export function fileUrlPath(url: string): string | null {
 	}
 }
 
-function utf8ToBase64(text: string): string {
-	const bytes = new TextEncoder().encode(text);
+function base64Of(bytes: Uint8Array): string {
 	let binary = "";
 	for (let index = 0; index < bytes.length; index += 0x8000) {
 		binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
@@ -131,25 +130,13 @@ function utf8ToBase64(text: string): string {
 	return btoa(binary);
 }
 
-/** What the Kilo server's file read returns (`FileContent`), as far as images go. */
-export interface FileReadContent {
-	readonly type?: string;
-	readonly content?: string;
-	readonly encoding?: string;
-	readonly mimeType?: string;
-}
-
 /**
- * An image file's contents as a data URL: base64 content as is, an SVG read
- * as text encoded. Null when the read isn't an image.
+ * An image file's bytes (as Kilo's `file.read` returns them) as a data URL,
+ * typed by the path's extension. Null when the path isn't an image's or
+ * the file is empty.
  */
-export function imageDataUrl(content: FileReadContent | undefined, path: string): string | null {
-	if (!content?.content) return null;
-	const mime = content.mimeType?.startsWith("image/") ? content.mimeType : imageMimeForPath(path);
-	if (!mime) return null;
-	if (content.encoding === "base64") return `data:${mime};base64,${content.content}`;
-	if (mime === "image/svg+xml" && content.type === "text") {
-		return `data:image/svg+xml;base64,${utf8ToBase64(content.content)}`;
-	}
-	return null;
+export function imageDataUrl(bytes: Uint8Array | undefined, path: string): string | null {
+	if (!bytes?.length) return null;
+	const mime = imageMimeForPath(path);
+	return mime ? `data:${mime};base64,${base64Of(bytes)}` : null;
 }

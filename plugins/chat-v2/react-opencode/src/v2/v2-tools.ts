@@ -1,7 +1,7 @@
 /**
- * Kilo v2's tool and permission vocabulary in v1's, so kilo.chat's tool
- * renderers, activity categories, task list, subagent panes and permission
- * renderers (all keyed by v1 names and reading v1 fields) stay as they were.
+ * Kilo v2's tool vocabulary in v1's, so kilo.chat's tool renderers, activity
+ * categories, task list and subagent panes (all keyed by v1 names and reading
+ * v1 fields) stay as they were. Permission requests keep v2's names.
  *
  * - Names: v2's `shell` is v1's `bash`, `subagent` is `task`, `patch` is
  *   `apply_patch`; the rest (`read`, `edit`, `write`, `glob`, `grep`,
@@ -12,7 +12,6 @@
  * - Metadata: file tools report `files[]` with a unified `patch` each (v1 a
  *   `diff` string); a finished shell call reports its output only as content
  *   (v1 also as `metadata.output`) and its exit code as `exit`, as v1 did.
- * - Permission actions use the same names as the tools.
  */
 
 const V1_NAMES: Readonly<Record<string, string>> = {
@@ -22,9 +21,6 @@ const V1_NAMES: Readonly<Record<string, string>> = {
 };
 
 export const toV1ToolName = (name: string): string => V1_NAMES[name] ?? name;
-
-/** A v2 permission action (`shell`, `subagent`, …) by the v1 name renderers key on. */
-export const toV1PermissionName = toV1ToolName;
 
 type Record_ = Record<string, unknown>;
 

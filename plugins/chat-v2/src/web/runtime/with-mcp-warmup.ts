@@ -1,29 +1,33 @@
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { KiloClient } from "@kilo-desktop/react-opencode-v2";
 
-const PROMPT_METHODS = new Set<PropertyKey>(["prompt", "promptAsync", "command", "shell"]);
+const PROMPT_METHODS = new Set<PropertyKey>(["prompt", "command", "shell"]);
 
-/** One wrapper per directory client, so it warms once when first wrapped. */
-const wrapped = new WeakMap<KiloClient, KiloClient>();
+/** One wrapper per client and directory, so it warms once when first wrapped. */
+const wrapped = new WeakMap<KiloClient, Map<string, KiloClient>>();
 
 /**
  * Kilo connects a directory's MCP servers lazily, inside whichever request first
  * needs them, and caches that attempt's outcome for the life of the directory's
  * instance — an interruption included. When the first caller is a prompt, Stop
  * interrupts the connect and every later turn in that directory aborts before
- * reaching the model. Asking for MCP status first makes a separate request own
- * the connect, so Stop only cancels the turn waiting on it (kilo-vscode warms the
- * same way). Warming again before each prompt covers instances the server has
- * disposed since; once MCP is loaded the status call is cheap.
+ * reaching the model. Listing the directory's MCP servers first makes a separate
+ * request own the connect, so Stop only cancels the turn waiting on it
+ * (kilo-vscode warms the same way). Warming again before each prompt covers
+ * instances the server has disposed since; once MCP is loaded the list is cheap.
  */
-export function withMcpWarmup(client: KiloClient): KiloClient {
-	const existing = wrapped.get(client);
+export function withMcpWarmup(client: KiloClient, directory: string): KiloClient {
+	let byDirectory = wrapped.get(client);
+	if (!byDirectory) {
+		byDirectory = new Map();
+		wrapped.set(client, byDirectory);
+	}
+	const existing = byDirectory.get(directory);
 	if (existing) return existing;
 
 	const warm = () => {
 		try {
-			const mcp = (client as Partial<KiloClient>).mcp;
 			// No abort signal: cancelling this request would re-create the problem.
-			void Promise.resolve(mcp?.status?.()).catch(() => undefined);
+			void Promise.resolve(client.mcp?.list?.({ location: { directory } })).catch(() => undefined);
 		} catch {
 			// Warm-up is best effort; the prompt still carries its own errors.
 		}
@@ -46,6 +50,6 @@ export function withMcpWarmup(client: KiloClient): KiloClient {
 			});
 		},
 	}) as KiloClient;
-	wrapped.set(client, proxy);
+	byDirectory.set(directory, proxy);
 	return proxy;
 }

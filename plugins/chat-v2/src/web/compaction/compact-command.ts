@@ -14,15 +14,17 @@ function failureMessage(error: unknown): string | undefined {
 
 /**
  * The `kilo.chat/compact` command, placed in the `/` menu as `/compact`:
- * asks Kilo to summarize the chat so far (`session.summarize`) with the
- * pane's model, freeing up its context window, as Kilo's other clients do
- * (the server doesn't run `compact` through `session.command`). It refuses,
+ * asks Kilo to compact the chat so far (`session.compact`) with the pane's
+ * model, freeing up its context window, as Kilo's other clients do (the
+ * server doesn't run `compact` through `session.command`). Kilo v2 compacts
+ * with the session's model, so the chat is switched to the pane's first. It
+ * refuses,
  * with a toast, on a chat that hasn't started or is mid-turn: the server
  * would fold the compaction into the running turn and end it early. Once the
  * server accepts, its progress and errors show in the transcript.
  */
 export function createCompactCommand(chat: ChatServices): CommandHandler {
-	return slashCommandHandler(async ({ chatId, directory, running, selection }) => {
+	return slashCommandHandler(async ({ chatId, running, selection }) => {
 		if (!chatId) {
 			toast.info("Nothing to compact yet", { description: "Send a message first." });
 			return;
@@ -38,17 +40,16 @@ export function createCompactCommand(chat: ChatServices): CommandHandler {
 			return;
 		}
 		try {
-			const connection = await chat.connection();
-			const folder = directory ?? connection.globalDirectory;
-			await chat.clients.directory(connection, folder).session.summarize(
-				{
-					sessionID: chatId,
-					directory: folder,
+			const client = chat.clients.client(await chat.connection());
+			await client.session.switchModel({
+				sessionID: chatId,
+				model: {
 					providerID: selection.model.providerID,
-					modelID: selection.model.modelID,
+					id: selection.model.modelID,
+					...(selection.variant ? { variant: selection.variant } : {}),
 				},
-				{ throwOnError: true },
-			);
+			});
+			await client.session.compact({ sessionID: chatId });
 		} catch (error) {
 			toast.error("Couldn't compact the chat", { description: failureMessage(error) });
 		}

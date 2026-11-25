@@ -16,13 +16,15 @@ import {
 	toV1ToolState,
 	type V2Tool,
 } from "./v2-messages";
-import { toV1PermissionName, toV1ToolInput, toV1ToolMetadata, toV1ToolName } from "./v2-tools";
+import { toV1ToolInput, toV1ToolMetadata, toV1ToolName } from "./v2-tools";
 
 /**
  * Kilo v2's event stream as the v1 events the thread controller reads
  * (`message.updated`, `message.part.updated`, `message.part.delta`,
- * `session.status`, `session.idle`, `session.error`, `permission.*`,
- * `question.*`, …), so the controller and thread state stay as they were.
+ * `session.status`, `session.idle`, `session.error`, …), so the controller
+ * and thread state stay as they were. Permissions and forms
+ * (`permission.asked`/`.replied`, `form.created`/`.replied`/`.cancelled`)
+ * pass through with Kilo v2's own data.
  *
  * v1 sent whole messages and parts; v2 sends small steps: a turn is
  * `session.execution.started` … `.succeeded`/`.failed`/`.interrupted`, an
@@ -32,8 +34,7 @@ import { toV1PermissionName, toV1ToolInput, toV1ToolMetadata, toV1ToolName } fro
  * and a user or hidden message enters the transcript when its inbox item is
  * delivered (`session.inbox.enqueued` carries the text, `.delivered` the
  * moment). The translator keeps what each step has said so far, so every
- * v1 part it emits is whole; part ids match `v2-messages.ts`. Questions
- * arrive as forms (one field per question, keyed `q<index>`).
+ * v1 part it emits is whole; part ids match `v2-messages.ts`.
  *
  * Shell runs, skills and compactions become whole v1 messages, with the ids
  * v2's history gives them (the starting event's id, `evt_` → `msg_`). Revert
@@ -100,7 +101,14 @@ const record = (value: unknown): Record<string, unknown> =>
 		? (value as Record<string, unknown>)
 		: {};
 
-const PERMISSION_REPLIES: ReadonlySet<unknown> = new Set(["once", "always", "reject"]);
+/** Kilo v2 events the thread controller reads as they are. */
+const PASSED_THROUGH: ReadonlySet<string> = new Set([
+	"permission.asked",
+	"permission.replied",
+	"form.created",
+	"form.replied",
+	"form.cancelled",
+]);
 
 export class V2EventTranslator {
 	readonly #readSession: ReadSession | undefined;
@@ -155,8 +163,7 @@ export class V2EventTranslator {
 			return [at(type, { info: toV1Session(info) })];
 		}
 		if (event.type === "server.connected") return [at("server.connected", {})];
-		if (event.type === "form.created")
-			return [at("question.asked", toV1QuestionRequest(record(data.form)))];
+		if (PASSED_THROUGH.has(event.type)) return [at(event.type, data)];
 		if (!sessionID) return [];
 
 		const track = this.#track(sessionID, directory);
@@ -169,9 +176,12 @@ export class V2EventTranslator {
 			case "session.deleted":
 				this.#sessions.delete(sessionID);
 				return [at("session.deleted", { info: { id: sessionID } })];
-			case "session.agent.selected":
+			case "session.agent.selected": {
 				track.agent = String(data.agent);
-				return [];
+				// The session's agent changed: announce it, read again, as other session changes.
+				const info = await this.#readSession?.(sessionID);
+				return info ? [at("session.updated", { info: toV1Session(info) })] : [];
+			}
 			case "session.model.selected": {
 				const model = record(data.model);
 				track.model = {
@@ -416,22 +426,6 @@ export class V2EventTranslator {
 				const part = this.#tool(track, sessionID, event.type, data, event.created);
 				return part ? [partUpdated(part)] : [];
 			}
-			case "permission.asked":
-				return [at("permission.asked", toV1PermissionRequest(data))];
-			case "permission.replied":
-				return PERMISSION_REPLIES.has(data.reply)
-					? [at("permission.replied", { sessionID, requestID: data.requestID, reply: data.reply })]
-					: [];
-			case "form.replied":
-				return [
-					at("question.replied", {
-						sessionID,
-						requestID: data.id,
-						answers: formAnswers(record(data.answer)),
-					}),
-				];
-			case "form.cancelled":
-				return [at("question.rejected", { sessionID, requestID: data.id })];
 			default:
 				return [];
 		}
@@ -665,48 +659,4 @@ export class V2EventTranslator {
 			state,
 		};
 	}
-}
-
-/** A v2 permission request (event data or listed request) as v1's. */
-export function toV1PermissionRequest(data: Record<string, unknown>): Record<string, unknown> {
-	const source = record(data.source);
-	return {
-		id: data.id,
-		sessionID: data.sessionID,
-		permission: typeof data.action === "string" ? toV1PermissionName(data.action) : data.action,
-		patterns: Array.isArray(data.resources) ? data.resources : [],
-		metadata: record(data.metadata),
-		always: Array.isArray(data.save) ? data.save : [],
-		...(source.type === "tool" ? { tool: { messageID: source.messageID, callID: source.id } } : {}),
-	};
-}
-
-/** A v2 form (one field per question, keyed `q<index>`) as v1's question request. */
-export function toV1QuestionRequest(form: Record<string, unknown>): Record<string, unknown> {
-	const fields = Array.isArray(form.fields) ? form.fields.map(record) : [];
-	return {
-		id: form.id,
-		sessionID: form.sessionID,
-		questions: fields.map((field) => ({
-			question: String(field.description ?? field.title ?? form.title ?? ""),
-			header: String(field.title ?? ""),
-			options: (Array.isArray(field.options) ? field.options.map(record) : []).map((option) => ({
-				label: String(option.label ?? option.value ?? ""),
-				description: String(option.description ?? ""),
-			})),
-			multiple: field.type === "multiselect",
-			...(field.custom === true ? { custom: true } : {}),
-		})),
-	};
-}
-
-/** A form's answer (`{ q0: "…", q1: ["…"] }`) as v1's answers, one list per question. */
-export function formAnswers(answer: Record<string, unknown>): string[][] {
-	const answers: string[][] = [];
-	for (const [key, value] of Object.entries(answer)) {
-		const index = /^q(\d+)$/.exec(key)?.[1];
-		if (index === undefined) continue;
-		answers[Number(index)] = Array.isArray(value) ? value.map(String) : [String(value)];
-	}
-	return Array.from(answers, (value) => value ?? []);
 }

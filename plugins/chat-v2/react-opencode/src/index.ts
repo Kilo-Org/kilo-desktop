@@ -21,7 +21,10 @@ export {
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeEventSubscriber,
 } from "./OpenCodeEventSource";
-export { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeThreadController } from "./OpenCodeThreadController";
+export {
+	OpenCodeThreadController,
+	type OpenCodeThreadControllerOptions,
+} from "./OpenCodeThreadController";
 export {
 	type OpenCodeMessageQueueController,
 	type OpenCodeMessageQueueControls,
@@ -41,6 +44,7 @@ export {
 export type {
 	MessageWithParts,
 	OpenCodeLoadState,
+	OpenCodeModelRef,
 	OpenCodeOlderHistory,
 	OpenCodeEventSourceLike,
 	OpenCodePartPayload,
@@ -67,22 +71,25 @@ export type {
 } from "./types";
 
 export type {
+	AgentInfo,
 	AssistantMessage,
+	CommandInfo,
 	Event,
 	FilePart,
+	FormAnswer,
+	FormInfo,
 	GlobalSession,
+	KiloClient,
 	Message,
 	Model,
-	OpencodeClient,
-	OpencodeClientConfig,
 	Part,
-	PermissionRequest,
 	Provider,
-	QuestionAnswer,
-	QuestionRequest,
 	ReasoningPart,
 	Session,
+	SessionInfo,
 	SessionStatus,
+	SkillInfo,
+	SnapshotFileDiff,
 	SnapshotPart,
 	StepFinishPart,
 	StepStartPart,
@@ -92,17 +99,22 @@ export type {
 	UserMessage,
 } from "./types";
 
-export { createOpencodeClient } from "./sdk";
-
-// Kilo v2: its transcript and events in the v1 shapes above.
-export { createV2EventSubscriber, v2ClientEventSubscriber } from "./v2/v2-event-source";
-export { createKiloV2Client, createV1Client, type V1ClientOptions } from "./v2/v1-client";
+// Kilo v2's client, and the calls every caller makes the same way.
 export {
-	formAnswers,
-	toV1PermissionRequest,
-	toV1QuestionRequest,
-	V2EventTranslator,
-	type ReadSession,
-	type V1Event,
-} from "./v2/v2-events";
+	commandHints,
+	createKiloClient,
+	historyPageInput,
+	listAgents,
+	listCommands,
+	listSkills,
+	OPEN_CODE_HISTORY_PAGE_SIZE,
+	pluginsRegistered,
+	readHistory,
+	systemNote,
+} from "./kilo";
+
+// Kilo v2's transcript and events in the v1 shapes above (until the thread
+// state reads Kilo v2's own).
+export { createV2EventSubscriber, v2ClientEventSubscriber } from "./v2/v2-event-source";
+export { V2EventTranslator, type ReadSession, type V1Event } from "./v2/v2-events";
 export { toV1Messages, toV1Session, type V2Message } from "./v2/v2-messages";

@@ -17,7 +17,7 @@ const runtime = vi.hoisted(() => ({
 	thread: { extras: undefined as unknown },
 	threadListItem: { id: "thread-1", remoteId: "session-1" },
 	permissions: [] as Array<{
-		tool?: { messageID?: string; callID?: string } | undefined;
+		source?: { type: "tool"; messageID: string; id: string } | undefined;
 	}>,
 }));
 vi.mock("@assistant-ui/react", () => ({
@@ -705,7 +705,7 @@ describe("Self-describing solo tool rows", () => {
 			status: { type: "running" as const },
 		};
 		runtime.message.status = { type: "running" };
-		runtime.permissions.push({ tool: { messageID: "message-1", callID: "call-1" } });
+		runtime.permissions.push({ source: { type: "tool", messageID: "message-1", id: "call-1" } });
 
 		const { getByRole, getByText } = await renderActivity("terminal", [command], BashTerminal);
 

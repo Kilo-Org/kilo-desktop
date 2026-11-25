@@ -101,21 +101,14 @@ describe("image files", () => {
 	});
 
 	it("turns a file read into a data URL", () => {
-		expect(
-			imageDataUrl(
-				{ type: "text", content: "AQID", encoding: "base64", mimeType: "image/png" },
-				"a.png",
-			),
-		).toBe("data:image/png;base64,AQID");
-		expect(imageDataUrl({ type: "binary", content: "AQID", encoding: "base64" }, "b.webp")).toBe(
-			"data:image/webp;base64,AQID",
-		);
-		expect(imageDataUrl({ type: "text", content: "<svg>é</svg>" }, "c.svg")).toBe(
+		const bytes = Uint8Array.from([1, 2, 3]);
+		expect(imageDataUrl(bytes, "a.png")).toBe("data:image/png;base64,AQID");
+		expect(imageDataUrl(bytes, "b.webp")).toBe("data:image/webp;base64,AQID");
+		expect(imageDataUrl(new TextEncoder().encode("<svg>é</svg>"), "c.svg")).toBe(
 			`data:image/svg+xml;base64,${btoa("<svg>\u00c3\u00a9</svg>")}`,
 		);
-		expect(imageDataUrl({ type: "text", content: "hello" }, "d.png")).toBeNull();
-		expect(imageDataUrl({ type: "binary", content: "" }, "e.png")).toBeNull();
-		expect(imageDataUrl({ type: "text", content: "AQID", encoding: "base64" }, "f.bin")).toBeNull();
+		expect(imageDataUrl(new Uint8Array(), "e.png")).toBeNull();
+		expect(imageDataUrl(bytes, "f.bin")).toBeNull();
 		expect(imageDataUrl(undefined, "g.png")).toBeNull();
 	});
 });

@@ -7,6 +7,7 @@ import {
 	searchSlashCommands,
 	type ClientSlashEntry,
 } from "./merge-slash-commands";
+import { serverCommandNames, serverSkills } from "./client-slash-commands";
 import type { KiloCommandCatalogEntry } from "./use-kilo-command-catalog";
 
 const compact: ClientSlashEntry = {
@@ -72,6 +73,16 @@ describe("mergeSlashCommands", () => {
 			["review", "command"],
 			["review:skill", "skill"],
 		]);
+	});
+
+	it("keeps a skill's id, and tells commands and skills apart for sending", () => {
+		const merged = mergeSlashCommands(
+			[compact],
+			[server("review"), { ...server("review", "skill"), skillId: "skl_review" }],
+		);
+		expect(merged.find((command) => command.id === "review:skill")?.skillId).toBe("skl_review");
+		expect(serverCommandNames(merged)).toEqual(["review"]);
+		expect([...serverSkills(merged)]).toEqual([["review:skill", "skl_review"]]);
 	});
 
 	it("keeps the first of two client commands with one name and warns about the other", () => {

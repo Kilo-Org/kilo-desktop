@@ -28,16 +28,11 @@ describe("createChatBackend", () => {
 			directoryOf: () => "/repo",
 			createChat: async () => ({ id: "s1", directory: "/repo" }),
 		});
-		const client = backend.getSessionClient({ id: "s1", directory: "/repo" }) as unknown as {
-			session: {
-				get(input: object): Promise<unknown>;
-				promptAsync(input: object): Promise<unknown>;
-			};
-		};
+		const client = backend.getSessionClient({ id: "s1", directory: "/repo" });
 
 		await client.session.get({ sessionID: "s1" });
-		await client.session.promptAsync({ sessionID: "s1", parts: [{ type: "text", text: "hi" }] });
-		await client.session.promptAsync({ sessionID: "s1", parts: [{ type: "text", text: "again" }] });
+		await client.session.prompt({ sessionID: "s1", text: "hi" });
+		await client.session.prompt({ sessionID: "s1", text: "again" });
 
 		const sent = server.requests
 			.filter((request) => request.directory === "/repo")
@@ -50,5 +45,32 @@ describe("createChatBackend", () => {
 			"GET /api/mcp",
 			"POST /api/session/s1/prompt",
 		]);
+	});
+
+	it("shows a history with the text streamed since the server answered", () => {
+		const server = new FakeKiloServer();
+		const services = servicesFor(server);
+		const backend = createChatBackend({
+			services,
+			directoryOf: () => "/repo",
+			createChat: async () => ({ id: "s1", directory: "/repo" }),
+		});
+		const part = { id: "prt_1", messageID: "msg_1", sessionID: "s1", type: "text", text: "" };
+		services.liveParts.apply({
+			type: "message.part.updated",
+			sessionId: "s1",
+			properties: { part },
+			raw: undefined,
+		});
+		services.liveParts.apply({
+			type: "message.part.delta",
+			sessionId: "s1",
+			properties: { messageID: "msg_1", partID: "prt_1", field: "text", delta: "Hello" },
+			raw: undefined,
+		});
+
+		const [message] = backend.patchHistory!("s1", [{ info: {} as never, parts: [part as never] }]);
+
+		expect(message?.parts[0]).toMatchObject({ text: "Hello" });
 	});
 });

@@ -10,6 +10,7 @@ import {
 	type ReactNode,
 } from "react";
 import { useAuiState } from "@assistant-ui/react";
+import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode-v2";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -31,7 +32,6 @@ import {
 	getActivityKind,
 	getPartToolCallId,
 	getSegmentStats,
-	indicesHavePendingAsk,
 	lastAskingPartIndex,
 	soloRowHidesItself,
 	summarizeActivity,
@@ -62,29 +62,18 @@ const ThinkingStreamText: FC<PropsWithChildren<{ streaming: boolean }>> = ({
 	</ReasoningText>
 );
 
-const pendingAskCallIds = (
-	questions: readonly { tool?: { callID?: string } | undefined }[],
-): Set<string> => {
-	const ids = new Set<string>();
-	for (const question of questions) {
-		const callId = question.tool?.callID;
-		if (typeof callId === "string") ids.add(callId);
-	}
-	return ids;
-};
-
-/** Whether these indices own the in-flight questionnaire (not a prior ask). */
+/**
+ * Whether these indices own the in-flight questionnaire (not a prior ask).
+ * Kilo v2's forms name no tool call, so it is the message's last ask while
+ * the message awaits input.
+ */
 const ownsPendingAsk = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
-	pendingQuestions: readonly { tool?: { callID?: string } | undefined }[],
+	pendingQuestions: readonly unknown[],
 	messageRequiresAction: boolean,
 ): boolean => {
-	if (pendingQuestions.length === 0) return false;
-	const callIds = pendingAskCallIds(pendingQuestions);
-	if (callIds.size > 0) return indicesHavePendingAsk(parts, indices, callIds);
-	// Questions without callIDs: only the message's last ask while awaiting input.
-	if (!messageRequiresAction) return false;
+	if (pendingQuestions.length === 0 || !messageRequiresAction) return false;
 	const lastAsk = lastAskingPartIndex(parts);
 	return lastAsk >= 0 && indices.includes(lastAsk);
 };
@@ -92,17 +81,14 @@ const ownsPendingAsk = (
 const ownsPendingPermission = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
-	permissions: readonly {
-		tool?: { messageID?: string; callID?: string } | undefined;
-	}[],
+	permissions: readonly Pick<OpenCodePermissionRequest, "source">[],
 	stepIds: ReadonlySet<string | undefined>,
 ): boolean => {
-	for (const permission of permissions) {
-		const tool = permission.tool;
-		if (!tool?.callID || (tool.messageID && !stepIds.has(tool.messageID))) continue;
+	for (const { source } of permissions) {
+		if (!source?.id || (source.messageID && !stepIds.has(source.messageID))) continue;
 		for (const index of indices) {
 			const part = parts[index];
-			if (part && getPartToolCallId(part) === tool.callID) return true;
+			if (part && getPartToolCallId(part) === source.id) return true;
 		}
 	}
 	return false;

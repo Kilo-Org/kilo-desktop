@@ -52,6 +52,7 @@ import { prepareForPrompt, useModelSourcesRef } from "./selection/model-source";
 import {
 	ClientSlashSelectionProvider,
 	serverCommandNames,
+	serverSkills,
 	useSlashCommands,
 } from "./slash-commands/client-slash-commands";
 import { ChatPaneOpeners } from "./panes/chat-pane-openers";
@@ -396,6 +397,7 @@ export function ChatThread({
 }: ChatThreadProps) {
 	const selection = useRef<PromptSelection>({});
 	const commandNames = useRef<readonly string[]>([]);
+	const skills = useRef<ReadonlyMap<string, string>>(new Map());
 	const sources = useLatestRef<readonly MentionSource[]>(useMentionSources());
 	const latestComposer = useLatestRef(composer);
 	const modelSources = useModelSourcesRef();
@@ -406,6 +408,7 @@ export function ChatThread({
 		getModel: () => selection.current.model,
 		getVariant: () => selection.current.variant,
 		getKnownCommandNames: () => commandNames.current,
+		getKnownSkills: () => skills.current,
 		prepareModel: (model) => prepareForPrompt(model, modelSources.current),
 		resolveParts: (parts: readonly PromptPart[]) => {
 			const { chatId: _chatId, ...context } = latestComposer.current;
@@ -434,8 +437,9 @@ export function ChatThread({
 					<ClientSlashSelectionProvider getSelection={getSelection}>
 						<CommandNames
 							directory={composer.directory}
-							onNames={(names) => {
+							onNames={(names, known) => {
 								commandNames.current = names;
+								skills.current = known;
 							}}
 						/>
 						{composer.workSessionId ? (
@@ -490,22 +494,24 @@ function ThreadPaneOpeners({ children }: { children: ReactNode }) {
 }
 
 /**
- * Reports the names of Kilo's slash commands for the chat's folder, for
- * prompts to read later: the server's only, as the `/` menu lists them
- * (without those a client command hides), so a client command is never sent.
+ * Reports the names of Kilo's slash commands and skills for the chat's
+ * folder, for prompts to read later: the server's only, as the `/` menu
+ * lists them (without those a client command hides), so a client command is
+ * never sent.
  */
 function CommandNames({
 	directory,
 	onNames,
 }: {
 	directory: string | null;
-	onNames: (names: readonly string[]) => void;
+	onNames: (names: readonly string[], skills: ReadonlyMap<string, string>) => void;
 }) {
 	const { commands } = useSlashCommands(directory);
 	const commandNames = serverCommandNames(commands);
-	// The parent stores the names in a ref read at send time, so reporting them re-renders nothing.
+	const skills = serverSkills(commands);
+	// The parent stores the names in refs read at send time, so reporting them re-renders nothing.
 	// react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
-	useLayoutEffect(() => onNames(commandNames), [onNames, commandNames]);
+	useLayoutEffect(() => onNames(commandNames, skills), [onNames, commandNames, skills]);
 	return null;
 }
 

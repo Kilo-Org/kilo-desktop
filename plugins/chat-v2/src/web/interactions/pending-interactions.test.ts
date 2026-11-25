@@ -8,22 +8,20 @@ import {
 
 import { collectPendingInteractions, subagentOriginOf } from "./pending-interactions";
 
-const permission = (id: string, sessionId: string, askedAt: number): OpenCodePermissionRequest => ({
+const permission = (id: string, sessionID: string, askedAt: number): OpenCodePermissionRequest => ({
 	id,
-	sessionId,
-	permission: "bash",
-	patterns: [],
-	metadata: {},
-	always: [],
+	sessionID,
+	action: "shell",
+	resources: [],
 	askedAt,
-	raw: {} as OpenCodePermissionRequest["raw"],
 });
 
 const question = (id: string, sessionID: string, askedAt: number): OpenCodeQuestionRequest => ({
 	id,
 	sessionID,
 	askedAt,
-	questions: [],
+	title: "Questions",
+	fields: [{ key: "q0", type: "string" }],
 });
 
 const session = (

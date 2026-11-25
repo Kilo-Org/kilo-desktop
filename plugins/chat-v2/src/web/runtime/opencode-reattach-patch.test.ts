@@ -1,8 +1,8 @@
 import {
 	OpenCodeThreadController,
+	type KiloClient,
 	type OpenCodeServerEvent,
 } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient as OpencodeClient } from "@kilocode/sdk/v2/client";
 import { describe, expect, it, vi } from "vitest";
 
 /*
@@ -17,14 +17,14 @@ type Listener = (event: OpenCodeServerEvent) => void;
 
 function setup() {
 	const listeners = new Set<Listener>();
-	const messages = vi.fn().mockResolvedValue({ data: [] });
+	const messages = vi.fn().mockResolvedValue({ data: [], cursor: {} });
 	const client = {
 		session: {
-			get: vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-			messages,
-			status: vi.fn().mockResolvedValue({ data: {} }),
+			get: vi.fn().mockResolvedValue({ id: "ses_1", location: { directory: "/p" }, time: {} }),
+			active: vi.fn().mockResolvedValue({}),
 		},
-	} as never as OpencodeClient;
+		message: { list: messages },
+	} as never as KiloClient;
 	const controller = new OpenCodeThreadController(
 		client,
 		() => ({

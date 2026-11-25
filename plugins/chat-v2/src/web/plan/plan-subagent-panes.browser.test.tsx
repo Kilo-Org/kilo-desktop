@@ -303,8 +303,7 @@ describe("the plan pane", () => {
 			.toEqual({ answer: { q0: "Continue here" } });
 	});
 
-	// v2 gap (step 22): the translator drops `session.agent.selected`, so the pane never sees Kilo switch agent.
-	it.skip("brings the agent pane's agent along when the plan is approved there", async () => {
+	it("brings the agent pane's agent along when the plan is approved there", async () => {
 		const fake = server(planTurn());
 		await show(fake, { otherPanes: [planPaneOf("ses_a")] });
 		const agent = page.getByTestId("kilo-agent-selector-trigger");

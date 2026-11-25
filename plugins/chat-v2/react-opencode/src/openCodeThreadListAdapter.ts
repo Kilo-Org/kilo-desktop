@@ -1,22 +1,12 @@
-import { type GlobalSession } from "./sdk";
-import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
+import type { SessionInfo } from "@kilocode/client";
+
 import type { OpenCodeRuntimeBackend } from "./types";
 
-const isArchivedSession = (session: Pick<GlobalSession, "time">) => {
-	return typeof session.time.archived === "number";
-};
-
-const mapThreadMetadata = (session: {
-	id: string;
-	title: string;
-	time: { archived?: number };
-}) => ({
-	status: isArchivedSession(session as GlobalSession)
-		? ("archived" as const)
-		: ("regular" as const),
+const mapThreadMetadata = (session: Pick<SessionInfo, "id" | "title" | "time">) => ({
+	status: typeof session.time.archived === "number" ? ("archived" as const) : ("regular" as const),
 	remoteId: session.id,
 	externalId: session.id,
-	title: session.title,
+	title: session.title ?? "",
 });
 
 export const createOpenCodeThreadListAdapter = (
@@ -31,18 +21,12 @@ export const createOpenCodeThreadListAdapter = (
 				...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
 			};
 		}
-		const response = await backend.globalClient.experimental.session.list(
-			{
-				roots: true,
-				archived: true,
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
-		const sessions = new Map<string, GlobalSession>();
+		const page = await backend.globalClient.session.list({ parentID: null });
+		const sessions = new Map<string, SessionInfo>();
 
-		for (const session of response.data ?? []) {
+		for (const session of page.data) {
 			if (session.parentID) continue;
-			backend.getSessionClient({ id: session.id, directory: session.directory });
+			backend.getSessionClient({ id: session.id, directory: session.location.directory });
 			sessions.set(session.id, session);
 		}
 
@@ -54,41 +38,22 @@ export const createOpenCodeThreadListAdapter = (
 		// Mirroring session.title into the list must not echo it back to the
 		// server (and must not race a freshly generated title).
 		if (getSessionTitle(remoteId)?.trim() === newTitle) return;
-		await backend.getSessionClient({ id: remoteId }).session.update(
-			{
-				sessionID: remoteId,
-				title: newTitle,
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+		await backend
+			.getSessionClient({ id: remoteId })
+			.session.update({ sessionID: remoteId, title: newTitle });
 	},
 	archive: async (remoteId: string) => {
-		await backend.getSessionClient({ id: remoteId }).session.update(
-			{
-				sessionID: remoteId,
-				time: { archived: Date.now() },
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+		await backend
+			.getSessionClient({ id: remoteId })
+			.session.update({ sessionID: remoteId, archived: true });
 	},
 	unarchive: async (remoteId: string) => {
-		await backend.getSessionClient({ id: remoteId }).session.update(
-			{
-				sessionID: remoteId,
-				// The SDK models archived timestamps as numbers, but OpenCode uses
-				// `null` here to clear the archived flag when unarchiving.
-				time: { archived: null as never } as never,
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+		await backend
+			.getSessionClient({ id: remoteId })
+			.session.update({ sessionID: remoteId, archived: false });
 	},
 	delete: async (remoteId: string) => {
-		await backend.getSessionClient({ id: remoteId }).session.delete(
-			{
-				sessionID: remoteId,
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
+		await backend.getSessionClient({ id: remoteId }).session.remove({ sessionID: remoteId });
 	},
 	initialize: async () => {
 		const session = await backend.initializeSession();
@@ -118,19 +83,13 @@ export const createOpenCodeThreadListAdapter = (
 		});
 	},
 	fetch: async (threadId: string) => {
-		const response = await backend.getSessionClient({ id: threadId }).session.get(
-			{
-				sessionID: threadId,
-			},
-			OPEN_CODE_REQUEST_OPTIONS,
-		);
-		if (!response.data?.id) {
+		const session = await backend
+			.getSessionClient({ id: threadId })
+			.session.get({ sessionID: threadId });
+		if (!session?.id) {
 			throw new Error("OpenCode session not found");
 		}
-		backend.getSessionClient({
-			id: response.data.id,
-			directory: (response.data as GlobalSession).directory,
-		});
-		return mapThreadMetadata(response.data as GlobalSession);
+		backend.getSessionClient({ id: session.id, directory: session.location.directory });
+		return mapThreadMetadata(session);
 	},
 });

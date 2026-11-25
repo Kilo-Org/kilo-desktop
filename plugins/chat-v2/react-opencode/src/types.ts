@@ -11,16 +11,13 @@ import type {
 	ThreadUserMessagePart,
 } from "@assistant-ui/react";
 import type {
-	GlobalSession,
-	Message,
-	OpencodeClient,
-	Part,
-	PermissionRequest,
-	QuestionAnswer,
-	QuestionRequest,
-	Session,
-	SessionStatus,
-} from "./sdk";
+	FormAnswer,
+	FormInfo,
+	PermissionRequest as KiloPermissionRequest,
+	SessionInfo,
+} from "@kilocode/client";
+import type { KiloClient } from "./kilo";
+import type { Message, Part, Session, SessionStatus } from "./sdk";
 import type {
 	OpenCodeMessageQueueController,
 	OpenCodeMessageQueueControls,
@@ -36,13 +33,11 @@ export type {
 	Message,
 	Model,
 	Part,
-	PermissionRequest,
 	Provider,
-	QuestionAnswer,
-	QuestionRequest,
 	ReasoningPart,
 	Session,
 	SessionStatus,
+	SnapshotFileDiff,
 	SnapshotPart,
 	StepFinishPart,
 	StepStartPart,
@@ -52,31 +47,31 @@ export type {
 	UserMessage,
 } from "./sdk";
 
-export type { OpencodeClient, OpencodeClientConfig } from "./sdk";
+export type { KiloClient } from "./kilo";
+export type {
+	AgentInfo,
+	CommandInfo,
+	FormAnswer,
+	FormInfo,
+	SessionInfo,
+	SkillInfo,
+} from "@kilocode/client";
 
 export type MessageWithParts = {
 	info: Message;
 	parts: Part[];
 };
 
+/** A permission reply, as Kilo v2 takes it (`permission.reply`'s `decision`). */
 export type OpenCodePermissionResponse = "once" | "always" | "reject";
 
-export type OpenCodePermissionRequest = {
-	id: string;
-	sessionId: string;
-	permission: string;
-	patterns: readonly string[];
-	metadata: Record<string, unknown>;
-	always: readonly string[];
-	tool?: PermissionRequest["tool"] | undefined;
-	toolName?: string | undefined;
-	toolInput?: unknown;
-	title?: string | undefined;
+/** A Kilo v2 permission request waiting on the person, and when it was asked. */
+export type OpenCodePermissionRequest = KiloPermissionRequest & {
 	askedAt: number;
-	raw: PermissionRequest;
 };
 
-export type OpenCodeQuestionRequest = QuestionRequest & {
+/** A Kilo v2 form waiting on the person (the question tool asks through one), and when it was asked. */
+export type OpenCodeQuestionRequest = FormInfo & {
 	askedAt: number;
 };
 
@@ -162,7 +157,7 @@ export type OpenCodeThreadState = {
 					string,
 					{
 						request: OpenCodeQuestionRequest;
-						answers: readonly QuestionAnswer[];
+						answer: FormAnswer;
 						respondedAt: number;
 					}
 				>
@@ -186,14 +181,18 @@ export type OpenCodeThreadState = {
 	};
 };
 
+/** A model as Kilo v2 names it (`session.switchModel`). */
+export type OpenCodeModelRef = {
+	providerID: string;
+	id: string;
+	variant?: string | undefined;
+};
+
+/** What a prompt switches the session to before it is sent. */
 export type OpenCodeUserMessageOptions = {
-	model?:
-		| {
-				providerID: string;
-				modelID: string;
-		  }
-		| undefined;
+	model?: OpenCodeModelRef | undefined;
 	agent?: string | undefined;
+	/** Adds the message without starting a turn (`resume: false`). */
 	noReply?: boolean | undefined;
 };
 
@@ -208,14 +207,23 @@ export type OpenCodeEventSourceLike = {
 };
 
 export type OpenCodeSessionListPage = {
-	sessions: readonly GlobalSession[];
+	sessions: readonly SessionInfo[];
 	/** Opaque cursor for the next page; absent when the listing is exhausted. */
 	nextCursor?: string | undefined;
 };
 
 export type OpenCodeRuntimeBackend = {
-	globalClient: OpencodeClient;
-	getSessionClient(ref: OpenCodeSessionRef): OpencodeClient;
+	globalClient: KiloClient;
+	getSessionClient(ref: OpenCodeSessionRef): KiloClient;
+	/**
+	 * Adjusts a session's history as the thread is about to show it, e.g. with
+	 * text streamed since the server answered (the history is read whole and
+	 * shown in the thread state's message shapes).
+	 */
+	patchHistory?(
+		sessionId: string,
+		messages: readonly MessageWithParts[],
+	): readonly MessageWithParts[];
 	initializeSession(): Promise<OpenCodeSessionRef>;
 	createEventSource(): OpenCodeEventSourceLike;
 	/**
@@ -237,16 +245,11 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
 	 * surfaced.
 	 */
 	onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
-	client?: OpencodeClient;
+	client?: KiloClient;
 	backend?: OpenCodeRuntimeBackend | undefined;
 	baseUrl?: string | undefined;
 	initialSessionId?: string | undefined;
-	defaultModel?:
-		| {
-				providerID: string;
-				modelID: string;
-		  }
-		| undefined;
+	defaultModel?: OpenCodeModelRef | undefined;
 	defaultAgent?: string | undefined;
 	onError?: (error: unknown) => void;
 	/**
@@ -282,7 +285,7 @@ export type OpenCodeRuntimeExtras = {
 	cancel: () => Promise<void>;
 	refresh: () => Promise<void>;
 	replyToPermission: (permissionId: string, response: OpenCodePermissionResponse) => Promise<void>;
-	replyToQuestion: (questionId: string, answers: readonly QuestionAnswer[]) => Promise<void>;
+	replyToQuestion: (questionId: string, answer: FormAnswer) => Promise<void>;
 	rejectQuestion: (questionId: string) => Promise<void>;
 	/** Present when the runtime was created with `messageQueue`. */
 	messageQueue?: OpenCodeMessageQueueControls | undefined;
@@ -350,7 +353,7 @@ export type OpenCodeStateEvent =
 	| {
 			type: "question.replied";
 			questionId: string;
-			answers: readonly QuestionAnswer[];
+			answer: FormAnswer;
 	  }
 	| { type: "question.rejected"; questionId: string }
 	| { type: "unhandled.event"; event: OpenCodeUnhandledEvent }
@@ -377,7 +380,7 @@ export type OpenCodeThreadControllerLike = {
 	unrevert(): Promise<void>;
 	fork(messageId: string): Promise<string>;
 	replyToPermission(permissionId: string, response: OpenCodePermissionResponse): Promise<void>;
-	replyToQuestion(questionId: string, answers: readonly QuestionAnswer[]): Promise<void>;
+	replyToQuestion(questionId: string, answer: FormAnswer): Promise<void>;
 	rejectQuestion(questionId: string): Promise<void>;
 };
 

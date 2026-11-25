@@ -170,8 +170,7 @@ describe("reverting and retrying", () => {
 		expect(document.querySelector('[data-qa-id="kilo-revert-to-here-button"]')).toBeNull();
 	});
 
-	// v2 gap (step 23): retry sends v1 promptAsync({ messageID, parts: [] }), which has no v2 equivalent
-	it.skip("retries a prompt the Gateway refused once the person has signed in", async () => {
+	it("retries a prompt the Gateway refused once the person has signed in", async () => {
 		const host = await showChat(
 			[
 				userMessage("msg_1", QUESTION),
@@ -183,9 +182,8 @@ describe("reverting and retrying", () => {
 		await expect.element(page.getByTestId("kilo-message-error-signed-in")).toBeVisible();
 		await page.getByTestId("kilo-message-error-retry").click();
 
-		await expect
-			.poll(() => promptsTo(host.server)[0]?.body)
-			.toMatchObject({ messageID: "msg_1", parts: [] });
+		// The prompt goes again as a new one, so the model runs again.
+		await expect.poll(() => promptsTo(host.server)[0]?.body).toEqual({ text: QUESTION });
 	});
 });
 

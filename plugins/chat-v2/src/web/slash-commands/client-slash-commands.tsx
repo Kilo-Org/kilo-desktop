@@ -56,8 +56,20 @@ export function useSlashCommands(directory: string | null): SlashCommandsState {
 }
 
 /** The server's command names, as a prompt is sent with them; client commands never reach the server. */
+/** The server's commands, by what is typed after `/` (skills aren't commands in Kilo v2). */
 export function serverCommandNames(commands: readonly SlashMenuCommand[]): string[] {
-	return commands.filter((command) => !command.clientKey).map((command) => command.id);
+	return commands
+		.filter((command) => !command.clientKey && command.skillId === undefined)
+		.map((command) => command.id);
+}
+
+/** The server's skills, by what is typed after `/`: a prompt names the skill's id to use it. */
+export function serverSkills(commands: readonly SlashMenuCommand[]): ReadonlyMap<string, string> {
+	return new Map(
+		commands.flatMap((command) =>
+			command.skillId === undefined ? [] : [[command.id, command.skillId] as const],
+		),
+	);
 }
 
 const SelectionContext = createContext<(() => PromptSelection) | null>(null);

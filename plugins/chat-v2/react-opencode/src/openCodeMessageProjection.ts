@@ -147,12 +147,12 @@ const getPermissionIndex = (state: OpenCodeThreadState): PermissionIndex => {
 
 	const pendingByCallId = new Map<string, PendingPermission>();
 	for (const request of Object.values(permissions.pending)) {
-		if (request.tool?.callID) pendingByCallId.set(request.tool.callID, request);
+		if (request.source?.id) pendingByCallId.set(request.source.id, request);
 	}
 
 	const resolvedByCallId = new Map<string, ResolvedPermission>();
 	for (const entry of Object.values(permissions.resolved)) {
-		const callId = entry.request.tool?.callID;
+		const callId = entry.request.source?.id;
 		if (callId) resolvedByCallId.set(callId, entry);
 	}
 
@@ -186,17 +186,8 @@ const hasPendingInteractionForToolCall = (
 ) => {
 	if (!toolCallId) return false;
 
-	if (getPermissionIndex(state).pendingByCallId.has(toolCallId)) {
-		return true;
-	}
-
-	for (const request of Object.values(state.interactions.questions.pending)) {
-		if (request.tool?.callID === toolCallId) {
-			return true;
-		}
-	}
-
-	return false;
+	// Kilo v2's forms name no tool call, so only permissions hold one up.
+	return getPermissionIndex(state).pendingByCallId.has(toolCallId);
 };
 
 const hasPendingInteractionForMessage = (

@@ -1,13 +1,34 @@
+import {
+	commandHints,
+	listCommands,
+	listSkills,
+	type KiloClient,
+} from "@kilo-desktop/react-opencode-v2";
 import { useQuery } from "@tanstack/react-query";
-import type { Command } from "@kilocode/sdk/v2/client";
 
 import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
-import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
+import { kiloClient } from "../runtime/kilo-client";
 
-export type KiloCommandCatalogEntry = Pick<
-	Command,
-	"name" | "description" | "agent" | "model" | "source" | "hints"
->;
+/** One of the server's `/` commands: a Kilo command or a skill, without its template. */
+export interface KiloCommandCatalogEntry {
+	readonly name: string;
+	readonly description?: string;
+	/** Where it comes from (`command.list`, `skill.list`, or an MCP server's prompt). */
+	readonly source: "command" | "skill" | "mcp";
+	/** A command's argument placeholders (`$1`, `$ARGUMENTS`), from its template. */
+	readonly hints: readonly string[];
+	/** A skill's id, which a prompt names to use it. */
+	readonly skillId?: string;
+}
+
+/** A folder's skills; none from a server that can't list them. */
+async function skillsOf(client: KiloClient, directory: string) {
+	try {
+		return await listSkills(client, directory);
+	} catch {
+		return [];
+	}
+}
 
 export async function fetchCommandCatalogForConnection(
 	connection: KiloGlobalConnection | undefined,
@@ -17,19 +38,26 @@ export async function fetchCommandCatalogForConnection(
 		throw new Error("Cannot fetch commands before Kilo is connected");
 	}
 	const resolvedDirectory = directory ?? connection.globalDirectory;
-	const client = createKiloDirectoryClient(connection, resolvedDirectory);
-	const { data } = await client.command.list(
-		{ directory: resolvedDirectory },
-		{ throwOnError: true },
-	);
-	return (data ?? []).map(({ name, description, agent, model, source, hints }) => ({
-		name,
-		...(description !== undefined ? { description } : {}),
-		...(agent !== undefined ? { agent } : {}),
-		...(model !== undefined ? { model } : {}),
-		...(source !== undefined ? { source } : {}),
-		hints,
-	}));
+	const client = kiloClient(connection);
+	const [commands, skills] = await Promise.all([
+		listCommands(client, resolvedDirectory),
+		skillsOf(client, resolvedDirectory),
+	]);
+	return [
+		...commands.map(({ name, description, template }) => ({
+			name,
+			...(description !== undefined ? { description } : {}),
+			source: "command" as const,
+			hints: commandHints(template),
+		})),
+		...skills.map(({ id, name, description }) => ({
+			name,
+			...(description !== undefined ? { description } : {}),
+			source: "skill" as const,
+			hints: [],
+			skillId: id,
+		})),
+	];
 }
 
 export function useKiloCommandCatalog(

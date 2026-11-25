@@ -117,16 +117,11 @@ describe("resyncOnceConnected", () => {
 });
 
 describe("KiloClients", () => {
-	it("keeps clients per connection and directory", () => {
+	it("keeps one client per connection", () => {
 		const clients = new KiloClients();
-		const global = clients.global(connection("a"));
-		expect(clients.global(connection("a"))).toBe(global);
-		const app = clients.directory(connection("a"), "/app");
-		expect(clients.directory(connection("a"), "/app")).toBe(app);
-		expect(clients.directory(connection("a"), "/lib")).not.toBe(app);
-
-		expect(clients.global(connection("b"))).not.toBe(global);
-		expect(clients.directory(connection("b"), "/app")).not.toBe(app);
+		const a = clients.client(connection("a"));
+		expect(clients.client(connection("a"))).toBe(a);
+		expect(clients.client(connection("b"))).not.toBe(a);
 		expect(connectionKey(connection("a"))).not.toBe(connectionKey(connection("b")));
 	});
 });

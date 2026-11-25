@@ -1,5 +1,4 @@
 import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 /*
  * The text of every part the window's stream is streaming, so a history read
@@ -107,11 +106,16 @@ export class LiveParts {
 		}
 	}
 
-	/** `messages` (a `session.messages` reply's data) with live text filled in. */
-	patchMessages(chatId: string, messages: unknown): unknown {
+	/**
+	 * `messages` (a history as the thread shows it) with live text filled in.
+	 * The thread patches its history when it is about to show it, so deltas
+	 * that arrived while it was read are in here (and applied to the thread's
+	 * old state) by then.
+	 */
+	patchMessages<T>(chatId: string, messages: readonly T[]): readonly T[] {
 		this.#dropExpired();
-		if (!Array.isArray(messages) || !this.#hasSession(chatId)) return messages;
-		return messages.map((message: unknown) => {
+		if (!this.#hasSession(chatId)) return messages;
+		return messages.map((message): T => {
 			const record = asRecord(message);
 			const parts = record?.["parts"];
 			if (!record || !Array.isArray(parts)) return message;
@@ -121,7 +125,7 @@ export class LiveParts {
 				if (patched !== part) changed = true;
 				return patched;
 			});
-			return changed ? { ...record, parts: nextParts } : message;
+			return changed ? ({ ...record, parts: nextParts } as T) : message;
 		});
 	}
 
@@ -174,41 +178,4 @@ export class LiveParts {
 			if (live.ended && live.ended.expires <= now) this.#parts.delete(id);
 		}
 	}
-}
-
-/*
- * The reply's data is patched when the thread reads it, not when it arrives: a
- * thread awaits its other history read too, and deltas delivered meanwhile are
- * in `LiveParts` (and applied to the thread's old state) by then.
- */
-function withLazyData(reply: UnknownRecord, patch: (data: unknown) => unknown): UnknownRecord {
-	const { data, ...rest } = reply;
-	let patched: { value: unknown } | undefined;
-	return Object.defineProperty(rest, "data", {
-		enumerable: true,
-		configurable: true,
-		get: () => (patched ??= { value: patch(data) }).value,
-	});
-}
-
-/** `client`, whose `session.messages` replies for `chatId` carry `live`'s streamed text. */
-export function withLiveParts(client: KiloClient, chatId: string, live: LiveParts): KiloClient {
-	return new Proxy(client as object, {
-		get(target, prop, receiver) {
-			const value = Reflect.get(target, prop, receiver);
-			if (prop !== "session" || value === null || typeof value !== "object") return value;
-			return new Proxy(value as object, {
-				get(sessionTarget, sessionProp, sessionReceiver) {
-					const method = Reflect.get(sessionTarget, sessionProp, sessionReceiver);
-					if (sessionProp !== "messages" || typeof method !== "function") return method;
-					return async (...args: unknown[]) => {
-						const reply = await Reflect.apply(method, sessionTarget, args);
-						const record = asRecord(reply);
-						if (!record || !("data" in record)) return reply;
-						return withLazyData(record, (data) => live.patchMessages(chatId, data));
-					};
-				},
-			});
-		},
-	}) as KiloClient;
 }

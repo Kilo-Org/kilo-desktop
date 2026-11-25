@@ -27,7 +27,7 @@ function oldestPendingInteraction(
 		...interactions.permissions.map((request) => ({
 			kind: "permission" as const,
 			request,
-			origin: subagentOriginOf(interactions, request.sessionId),
+			origin: subagentOriginOf(interactions, request.sessionID),
 		})),
 		...questions.map((request) => ({
 			kind: "question" as const,

@@ -1,13 +1,12 @@
-import { OPEN_CODE_HISTORY_PAGE_SIZE } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import { historyPageInput, type KiloClient } from "@kilo-desktop/react-opencode-v2";
 
 /*
  * Chat histories loaded ahead of opening (a work session's row hovered), kept
  * until the chat's transcript loads or briefly otherwise. A chat's thread
- * loads its history with `session.get` and the newest page of
- * `session.messages`; a client made by `withPrefetchedHistory` answers those
- * from here, so the transcript shows without a round trip. (The older
- * messages the thread fetches next are not prefetched.)
+ * loads its history with `session.get` and `message.list`, a page at a
+ * time; a client made by `withPrefetchedHistory` answers the first of those
+ * from here, so the transcript shows without a round trip. (Any later pages
+ * of a long history are not prefetched.)
  *
  * - An entry is only served while it is current: any event for its chat
  *   drops it (its replies may be missing what the event brought), as does its
@@ -37,10 +36,7 @@ export class HistoryPrefetch {
 		const entry: Entry = {
 			replies: new Map<HistoryReply, Promise<unknown>>([
 				["get", client.session.get({ sessionID: chatId })],
-				[
-					"messages",
-					client.session.messages({ sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE }),
-				],
+				["messages", client.message.list(historyPageInput(chatId))],
 			]),
 			expires: Date.now() + PREFETCH_TTL_MS,
 		};
@@ -79,46 +75,45 @@ export class HistoryPrefetch {
 
 /**
  * `client`, whose plain history reads for `chatId` (`session.get` with only
- * its id, `session.messages` for its newest page) are answered from
- * `prefetch` when it holds a current reply.
+ * its id, `message.list` for the first page of its history) are answered
+ * from `prefetch` when it holds a current reply.
  */
 export function withPrefetchedHistory(
 	client: KiloClient,
 	chatId: string,
 	prefetch: HistoryPrefetch,
 ): KiloClient {
+	const expected: Record<HistoryReply, Record<string, unknown>> = {
+		get: { sessionID: chatId },
+		messages: historyPageInput(chatId),
+	};
 	const isHistoryRead = (kind: HistoryReply, parameters: unknown) => {
 		const record = parameters as Record<string, unknown> | undefined;
 		if (record?.["sessionID"] !== chatId) return false;
-		const expected: Record<string, unknown> =
-			kind === "get"
-				? { sessionID: chatId }
-				: { sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE };
 		const keys = Object.keys(record);
 		return (
-			keys.length === Object.keys(expected).length &&
-			keys.every((key) => record[key] === expected[key])
+			keys.length === Object.keys(expected[kind]).length &&
+			keys.every((key) => record[key] === expected[kind][key])
 		);
 	};
+	/** `group` (`session` or `message`) with its `method` answered from the prefetch. */
+	const answering = (group: object, method: PropertyKey, kind: HistoryReply) =>
+		new Proxy(group, {
+			get(target, prop, receiver) {
+				const value = Reflect.get(target, prop, receiver);
+				if (prop !== method || typeof value !== "function") return value;
+				return (...args: unknown[]) =>
+					(isHistoryRead(kind, args[0]) ? prefetch.take(chatId, kind) : undefined) ??
+					Reflect.apply(value, target, args);
+			},
+		});
 	return new Proxy(client as object, {
 		get(target, prop, receiver) {
 			const value = Reflect.get(target, prop, receiver);
-			if (prop !== "session" || value === null || typeof value !== "object") return value;
-			return new Proxy(value as object, {
-				get(sessionTarget, sessionProp, sessionReceiver) {
-					const method = Reflect.get(sessionTarget, sessionProp, sessionReceiver);
-					if (
-						(sessionProp !== "get" && sessionProp !== "messages") ||
-						typeof method !== "function"
-					) {
-						return method;
-					}
-					return (...args: unknown[]) =>
-						(isHistoryRead(sessionProp, args[0])
-							? prefetch.take(chatId, sessionProp)
-							: undefined) ?? Reflect.apply(method, sessionTarget, args);
-				},
-			});
+			if (value === null || typeof value !== "object") return value;
+			if (prop === "session") return answering(value, "get", "get");
+			if (prop === "message") return answering(value, "list", "messages");
+			return value;
 		},
 	}) as KiloClient;
 }

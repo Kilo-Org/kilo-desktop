@@ -2,10 +2,9 @@ import {
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeServerEvent,
 } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ENDED_PART_TTL_MS, LiveParts, withLiveParts } from "./live-parts";
+import { ENDED_PART_TTL_MS, LiveParts } from "./live-parts";
 
 const CHAT = "ses_1";
 
@@ -30,19 +29,12 @@ const delta = (text: string) =>
 const ended = (text: string) =>
 	event("message.part.updated", { part: textPart(text, { time: { start: 1, end: 2 } }) });
 
-/** A `session.messages` reply holding `part`. */
+/** A history holding `part`. */
 const history = (part: Record<string, unknown>) => [{ info: { id: "msg_1" }, parts: [part] }];
 
-/** The first part of `chatId`'s history read through `withLiveParts`. */
+/** The first part of `chatId`'s history as `live` patches it. */
 async function readPart(live: LiveParts, stored: Record<string, unknown>, chatId = CHAT) {
-	const client = {
-		session: { messages: async () => ({ data: history(stored), request: "kept" }) },
-	} as never as KiloClient;
-	const reply = (await withLiveParts(client, chatId, live).session.messages({
-		sessionID: chatId,
-	})) as unknown as { data: ReturnType<typeof history>; request: string };
-	expect(reply.request).toBe("kept");
-	return reply.data[0]!.parts[0]!;
+	return live.patchMessages(chatId, history(stored))[0]!.parts[0]!;
 }
 
 function streaming(...deltas: string[]) {
@@ -61,20 +53,6 @@ describe("LiveParts", () => {
 		const live = streaming("Hello ", "world");
 
 		expect((await readPart(live, textPart(""))).text).toBe("Hello world");
-	});
-
-	it("patches the reply when the thread reads it, with deltas that arrived meanwhile", async () => {
-		const live = streaming("Hello ");
-		let resolve: (value: unknown) => void = () => undefined;
-		const client = {
-			session: { messages: () => new Promise((done) => (resolve = done)) },
-		} as never as KiloClient;
-		const pending = withLiveParts(client, CHAT, live).session.messages({ sessionID: CHAT });
-		resolve({ data: history(textPart("")) });
-		const reply = (await pending) as unknown as { data: ReturnType<typeof history> };
-		live.apply(delta("world"));
-
-		expect(reply.data[0]!.parts[0]!.text).toBe("Hello world");
 	});
 
 	it("leaves a stored part that has ended", async () => {

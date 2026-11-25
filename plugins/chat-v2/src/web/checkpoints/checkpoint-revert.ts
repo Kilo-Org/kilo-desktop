@@ -1,7 +1,7 @@
 import { type useAui, useAuiState, type ThreadMessage } from "@assistant-ui/react";
 import type { OpenCodeServerMessage } from "@kilo-desktop/react-opencode-v2";
 import type { CreateAttachment } from "@assistant-ui/core";
-import type { SnapshotFileDiff } from "@kilocode/sdk/v2/client";
+import type { SnapshotFileDiff } from "@kilo-desktop/react-opencode-v2";
 
 import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { userPromptText } from "./retry-failed-prompt";
@@ -190,9 +190,9 @@ export const attachmentFromServerFilePart = (
 };
 
 /**
- * Known limitation: messages whose `parts` were emptied by `retryFailedTurn`
- * (`promptAsync({ messageID, parts: [] })`) restore as empty text because
- * `shadowParts` — a client-side projection fallback — are not visible here.
+ * Known limitation: messages whose server-side `parts` are empty restore as
+ * empty text because `shadowParts` — a client-side projection fallback — are
+ * not visible here.
  * Accepted: this path targets the *next* user message during a Restore step,
  * not the clicked boundary message; the primary revert-to-here flow goes
  * through `messageToComposerPrompt`, which reads the projected ThreadMessage

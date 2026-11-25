@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Agent } from "@kilocode/sdk/v2/client";
+import type { AgentInfo } from "@kilo-desktop/react-opencode-v2";
 import {
 	BotIcon,
 	BugIcon,
@@ -16,10 +16,12 @@ import {
 	OPTIMISTIC_AGENT_CATALOG,
 } from "./agent-catalog";
 
-function agent(partial: Partial<Agent> & Pick<Agent, "name" | "mode">): Agent {
+function agent(partial: Partial<AgentInfo> & Pick<AgentInfo, "id" | "mode">): AgentInfo {
 	return {
-		permission: [],
-		options: {},
+		name: partial.id,
+		hidden: false,
+		request: {} as AgentInfo["request"],
+		permissions: [],
 		...partial,
 	};
 }
@@ -27,13 +29,13 @@ function agent(partial: Partial<Agent> & Pick<Agent, "name" | "mode">): Agent {
 describe("agent-catalog", () => {
 	it("keeps built-ins first in curated order, appends custom agents in server order", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "debug", mode: "primary" }),
-			agent({ name: "ask", mode: "primary" }),
-			agent({ name: "plan", mode: "primary" }),
-			agent({ name: "code", mode: "primary" }),
-			agent({ name: "explore", mode: "primary", displayName: "Explore" }),
-			agent({ name: "orchestrator", mode: "primary" }),
-			agent({ name: "ask", mode: "primary", hidden: true }),
+			agent({ id: "debug", mode: "primary" }),
+			agent({ id: "ask", mode: "primary" }),
+			agent({ id: "plan", mode: "primary" }),
+			agent({ id: "code", mode: "primary" }),
+			agent({ id: "explore", mode: "primary", name: "Explore" }),
+			agent({ id: "orchestrator", mode: "primary" }),
+			agent({ id: "ask", mode: "primary", hidden: true }),
 		]);
 
 		expect(catalog.agents).toEqual([
@@ -49,15 +51,14 @@ describe("agent-catalog", () => {
 	it("preserves configured model and variant defaults for selectable agents", () => {
 		const catalog = buildAgentCatalog([
 			agent({
-				name: "code",
+				id: "code",
 				mode: "primary",
-				model: { providerID: "anthropic", modelID: "claude-sonnet" },
-				variant: "high",
+				model: { providerID: "anthropic", id: "claude-sonnet", variant: "high" },
 			}),
 			agent({
-				name: "docs-writer",
+				id: "docs-writer",
 				mode: "primary",
-				model: { providerID: "anthropic", modelID: "claude-opus" },
+				model: { providerID: "anthropic", id: "claude-opus" },
 			}),
 		]);
 
@@ -72,8 +73,8 @@ describe("agent-catalog", () => {
 
 	it("aliases legacy build to code", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "build", mode: "primary" }),
-			agent({ name: "plan", mode: "primary" }),
+			agent({ id: "build", mode: "primary" }),
+			agent({ id: "plan", mode: "primary" }),
 		]);
 		expect(catalog.agents.map((entry) => entry.name)).toEqual(["code", "plan"]);
 		expect(findCatalogAgent(catalog, "code")?.displayName).toBe("Code");
@@ -81,9 +82,9 @@ describe("agent-catalog", () => {
 
 	it("omits switcher agents that are missing or not selectable", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "plan", mode: "primary" }),
-			agent({ name: "code", mode: "subagent" }),
-			agent({ name: "debug", mode: "primary", deprecated: true }),
+			agent({ id: "plan", mode: "primary" }),
+			agent({ id: "code", mode: "subagent" }),
+			agent({ id: "debug", mode: "primary", hidden: true }),
 		]);
 		expect(catalog.agents.map((entry) => entry.name)).toEqual(["plan"]);
 	});
@@ -112,22 +113,21 @@ describe("agent-catalog", () => {
 
 	it("excludes subagent and hidden agents from custom entries", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "code", mode: "primary" }),
-			agent({ name: "docs-writer", mode: "primary" }),
-			agent({ name: "orchestrator", mode: "subagent" }),
-			agent({ name: "secret-agent", mode: "primary", hidden: true }),
-			agent({ name: "old-agent", mode: "primary", deprecated: true }),
+			agent({ id: "code", mode: "primary" }),
+			agent({ id: "docs-writer", mode: "primary" }),
+			agent({ id: "orchestrator", mode: "subagent" }),
+			agent({ id: "secret-agent", mode: "primary", hidden: true }),
 		]);
 		expect(catalog.agents.map((entry) => entry.name)).toEqual(["code", "docs-writer"]);
 	});
 
-	it("uses server displayName and CSS color for custom agents", () => {
+	it("uses the server's display name and CSS color for custom agents", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "code", mode: "primary" }),
+			agent({ id: "code", mode: "primary" }),
 			agent({
-				name: "docs-writer",
+				id: "docs-writer",
 				mode: "primary",
-				displayName: "Documentation Writer",
+				name: "Documentation Writer",
 				color: "#8b5cf6",
 			}),
 		]);
@@ -139,21 +139,21 @@ describe("agent-catalog", () => {
 
 	it("drops non-CSS color values (CLI theme names)", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "code", mode: "primary" }),
-			agent({ name: "my-agent", mode: "primary", color: "primary" }),
-			agent({ name: "other-agent", mode: "primary", color: "accent" }),
-			agent({ name: "valid-agent", mode: "primary", color: "rgb(100, 200, 50)" }),
+			agent({ id: "code", mode: "primary" }),
+			agent({ id: "my-agent", mode: "primary", color: "primary" }),
+			agent({ id: "other-agent", mode: "primary", color: "accent" }),
+			agent({ id: "valid-agent", mode: "primary", color: "rgb(100, 200, 50)" }),
 		]);
 		expect(findCatalogAgent(catalog, "my-agent")?.color).toBeUndefined();
 		expect(findCatalogAgent(catalog, "other-agent")?.color).toBeUndefined();
 		expect(findCatalogAgent(catalog, "valid-agent")?.color).toBe("rgb(100, 200, 50)");
 	});
 
-	it("prettifies hyphenated and underscored ids when no displayName is set", () => {
+	it("prettifies hyphenated and underscored ids when no display name is set", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "code", mode: "primary" }),
-			agent({ name: "docs-writer", mode: "primary" }),
-			agent({ name: "my_custom_agent", mode: "primary" }),
+			agent({ id: "code", mode: "primary" }),
+			agent({ id: "docs-writer", mode: "primary" }),
+			agent({ id: "my_custom_agent", mode: "primary" }),
 		]);
 		expect(findCatalogAgent(catalog, "docs-writer")?.displayName).toBe("Docs Writer");
 		expect(findCatalogAgent(catalog, "my_custom_agent")?.displayName).toBe("My Custom Agent");
@@ -161,8 +161,8 @@ describe("agent-catalog", () => {
 
 	it("does not duplicate when a custom agent has the same name as a built-in", () => {
 		const catalog = buildAgentCatalog([
-			agent({ name: "code", mode: "primary", displayName: "Custom Code" }),
-			agent({ name: "plan", mode: "primary" }),
+			agent({ id: "code", mode: "primary", name: "Custom Code" }),
+			agent({ id: "plan", mode: "primary" }),
 		]);
 		const names = catalog.agents.map((entry) => entry.name);
 		expect(names).toEqual(["code", "plan"]);

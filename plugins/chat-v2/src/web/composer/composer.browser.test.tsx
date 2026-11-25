@@ -196,12 +196,27 @@ describe("slash commands", () => {
 		expect(host.server.requestsTo("POST", "/api/session/ses_new_1/prompt")).toEqual([]);
 	});
 
-	// v2 gap (step 22): v2 lists skills via skill.list, which the translation doesn't read; command.list has no source
-	it.skip("groups the / menu by source once there are skills too, and searches all of them", async () => {
+	it("uses a known /skill by naming it in the prompt", async () => {
 		const server = new FakeKiloServer();
-		server.commands = [
-			...server.commands,
-			{ name: "tidy", description: "Tidy imports", source: "skill", template: "" },
+		server.skills = [
+			{ id: "tidy", name: "tidy", description: "Tidy imports", path: "/skills/tidy", content: "" },
+		];
+		const host = await renderChat({ server });
+		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
+
+		await userEvent.fill(input(), "/tidy the imports");
+		await sendButton().click();
+
+		await expect
+			.poll(() => promptBody(host, "ses_new_1"))
+			.toEqual({ text: "the imports", skills: [{ id: "tidy" }] });
+		expect(host.server.requestsTo("POST", "/api/session/ses_new_1/command")).toEqual([]);
+	});
+
+	it("groups the / menu by source once there are skills too, and searches all of them", async () => {
+		const server = new FakeKiloServer();
+		server.skills = [
+			{ id: "tidy", name: "tidy", description: "Tidy imports", path: "/skills/tidy", content: "" },
 		];
 		await renderChat({ server });
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();

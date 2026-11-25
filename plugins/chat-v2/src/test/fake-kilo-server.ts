@@ -174,6 +174,8 @@ export class FakeKiloServer {
 	}));
 	/** What `command.list` returns (`CommandInfo`): Kilo's slash commands. */
 	commands: Json[] = [{ name: "review", description: "Review the changes", template: "" }];
+	/** What `skill.list` returns (`SkillInfo`): skills the `/` menu offers too. */
+	skills: Json[] = [];
 	/** Holds answering `command.list` until the test releases it. */
 	commandsGate?: Promise<void>;
 	/** What `plugin.list` returns; a location's agents and commands are complete once it isn't empty. */
@@ -416,6 +418,8 @@ export class FakeKiloServer {
 			case "command":
 				await this.commandsGate;
 				return inLocation(this.commands);
+			case "skill":
+				return inLocation(this.skills);
 			case "mcp":
 				return inLocation(this.mcpServers);
 			case "form":
@@ -515,6 +519,10 @@ export class FakeKiloServer {
 				}
 				return empty();
 			case "message":
+				if (sub) {
+					const message = chat.messages.find((entry) => entry.id === decodeURIComponent(sub));
+					return message ? json({ data: message }) : notFound(`Message not found: ${sub}`);
+				}
 				if (this.historyReadDelayMs) await delay(this.historyReadDelayMs);
 				this.messagePagesSent.push(chat.id);
 				return this.#messagePage(chat, search);
@@ -616,11 +624,14 @@ export class FakeKiloServer {
 	 * its transcript, as kilo2 delivers it.
 	 */
 	#enqueue(chat: FakeChat, type: "user" | "synthetic", body: Json): Json {
+		const readmitted = this.#admitted(chat, body.id);
+		if (readmitted) return readmitted;
 		const id = typeof body.id === "string" ? body.id : `msg_${type}_${++this.#nextId}`;
 		const text = String(body.text ?? "");
 		const created = nextCreated();
 		const payload = { text, ...(Array.isArray(body.files) ? { files: body.files } : {}) };
 		const item = { id, sessionID: chat.id, time: { created }, type, payload, delivery: "steer" };
+		this.#admissions.set(`${chat.id}/${id}`, item);
 		this.emit("session.inbox.enqueued", {
 			inboxID: id,
 			sessionID: chat.id,
@@ -637,6 +648,30 @@ export class FakeKiloServer {
 			this.emit("session.inbox.delivered", { sessionID: chat.id, inboxID: id });
 		}, 20);
 		return item;
+	}
+
+	/** Prompts admitted, by `<chat id>/<message id>`. */
+	readonly #admissions = new Map<string, Json>();
+
+	/**
+	 * What a prompt naming `id` already admitted, as kilo2 answers one: admission
+	 * is idempotent by message id, so a retry returns the original and adds nothing.
+	 */
+	#admitted(chat: FakeChat, id: unknown): Json | undefined {
+		if (typeof id !== "string") return undefined;
+		const admitted = this.#admissions.get(`${chat.id}/${id}`);
+		if (admitted) return admitted;
+		const message = chat.messages.find((entry) => entry.id === id);
+		if (!message) return undefined;
+		const files = (message as { files?: unknown }).files;
+		return {
+			id,
+			sessionID: chat.id,
+			time: message.time,
+			type: message.type,
+			payload: { text: (message as { text?: unknown }).text ?? "", ...(files ? { files } : {}) },
+			delivery: "steer",
+		};
 	}
 
 	#nextFork = 0;

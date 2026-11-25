@@ -1,11 +1,13 @@
 import { MessageNotSentError } from "@assistant-ui/react";
-import type { OpenCodeRuntimeBackend, OpenCodeSessionRef } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type {
+	KiloClient,
+	OpenCodeRuntimeBackend,
+	OpenCodeSessionRef,
+} from "@kilo-desktop/react-opencode-v2";
 
 import type { ChatServices } from "./chat-services";
 import { createDeferredKiloClient } from "./deferred-client";
 import { withPrefetchedHistory } from "./history-prefetch";
-import { withLiveParts } from "./live-parts";
 import { withPendingPrompts } from "./pending-prompts";
 import { withPromptOptions, type PromptOptions } from "./prompt-options";
 import { withMcpWarmup } from "./with-mcp-warmup";
@@ -26,16 +28,15 @@ export interface ChatBackendOptions extends PromptOptions {
 	readonly onCreateFailed?: (error: unknown) => void;
 }
 
-const REQUEST_OPTIONS = { throwOnError: true } as const;
-
 /**
  * The react-opencode backend for one agent pane's thread. Work sessions own the
  * chat list, so the thread list is always empty: the runtime opens the pane's
  * chat by id, or starts a draft whose first send creates the chat through
  * kilo.work-sessions (with this app's stamp, permission rules and work session).
- * Writes go to the chat's own directory; the event stream is the window's,
- * with the prompts the chat was already waiting on replayed to each thread
- * that subscribes (`withPendingPrompts`).
+ * Prompts warm the chat's own directory first; the event stream is the
+ * window's, with the prompts the chat was already waiting on replayed to each
+ * thread that subscribes (`withPendingPrompts`), and a history the thread
+ * reads carries the text streamed since (`LiveParts`).
  */
 export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeBackend {
 	const { services } = options;
@@ -49,13 +50,11 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 	const directoryOf = async (chatId: string): Promise<string> => {
 		const known = directories.get(chatId) ?? options.directoryOf(chatId);
 		if (known) return known;
-		const { data } = await services.globalClient.session.get(
-			{ sessionID: chatId },
-			REQUEST_OPTIONS,
-		);
-		if (!data?.directory) throw new Error(`Could not find where chat ${chatId} runs.`);
-		directories.set(chatId, data.directory);
-		return data.directory;
+		const session = await services.globalClient.session.get({ sessionID: chatId });
+		const directory = session?.location.directory;
+		if (!directory) throw new Error(`Could not find where chat ${chatId} runs.`);
+		directories.set(chatId, directory);
+		return directory;
 	};
 
 	const getSessionClient = (ref: OpenCodeSessionRef) => {
@@ -67,27 +66,21 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 					services.connection(),
 					directoryOf(ref.id),
 				]);
-				return withLiveParts(
-					withPrefetchedHistory(
-						withPromptOptions(
-							withMcpWarmup(services.clients.directory(connection, directory)),
-							options,
-						),
-						ref.id,
-						services.history,
-					),
+				return withPrefetchedHistory(
+					withPromptOptions(withMcpWarmup(services.clients.client(connection), directory), options),
 					ref.id,
-					services.liveParts,
+					services.history,
 				);
 			});
 			sessionClients.set(ref.id, client);
 		}
-		return client as never;
+		return client;
 	};
 
 	return {
-		globalClient: services.globalClient as never,
+		globalClient: services.globalClient,
 		getSessionClient,
+		patchHistory: (chatId, messages) => services.liveParts.patchMessages(chatId, messages),
 		listSessionPage: async () => ({ sessions: [] }),
 		initializeSession: async () => {
 			try {
@@ -102,6 +95,6 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 			}
 		},
 		createEventSource: () =>
-			withPendingPrompts(services.events(), () => [...sessionClients.values()]),
+			withPendingPrompts(services.events(), () => [...sessionClients.entries()]),
 	};
 }

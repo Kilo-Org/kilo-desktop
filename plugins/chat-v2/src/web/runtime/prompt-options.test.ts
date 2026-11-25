@@ -1,177 +1,247 @@
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { KiloClient } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it, vi } from "vitest";
 
-import { SNAPSHOT_INITIALIZATION, withPromptOptions } from "./prompt-options";
+import { withPromptOptions } from "./prompt-options";
 
-function fakeClient() {
-	const prompt = vi.fn(async (args: unknown) => args);
-	const promptAsync = vi.fn(async (args: unknown) => args);
-	const abort = vi.fn(async () => true);
-	const client = { session: { prompt, promptAsync, abort }, global: { health: vi.fn() } };
-	return { client: client as unknown as KiloClient, prompt, promptAsync, abort, raw: client };
+/** A Kilo client whose session calls are recorded in order. */
+function fakeClient(overrides: Record<string, (...args: never[]) => unknown> = {}) {
+	const calls: [string, unknown][] = [];
+	const record = (name: string, answer: () => unknown = () => undefined) =>
+		vi.fn(async (input: unknown) => {
+			calls.push([name, input]);
+			return answer();
+		});
+	const session = {
+		switchAgent: record("switchAgent"),
+		switchModel: record("switchModel"),
+		synthetic: record("synthetic"),
+		prompt: record("prompt", () => ({ id: "msg_1" })),
+		command: record("command"),
+		interrupt: record("interrupt"),
+		...overrides,
+	};
+	const client = { session, mcp: { list: vi.fn() } };
+	return { client: client as unknown as KiloClient, calls, session, raw: client };
 }
 
 describe("withPromptOptions", () => {
-	it("adds the snapshot policy and the chat's system prompt", async () => {
-		const { client, promptAsync } = fakeClient();
+	it("switches agent and model and adds the system note before the prompt", async () => {
+		const { client, calls } = fakeClient();
 		const getSystem = vi.fn(async () => "Workspace context");
-		const wrapped = withPromptOptions(client, { getSystem });
-
-		await wrapped.session.promptAsync({ sessionID: "ses_a", parts: [] } as never);
-
-		expect(getSystem).toHaveBeenCalledWith("ses_a");
-		expect(promptAsync).toHaveBeenCalledWith({
-			sessionID: "ses_a",
-			parts: [],
-			snapshotInitialization: SNAPSHOT_INITIALIZATION,
-			system: "Workspace context",
-		});
-	});
-
-	it("puts its system prompt before the prompt's own", async () => {
-		const { client, prompt } = fakeClient();
-		const wrapped = withPromptOptions(client, { getSystem: () => "Context" });
-
-		await wrapped.session.prompt({ sessionID: "ses_a", system: "Be brief" } as never);
-
-		expect(prompt.mock.calls[0]![0]).toMatchObject({ system: "Context\n\nBe brief" });
-	});
-
-	it("always applies the chosen agent and model, and a variant only when unset", async () => {
-		const { client, prompt } = fakeClient();
 		const wrapped = withPromptOptions(client, {
 			getAgent: () => "plan",
 			getModel: () => ({ providerID: "kilo", modelID: "m" }),
 			getVariant: () => "high",
+			getSystem,
 		});
 
-		await wrapped.session.prompt({ agent: "code", variant: "low" } as never);
-		await wrapped.session.prompt({} as never);
-
-		expect(prompt.mock.calls[0]![0]).toEqual({
-			agent: "plan",
-			variant: "low",
-			model: { providerID: "kilo", modelID: "m" },
-			snapshotInitialization: "wait",
+		await expect(wrapped.session.prompt({ sessionID: "ses_a", text: "hi" })).resolves.toEqual({
+			id: "msg_1",
 		});
-		expect(prompt.mock.calls[1]![0]).toMatchObject({ variant: "high" });
+
+		expect(getSystem).toHaveBeenCalledWith("ses_a");
+		expect(calls).toEqual([
+			["switchAgent", { sessionID: "ses_a", agent: "plan" }],
+			[
+				"switchModel",
+				{ sessionID: "ses_a", model: { providerID: "kilo", id: "m", variant: "high" } },
+			],
+			[
+				"synthetic",
+				{
+					sessionID: "ses_a",
+					text: "<system-reminder>\nWorkspace context\n</system-reminder>",
+					resume: false,
+				},
+			],
+			["prompt", { sessionID: "ses_a", text: "hi" }],
+		]);
 	});
 
-	it("leaves a prompt without a system prompt alone, and other calls untouched", async () => {
-		const { client, prompt, abort, raw } = fakeClient();
+	it("sends a prompt as it came without options, and leaves other calls untouched", async () => {
+		const { client, calls, raw } = fakeClient();
 		const wrapped = withPromptOptions(client, { getSystem: () => undefined });
 
-		await wrapped.session.prompt({ sessionID: "ses_a" } as never);
-		await wrapped.session.abort({ sessionID: "ses_a" } as never);
+		await wrapped.session.prompt({ sessionID: "ses_a", text: "hi", resume: false });
+		await wrapped.session.interrupt({ sessionID: "ses_a" });
 
-		expect(prompt.mock.calls[0]![0]).not.toHaveProperty("system");
-		expect(abort).toHaveBeenCalledWith({ sessionID: "ses_a" });
-		expect(wrapped.global).toBe(raw.global);
+		expect(calls).toEqual([
+			["prompt", { sessionID: "ses_a", text: "hi", resume: false }],
+			["interrupt", { sessionID: "ses_a" }],
+		]);
+		expect(wrapped.mcp).toBe(raw.mcp);
+	});
+
+	it("waits for local model preparation before the model is switched to", async () => {
+		let release!: () => void;
+		const prepareModel = vi.fn(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		const { client, calls } = fakeClient();
+		const wrapped = withPromptOptions(client, {
+			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" }),
+			prepareModel,
+		});
+
+		const pending = wrapped.session.prompt({ sessionID: "s1", text: "hi" });
+		await vi.waitFor(() => expect(prepareModel).toHaveBeenCalledOnce());
+
+		expect(prepareModel).toHaveBeenCalledWith({
+			providerID: "kilo-desktop-model-server",
+			modelID: "qwen-3",
+		});
+		expect(calls).toEqual([]);
+		release();
+		await pending;
+		expect(calls.map(([name]) => name)).toEqual(["switchModel", "prompt"]);
 	});
 });
 
 describe("withPromptOptions mentions", () => {
-	it("resolves the parts before they are sent", async () => {
-		const { client, promptAsync } = fakeClient();
+	it("resolves the text's mentions, adding the files they bring", async () => {
+		const { client, session } = fakeClient();
 		const wrapped = withPromptOptions(client, {
 			resolveParts: async (parts) => [
-				...parts,
-				{ type: "file", url: "file:///a", mime: "text/plain" },
+				{ type: "text", text: `${String(parts[0]!.text)} (resolved)` },
+				{ type: "file", url: "file:///a", mime: "text/plain", filename: "a" },
 			],
 		});
 
-		await wrapped.session.promptAsync({
+		await wrapped.session.prompt({
 			sessionID: "ses_a",
-			parts: [{ type: "text", text: "hi" }],
-		} as never);
-
-		expect(promptAsync.mock.calls[0]![0]).toMatchObject({
-			parts: [
-				{ type: "text", text: "hi" },
-				{ type: "file", url: "file:///a", mime: "text/plain" },
-			],
+			text: "hi",
+			files: [{ uri: "data:image/png;base64,AQID" }],
 		});
+
+		expect(session.prompt).toHaveBeenCalledWith(
+			{
+				sessionID: "ses_a",
+				text: "hi (resolved)",
+				files: [{ uri: "data:image/png;base64,AQID" }, { uri: "file:///a", name: "a" }],
+			},
+			undefined,
+		);
 	});
 
 	it("says when the server accepted a prompt, and not when it refused", async () => {
-		const { client, promptAsync } = fakeClient();
+		const { client, session } = fakeClient();
 		const onPrompted = vi.fn();
 		const wrapped = withPromptOptions(client, { onPrompted });
 
-		await wrapped.session.promptAsync({ sessionID: "ses_a", parts: [] } as never);
+		await wrapped.session.prompt({ sessionID: "ses_a", text: "" });
 		expect(onPrompted).toHaveBeenCalledWith("ses_a");
 
-		promptAsync.mockRejectedValueOnce(new Error("busy"));
-		await expect(
-			wrapped.session.promptAsync({ sessionID: "ses_b", parts: [] } as never),
-		).rejects.toThrow("busy");
+		session.prompt.mockRejectedValueOnce(new Error("busy"));
+		await expect(wrapped.session.prompt({ sessionID: "ses_b", text: "" })).rejects.toThrow("busy");
 		expect(onPrompted).not.toHaveBeenCalledWith("ses_b");
 	});
 
-	it("says a known slash command was accepted once it is on its way", async () => {
-		const command = vi.fn(() => new Promise(() => {}));
-		const client = { session: { promptAsync: vi.fn(), prompt: vi.fn(), command } };
+	it("runs a known slash prompt as its command, prepared the same way", async () => {
+		const { client, calls } = fakeClient();
+		const wrapped = withPromptOptions(client, {
+			getAgent: () => "code",
+			getModel: () => ({ providerID: "kilo", modelID: "auto" }),
+			getKnownCommandNames: () => ["init", "compact"],
+		});
+
+		await wrapped.session.prompt({ sessionID: "s1", text: "/init write AGENTS.md" });
+
+		expect(calls).toEqual([
+			["switchAgent", { sessionID: "s1", agent: "code" }],
+			["switchModel", { sessionID: "s1", model: { providerID: "kilo", id: "auto" } }],
+			["command", { sessionID: "s1", name: "init", text: "write AGENTS.md" }],
+		]);
+	});
+
+	it("sends a known skill's arguments as a prompt naming the skill", async () => {
+		const { client, calls } = fakeClient();
+		const wrapped = withPromptOptions(client, {
+			getKnownCommandNames: () => ["init"],
+			getKnownSkills: () => new Map([["tidy:skill", "tidy"]]),
+		});
+
+		await wrapped.session.prompt({ sessionID: "s1", text: "/tidy:skill the imports" });
+
+		expect(calls).toEqual([
+			["prompt", { sessionID: "s1", text: "the imports", skills: [{ id: "tidy" }] }],
+		]);
+	});
+
+	it("leaves unknown or non-slash prompts on session.prompt", async () => {
+		const { client, calls } = fakeClient();
+		const wrapped = withPromptOptions(client, { getKnownCommandNames: () => ["init"] });
+
+		await wrapped.session.prompt({ sessionID: "s1", text: "hello" });
+		await wrapped.session.prompt({ sessionID: "s1", text: "/unknown" });
+
+		expect(calls.map(([name]) => name)).toEqual(["prompt", "prompt"]);
+	});
+
+	it("says a known slash command was accepted once it is on its way, without waiting for it", async () => {
+		const { client, session } = fakeClient({ command: vi.fn(() => new Promise(() => {})) });
 		const onPrompted = vi.fn();
-		const wrapped = withPromptOptions(client as unknown as KiloClient, {
+		const wrapped = withPromptOptions(client, {
 			onPrompted,
 			getKnownCommandNames: () => ["init"],
 		});
 
-		await wrapped.session.promptAsync({
-			sessionID: "ses_a",
-			parts: [{ type: "text", text: "/init" }],
-		} as never);
+		await wrapped.session.prompt({ sessionID: "ses_a", text: "/init" });
 
-		expect(command).toHaveBeenCalled();
+		expect(session.command).toHaveBeenCalled();
 		expect(onPrompted).toHaveBeenCalledWith("ses_a");
 	});
 
 	it("says a prompt failed when preparing it fails, before anything is sent", async () => {
-		const { client, promptAsync } = fakeClient();
+		const { client, calls } = fakeClient();
 		const onPrompted = vi.fn();
 		const onPromptFailed = vi.fn();
 		const wrapped = withPromptOptions(client, {
 			onPrompted,
 			onPromptFailed,
+			getAgent: () => "code",
 			getSystem: async () => {
 				throw new Error("No config");
 			},
 		});
 
-		await expect(
-			wrapped.session.promptAsync({ sessionID: "ses_a", parts: [] } as never),
-		).rejects.toThrow("No config");
+		await expect(wrapped.session.prompt({ sessionID: "ses_a", text: "" })).rejects.toThrow(
+			"No config",
+		);
 
 		expect(onPromptFailed).toHaveBeenCalledWith("ses_a");
 		expect(onPrompted).not.toHaveBeenCalled();
-		expect(promptAsync).not.toHaveBeenCalled();
+		expect(calls).toEqual([]);
 	});
 
 	it("says a prompt failed when the server refuses it", async () => {
-		const { client, promptAsync } = fakeClient();
+		const { client, session } = fakeClient();
 		const onPromptFailed = vi.fn();
 		const wrapped = withPromptOptions(client, { onPromptFailed });
-		promptAsync.mockRejectedValueOnce(new Error("busy"));
+		session.prompt.mockRejectedValueOnce(new Error("busy"));
 
-		await expect(
-			wrapped.session.promptAsync({ sessionID: "ses_a", parts: [] } as never),
-		).rejects.toThrow("busy");
+		await expect(wrapped.session.prompt({ sessionID: "ses_a", text: "" })).rejects.toThrow("busy");
 
 		expect(onPromptFailed).toHaveBeenCalledWith("ses_a");
 	});
 
-	it("says a command failed when preparing or sending it fails", async () => {
-		const command = vi.fn(async () => {
-			throw new Error("Unknown command");
-		});
-		const client = { session: { promptAsync: vi.fn(), prompt: vi.fn(), command } };
+	it("prepares a command too, and says it failed when sending it fails", async () => {
+		const { client, calls, session } = fakeClient();
+		session.command.mockRejectedValueOnce(new Error("Unknown command"));
 		const onPromptFailed = vi.fn();
-		const wrapped = withPromptOptions(client as unknown as KiloClient, { onPromptFailed });
+		const wrapped = withPromptOptions(client, { onPromptFailed, getAgent: () => "ask" });
 
 		await expect(
-			wrapped.session.command({ sessionID: "ses_a", command: "nope", arguments: "" } as never),
+			wrapped.session.command({ sessionID: "ses_a", name: "nope", text: "" }),
 		).rejects.toThrow("Unknown command");
 
+		expect(calls).toEqual([["switchAgent", { sessionID: "ses_a", agent: "ask" }]]);
+		expect(session.command).toHaveBeenCalledWith(
+			{ sessionID: "ses_a", name: "nope", text: "" },
+			undefined,
+		);
 		expect(onPromptFailed).toHaveBeenCalledWith("ses_a");
 	});
 });

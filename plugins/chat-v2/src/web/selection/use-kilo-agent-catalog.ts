@@ -1,8 +1,8 @@
+import { listAgents } from "@kilo-desktop/react-opencode-v2";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import type { Agent } from "@kilocode/sdk/v2/client";
 
 import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
-import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
+import { kiloClient } from "../runtime/kilo-client";
 import { buildAgentCatalog, type KiloAgentCatalog } from "./agent-catalog";
 import { useKiloAccountKey } from "./kilo-account-key";
 
@@ -17,10 +17,8 @@ export async function fetchAgentCatalogForConnection(
 	if (!connection) {
 		throw new Error("Cannot fetch agents before Kilo is connected");
 	}
-	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
-	const { data } = await client.app.agents({}, { throwOnError: true });
-	const agents = data as Agent[];
-	return buildAgentCatalog(agents);
+	// Agents are the same in every folder; kilo.core's server reads them where it keeps its global reads.
+	return buildAgentCatalog(await listAgents(kiloClient(connection), connection.globalDirectory));
 }
 
 export function useKiloAgentCatalog(
@@ -31,7 +29,7 @@ export function useKiloAgentCatalog(
 	return useQuery({
 		queryKey: [
 			"kilo.chat",
-			"app.agents",
+			"agent.list",
 			connection?.baseUrl,
 			connection?.version,
 			connection?.globalDirectory,

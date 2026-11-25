@@ -84,6 +84,7 @@ function chatRuntimeBackend(
 		getModel: () => latest.current.getModel?.(),
 		getVariant: () => latest.current.getVariant?.(),
 		getKnownCommandNames: () => latest.current.getKnownCommandNames?.() ?? [],
+		getKnownSkills: () => latest.current.getKnownSkills?.() ?? new Map(),
 		prepareModel: async (model) => {
 			await latest.current.prepareModel?.(model);
 		},

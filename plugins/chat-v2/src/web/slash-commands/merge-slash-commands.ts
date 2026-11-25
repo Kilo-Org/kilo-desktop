@@ -20,6 +20,8 @@ export interface SlashMenuCommand {
 	readonly aliases: readonly string[];
 	/** The placement that runs it, for a client command. */
 	readonly clientKey?: string;
+	/** The skill a prompt names to use it, for a skill. */
+	readonly skillId?: string;
 }
 
 export type TypedSlash =
@@ -80,6 +82,7 @@ export function mergeSlashCommands(
 				...(command.description ? { description: command.description } : {}),
 				category,
 				aliases: [],
+				...(category === "skill" ? { skillId: command.skillId ?? command.name } : {}),
 			},
 		];
 	});

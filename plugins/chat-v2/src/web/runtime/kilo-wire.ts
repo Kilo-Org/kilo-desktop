@@ -1,19 +1,18 @@
-import type { OpenCodeEventSubscriber } from "@kilo-desktop/react-opencode-v2";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { KiloClient, OpenCodeEventSubscriber } from "@kilo-desktop/react-opencode-v2";
 
 import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 /**
- * How kilo.chat reaches the Kilo server: clients in the v1 SDK's shape (the
- * vocabulary react-opencode and kilo.chat speak) and the window's event
- * stream as v1 events.
+ * How kilo.chat reaches the Kilo server: Kilo v2's own client
+ * (`@kilocode/client`, through react-opencode-v2) and the window's event
+ * stream. Sessions are global in v2: calls about a session name it, and
+ * calls about a place (agents, commands, files, pending prompts) name their
+ * location.
  *
- * It talks to Kilo v2 through `@kilocode/client`, translated by
- * react-opencode-v2 (`createKiloV2Wire` in kilo-client.ts); tests run it
- * against an in-memory Kilo v2 server (`test/fake-kilo-server.ts`).
+ * Tests run it against an in-memory Kilo v2 server (`test/fake-kilo-server.ts`).
  */
 export interface KiloWire {
-	client(connection: ServerConnection, directory?: string): KiloClient;
+	client(connection: ServerConnection): KiloClient;
 	subscribe(
 		connection: ServerConnection,
 		options: Parameters<OpenCodeEventSubscriber>[0],

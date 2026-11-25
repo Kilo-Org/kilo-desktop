@@ -11,7 +11,7 @@ import type {
 	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
 	OpenCodeQuestionRequest,
-	QuestionAnswer,
+	FormAnswer,
 } from "./types";
 import { serializeOpenCodeParts } from "./serializeUserParts";
 
@@ -323,7 +323,7 @@ export const createOpenCodeThreadState = (sessionId: string): OpenCodeThreadStat
 					string,
 					{
 						request: OpenCodeQuestionRequest;
-						answers: readonly QuestionAnswer[];
+						answer: FormAnswer;
 						respondedAt: number;
 					}
 				>
@@ -629,7 +629,7 @@ export const reduceOpenCodeThreadState = (
 							...state.interactions.questions.answered,
 							[event.questionId]: {
 								request,
-								answers: event.answers,
+								answer: event.answer,
 								respondedAt: Date.now(),
 							},
 						},

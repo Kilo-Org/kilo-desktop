@@ -290,21 +290,24 @@ describe("reduceOpenCodeThreadState", () => {
 			request: {
 				id: "question_1",
 				sessionID: "ses_1",
-				questions: [
+				title: "Questions",
+				fields: [
 					{
-						header: "Confirm",
-						question: "Should I continue?",
+						key: "q0",
+						type: "string",
+						title: "Confirm",
+						description: "Should I continue?",
 						options: [
-							{ label: "Yes", description: "Continue the task." },
-							{ label: "No", description: "Stop here." },
+							{ value: "Yes", label: "Yes", description: "Continue the task." },
+							{ value: "No", label: "No", description: "Stop here." },
 						],
 					},
 				],
 				askedAt: 1000,
-			} as never,
+			},
 		});
 
-		expect(withQuestion.interactions.questions.pending.question_1?.questions[0]?.header).toBe(
+		expect(withQuestion.interactions.questions.pending.question_1?.fields[0]?.title).toBe(
 			"Confirm",
 		);
 		expect(Object.keys(withQuestion.interactions.permissions.pending)).toHaveLength(0);
@@ -317,17 +320,11 @@ describe("reduceOpenCodeThreadState", () => {
 			type: "permission.asked",
 			request: {
 				id: "permission_1",
-				sessionId: "ses_1",
-				permission: "bash",
-				patterns: [],
-				metadata: {},
-				always: [],
+				sessionID: "ses_1",
+				action: "shell",
+				resources: [],
 				askedAt: 1000,
-				raw: {} as never,
-				tool: {
-					messageID: "msg_1",
-					callID: "call_1",
-				},
+				source: { type: "tool", messageID: "msg_1", id: "call_1" },
 			},
 		});
 
@@ -338,7 +335,7 @@ describe("reduceOpenCodeThreadState", () => {
 		});
 
 		expect(
-			resolvedPermission.interactions.permissions.resolved.permission_1?.request.tool?.callID,
+			resolvedPermission.interactions.permissions.resolved.permission_1?.request.source?.id,
 		).toBe("call_1");
 
 		const withQuestion = reduceOpenCodeThreadState(initial, {
@@ -346,29 +343,21 @@ describe("reduceOpenCodeThreadState", () => {
 			request: {
 				id: "question_1",
 				sessionID: "ses_1",
-				questions: [
-					{
-						header: "Confirm",
-						question: "Should I continue?",
-						options: [],
-					},
-				],
+				title: "Questions",
+				fields: [{ key: "q0", type: "string", description: "Should I continue?" }],
 				askedAt: 1000,
-				tool: {
-					messageID: "msg_1",
-					callID: "call_2",
-				},
-			} as never,
+			},
 		});
 
 		const answeredQuestion = reduceOpenCodeThreadState(withQuestion, {
 			type: "question.replied",
 			questionId: "question_1",
-			answers: [["Yes"]],
+			answer: { q0: "Yes" },
 		});
 
-		expect(answeredQuestion.interactions.questions.answered.question_1?.request.tool?.callID).toBe(
-			"call_2",
-		);
+		expect(answeredQuestion.interactions.questions.answered.question_1).toMatchObject({
+			request: { fields: [{ key: "q0" }] },
+			answer: { q0: "Yes" },
+		});
 	});
 });

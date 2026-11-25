@@ -4,20 +4,26 @@ import {
 	PLAN_FOLLOWUP_ANSWER_CONTINUE,
 	PLAN_FOLLOWUP_ANSWER_KEEP_REFINING,
 	PLAN_FOLLOWUP_QUESTION,
+	buildPlanImplementAnswer,
 	findPlanFollowupRequest,
 	isPlanFollowupRequest,
 } from "./plan-followup";
 
+const option = (label: string) => ({ value: label, label });
+
+/** Kilo's plan follow-up, as its question tool asks it: one form field per question. */
 const planFollowup = {
 	id: "q-plan",
-	questions: [
+	fields: [
 		{
-			question: PLAN_FOLLOWUP_QUESTION,
-			header: "Implement",
+			key: "q0",
+			type: "string",
+			title: "Implement",
+			description: PLAN_FOLLOWUP_QUESTION,
 			options: [
-				{ label: "Start new session" },
-				{ label: PLAN_FOLLOWUP_ANSWER_CONTINUE },
-				{ label: PLAN_FOLLOWUP_ANSWER_KEEP_REFINING },
+				option("Start new session"),
+				option(PLAN_FOLLOWUP_ANSWER_CONTINUE),
+				option(PLAN_FOLLOWUP_ANSWER_KEEP_REFINING),
 			],
 		},
 	],
@@ -25,11 +31,13 @@ const planFollowup = {
 
 const regularQuestion = {
 	id: "q-other",
-	questions: [
+	fields: [
 		{
-			question: "Which database?",
-			header: "Database",
-			options: [{ label: "Postgres" }, { label: "SQLite" }],
+			key: "q0",
+			type: "string",
+			title: "Database",
+			description: "Which database?",
+			options: [option("Postgres"), option("SQLite")],
 		},
 	],
 };
@@ -40,24 +48,17 @@ describe("isPlanFollowupRequest", () => {
 		expect(isPlanFollowupRequest(regularQuestion)).toBe(false);
 	});
 
-	it("detects via questionKey", () => {
-		expect(
-			isPlanFollowupRequest({
-				id: "q",
-				questions: [{ question: "x", questionKey: "plan.followup.question", options: [] }],
-			}),
-		).toBe(true);
-	});
-
 	it("does not treat a generic Implement header as a plan follow-up", () => {
 		expect(
 			isPlanFollowupRequest({
 				id: "q",
-				questions: [
+				fields: [
 					{
-						question: "Which implementation should I use?",
-						header: "Implement",
-						options: [{ label: "Option A" }, { label: "Option B" }],
+						key: "q0",
+						type: "string",
+						title: "Implement",
+						description: "Which implementation should I use?",
+						options: [option("Option A"), option("Option B")],
 					},
 				],
 			}),
@@ -69,5 +70,28 @@ describe("findPlanFollowupRequest", () => {
 	it("returns the plan follow-up among pending requests", () => {
 		expect(findPlanFollowupRequest([regularQuestion, planFollowup])).toEqual(planFollowup);
 		expect(findPlanFollowupRequest([regularQuestion])).toBeNull();
+	});
+});
+
+describe("buildPlanImplementAnswer", () => {
+	it("answers the follow-up's field with its Continue here option", () => {
+		expect(buildPlanImplementAnswer(planFollowup)).toEqual({ q0: PLAN_FOLLOWUP_ANSWER_CONTINUE });
+		expect(
+			buildPlanImplementAnswer({
+				id: "q",
+				fields: [
+					regularQuestion.fields[0]!,
+					{
+						...planFollowup.fields[0]!,
+						key: "q1",
+						type: "multiselect",
+						options: planFollowup.fields[0]!.options.map((entry) => ({
+							...entry,
+							value: entry.label.toLowerCase(),
+						})),
+					},
+				],
+			}),
+		).toEqual({ q1: ["continue here"] });
 	});
 });

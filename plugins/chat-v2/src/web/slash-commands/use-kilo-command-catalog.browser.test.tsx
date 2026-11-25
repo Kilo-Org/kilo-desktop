@@ -82,6 +82,21 @@ describe("useKiloCommandCatalog", () => {
 		]);
 	});
 
+	it("lists the folder's skills after its commands", async () => {
+		const { server } = serveCommands([{ name: "init", template: "" }]);
+		server.skills = [
+			{ id: "tidy", name: "tidy", description: "Tidy imports", path: "/s/tidy", content: "" },
+		];
+
+		await expect(
+			fetchCommandCatalogForConnection(server.connection, "/workspace/project"),
+		).resolves.toEqual([
+			{ name: "init", source: "command", hints: [] },
+			{ name: "tidy", description: "Tidy imports", source: "skill", hints: [], skillId: "tidy" },
+		]);
+		expect(server.requestsTo("GET", "/api/skill")[0]?.directory).toBe("/workspace/project");
+	});
+
 	it("throws when asked to fetch commands before a connection is available", async () => {
 		const { server } = serveCommands([]);
 		await expect(fetchCommandCatalogForConnection(undefined, "/workspace")).rejects.toThrow(

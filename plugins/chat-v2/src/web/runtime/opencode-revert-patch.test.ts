@@ -2,7 +2,7 @@ import {
 	createOpenCodeThreadState,
 	OpenCodeThreadController,
 	projectOpenCodeThreadMessages,
-	type OpencodeClient,
+	type KiloClient,
 	type OpenCodeServerMessage,
 	type OpenCodeThreadState,
 } from "@kilo-desktop/react-opencode-v2";
@@ -197,12 +197,29 @@ const createDeferred = <T>() => {
 	return { promise, resolve, reject };
 };
 
-const createController = (
-	revert: ReturnType<typeof vi.fn>,
-	unrevert: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-) =>
+/** A Kilo v2 session as `session.get` reads it, with `revert` when one is staged. */
+const sessionInfo = (revert?: { messageID: string }) => ({
+	id: "ses_1",
+	projectID: "project",
+	title: "Chat",
+	cost: 0,
+	tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+	time: { created: 1, updated: 1 },
+	location: { directory: "/p" },
+	...(revert ? { revert } : {}),
+});
+
+const createController = ({
+	stage = vi.fn().mockResolvedValue({ messageID: "user-2" }),
+	clear = vi.fn().mockResolvedValue(undefined),
+	get = vi.fn().mockResolvedValue(sessionInfo()),
+}: {
+	stage?: ReturnType<typeof vi.fn>;
+	clear?: ReturnType<typeof vi.fn>;
+	get?: ReturnType<typeof vi.fn>;
+} = {}) =>
 	new OpenCodeThreadController(
-		{ session: { revert, unrevert } } as never as OpencodeClient,
+		{ session: { revert: { stage, clear }, get } } as never as KiloClient,
 		() => ({
 			subscribe: () => () => {},
 		}),
@@ -211,14 +228,13 @@ const createController = (
 
 describe("OpenCodeThreadController.revert run state", () => {
 	it("returns to idle after the server accepts the revert", async () => {
-		const sessionData = { id: "ses_1", revert: { messageID: "user-2" } };
-		const deferred = createDeferred<{ data: typeof sessionData }>();
-		const controller = createController(vi.fn(() => deferred.promise));
+		const deferred = createDeferred<unknown>();
+		const controller = createController({ stage: vi.fn(() => deferred.promise) });
 
 		const revertPromise = controller.revert("user-2");
 		expect(controller.getState().runState.type).toBe("reverting");
 
-		deferred.resolve({ data: sessionData });
+		deferred.resolve({ messageID: "user-2" });
 		await revertPromise;
 
 		const state = controller.getState();
@@ -226,27 +242,24 @@ describe("OpenCodeThreadController.revert run state", () => {
 		expect(state.sessionStatus?.type).toBe("idle");
 	});
 
-	it("applies the REST response session when data is present", async () => {
-		const sessionData = { id: "ses_1", revert: { messageID: "user-2" } };
-		const controller = createController(vi.fn().mockResolvedValue({ data: sessionData }));
+	it("applies the session as it is once reverted", async () => {
+		const stage = vi.fn().mockResolvedValue({ messageID: "user-2" });
+		const controller = createController({
+			stage,
+			get: vi.fn().mockResolvedValue(sessionInfo({ messageID: "user-2" })),
+		});
 
 		await controller.revert("user-2");
 
-		expect((controller.getState().session as Record<string, unknown>)?.revert).toEqual({
-			messageID: "user-2",
-		});
+		expect(stage).toHaveBeenCalledWith({ sessionID: "ses_1", messageID: "user-2" });
+		expect(controller.getState().session?.revert).toEqual({ messageID: "user-2" });
 		expect(controller.getState().runState.type).toBe("idle");
 	});
 
-	it("rejects with 'Revert returned no session' and moves to error state when response has no data", async () => {
-		const controller = createController(vi.fn().mockResolvedValue({ data: undefined }));
-
-		await expect(controller.revert("user-2")).rejects.toThrow("Revert returned no session");
-		expect(controller.getState().runState.type).toBe("error");
-	});
-
 	it("moves to the error state when the revert request fails", async () => {
-		const controller = createController(vi.fn().mockRejectedValue(new Error("revert rejected")));
+		const controller = createController({
+			stage: vi.fn().mockRejectedValue(new Error("revert rejected")),
+		});
 
 		await expect(controller.revert("user-2")).rejects.toThrow("revert rejected");
 		expect(controller.getState().runState.type).toBe("error");
@@ -255,48 +268,33 @@ describe("OpenCodeThreadController.revert run state", () => {
 
 describe("OpenCodeThreadController.unrevert run state", () => {
 	it("is reverting while the HTTP call is stalled", async () => {
-		const deferred = createDeferred<{ data: unknown }>();
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-			vi.fn(() => deferred.promise),
-		);
+		const deferred = createDeferred<unknown>();
+		const controller = createController({ clear: vi.fn(() => deferred.promise) });
 
 		const unrevertPromise = controller.unrevert();
 		expect(controller.getState().runState.type).toBe("reverting");
 
-		deferred.resolve({ data: { id: "ses_1" } });
+		deferred.resolve(undefined);
 		await unrevertPromise;
 	});
 
-	it("applies the REST response session and returns to idle on success", async () => {
-		const sessionData = { id: "ses_1" }; // revert cleared
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: undefined }),
-			vi.fn().mockResolvedValue({ data: sessionData }),
-		);
+	it("applies the session, its revert cleared, and returns to idle on success", async () => {
+		const clear = vi.fn().mockResolvedValue(undefined);
+		const controller = createController({ clear });
 
 		await controller.unrevert();
 
-		expect(controller.getState().session).toEqual(sessionData);
+		expect(clear).toHaveBeenCalledWith({ sessionID: "ses_1" });
+		expect(controller.getState().session).toMatchObject({ id: "ses_1" });
+		expect(controller.getState().session?.revert).toBeUndefined();
 		expect(controller.getState().runState.type).toBe("idle");
 		expect(controller.getState().sessionStatus?.type).toBe("idle");
 	});
 
-	it("rejects with 'Redo returned no session' and moves to error state when response has no data", async () => {
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-			vi.fn().mockResolvedValue({ data: undefined }),
-		);
-
-		await expect(controller.unrevert()).rejects.toThrow("Redo returned no session");
-		expect(controller.getState().runState.type).toBe("error");
-	});
-
 	it("moves to the error state and rethrows when the unrevert request fails", async () => {
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: undefined }),
-			vi.fn().mockRejectedValue(new Error("unrevert rejected")),
-		);
+		const controller = createController({
+			clear: vi.fn().mockRejectedValue(new Error("unrevert rejected")),
+		});
 
 		await expect(controller.unrevert()).rejects.toThrow("unrevert rejected");
 		expect(controller.getState().runState.type).toBe("error");

@@ -11,7 +11,7 @@ import {
 import { useOptionalChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import {
 	PLAN_IMPLEMENT_FALLBACK_PROMPT,
-	buildPlanImplementAnswers,
+	buildPlanImplementAnswer,
 	findPlanFollowupRequest,
 } from "./plan-followup";
 
@@ -89,7 +89,7 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 		void (async () => {
 			try {
 				if (planFollowup && replyToQuestion) {
-					await replyToQuestion(planFollowup.id, buildPlanImplementAnswers());
+					await replyToQuestion(planFollowup.id, buildPlanImplementAnswer(planFollowup));
 				} else {
 					aui.thread().append(PLAN_IMPLEMENT_FALLBACK_PROMPT);
 				}

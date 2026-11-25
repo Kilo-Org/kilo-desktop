@@ -20,6 +20,7 @@
  */
 import type { Session } from "@runtimed/node";
 
+import { assertForCall, type PermissionDomain, type ToolCall } from "./kilo-api";
 import {
 	checkTyposquat,
 	extractPackageName,
@@ -34,15 +35,6 @@ type DependencySource = "uv" | "conda" | "pixi" | "pixi-pypi";
 interface DeclaredDependency {
 	readonly source: DependencySource;
 	readonly spec: string;
-}
-
-export interface ApprovalContext {
-	ask(input: {
-		permission: string;
-		patterns: string[];
-		always: string[];
-		metadata: Record<string, unknown>;
-	}): Promise<void>;
 }
 
 export type DependencyChange =
@@ -80,6 +72,8 @@ const DEFAULT_APPROVED_CHANNELS = new Set([
 	"https://repo.anaconda.com/pkgs/msys2",
 	"https://repo.anaconda.com/pkgs/msys2/",
 ]);
+
+export const TRUST_PERMISSION = "notebooks_trust";
 
 const TRUST_REJECTION_MESSAGE = "Trust changed before the action could run";
 
@@ -270,7 +264,8 @@ function planApproval(status: DependencyStatus, change: DependencyChange): Appro
  * rejects when the user declines or the dependencies changed during the prompt.
  */
 export async function requireDependencyApproval(
-	context: ApprovalContext,
+	permission: PermissionDomain,
+	call: ToolCall,
 	session: Session,
 	notebookId: string,
 	change: DependencyChange,
@@ -279,10 +274,10 @@ export async function requireDependencyApproval(
 	const items = planApproval(status, change);
 	if (items.length === 0) return false;
 
-	await context.ask({
-		permission: "notebooks_trust",
-		patterns: items.map(itemLabel),
-		always: items.filter((item) => item.rememberable).map(itemLabel),
+	await assertForCall(permission, call, {
+		action: TRUST_PERMISSION,
+		resources: items.map(itemLabel),
+		save: items.filter((item) => item.rememberable).map(itemLabel),
 		metadata: {
 			// `toolName`, `title`, and `description` are what the chat permission card displays.
 			toolName: PROMPT_LABEL,

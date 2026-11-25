@@ -13,45 +13,21 @@ import {
 	dependencyTrust,
 	pendingApprovalLabels,
 	requireDependencyApproval,
+	TRUST_PERMISSION,
 	withTrustGuidance,
 } from "./dependency-approval";
 import { EXECUTE_PERMISSION, requireExecutionApproval } from "./execution-approval";
 
-type ToolAttachment = {
-	type: "file";
-	mime: string;
-	url: string;
-	filename?: string;
-};
-
-type ToolContext = {
-	sessionID: string;
-	messageID: string;
-	agent: string;
-	directory: string;
-	worktree: string;
-	abort: AbortSignal;
-	metadata(input: { title?: string; metadata?: Record<string, unknown> }): void;
-	ask(input: {
-		permission: string;
-		patterns: string[];
-		always: string[];
-		metadata: Record<string, unknown>;
-	}): Promise<void>;
-};
-
-type ToolResult = {
-	title?: string;
-	output: string;
-	metadata?: Record<string, unknown>;
-	attachments?: ToolAttachment[];
-};
-
-type ToolDefinition<TArgs> = {
-	description: string;
-	args: z.ZodRawShape;
-	execute(args: TArgs, context: ToolContext): Promise<ToolResult>;
-};
+import {
+	type FileContent,
+	type PermissionEffect,
+	type PermissionRule,
+	type PluginContext,
+	type Tool,
+	type ToolCall,
+	type ToolResult,
+	assertForCall,
+} from "./kilo-api";
 
 type RuntimedNode = {
 	openNotebook(
@@ -67,25 +43,30 @@ type PluginDependencies = {
 
 const OPEN_FILE_TOOL = "desktop_notebook_open_file";
 const LIST_OPEN_TOOL = "desktop_notebook_list_open";
-// `inputSchema` drops the uuid format from the model-facing JSON schema, so the
-// description carries the contract.
+/**
+ * A plain string rather than `z.uuid()`: Kilo validates input against this
+ * schema before `execute()`, and a malformed id must still reach
+ * `assertNotebookUuid`, which answers a workspace notebook name with the exact
+ * open_file call. The description carries the UUID contract to the model.
+ */
 const NOTEBOOK_ID = z
 	.string()
-	.uuid()
 	.describe(
 		`Notebook UUID from ${LIST_OPEN_TOOL}, desktop_notebook_open, or ${OPEN_FILE_TOOL}. Not a file name or path; open .ipynb files with ${OPEN_FILE_TOOL} first.`,
 	);
+const NOTEBOOK_UUID = z.uuid();
 const NOTEBOOK_PEER_LABEL = "Kilo Desktop";
 
-type SessionContext = Pick<ToolContext, "sessionID" | "worktree">;
+/** The Kilo session that opens a notebook, and the workspace its ids resolve against. */
+type NotebookOwner = { readonly sessionID: string; readonly directory: string };
 
 /** Canonical path of an existing `.ipynb` file inside the workspace, after following symlinks. */
-async function workspaceNotebookPath(name: string, worktree: string): Promise<string | null> {
+async function workspaceNotebookPath(name: string, directory: string): Promise<string | null> {
 	if (path.extname(name).toLowerCase() !== ".ipynb") return null;
 	try {
 		const [root, target] = await Promise.all([
-			realpath(worktree),
-			realpath(path.resolve(worktree, name)),
+			realpath(directory),
+			realpath(path.resolve(directory, name)),
 		]);
 		const relative = path.relative(root, target);
 		const inside =
@@ -101,15 +82,15 @@ async function workspaceNotebookPath(name: string, worktree: string): Promise<st
 }
 
 /**
- * The model-facing schema does not enforce the UUID format (see `inputSchema`),
- * and the daemon reads any non-UUID notebook id as a file path. Tools therefore address notebooks
+ * The input schema does not enforce the UUID format (see `NOTEBOOK_ID`), and
+ * the daemon reads any non-UUID notebook id as a file path. Tools therefore address notebooks
  * only by the UUID the chat pane reports, which keeps every notebook an agent
  * edits visible to the user. A workspace notebook name is answered with the
  * exact open_file call rather than opened out of view.
  */
-async function assertNotebookUuid(notebookId: string, worktree: string): Promise<void> {
-	if (NOTEBOOK_ID.safeParse(notebookId).success) return;
-	const notebookPath = await workspaceNotebookPath(notebookId, worktree);
+async function assertNotebookUuid(notebookId: string, directory: string): Promise<void> {
+	if (NOTEBOOK_UUID.safeParse(notebookId).success) return;
+	const notebookPath = await workspaceNotebookPath(notebookId, directory);
 	if (notebookPath) {
 		throw new Error(
 			`notebook_id must be a notebook UUID. ${JSON.stringify(notebookId)} is ${notebookPath} in this workspace; ` +
@@ -176,11 +157,11 @@ class NotebookSessionRegistry {
 		this.#runtimed = runtimed;
 	}
 
-	async open(notebookId: string, context: SessionContext): Promise<Session> {
-		await assertNotebookUuid(notebookId, context.worktree);
-		const owned = this.#notebooksByKiloSession.get(context.sessionID) ?? new Set<string>();
+	async open(notebookId: string, owner: NotebookOwner): Promise<Session> {
+		await assertNotebookUuid(notebookId, owner.directory);
+		const owned = this.#notebooksByKiloSession.get(owner.sessionID) ?? new Set<string>();
 		owned.add(notebookId);
-		this.#notebooksByKiloSession.set(context.sessionID, owned);
+		this.#notebooksByKiloSession.set(owner.sessionID, owned);
 
 		const existing = this.#sessions.get(notebookId);
 		if (existing) return existing;
@@ -252,9 +233,11 @@ function stripAnsi(value: string): string {
 	return value.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "g"), "");
 }
 
-function projectCellResult(result: CellResult): ToolResult {
+type ProjectedCell = { text: string; files: FileContent[]; metadata: Record<string, unknown> };
+
+function projectCellResult(notebookId: string, result: CellResult): ProjectedCell {
 	const text: string[] = [];
-	const attachments: ToolAttachment[] = [];
+	const files: FileContent[] = [];
 	const seenImages = new Set<string>();
 
 	for (const output of result.outputs ?? []) {
@@ -290,7 +273,7 @@ function projectCellResult(result: CellResult): ToolResult {
 					const key = `${mime}:${value}`;
 					if (seenImages.has(key)) continue;
 					seenImages.add(key);
-					attachments.push({ type: "file", mime, url: `data:${mime};base64,${value}` });
+					files.push({ type: "file", mime, uri: `data:${mime};base64,${value}` });
 				}
 				break;
 			}
@@ -307,18 +290,30 @@ function projectCellResult(result: CellResult): ToolResult {
 	const header = `cell ${result.cellId} [${result.executionCount ?? "?"}] ${result.status}`;
 	const body = stripAnsi(text.join("").replace(/\n+$/, ""));
 	return {
-		title: `Notebook cell ${result.executionCount ?? "?"}`,
-		output: body ? `${header}\n${body}` : header,
+		text: body ? `${header}\n${body}` : header,
+		files,
 		metadata: {
-			notebook_id: undefined,
+			notebook_id: notebookId,
 			cell_id: result.cellId,
 			execution_id: result.executionId,
 			execution_count: result.executionCount,
 			status: result.status,
 			success: result.success,
 		},
-		...(attachments.length ? { attachments } : {}),
 	};
+}
+
+/** A tool result whose content is `text`, then any `files`. */
+function toolResult(
+	text: string,
+	metadata: Record<string, unknown>,
+	files: readonly FileContent[] = [],
+): ToolResult {
+	return { content: [{ type: "text", text }, ...files], metadata };
+}
+
+function cellToolResult(projected: ProjectedCell, title: string): ToolResult {
+	return toolResult(projected.text, { title, ...projected.metadata }, projected.files);
 }
 
 function parseMetadata(raw: string): unknown {
@@ -414,13 +409,7 @@ function summarizeKernelState(
 	return `${state}${approval}${error ? ` Last kernel error: ${formatKernelError(error)}` : ""}`;
 }
 
-const TRUST_PERMISSION = "notebooks_trust";
-
 const PROMPTED_PERMISSIONS = [TRUST_PERMISSION, EXECUTE_PERMISSION];
-
-type PermissionEffect = "allow" | "deny" | "ask";
-
-export type PermissionRule = { action: string; resource: string; effect: PermissionEffect };
 
 /** Kilo v2's permission wildcard (`packages/core/src/util/wildcard.ts`): `*` any run, `?` one character. */
 function wildcardMatch(input: string, pattern: string): boolean {
@@ -452,8 +441,7 @@ function targetsAction(rule: PermissionRule, action: string): boolean {
 }
 
 /**
- * Replaces v1's plugin `config` hook, which v2 no longer has: Kilo v2 builds
- * each agent's permissions as an ordered rule array (built-in defaults, often a
+ * Kilo v2 builds each agent's permissions as an ordered rule array (built-in defaults, often a
  * leading `{ action: "*", resource: "*", effect: "allow" }`, then the user's
  * config rules) and evaluates the last matching rule. Without an explicit rule,
  * dependency approvals and notebook code execution would ride the catch-all
@@ -462,12 +450,12 @@ function targetsAction(rule: PermissionRule, action: string): boolean {
  * - A rule the user wrote for the action (exact, or a wildcard such as
  *   `notebooks_*`) covering every resource is their choice and is left alone.
  * - Rules naming only specific resources get the `ask` inserted before them so
- *   they still win for their resources (v1's leading `"*": "ask"`).
+ *   they still win for their resources.
  * - An action the agent already denies stays denied: `ask` is never added where
  *   it would weaken a deny (e.g. read-only agents ending in `* * deny`).
  *
  * Saved "Always allow" approvals are evaluated after agent and session rules,
- * so they still win over this `ask` without the v1 catch-all workaround.
+ * so they still win over this `ask`.
  */
 export function requireNotebookPrompts(permissions: PermissionRule[]): void {
 	for (const action of PROMPTED_PERMISSIONS) {
@@ -490,15 +478,24 @@ function approvalReport(status: DependencyStatus) {
 		: {};
 }
 
-type EditOperation =
-	| {
-			action: "update";
-			cell_id: string;
-			source?: string;
-			cell_type?: "code" | "markdown" | "raw";
-	  }
-	| { action: "delete"; cell_id: string }
-	| { action: "move"; cell_id: string; after_cell_id?: string | null };
+// Strict objects so a misspelled key (e.g. "sourc") fails validation instead
+// of being stripped into a silent no-op update.
+const EDIT_OPERATION = z.discriminatedUnion("action", [
+	z.strictObject({
+		action: z.literal("update"),
+		cell_id: z.string().min(1),
+		source: z.string().optional(),
+		cell_type: z.enum(["code", "markdown", "raw"]).optional(),
+	}),
+	z.strictObject({ action: z.literal("delete"), cell_id: z.string().min(1) }),
+	z.strictObject({
+		action: z.literal("move"),
+		cell_id: z.string().min(1),
+		after_cell_id: z.string().min(1).nullable().optional(),
+	}),
+]);
+
+type EditOperation = z.output<typeof EDIT_OPERATION>;
 
 // The native layer silently appends when an anchor cell is unknown, so a stale
 // after_cell_id would otherwise "succeed" at the wrong position.
@@ -543,97 +540,113 @@ async function applyEditOperation(
 	}
 }
 
-/** The v1-shaped tool definitions; the Kilo v2 boundary adapts them below. */
+const TIMEOUT_SECS = z.number().positive().max(3600).optional();
+
+function timeoutMs(timeoutSecs: number | undefined): number {
+	return Math.round((timeoutSecs ?? 120) * 1000);
+}
+
+/**
+ * Offered individually rather than through Code Mode: Desktop's tool renderers
+ * and permission cards key on the `notebooks_*` calls.
+ */
+function defineTool<Input extends z.ZodObject>(tool: Omit<Tool<Input>, "options">): Tool<Input> {
+	return { ...tool, options: { codemode: false } };
+}
+
+/** `dir/*` for the directory holding `file`, as Kilo's own file tools scope external access. */
+function externalDirectoryResource(file: string): string {
+	return path.join(path.dirname(file), "*").replaceAll("\\", "/");
+}
+
 function notebookTools(
+	ctx: PluginContext,
 	runtimed: RuntimedNode,
 	sessions: NotebookSessionRegistry,
-): Record<string, ToolDefinition<never>> {
-	const read: ToolDefinition<{
-		notebook_id: string;
-		cell_id?: string;
-		include_outputs?: boolean;
-	}> = {
+): Tool[] {
+	const { directory } = ctx.location;
+	const { permission } = ctx;
+	const open = (notebookId: string, call: ToolCall) =>
+		sessions.open(notebookId, { sessionID: call.sessionID, directory });
+
+	const read = defineTool({
+		name: "notebooks_read",
 		description:
 			"Read the visible cells and current execution state from an open notebook. Provide cell_id to read one cell.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			cell_id: z.string().min(1).optional(),
 			include_outputs: z.boolean().optional(),
-		},
-		async execute(args, context) {
-			const session = await sessions.open(args.notebook_id, context);
-			const cells = args.cell_id
-				? [await session.getCell(args.cell_id)].filter(
+		}),
+		async execute(input, context) {
+			const session = await open(input.notebook_id, context);
+			const cells = input.cell_id
+				? [await session.getCell(input.cell_id)].filter(
 						(cell): cell is CellSnapshot => cell !== null,
 					)
 				: await session.listCells();
-			if (args.cell_id && cells.length === 0) {
-				throw new Error(`Notebook cell ${args.cell_id} was not found.`);
+			if (input.cell_id && cells.length === 0) {
+				throw new Error(`Notebook cell ${input.cell_id} was not found.`);
 			}
 			const executionView = session.getExecutionView();
 			const projected = await Promise.all(
 				cells.map((cell) =>
-					projectCell(cell, executionView, runtimed, args.include_outputs ?? Boolean(args.cell_id)),
+					projectCell(
+						cell,
+						executionView,
+						runtimed,
+						input.include_outputs ?? Boolean(input.cell_id),
+					),
 				),
 			);
-			return {
-				title: args.cell_id ? "Notebook cell" : "Notebook contents",
-				output: JSON.stringify({ notebook_id: args.notebook_id, cells: projected }),
-				metadata: { notebook_id: args.notebook_id, cell_count: projected.length },
-			};
+			return toolResult(JSON.stringify({ notebook_id: input.notebook_id, cells: projected }), {
+				title: input.cell_id ? "Notebook cell" : "Notebook contents",
+				notebook_id: input.notebook_id,
+				cell_count: projected.length,
+			});
 		},
-	};
+	});
 
-	const runCell: ToolDefinition<{
-		notebook_id: string;
-		code: string;
-		dependencies?: string[];
-		timeout_secs?: number;
-	}> = {
+	const runCell = defineTool({
+		name: "notebooks_run_cell",
 		description:
 			"Append and execute a visible code cell in an open notebook. State persists between calls.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			code: z.string().min(1).describe("Python source to append and execute."),
 			dependencies: z.array(z.string().min(1)).optional(),
-			timeout_secs: z.number().positive().max(3600).optional(),
-		},
-		async execute(args, context) {
-			if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
-			const session = await sessions.open(args.notebook_id, context);
-			await requireExecutionApproval(context, args.notebook_id, { kind: "run", code: args.code });
-			if (args.dependencies?.length) {
-				await requireDependencyApproval(context, session, args.notebook_id, {
+			timeout_secs: TIMEOUT_SECS,
+		}),
+		async execute(input, context) {
+			if (context.signal.aborted) throw new Error("Notebook execution was cancelled.");
+			const session = await open(input.notebook_id, context);
+			await requireExecutionApproval(permission, context, input.notebook_id, {
+				kind: "run",
+				code: input.code,
+			});
+			if (input.dependencies?.length) {
+				await requireDependencyApproval(permission, context, session, input.notebook_id, {
 					kind: "add",
-					packages: args.dependencies,
+					packages: input.dependencies,
 				});
-				await session.addDependencies(args.dependencies);
+				await session.addDependencies(input.dependencies);
 				await withTrustGuidance(session, () => session.syncEnvironment());
 			}
 			const result = await withTrustGuidance(session, () =>
-				session.runCell(args.code, {
-					timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
-				}),
+				session.runCell(input.code, { timeoutMs: timeoutMs(input.timeout_secs) }),
 			);
-			const projected = projectCellResult(result);
-			return {
-				...projected,
-				metadata: { ...projected.metadata, notebook_id: args.notebook_id },
-			};
+			return cellToolResult(
+				projectCellResult(input.notebook_id, result),
+				`Notebook cell ${result.executionCount ?? "?"}`,
+			);
 		},
-	};
+	});
 
-	const createCell: ToolDefinition<{
-		notebook_id: string;
-		source?: string;
-		cell_type?: "code" | "markdown" | "raw";
-		after_cell_id?: string | null;
-		and_run?: boolean;
-		timeout_secs?: number;
-	}> = {
+	const createCell = defineTool({
+		name: "notebooks_create_cell",
 		description:
 			"Create a notebook cell at a specific position, optionally executing a new code cell immediately.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			source: z.string().optional(),
 			cell_type: z.enum(["code", "markdown", "raw"]).optional(),
@@ -644,83 +657,50 @@ function notebookTools(
 				.optional()
 				.describe("Omit to append, or pass null to insert at the beginning."),
 			and_run: z.boolean().optional(),
-			timeout_secs: z.number().positive().max(3600).optional(),
-		},
-		async execute(args, context) {
-			if (context.abort.aborted) throw new Error("Notebook cell creation was cancelled.");
-			const session = await sessions.open(args.notebook_id, context);
-			const cellType = args.cell_type ?? "code";
-			const runAfterCreate = Boolean(args.and_run) && cellType === "code";
-			await assertAnchorExists(session, args.after_cell_id);
+			timeout_secs: TIMEOUT_SECS,
+		}),
+		async execute(input, context) {
+			if (context.signal.aborted) throw new Error("Notebook cell creation was cancelled.");
+			const session = await open(input.notebook_id, context);
+			const cellType = input.cell_type ?? "code";
+			const runAfterCreate = Boolean(input.and_run) && cellType === "code";
+			await assertAnchorExists(session, input.after_cell_id);
 			if (runAfterCreate) {
-				await requireExecutionApproval(context, args.notebook_id, {
+				await requireExecutionApproval(permission, context, input.notebook_id, {
 					kind: "run",
-					code: args.source ?? "",
+					code: input.source ?? "",
 				});
 			}
-			const cellId = await session.createCell(args.source ?? "", {
+			const cellId = await session.createCell(input.source ?? "", {
 				cellType,
-				...(args.after_cell_id === null ? { index: 0 } : {}),
-				...(typeof args.after_cell_id === "string" ? { afterCellId: args.after_cell_id } : {}),
+				...(input.after_cell_id === null ? { index: 0 } : {}),
+				...(typeof input.after_cell_id === "string" ? { afterCellId: input.after_cell_id } : {}),
 			});
 			sessions.assertConnected(session);
 			if (runAfterCreate) {
 				const result = await withTrustGuidance(session, () =>
-					session.executeCell(cellId, {
-						timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
-					}),
+					session.executeCell(cellId, { timeoutMs: timeoutMs(input.timeout_secs) }),
 				);
-				const projected = projectCellResult(result);
-				return {
-					...projected,
-					title: "Notebook cell created and executed",
-					metadata: { ...projected.metadata, notebook_id: args.notebook_id },
-				};
+				return cellToolResult(
+					projectCellResult(input.notebook_id, result),
+					"Notebook cell created and executed",
+				);
 			}
-			return {
-				title: "Notebook cell created",
-				output: JSON.stringify({
-					notebook_id: args.notebook_id,
-					cell_id: cellId,
-					cell_type: cellType,
-				}),
-				metadata: { notebook_id: args.notebook_id, cell_id: cellId, cell_type: cellType },
-			};
+			const created = { notebook_id: input.notebook_id, cell_id: cellId, cell_type: cellType };
+			return toolResult(JSON.stringify(created), { title: "Notebook cell created", ...created });
 		},
-	};
+	});
 
-	const editCells: ToolDefinition<{
-		notebook_id: string;
-		operations: EditOperation[];
-	}> = {
+	const editCells = defineTool({
+		name: "notebooks_edit_cells",
 		description:
 			"Apply an ordered batch of updates, moves, and deletes to existing notebook cells.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
-			// Strict objects so a misspelled key (e.g. "sourc") fails validation
-			// instead of being stripped into a silent no-op update.
-			operations: z
-				.array(
-					z.discriminatedUnion("action", [
-						z.strictObject({
-							action: z.literal("update"),
-							cell_id: z.string().min(1),
-							source: z.string().optional(),
-							cell_type: z.enum(["code", "markdown", "raw"]).optional(),
-						}),
-						z.strictObject({ action: z.literal("delete"), cell_id: z.string().min(1) }),
-						z.strictObject({
-							action: z.literal("move"),
-							cell_id: z.string().min(1),
-							after_cell_id: z.string().min(1).nullable().optional(),
-						}),
-					]),
-				)
-				.min(1)
-				.max(100),
-		},
-		async execute(args, context) {
-			args.operations.forEach((operation, index) => {
+			operations: z.array(EDIT_OPERATION).min(1).max(100),
+		}),
+		async execute(input, context) {
+			input.operations.forEach((operation, index) => {
 				if (
 					operation.action === "update" &&
 					operation.source === undefined &&
@@ -732,7 +712,7 @@ function notebookTools(
 				}
 			});
 
-			const session = await sessions.open(args.notebook_id, context);
+			const session = await open(input.notebook_id, context);
 			const results: Array<Record<string, unknown>> = [];
 			const failAt = (index: number, operation: EditOperation, reason: string): never => {
 				throw new Error(
@@ -740,8 +720,8 @@ function notebookTools(
 						`Applied before the failure: ${JSON.stringify(results)}. Re-read the notebook before retrying.`,
 				);
 			};
-			for (const [index, operation] of args.operations.entries()) {
-				if (context.abort.aborted) failAt(index, operation, "the edit was cancelled");
+			for (const [index, operation] of input.operations.entries()) {
+				if (context.signal.aborted) failAt(index, operation, "the edit was cancelled");
 				let result: Record<string, unknown> | null;
 				try {
 					// Edits apply in the caller's order and stop at the first failure.
@@ -754,109 +734,94 @@ function notebookTools(
 				results.push({ action: operation.action, cell_id: operation.cell_id, ...result });
 			}
 			sessions.assertConnected(session);
-			return {
+			return toolResult(JSON.stringify({ notebook_id: input.notebook_id, results }), {
 				title: "Notebook cells updated",
-				output: JSON.stringify({ notebook_id: args.notebook_id, results }),
-				metadata: { notebook_id: args.notebook_id, operation_count: results.length },
-			};
+				notebook_id: input.notebook_id,
+				operation_count: results.length,
+			});
 		},
-	};
+	});
 
-	const execute: ToolDefinition<{
-		notebook_id: string;
-		cell_ids?: string[];
-		timeout_secs?: number;
-		stop_on_error?: boolean;
-	}> = {
+	const execute = defineTool({
+		name: "notebooks_execute",
 		description:
 			"Execute selected existing notebook cells in order. When cell_ids is omitted, execute every code cell in notebook order.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			cell_ids: z.array(z.string().min(1)).min(1).max(100).optional(),
-			timeout_secs: z.number().positive().max(3600).optional(),
+			timeout_secs: TIMEOUT_SECS,
 			stop_on_error: z.boolean().optional(),
-		},
-		async execute(args, context) {
-			const session = await sessions.open(args.notebook_id, context);
+		}),
+		async execute(input, context) {
+			const session = await open(input.notebook_id, context);
 			const cells = await session.listCells();
 			const cellIds =
-				args.cell_ids ?? cells.filter((cell) => cell.cellType === "code").map((cell) => cell.id);
+				input.cell_ids ?? cells.filter((cell) => cell.cellType === "code").map((cell) => cell.id);
 			if (cellIds.length > 0) {
-				await requireExecutionApproval(context, args.notebook_id, {
+				await requireExecutionApproval(permission, context, input.notebook_id, {
 					kind: "execute",
 					cellIds,
 					cellNumbers: cellNumbersOf(cells, cellIds),
-					allCells: args.cell_ids === undefined,
+					allCells: input.cell_ids === undefined,
 				});
 			}
 			const results: CellResult[] = [];
 			for (const cellId of cellIds) {
-				if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
+				if (context.signal.aborted) throw new Error("Notebook execution was cancelled.");
 				const result = await withTrustGuidance(session, () =>
-					session.executeCell(cellId, {
-						timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
-					}),
+					session.executeCell(cellId, { timeoutMs: timeoutMs(input.timeout_secs) }),
 				);
 				results.push(result);
-				if (!result.success && (args.stop_on_error ?? true)) break;
+				if (!result.success && (input.stop_on_error ?? true)) break;
 			}
-			const projected = results.map(projectCellResult);
-			const attachments = projected.flatMap((result) => result.attachments ?? []);
-			return {
-				title: `Executed ${results.length} notebook cell${results.length === 1 ? "" : "s"}`,
-				output: projected.map((result) => result.output).join("\n\n"),
-				metadata: {
-					notebook_id: args.notebook_id,
+			const projected = results.map((result) => projectCellResult(input.notebook_id, result));
+			return toolResult(
+				projected.map((cell) => cell.text).join("\n\n"),
+				{
+					title: `Executed ${results.length} notebook cell${results.length === 1 ? "" : "s"}`,
+					notebook_id: input.notebook_id,
 					cell_ids: results.map((result) => result.cellId),
 					execution_ids: results.map((result) => result.executionId),
 					status: results.every((result) => result.success) ? "done" : "error",
 				},
-				...(attachments.length ? { attachments } : {}),
-			};
+				projected.flatMap((cell) => cell.files),
+			);
 		},
-	};
+	});
 
-	const dependenciesTool: ToolDefinition<{
-		notebook_id: string;
-		action: "status" | "add" | "remove" | "sync" | "approve_trust";
-		packages?: string[];
-		package_manager?: "uv" | "conda" | "pixi";
-	}> = {
+	const dependencies = defineTool({
+		name: "notebooks_dependencies",
 		description:
 			"Inspect or update the notebook environment. Add and remove synchronize immediately. " +
 			"Adding, removing, or approving asks the user first whenever it would approve packages " +
 			"the machine has not approved yet, including dependencies the notebook already declares; " +
 			"suspected typosquats are flagged in that prompt. Status reports what is waiting for approval.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			action: z.enum(["status", "add", "remove", "sync", "approve_trust"]),
 			packages: z.array(z.string().min(1)).min(1).max(100).optional(),
 			package_manager: z.enum(["uv", "conda", "pixi"]).optional(),
-		},
-		async execute(args, context) {
-			if ((args.action === "add" || args.action === "remove") && !args.packages?.length) {
-				throw new Error(`packages is required for action ${args.action}.`);
+		}),
+		async execute(input, context) {
+			if ((input.action === "add" || input.action === "remove") && !input.packages?.length) {
+				throw new Error(`packages is required for action ${input.action}.`);
 			}
-			const packages = args.packages ?? [];
-			const session = await sessions.open(args.notebook_id, context);
-			const editOptions = args.package_manager
-				? { packageManager: args.package_manager }
+			const packages = input.packages ?? [];
+			const session = await open(input.notebook_id, context);
+			const editOptions = input.package_manager
+				? { packageManager: input.package_manager }
 				: undefined;
+			const approve = (change: Parameters<typeof requireDependencyApproval>[4]) =>
+				requireDependencyApproval(permission, context, session, input.notebook_id, change);
 			const syncEnvironment = () => withTrustGuidance(session, () => session.syncEnvironment());
-			switch (args.action) {
+			switch (input.action) {
 				case "add":
-					await requireDependencyApproval(context, session, args.notebook_id, {
-						kind: "add",
-						packages,
-					});
+					await approve({ kind: "add", packages });
 					await session.addDependencies(packages, editOptions);
 					await syncEnvironment();
 					break;
 				case "remove":
-					await requireDependencyApproval(context, session, args.notebook_id, {
-						kind: "remove",
-						packages,
-					});
+					await approve({ kind: "remove", packages });
 					await session.removeDependencies(packages, editOptions);
 					await syncEnvironment();
 					break;
@@ -864,13 +829,7 @@ function notebookTools(
 					await syncEnvironment();
 					break;
 				case "approve_trust":
-					if (
-						await requireDependencyApproval(context, session, args.notebook_id, {
-							kind: "approve",
-						})
-					) {
-						await session.approveTrust(undefined);
-					}
+					if (await approve({ kind: "approve" })) await session.approveTrust(undefined);
 					break;
 				case "status":
 					break;
@@ -880,34 +839,34 @@ function notebookTools(
 				readKernelError(session),
 			]);
 			const typosquatWarnings = checkTyposquats(declaredDependencySpecs(status));
-			return {
-				title: "Notebook dependencies",
-				output: JSON.stringify({
-					notebook_id: args.notebook_id,
-					action: args.action,
+			return toolResult(
+				JSON.stringify({
+					notebook_id: input.notebook_id,
+					action: input.action,
 					status,
 					...approvalReport(status),
 					...(kernelError ? { kernel_error: kernelError } : {}),
 					...(typosquatWarnings.length ? { typosquat_warnings: typosquatWarnings } : {}),
 				}),
-				metadata: { notebook_id: args.notebook_id, action: args.action },
-			};
+				{ title: "Notebook dependencies", notebook_id: input.notebook_id, action: input.action },
+			);
 		},
-	};
+	});
 
-	const diagnose: ToolDefinition<{ notebook_id: string }> = {
+	const diagnose = defineTool({
+		name: "notebooks_diagnose",
 		description:
 			"Diagnose why a notebook is broken: kernel failed to start, environment or conda/uv/pixi " +
 			"install errors, environment.yml problems, missing ipykernel, pending dependency trust, or " +
 			"dependency names that look like typosquats of popular packages. " +
 			"Returns the exact kernel error the user sees in the notebook, plus kernel state and " +
 			"dependency metadata. Use this first when the user reports a notebook error or asks what went " +
-			"wrong. Get notebook_id from desktop_notebook_list_open. After fixing the cause, restart the " +
+			`wrong. Get notebook_id from ${LIST_OPEN_TOOL}. After fixing the cause, restart the ` +
 			"kernel with notebooks_kernel and diagnose again to confirm.",
-		args: { notebook_id: NOTEBOOK_ID },
-		async execute(args, context) {
-			const session = await sessions.open(args.notebook_id, context);
-			const [runtime, dependencies] = await Promise.allSettled([
+		input: z.object({ notebook_id: NOTEBOOK_ID }),
+		async execute(input, context) {
+			const session = await open(input.notebook_id, context);
+			const [runtime, dependencyStatus] = await Promise.allSettled([
 				session.getRuntimeStatus(),
 				session.getDependencyStatus(),
 			]);
@@ -915,8 +874,8 @@ function notebookTools(
 				reason instanceof Error ? reason.message : String(reason);
 			const kernelError = runtime.status === "fulfilled" ? kernelErrorOf(runtime.value) : undefined;
 			const pendingApproval =
-				dependencies.status === "fulfilled"
-					? pendingApprovalLabels(dependencyTrust(dependencies.value))
+				dependencyStatus.status === "fulfilled"
+					? pendingApprovalLabels(dependencyTrust(dependencyStatus.value))
 					: [];
 			const summary =
 				runtime.status === "fulfilled"
@@ -934,262 +893,101 @@ function notebookTools(
 							language: runtime.value.language,
 						}
 					: null;
-			return {
-				title: kernelError ? "Notebook error diagnosed" : "Notebook diagnosed",
-				output: JSON.stringify({
-					notebook_id: args.notebook_id,
+			return toolResult(
+				JSON.stringify({
+					notebook_id: input.notebook_id,
 					summary,
 					kernel_error: kernelError ?? null,
 					kernel: kernelState,
-					...(dependencies.status === "fulfilled"
+					...(dependencyStatus.status === "fulfilled"
 						? {
-								dependencies: dependencies.value,
-								...approvalReport(dependencies.value),
-								typosquat_warnings: checkTyposquats(declaredDependencySpecs(dependencies.value)),
+								dependencies: dependencyStatus.value,
+								...approvalReport(dependencyStatus.value),
+								typosquat_warnings: checkTyposquats(
+									declaredDependencySpecs(dependencyStatus.value),
+								),
 							}
-						: { dependencies_error: errorMessage(dependencies.reason) }),
+						: { dependencies_error: errorMessage(dependencyStatus.reason) }),
 				}),
-				metadata: {
-					notebook_id: args.notebook_id,
+				{
+					title: kernelError ? "Notebook error diagnosed" : "Notebook diagnosed",
+					notebook_id: input.notebook_id,
 					has_error: Boolean(kernelError) || kernelState?.lifecycle === "Error",
 				},
-			};
+			);
 		},
-	};
+	});
 
-	const kernel: ToolDefinition<{
-		notebook_id: string;
-		action: "status" | "interrupt" | "restart";
-	}> = {
+	const kernel = defineTool({
+		name: "notebooks_kernel",
 		description:
 			"Inspect, interrupt, or restart the kernel for an open notebook. To find out why a kernel " +
 			"failed to start, use notebooks_diagnose.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			action: z.enum(["status", "interrupt", "restart"]),
-		},
-		async execute(args, context) {
-			const session = await sessions.open(args.notebook_id, context);
-			if (args.action === "interrupt") await session.interruptKernel();
-			if (args.action === "restart") {
-				await requireExecutionApproval(context, args.notebook_id, { kind: "restart" });
+		}),
+		async execute(input, context) {
+			const session = await open(input.notebook_id, context);
+			if (input.action === "interrupt") await session.interruptKernel();
+			if (input.action === "restart") {
+				await requireExecutionApproval(permission, context, input.notebook_id, {
+					kind: "restart",
+				});
 				await session.restartKernel();
 			}
 			const status = await session.getRuntimeStatus();
-			return {
-				title: "Notebook kernel",
-				output: JSON.stringify({ notebook_id: args.notebook_id, action: args.action, status }),
-				metadata: { notebook_id: args.notebook_id, action: args.action },
-			};
+			return toolResult(
+				JSON.stringify({ notebook_id: input.notebook_id, action: input.action, status }),
+				{ title: "Notebook kernel", notebook_id: input.notebook_id, action: input.action },
+			);
 		},
-	};
+	});
 
-	const save: ToolDefinition<{
-		notebook_id: string;
-		path?: string;
-	}> = {
+	const save = defineTool({
+		name: "notebooks_save",
 		description:
 			"Save an open notebook, optionally to an .ipynb path. Paths outside the Kilo workspace require user approval.",
-		args: {
+		input: z.object({
 			notebook_id: NOTEBOOK_ID,
 			path: z.string().min(1).optional(),
-		},
-		async execute(args, context) {
-			const session = await sessions.open(args.notebook_id, context);
-			if (!args.path) {
+		}),
+		async execute(input, context) {
+			const session = await open(input.notebook_id, context);
+			if (!input.path) {
 				await session.saveNotebook();
-				return {
+				return toolResult("Saved to the notebook's current path.", {
 					title: "Notebook saved",
-					output: "Saved to the notebook's current path.",
-					metadata: { notebook_id: args.notebook_id },
-				};
+					notebook_id: input.notebook_id,
+				});
 			}
 
-			const targetPath = path.resolve(context.worktree, args.path);
+			const targetPath = path.resolve(directory, input.path);
 			if (path.extname(targetPath).toLowerCase() !== ".ipynb") {
 				throw new Error("Notebook save paths must end in .ipynb.");
 			}
-			const relativePath = path.relative(context.worktree, targetPath);
+			const relativePath = path.relative(directory, targetPath);
 			const isInsideWorkspace =
 				relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 			if (!isInsideWorkspace) {
-				await context.ask({
-					permission: "external_directory",
-					patterns: [targetPath],
-					always: [],
-					metadata: { notebook_id: args.notebook_id, path: targetPath },
+				const resource = externalDirectoryResource(targetPath);
+				await assertForCall(permission, context, {
+					action: "external_directory",
+					resources: [resource],
+					save: [resource],
+					metadata: { notebook_id: input.notebook_id, path: targetPath },
 				});
 			}
 			await session.saveNotebook(targetPath);
-			return {
+			return toolResult(targetPath, {
 				title: "Notebook saved",
-				output: targetPath,
-				metadata: { notebook_id: args.notebook_id, path: targetPath },
-			};
+				notebook_id: input.notebook_id,
+				path: targetPath,
+			});
 		},
-	};
+	});
 
-	return {
-		notebooks_create_cell: createCell,
-		notebooks_dependencies: dependenciesTool,
-		notebooks_diagnose: diagnose,
-		notebooks_edit_cells: editCells,
-		notebooks_execute: execute,
-		notebooks_kernel: kernel,
-		notebooks_read: read,
-		notebooks_run_cell: runCell,
-		notebooks_save: save,
-	} as Record<string, ToolDefinition<never>>;
-}
-
-/*
- * Kilo v2 plugin boundary. The tools above keep v1's shape (zod args,
- * `execute(args, context)` returning `{ title, output, metadata, attachments }`)
- * so their logic stays identical to `../kilo-plugin` until cutover; everything
- * below translates between that shape and Kilo v2's Promise plugin API
- * (`@opencode/plugin`'s `promise/*`). Only the slice of the API this plugin uses
- * is typed here, so the bundle needs no runtime import from Kilo.
- */
-
-type JsonSchema = Record<string, unknown>;
-
-type V2ToolContext = {
-	readonly sessionID: string;
-	readonly agent: string;
-	readonly messageID: string;
-	readonly id: string;
-	readonly signal: AbortSignal;
-	progress(metadata: Record<string, unknown>): Promise<void>;
-};
-
-type V2Content =
-	| { type: "text"; text: string }
-	| { type: "file"; uri: string; mime: string; name?: string };
-
-type V2ToolResult = { content?: string | V2Content[]; metadata?: Record<string, unknown> };
-
-export type V2Tool = {
-	name: string;
-	description: string;
-	options: { codemode: false };
-	input: JsonSchema;
-	execute(input: unknown, context: V2ToolContext): Promise<V2ToolResult>;
-};
-
-type PermissionAssert = {
-	sessionID: string;
-	agent?: string;
-	action: string;
-	resources: string[];
-	save: string[];
-	metadata: Record<string, unknown>;
-	source: { type: "tool"; messageID: string; id: string };
-};
-
-type V2Event = { type: string; data?: unknown };
-
-export type PluginContext = {
-	readonly location: { readonly directory: string };
-	readonly tool: {
-		transform(callback: (editor: { add(tool: V2Tool): void }) => void): Promise<unknown>;
-	};
-	readonly agent: {
-		transform(
-			callback: (editor: {
-				list(): readonly { id: string }[];
-				update(id: string, update: (agent: { permissions: PermissionRule[] }) => void): void;
-			}) => void,
-		): Promise<unknown>;
-	};
-	readonly permission: { assert(input: PermissionAssert): Promise<void> };
-	readonly event: {
-		subscribe(options: { types: string[]; signal?: AbortSignal }): AsyncIterable<V2Event>;
-	};
-};
-
-/**
- * Model-facing input schema. Kilo v2 validates arguments against it before
- * `execute()` (types, required keys, enums, lengths), so `notebook_id` drops
- * zod's uuid format and pattern: a malformed id must still reach
- * `assertNotebookUuid`, which answers a workspace notebook name with the exact
- * open_file call. `io: "input"` leaves unknown top-level keys allowed, as
- * zod's parse does. Kilo v2's decoder ignores `additionalProperties: false`, so
- * strict edit operations are advertised to the model but not enforced: the
- * tools' own checks (e.g. an update that sets nothing) still apply.
- */
-export function inputSchema(args: z.ZodRawShape): JsonSchema {
-	const schema: JsonSchema = { ...z.toJSONSchema(z.object(args), { io: "input" }) };
-	delete schema.$schema;
-	const properties = schema.properties as Record<string, JsonSchema> | undefined;
-	if (properties?.notebook_id) {
-		const notebookId = { ...properties.notebook_id };
-		delete notebookId.format;
-		delete notebookId.pattern;
-		schema.properties = { ...properties, notebook_id: notebookId };
-	}
-	return schema;
-}
-
-function toToolContext(context: V2ToolContext, ctx: PluginContext): ToolContext {
-	const { directory } = ctx.location;
-	return {
-		sessionID: context.sessionID,
-		messageID: context.messageID,
-		agent: context.agent,
-		directory,
-		worktree: directory,
-		// Kilo v2 opts a tool into cooperative stop when it reads `signal`, so only
-		// read it when the tool reads `abort`.
-		get abort() {
-			return context.signal;
-		},
-		metadata({ title, metadata }) {
-			void context.progress({ ...metadata, ...(title ? { title } : {}) }).catch(() => undefined);
-		},
-		// Resolves when allowed; a deny or rejection rejects and must propagate.
-		ask: ({ permission, patterns, always, metadata }) =>
-			ctx.permission.assert({
-				sessionID: context.sessionID,
-				agent: context.agent,
-				action: permission,
-				resources: patterns,
-				save: always,
-				metadata,
-				source: { type: "tool", messageID: context.messageID, id: context.id },
-			}),
-	};
-}
-
-function toV2Result(result: ToolResult): V2ToolResult {
-	return {
-		content: [
-			{ type: "text", text: result.output },
-			...(result.attachments ?? []).map((attachment): V2Content => ({
-				type: "file",
-				uri: attachment.url,
-				mime: attachment.mime,
-				...(attachment.filename ? { name: attachment.filename } : {}),
-			})),
-		],
-		metadata: { ...result.metadata, ...(result.title ? { title: result.title } : {}) },
-	};
-}
-
-export function toV2Tool(
-	name: string,
-	definition: ToolDefinition<never>,
-	ctx: PluginContext,
-): V2Tool {
-	return {
-		name,
-		description: definition.description,
-		// Offered individually rather than through Code Mode: Desktop's tool
-		// renderers and permission cards key on the `notebooks_*` calls.
-		options: { codemode: false },
-		input: inputSchema(definition.args),
-		execute: async (input, context) =>
-			toV2Result(await definition.execute(input as never, toToolContext(context, ctx))),
-	};
+	return [read, runCell, createCell, editCells, execute, dependencies, diagnose, kernel, save];
 }
 
 /** Releases a deleted chat's notebook peers until `signal` aborts. */
@@ -1214,11 +1012,9 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				(dependencies.loadRuntimedNode ?? defaultLoadRuntimedNode)(),
 			);
 			const sessions = new NotebookSessionRegistry(runtimed);
-			const tools = notebookTools(runtimed, sessions);
+			const tools = notebookTools(ctx, runtimed, sessions);
 			await ctx.tool.transform((editor) => {
-				for (const [name, definition] of Object.entries(tools)) {
-					editor.add(toV2Tool(name, definition, ctx));
-				}
+				for (const tool of tools) editor.add(tool);
 			});
 			await ctx.agent.transform((editor) => {
 				for (const agent of editor.list()) {

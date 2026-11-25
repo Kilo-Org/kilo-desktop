@@ -62,7 +62,13 @@ describe.skipIf(!KILO2_BIN)("the marketplace on a real kilo2", () => {
 		const types = new Set(listed.items.map((item) => item.type));
 		expect([...types].sort()).toEqual(["agent", "mcp", "skill"]);
 		const mcp = listed.items.find((item) => item.type === "mcp");
-		expect(mcp?.type === "mcp" && JSON.stringify(mcp.content)).toContain('\\"type\\"');
+		const rendered =
+			mcp?.type === "mcp"
+				? typeof mcp.content === "string"
+					? mcp.content
+					: mcp.content[0]!.content
+				: "{}";
+		expect(["local", "remote"]).toContain(JSON.parse(rendered).type);
 
 		const skill = listed.items.find((item) => item.type === "skill")!;
 		await marketplace.install(project, skill, "project", undefined, undefined);
@@ -80,6 +86,6 @@ describe.skipIf(!KILO2_BIN)("the marketplace on a real kilo2", () => {
 
 		expect(runtime.agents.map((agent) => agent.id)).toContain("code");
 		expect(runtime.skills.some((skill) => skill.location === "builtin")).toBe(true);
-		await expect(marketplace.mcpStatuses(home)).resolves.toEqual({});
+		await expect(marketplace.mcpStatuses(home)).resolves.toEqual({ servers: [], statuses: {} });
 	});
 });

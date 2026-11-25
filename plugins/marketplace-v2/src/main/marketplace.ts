@@ -17,6 +17,7 @@ import { createKiloV2MarketplaceApi, type KiloConnection } from "./kilo-v2-clien
 import {
 	KiloV2Marketplace,
 	MarketplaceBackendError,
+	type McpServerStatuses,
 	type V2MarketplaceApi,
 } from "./kilo-v2-marketplace";
 
@@ -158,7 +159,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		compatibilitySkillIds: ReadonlySet<string>;
 	}> => {
 		try {
-			const { connection, client } = await cli();
+			const { connection, client } = await kilo();
 			const runtime = await client.runtime(selected?.directory ?? connection.globalDirectory);
 			const agents = runtime.agents
 				.filter((agent) => !agent.configured)
@@ -223,13 +224,13 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 	};
 	const mcpStatuses = async (
 		selected: MarketplaceTarget | undefined,
-	): Promise<Record<string, MarketplaceMcpStatus>> => {
+	): Promise<McpServerStatuses> => {
 		try {
-			const { connection, client } = await cli();
+			const { connection, client } = await kilo();
 			return await client.mcpStatuses(selected?.directory ?? connection.globalDirectory);
 		} catch (error) {
 			deps.logger.warn("Could not read Kilo MCP status.", { error });
-			return {};
+			return { servers: [], statuses: {} };
 		}
 	};
 	const mcpLocationStatuses = async (availableTargets: MarketplaceTarget[]) => {
@@ -237,11 +238,12 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 			mcpStatuses(undefined),
 			...availableTargets.map(mcpStatuses),
 		]);
+		const none: McpServerStatuses = { servers: [], statuses: {} };
 		return {
-			global: global ?? {},
+			global: global ?? none,
 			workspaces: availableTargets.map((target, index) => ({
 				target,
-				statuses: workspaces[index] ?? {},
+				mcp: workspaces[index] ?? none,
 			})),
 		};
 	};
@@ -250,8 +252,8 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 	): Record<string, MarketplaceMcpStatus> =>
 		Object.fromEntries(
 			[
-				["global", locations.global] as const,
-				...locations.workspaces.map(({ target, statuses }) => [target.id, statuses] as const),
+				["global", locations.global.statuses] as const,
+				...locations.workspaces.map(({ target, mcp }) => [target.id, mcp.statuses] as const),
 			].flatMap(([location, statuses]) =>
 				Object.entries(statuses).map(([id, status]) => [`${id}:${location}`, status]),
 			),
@@ -265,7 +267,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		}
 	};
 
-	const cli = async () => {
+	const kilo = async () => {
 		const connection = await deps.connect();
 		const api = (deps.api ?? ((value) => createKiloV2MarketplaceApi(value, deps.fetch)))(
 			connection,
@@ -278,7 +280,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 			: connection.globalDirectory;
 
 	const snapshot = async (workspaceId: string | undefined) => {
-		const [availableTargets, { connection, client }] = await Promise.all([targets(), cli()]);
+		const [availableTargets, { connection, client }] = await Promise.all([targets(), kilo()]);
 		const selected = workspaceId
 			? availableTargets.find((target) => target.id === workspaceId)
 			: undefined;
@@ -308,8 +310,11 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		const discoveredInstallations = [...globalInstallations, ...workspaceInstallations].filter(
 			(entry) => entry.type !== "skill" || !runtime.compatibilitySkillIds.has(entry.id),
 		);
-		const statuses = selected
-			? (locationStatuses.workspaces.find(({ target }) => target === selected)?.statuses ?? {})
+		const mcp = selected
+			? (locationStatuses.workspaces.find(({ target }) => target === selected)?.mcp ?? {
+					servers: [],
+					statuses: {},
+				})
 			: locationStatuses.global;
 		const nativeAgentIds = new Set(
 			runtime.included.filter((entry) => entry.type === "agent").map((entry) => entry.id),
@@ -334,7 +339,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		const desktopIds = new Set(desktopEntries.map((entry) => entry.id));
 		const configured = [
 			...runtime.configured,
-			...Object.keys(statuses)
+			...mcp.servers
 				.filter((id) => !desktopIds.has(id))
 				.map((id): MarketplaceInstalled => ({
 					type: "mcp",
@@ -381,7 +386,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 			targets: availableTargets,
 			installed,
 			included: [...runtimeIncluded, ...included],
-			mcpStatuses: statuses,
+			mcpStatuses: mcp.statuses,
 			mcpInstallationStatuses: mcpInstallationStatuses(locationStatuses),
 			errors: [
 				...new Set([...catalogSnapshot.errors, ...lists.flatMap(({ result }) => result.errors)]),
@@ -396,7 +401,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		refresh: ({ workspaceId }) => snapshot(workspaceId).catch(operationError),
 		install: async (input) => {
 			try {
-				const { connection, client } = await cli();
+				const { connection, client } = await kilo();
 				const directory = await route(input, connection);
 				const listed = await client.list(directory);
 				const selected = listed.items.find(
@@ -413,6 +418,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 					input.method,
 					input.parameters,
 				);
+				// v2's `Installed.config`: the config file written, relative to the scope's root.
 				return { ok: true as const, ...(path ? { path } : {}) };
 			} catch (error) {
 				return operationError(error);
@@ -420,7 +426,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		},
 		remove: async (input) => {
 			try {
-				const { connection, client } = await cli();
+				const { connection, client } = await kilo();
 				const directory = await route(input, connection);
 				await client.remove(
 					directory,
@@ -435,7 +441,7 @@ export function createMarketplaceApi(deps: MarketplaceDependencies): Marketplace
 		authenticateMcp: async ({ id, workspaceId }) => {
 			try {
 				const [{ connection, client }, selected] = await Promise.all([
-					cli(),
+					kilo(),
 					workspaceId ? resolveWorkspace(workspaceId) : undefined,
 				]);
 				await client.authenticateMcp(

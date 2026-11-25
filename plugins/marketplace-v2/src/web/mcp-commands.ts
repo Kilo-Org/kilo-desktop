@@ -14,7 +14,10 @@ import { mcpCommandSchema } from "../contracts/index";
 
 const MISSING_COMMAND_ERRORS = [/Executable not found in \$PATH: "([^"]+)"/, /spawn (\S+) ENOENT/];
 
-/** Bare command a catalog MCP method launches, or `undefined` for remote or unresolvable entries. */
+/**
+ * Bare command a v2 local server config (`Mcp.LocalConfig`, `command` an argv
+ * array) launches, or `undefined` for remote or unresolvable entries.
+ */
 export function mcpLaunchCommand(content: string): string | undefined {
 	let parsed: unknown;
 	try {
@@ -23,8 +26,9 @@ export function mcpLaunchCommand(content: string): string | undefined {
 		return undefined;
 	}
 	if (!parsed || typeof parsed !== "object") return undefined;
-	const raw = (parsed as { command?: unknown }).command;
-	const bare = mcpCommandSchema.safeParse(Array.isArray(raw) ? raw[0] : raw);
+	const { type, command } = parsed as { type?: unknown; command?: unknown };
+	if (type !== "local" || !Array.isArray(command)) return undefined;
+	const bare = mcpCommandSchema.safeParse(command[0]);
 	return bare.success ? bare.data : undefined;
 }
 

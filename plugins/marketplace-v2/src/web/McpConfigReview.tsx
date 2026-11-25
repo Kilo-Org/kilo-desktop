@@ -44,7 +44,13 @@ export function McpConfigReview({ preview }: { preview: McpConfigPreview }) {
 						<ReviewBlock label="Command" qaId="marketplace-install-command">
 							{preview.commandLine}
 						</ReviewBlock>
+						{preview.cwd === undefined ? null : (
+							<ReviewBlock label="Working directory" qaId="marketplace-install-cwd">
+								{preview.cwd}
+							</ReviewBlock>
+						)}
 						<NamedValues label="Environment" separator="=" values={preview.environment} />
+						<NamedValues label="Settings" separator=": " values={preview.settings} />
 					</>
 				) : preview.kind === "remote" ? (
 					<>
@@ -52,6 +58,7 @@ export function McpConfigReview({ preview }: { preview: McpConfigPreview }) {
 							{preview.url}
 						</ReviewBlock>
 						<NamedValues label="Headers" separator=": " values={preview.headers} />
+						<NamedValues label="Settings" separator=": " values={preview.settings} />
 					</>
 				) : (
 					<ReviewBlock label="Configuration" qaId="marketplace-install-config-raw">

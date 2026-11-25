@@ -20,7 +20,7 @@ export type MarketplaceMainOptions = Pick<MarketplaceDependencies, "which" | "pl
  * workspaces through `kilo.work-sessions/workspaces`, and the MCP servers the
  * app adds to Kilo through `kilo.core/mcp-server` contributions (shown as
  * built in, not as user installs). kilo.core writes each one into Kilo's
- * `mcp` config under its bare contribution id.
+ * `mcp.servers` config under its bare contribution id.
  */
 export function createMarketplaceMainEntry(options: MarketplaceMainOptions = {}): PluginEntry {
 	return definePlugin({

@@ -1,9 +1,21 @@
+import type { AgentInfo, McpServer, SkillInfo } from "@kilocode/client";
+import type {
+	Definition,
+	Installed,
+	Item,
+	Kind,
+	Parameter,
+	Scope,
+} from "@opencode/schema/kilocode/marketplace";
+import type { Rpc } from "@opencode/schema/rpc";
+
 import {
 	marketplaceItemSchema,
 	type MarketplaceItem,
 	type MarketplaceItemRef,
 	type MarketplaceMcpStatus,
 	type MarketplaceType,
+	type McpMarketplaceItem,
 } from "../contracts/index";
 
 /**
@@ -22,102 +34,38 @@ import {
  * parameter left as its `{{key}}` placeholder (secrets come back redacted),
  * becomes the contract item's `content`, so the install dialog shows what v2 writes
  * and the reviewed-content check binds to it. Previews are local and cheap.
+ *
+ * Items and MCP statuses leave through the shared, v1-shaped marketplace
+ * contract, converted in exactly two adapters here: `toContractItem` and
+ * `toMcpStatus` (the contract goes v2 in step 29 of the migration plan).
  */
 
-export type V2Kind = "agent" | "skill" | "mcp";
-export type V2Scope = "global" | "project";
-
-export interface V2Parameter {
-	readonly key: string;
-	readonly name: string;
-	readonly placeholder?: string | undefined;
-	readonly optional: boolean;
-	readonly secret?: boolean | undefined;
-}
-
-export interface V2Item {
-	readonly registry: string;
-	readonly kind: V2Kind | "plugin";
-	readonly id: string;
-	readonly name: string;
-	readonly description: string;
-	readonly category?: string | undefined;
-	readonly author?: string | undefined;
-	readonly url?: string | undefined;
-	readonly prerequisites: readonly string[];
-	readonly parameters: readonly V2Parameter[];
-	readonly options: ReadonlyArray<{
-		readonly name: string;
-		readonly prerequisites: readonly string[];
-		readonly parameters: readonly V2Parameter[];
-	}>;
-	readonly agent?:
-		| {
-				readonly mode?: "primary" | "subagent" | "all" | undefined;
-				readonly description?: string | undefined;
-				readonly system?: string | undefined;
-		  }
-		| undefined;
-}
-
-export interface V2Installed {
-	readonly registry: string;
-	readonly kind: V2Kind | "plugin";
-	readonly id: string;
-	readonly scope: V2Scope;
-	readonly config?: string | undefined;
-}
-
-type InstallInput = {
-	readonly registry: string;
-	readonly kind: V2Kind;
-	readonly id: string;
-	readonly scope: V2Scope;
-	readonly option?: string;
-	readonly params?: Readonly<Record<string, string>>;
-};
+type Methods = typeof Definition.methods;
+export type ListOutput = Rpc.Output<Methods["list"]["output"]>;
+export type PreviewInput = Rpc.Input<Methods["preview"]["input"]>;
+export type Preview = Rpc.Output<Methods["preview"]["output"]>;
+export type InstallInput = Rpc.Input<Methods["install"]["input"]>;
+export type UninstallInput = Rpc.Input<Methods["uninstall"]["input"]>;
+export type { Installed, Item, Kind, Parameter, Scope };
 
 /** The calls the marketplace makes on Kilo v2, each in `directory`'s location. */
 export interface V2MarketplaceApi {
-	list(
-		kind: V2Kind,
-		directory: string,
-	): Promise<{
-		items: readonly V2Item[];
-		failures: ReadonlyArray<{ registry: string; message: string }>;
-	}>;
-	installed(directory: string): Promise<readonly V2Installed[]>;
-	preview(input: InstallInput, directory: string): Promise<{ server: string }>;
-	install(input: InstallInput, directory: string): Promise<V2Installed>;
-	uninstall(
-		input: { registry: string; kind: V2Kind; id: string; scope: V2Scope },
-		directory: string,
-	): Promise<void>;
+	list(kind: Kind, directory: string): Promise<ListOutput>;
+	installed(directory: string): Promise<readonly Installed[]>;
+	preview(input: PreviewInput, directory: string): Promise<Preview>;
+	install(input: InstallInput, directory: string): Promise<Installed>;
+	uninstall(input: UninstallInput, directory: string): Promise<void>;
 	agents(
 		directory: string,
-	): Promise<
-		ReadonlyArray<{ id: string; name: string; description?: string | undefined; hidden: boolean }>
-	>;
-	removableAgents(directory: string): Promise<ReadonlyArray<{ name: string; scope: V2Scope }>>;
-	removeAgent(name: string, scope: V2Scope, directory: string): Promise<void>;
-	skills(directory: string): Promise<
-		ReadonlyArray<{
-			id: string;
-			name: string;
-			description?: string | undefined;
-			path: string;
-			content: string;
-		}>
-	>;
+	): Promise<ReadonlyArray<Pick<AgentInfo, "id" | "name" | "description" | "hidden">>>;
+	removableAgents(directory: string): Promise<ReadonlyArray<{ name: string; scope: Scope }>>;
+	removeAgent(name: string, scope: Scope, directory: string): Promise<void>;
+	skills(
+		directory: string,
+	): Promise<ReadonlyArray<Pick<SkillInfo, "id" | "name" | "description" | "path" | "content">>>;
 	removableSkills(directory: string): Promise<readonly string[]>;
 	removeSkill(path: string, directory: string): Promise<void>;
-	mcpServers(directory: string): Promise<
-		ReadonlyArray<{
-			name: string;
-			status: { status: string; error?: string };
-			integrationID?: string | undefined;
-		}>
-	>;
+	mcpServers(directory: string): Promise<readonly McpServer[]>;
 	oauthMethods(integrationID: string, directory: string): Promise<readonly string[]>;
 	oauthConnect(
 		integrationID: string,
@@ -135,7 +83,8 @@ export interface V2MarketplaceApi {
 export class MarketplaceBackendError extends Error {}
 
 const CATALOG_FALLBACK_URL = "https://github.com/Kilo-Org/kilo-marketplace";
-const KINDS: readonly V2Kind[] = ["agent", "skill", "mcp"];
+const KINDS = ["agent", "skill", "mcp"] as const satisfies readonly Kind[];
+type ContractKind = (typeof KINDS)[number];
 
 export type MarketplaceList = {
 	items: MarketplaceItem[];
@@ -152,10 +101,88 @@ const isHttpUrl = (value: string | undefined): value is string => {
 	}
 };
 
-const placeholders = (parameters: readonly V2Parameter[]) =>
+const placeholders = (parameters: readonly Parameter[]) =>
 	Object.fromEntries(parameters.map((parameter) => [parameter.key, `{{${parameter.key}}}`]));
 
-const itemParameters = (parameters: readonly V2Parameter[]) =>
+/**
+ * A v2 MCP status as the shared contract's (step 29 makes the contract v2).
+ * The contract has no `pending`, so a server still connecting has no status
+ * yet (`undefined`) rather than a made-up failure, and its `needs_auth` carries
+ * no reason, so v2's `needs_auth.error` is dropped. v2 never reports the
+ * contract's `needs_client_registration`.
+ */
+export function toMcpStatus(status: McpServer["status"]): MarketplaceMcpStatus | undefined {
+	switch (status.status) {
+		case "connected":
+		case "disabled":
+			return { status: status.status };
+		case "needs_auth":
+			return { status: "needs_auth" };
+		case "failed":
+			return { status: "failed", error: status.error };
+		case "pending":
+			return undefined;
+	}
+}
+
+/** Kilo's MCP servers in a location: every configured name, and the statuses the contract can show. */
+export type McpServerStatuses = {
+	servers: string[];
+	statuses: Record<string, MarketplaceMcpStatus>;
+};
+
+/**
+ * A v2 catalog item as the shared contract's (step 29 makes the contract v2);
+ * MCP items get their rendered `content` from `mcpContent`. It drops what the
+ * contract has no place for: `plugin` items; `registry` (kept by the caller
+ * for installs); `tags`; each option's `description`; each parameter's
+ * `secret` (the web reads it back from the preview's redaction); an agent's
+ * `model`, `color`, `steps`, `hidden` and `permissions`; a skill without an
+ * http(s) source; an agent's non-http(s) `url`. An MCP item without an
+ * http(s) `url` links to the catalog, and a missing category becomes `other`.
+ */
+function toContractItem(
+	item: Item & { kind: ContractKind },
+	mcpContent: McpMarketplaceItem["content"] | undefined,
+): MarketplaceItem | undefined {
+	const base = {
+		id: item.id,
+		name: item.name,
+		description: item.description,
+		category: item.category || "other",
+		...(item.author ? { author: item.author } : {}),
+		...(item.prerequisites.length > 0 ? { prerequisites: [...item.prerequisites] } : {}),
+	};
+	const candidate =
+		item.kind === "agent"
+			? {
+					...base,
+					...(isHttpUrl(item.url) ? { authorUrl: item.url } : {}),
+					type: "agent",
+					content: {
+						mode: item.agent?.mode ?? "primary",
+						description: item.agent?.description ?? item.description,
+						prompt: item.agent?.system ?? "",
+					},
+				}
+			: item.kind === "skill"
+				? isHttpUrl(item.url)
+					? { ...base, type: "skill", content: item.url, githubUrl: item.url }
+					: undefined
+				: {
+						...base,
+						type: "mcp",
+						url: isHttpUrl(item.url) ? item.url : CATALOG_FALLBACK_URL,
+						...(item.parameters.length > 0
+							? { parameters: contractParameters(item.parameters) }
+							: {}),
+						content: mcpContent,
+					};
+	const parsed = marketplaceItemSchema.safeParse(candidate);
+	return parsed.success ? parsed.data : undefined;
+}
+
+const contractParameters = (parameters: readonly Parameter[]) =>
 	parameters.map(({ key, name, placeholder, optional }) => ({
 		key,
 		name,
@@ -163,19 +190,8 @@ const itemParameters = (parameters: readonly V2Parameter[]) =>
 		...(placeholder ? { placeholder } : {}),
 	}));
 
-/** A v2 MCP status as the contract's; v2's `pending` (still connecting) has no contract counterpart. */
-export function toMcpStatus(status: { status: string; error?: string }): MarketplaceMcpStatus {
-	switch (status.status) {
-		case "connected":
-		case "disabled":
-		case "needs_auth":
-			return { status: status.status };
-		case "pending":
-			return { status: "failed", error: "Kilo is still connecting to this server." };
-		default:
-			return { status: "failed", error: status.error ?? "The server failed." };
-	}
-}
+const isContractKind = (item: Item): item is Item & { kind: ContractKind } =>
+	(KINDS as readonly Kind[]).includes(item.kind);
 
 export class KiloV2Marketplace {
 	readonly #api: V2MarketplaceApi;
@@ -196,7 +212,7 @@ export class KiloV2Marketplace {
 				catalogs.flatMap((catalog) => catalog.items).map((item) => this.#toItem(item, directory)),
 			)
 		).flatMap((item) => (item ? [item] : []));
-		const refs = (scope: V2Scope) =>
+		const refs = (scope: Scope) =>
 			installed.flatMap((entry): MarketplaceItemRef[] =>
 				entry.scope === scope && entry.kind !== "plugin"
 					? [{ type: entry.kind, id: entry.id }]
@@ -216,49 +232,20 @@ export class KiloV2Marketplace {
 		};
 	}
 
-	async #toItem(item: V2Item, directory: string): Promise<MarketplaceItem | undefined> {
-		if (item.kind === "plugin") return undefined;
+	async #toItem(item: Item, directory: string): Promise<MarketplaceItem | undefined> {
+		if (!isContractKind(item)) return undefined;
 		this.#registries.set(`${item.kind}:${item.id}`, item.registry);
-		const base = {
-			id: item.id,
-			name: item.name,
-			description: item.description,
-			category: item.category || "other",
-			...(item.author ? { author: item.author } : {}),
-			...(item.prerequisites.length > 0 ? { prerequisites: [...item.prerequisites] } : {}),
-		};
-		let candidate: unknown;
-		if (item.kind === "agent") {
-			candidate = {
-				...base,
-				...(isHttpUrl(item.url) ? { authorUrl: item.url } : {}),
-				type: "agent",
-				content: {
-					mode: item.agent?.mode ?? "primary",
-					description: item.agent?.description ?? item.description,
-					prompt: item.agent?.system ?? "",
-				},
-			};
-		} else if (item.kind === "skill") {
-			if (!isHttpUrl(item.url)) return undefined;
-			candidate = { ...base, type: "skill", content: item.url, githubUrl: item.url };
-		} else {
-			candidate = {
-				...base,
-				type: "mcp",
-				url: isHttpUrl(item.url) ? item.url : CATALOG_FALLBACK_URL,
-				...(item.parameters.length > 0 ? { parameters: itemParameters(item.parameters) } : {}),
-				content: await this.#mcpContent(item, directory),
-			};
-		}
-		const parsed = marketplaceItemSchema.safeParse(candidate);
-		return parsed.success ? parsed.data : undefined;
+		return toContractItem(
+			item,
+			item.kind === "mcp" ? await this.#mcpContent(item, directory) : undefined,
+		);
 	}
 
-	async #mcpContent(item: V2Item, directory: string) {
-		const preview = (option: V2Item["options"][number] | undefined) =>
-			this.#api
-				.preview(
+	/** Each install option's preview (or the item's, without options), every parameter left as its placeholder. */
+	async #mcpContent(item: Item, directory: string): Promise<McpMarketplaceItem["content"]> {
+		const preview = async (option: Item["options"][number] | undefined) =>
+			(
+				await this.#api.preview(
 					{
 						registry: item.registry,
 						kind: "mcp",
@@ -269,23 +256,28 @@ export class KiloV2Marketplace {
 					},
 					directory,
 				)
-				.then(({ server }) => server);
+			).server;
 		if (item.options.length === 0) return preview(undefined);
 		return Promise.all(
 			item.options.map(async (option) => ({
 				name: option.name,
 				content: await preview(option),
-				...(option.parameters.length > 0 ? { parameters: itemParameters(option.parameters) } : {}),
+				...(option.parameters.length > 0
+					? { parameters: contractParameters(option.parameters) }
+					: {}),
 				...(option.prerequisites.length > 0 ? { prerequisites: [...option.prerequisites] } : {}),
 			})),
 		);
 	}
 
-	/** Installs an item `list` returned; resolves the config file v2 wrote, if any. */
+	/**
+	 * Installs an item `list` returned; resolves the config file v2 wrote, if
+	 * any, relative to the scope's root (`Installed.config`).
+	 */
 	async install(
 		directory: string,
 		item: MarketplaceItem,
-		scope: V2Scope,
+		scope: Scope,
 		method: string | undefined,
 		parameters: Readonly<Record<string, string>> | undefined,
 	): Promise<string | undefined> {
@@ -312,7 +304,7 @@ export class KiloV2Marketplace {
 	 * Removes a marketplace install; an agent or skill defined some other way
 	 * is removed through `kilocode.agent`/`kilocode.skill`.
 	 */
-	async remove(directory: string, ref: MarketplaceItemRef, scope: V2Scope): Promise<void> {
+	async remove(directory: string, ref: MarketplaceItemRef, scope: Scope): Promise<void> {
 		const record = (await this.#api.installed(directory)).find(
 			(entry) => entry.kind === ref.type && entry.id === ref.id && entry.scope === scope,
 		);
@@ -368,9 +360,17 @@ export class KiloV2Marketplace {
 		};
 	}
 
-	async mcpStatuses(directory: string): Promise<Record<string, MarketplaceMcpStatus>> {
+	async mcpStatuses(directory: string): Promise<McpServerStatuses> {
 		const servers = await this.#api.mcpServers(directory);
-		return Object.fromEntries(servers.map((server) => [server.name, toMcpStatus(server.status)]));
+		return {
+			servers: servers.map((server) => server.name),
+			statuses: Object.fromEntries(
+				servers.flatMap((server) => {
+					const status = toMcpStatus(server.status);
+					return status ? [[server.name, status]] : [];
+				}),
+			),
+		};
 	}
 
 	/**

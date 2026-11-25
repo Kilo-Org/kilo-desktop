@@ -1,32 +1,56 @@
+import type { McpServer } from "@kilocode/client";
+import type { Mcp } from "@opencode/schema/mcp";
+
 import type {
-	V2Installed,
-	V2Item,
-	V2Kind,
+	InstallInput,
+	Installed,
+	Item,
+	Kind,
+	PreviewInput,
+	Scope,
+	UninstallInput,
 	V2MarketplaceApi,
-	V2Scope,
 } from "../main/kilo-v2-marketplace";
 import { MarketplaceBackendError } from "../main/kilo-v2-marketplace";
 
 type Call = [method: string, directory: string, input?: unknown];
 
+/** A catalog item with v2's defaults for the lists a test leaves out. */
+export const catalogItem = (
+	item: Pick<Item, "kind" | "id"> & Partial<Item>,
+	registry = "kilo",
+): Item => ({
+	registry,
+	name: item.id,
+	description: "",
+	tags: [],
+	prerequisites: [],
+	parameters: [],
+	options: [],
+	...item,
+});
+
 /**
  * Kilo v2's Marketplace, agents, skills and MCP servers in memory, behind
  * `V2MarketplaceApi`: a catalog per kind, managed installs per scope (project
- * ones per directory), and a preview that renders an MCP option's template
- * with its parameters. Records every call with the directory it was made in.
+ * ones per directory), and a preview that renders an MCP option's server
+ * config the way v2 does: parameters interpolated, nonempty secret ones
+ * `[redacted]`, as pretty-printed `Mcp.ServerConfig` JSON. Records every call
+ * with the directory it was made in.
  */
 export class FakeV2Marketplace implements V2MarketplaceApi {
-	catalog: V2Item[] = [];
-	/** An MCP template per `id` or `id:option`, `{{key}}` substituted by preview. */
-	templates: Record<string, string> = {};
-	installs: (V2Installed & { directory: string })[] = [];
+	catalog: Item[] = [];
+	/** The v2 server config per `id` or `id:option`, `{{key}}` placeholders interpolated by preview. */
+	templates: Record<string, Mcp.ServerConfig> = {};
+	/** The config file installs write, relative to the scope root. */
+	configFile = "kilo.json";
+	installs: (Installed & { directory: string })[] = [];
 	agentList: { id: string; name: string; description?: string; hidden: boolean }[] = [];
-	removableAgentList: { name: string; scope: V2Scope }[] = [];
+	removableAgentList: { name: string; scope: Scope }[] = [];
 	skillList: { id: string; name: string; description?: string; path: string; content: string }[] =
 		[];
 	removableSkillList: string[] = [];
-	servers: { name: string; status: { status: string; error?: string }; integrationID?: string }[] =
-		[];
+	servers: McpServer[] = [];
 	oauth: { methods: string[]; statuses: ("pending" | "complete" | "failed" | "expired")[] } = {
 		methods: ["oauth"],
 		statuses: ["complete"],
@@ -43,7 +67,40 @@ export class FakeV2Marketplace implements V2MarketplaceApi {
 		return this.calls.filter(([name]) => name === method);
 	}
 
-	async list(kind: V2Kind, directory: string) {
+	/** What preview renders for `id` (and `option`) with `params`. */
+	render(id: string, option: string | undefined, params: Readonly<Record<string, string>> = {}) {
+		const item = this.catalog.find((entry) => entry.kind === "mcp" && entry.id === id);
+		const parameters = [
+			...(item?.parameters ?? []),
+			...(item?.options.find((entry) => entry.name === option)?.parameters ?? []),
+		];
+		const secrets = parameters.filter(
+			(parameter) => parameter.secret && params[parameter.key]?.trim(),
+		);
+		const values: Record<string, string> = {
+			...params,
+			...Object.fromEntries(secrets.map((parameter) => [parameter.key, "[redacted]"])),
+		};
+		const template = this.templates[option ? `${id}:${option}` : id] ?? {
+			type: "local",
+			command: [id],
+		};
+		const server = JSON.parse(JSON.stringify(template), (_key, value: unknown) =>
+			typeof value === "string"
+				? value.replace(
+						/\{\{([^{}]+)\}\}/g,
+						(placeholder, key: string) => values[key] ?? placeholder,
+					)
+				: value,
+		) as Mcp.ServerConfig;
+		return {
+			server: JSON.stringify(server, null, 2),
+			parameters: parameters.map((parameter) => `${parameter.name} (${parameter.key})`),
+			secrets: secrets.map((parameter) => parameter.name),
+		};
+	}
+
+	async list(kind: Kind, directory: string) {
 		this.#record("list", directory, kind);
 		return { items: this.catalog.filter((item) => item.kind === kind), failures: this.failures };
 	}
@@ -55,46 +112,33 @@ export class FakeV2Marketplace implements V2MarketplaceApi {
 		);
 	}
 
-	async preview(
-		input: { id: string; option?: string; params?: Readonly<Record<string, string>> },
-		directory: string,
-	) {
+	async preview(input: PreviewInput, directory: string) {
 		this.#record("preview", directory, input);
-		const template =
-			this.templates[input.option ? `${input.id}:${input.option}` : input.id] ?? "{}";
-		const server = Object.entries(input.params ?? {}).reduce(
-			(text, [key, value]) => text.replaceAll(`{{${key}}}`, value),
-			template,
-		);
-		return { server };
+		return {
+			...this.render(input.id, input.option, input.params),
+			config: `${directory}/${this.configFile}`,
+		};
 	}
 
-	async install(
-		input: {
-			registry: string;
-			kind: V2Kind;
-			id: string;
-			scope: V2Scope;
-			option?: string;
-			params?: Readonly<Record<string, string>>;
-		},
-		directory: string,
-	) {
+	async install(input: InstallInput, directory: string) {
 		this.#record("install", directory, input);
 		if (this.failInstall) throw new MarketplaceBackendError(this.failInstall);
 		const entry = {
+			version: 1 as const,
 			registry: input.registry,
 			kind: input.kind,
 			id: input.id,
 			scope: input.scope,
-			config: `${directory}/kilo2.json`,
+			...(input.option ? { option: input.option } : {}),
+			...(input.kind === "mcp" ? { config: this.configFile, server: input.id } : {}),
+			installedAt: 0,
 			directory,
 		};
 		this.installs.push(entry);
 		return entry;
 	}
 
-	async uninstall(input: { kind: V2Kind; id: string; scope: V2Scope }, directory: string) {
+	async uninstall(input: UninstallInput, directory: string) {
 		this.#record("uninstall", directory, input);
 		this.installs = this.installs.filter(
 			(entry) =>
@@ -111,7 +155,7 @@ export class FakeV2Marketplace implements V2MarketplaceApi {
 		return this.removableAgentList;
 	}
 
-	async removeAgent(name: string, scope: V2Scope, directory: string) {
+	async removeAgent(name: string, scope: Scope, directory: string) {
 		this.#record("removeAgent", directory, { name, scope });
 	}
 

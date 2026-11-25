@@ -43,7 +43,7 @@ import {
 import { filterMarketplaceItems, installedScopes, matchesSearch } from "./marketplace-filter";
 import { mcpInstallContent } from "../contracts/index";
 import { McpConfigReview } from "./McpConfigReview";
-import { mcpConfigPreview } from "./mcp-config-preview";
+import { mcpConfigPreview, secretParameterKeys } from "./mcp-config-preview";
 import { mcpLaunchCommand, missingCommand } from "./mcp-commands";
 import { MissingCommandAlert, MissingCommandFix, useMissingCommand } from "./MissingCommandHelp";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
@@ -1019,14 +1019,10 @@ function InstalledCard({
 	const hasStatus = (status: MarketplaceMcpStatus["status"]) =>
 		installations.some((installation) => installationStatus(installation)?.status === status);
 	const needsAuth = hasStatus("needs_auth");
-	const needsClientRegistration = hasStatus("needs_client_registration");
 	const failed = hasStatus("failed");
 	const disabled = hasStatus("disabled");
 	const locationCount = included ? 1 : installations.length;
 	const primaryInstallation = installations[0];
-	const primaryDestination = primaryInstallation
-		? installationKey(primaryInstallation)
-		: "included";
 	const locationSummary = included
 		? includedLocationLabel(item)
 		: locationCount === 1
@@ -1057,15 +1053,6 @@ function InstalledCard({
 							<span className="truncate" data-qa-id={`marketplace-name-${item.type}-${item.id}`}>
 								{item.name}
 							</span>
-							{needsClientRegistration ? (
-								<Badge
-									variant="destructive"
-									data-qa-id={`marketplace-mcp-blocked-${item.type}-${item.id}-${primaryDestination}`}
-								>
-									<CircleAlertIcon aria-hidden="true" />
-									Requires setup
-								</Badge>
-							) : null}
 						</SummaryCard.Title>
 						<SummaryCard.Description
 							data-qa-id={`marketplace-card-summary-${item.type}-${item.id}`}
@@ -1254,9 +1241,7 @@ function InstalledDetails({
 										>
 											{location}
 										</span>
-										{(status?.status === "failed" ||
-											status?.status === "needs_client_registration") &&
-										!missingLaunchCommand ? (
+										{status?.status === "failed" && !missingLaunchCommand ? (
 											<span
 												className="text-destructive text-2xs block leading-4 break-words"
 												data-qa-id={`marketplace-mcp-error-${item.id}-${destination}`}
@@ -1276,10 +1261,6 @@ function InstalledDetails({
 										>
 											{authenticating ? "Signing in" : "Sign in"}
 										</Button>
-									) : status?.status === "needs_client_registration" ? (
-										<span className="text-destructive text-2xs shrink-0 font-medium">
-											Requires setup
-										</span>
 									) : missingLaunchCommand ? (
 										<MissingCommandFix
 											command={missingLaunchCommand}
@@ -1342,10 +1323,6 @@ function currentCatalogItem(
 	items: readonly MarketplaceItem[],
 ): MarketplaceItem {
 	return items.find((entry) => entry.type === item.type && entry.id === item.id) ?? item;
-}
-
-function isSecretParameter(key: string): boolean {
-	return /key|token|password|secret/i.test(key);
 }
 
 function mcpMethods(item: MarketplaceItem): McpMethod[] {
@@ -1435,12 +1412,13 @@ function InstallDialog({
 			: item.prerequisites;
 	const selectedContent = item.type === "mcp" ? mcpInstallContent(item, method) : undefined;
 	const configPreview =
+		selectedContent === undefined ? undefined : mcpConfigPreview(selectedContent, parameters);
+	const secretKeys =
 		selectedContent === undefined
-			? undefined
-			: mcpConfigPreview(
+			? new Set<string>()
+			: secretParameterKeys(
 					selectedContent,
-					parameters,
-					new Set(Object.keys(parameters).filter(isSecretParameter)),
+					required.map((parameter) => parameter.key),
 				);
 	const missingLaunchCommand = useMissingCommand(
 		selectedContent ? mcpLaunchCommand(selectedContent) : undefined,
@@ -1671,7 +1649,7 @@ function InstallDialog({
 							</FieldLabel>
 							<Input
 								id={`marketplace-param-${parameter.key}`}
-								type={isSecretParameter(parameter.key) ? "password" : "text"}
+								type={secretKeys.has(parameter.key) ? "password" : "text"}
 								value={parameters[parameter.key] ?? ""}
 								placeholder={parameter.placeholder}
 								onChange={(event) => {
@@ -1691,8 +1669,8 @@ function InstallDialog({
 							<CircleAlertIcon aria-hidden="true" />
 							<AlertTitle>Workspace configuration may contain secrets</AlertTitle>
 							<AlertDescription>
-								Parameter values are written to <code>.kilo/kilo.json</code>. Keep that file out of
-								version control if it contains secrets.
+								Parameter values are written to this workspace’s Kilo config file. Keep that file
+								out of version control if it contains secrets.
 							</AlertDescription>
 						</Alert>
 					) : null}

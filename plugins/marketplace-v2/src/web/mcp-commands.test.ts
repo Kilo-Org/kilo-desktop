@@ -8,25 +8,24 @@ import {
 } from "./mcp-commands";
 
 describe("mcpLaunchCommand", () => {
-	it("reads the command a catalog method launches", () => {
-		expect(mcpLaunchCommand('{"command": "npx", "args": ["-y", "@playwright/mcp@0.0.38"]}')).toBe(
-			"npx",
-		);
-	});
-
-	it("reads the first element of a normalized local command", () => {
-		expect(mcpLaunchCommand('{"type": "local", "command": ["uvx", "mcp-server-qdrant"]}')).toBe(
-			"uvx",
-		);
+	it("reads the command a local server config launches", () => {
+		expect(
+			mcpLaunchCommand(
+				JSON.stringify(
+					{ type: "local", command: ["npx", "-y", "@playwright/mcp@0.0.38"] },
+					null,
+					2,
+				),
+			),
+		).toBe("npx");
 	});
 
 	it.each([
 		["remote servers", '{"type": "remote", "url": "https://mcp.example.com"}'],
-		["url-only servers", '{"url": "https://mcp.example.com"}'],
 		["unparseable content", "not json"],
-		["templated commands", '{"command": "{{BINARY}}"}'],
-		["absolute paths", '{"command": "/opt/tools/server"}'],
-		["Windows paths", '{"command": "C:\\\\tools\\\\server.exe"}'],
+		["templated commands", '{"type": "local", "command": ["{{BINARY}}"]}'],
+		["absolute paths", '{"type": "local", "command": ["/opt/tools/server"]}'],
+		["Windows paths", '{"type": "local", "command": ["C:\\\\tools\\\\server.exe"]}'],
 	])("has no command to check for %s", (_label, content) => {
 		expect(mcpLaunchCommand(content)).toBeUndefined();
 	});

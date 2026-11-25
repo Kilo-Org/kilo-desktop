@@ -1,111 +1,113 @@
+import type { Mcp } from "@opencode/schema/mcp";
+
 /**
- * Renders the MCP entry Kilo will write for a catalog template, so the install dialog can show
- * what the user is authorising before they confirm. Substitution and normalization mirror Kilo's
- * marketplace installer (`buildMcpEntry`); anything the summary cannot represent falls back to the
- * full configuration so no catalog-supplied setting is hidden.
+ * Shows the MCP server config Kilo v2 will write, so the install dialog says
+ * what the user is authorising before they confirm. An item's content is v2's
+ * own preview of the entry (`kilocode.marketplace` preview: a pretty-printed
+ * `Mcp.ServerConfig` with secret parameters `[redacted]` and the others left
+ * as `{{key}}` placeholders); this fills in the values entered so far. Every
+ * setting the command or address summary does not cover is listed, and
+ * content that is no server config is shown in full, so no catalog-supplied
+ * setting is hidden.
  */
 
+type Entries = Array<[string, string]>;
+
 export type McpConfigPreview =
-	| { kind: "local"; commandLine: string; environment: Array<[string, string]> }
-	| { kind: "remote"; url: string; headers: Array<[string, string]> }
+	| { kind: "local"; commandLine: string; cwd?: string; environment: Entries; settings: Entries }
+	| { kind: "remote"; url: string; headers: Entries; settings: Entries }
 	| { kind: "raw"; text: string };
 
-const SECRET_MASK = "••••••";
-const LOCAL_KEYS = new Set(["type", "command", "environment", "enabled", "timeout"]);
-const REMOTE_KEYS = new Set(["type", "url", "headers", "enabled", "timeout"]);
+/** What v2's preview writes in place of a nonempty secret parameter. */
+const REDACTED = "[redacted]";
+const PLACEHOLDER = /\{\{([^{}]+)\}\}/g;
 const SHELL_SAFE = /^[\w@%+=:,./-]+$/;
 
 export function mcpConfigPreview(
 	content: string,
-	parameters: Record<string, string>,
-	secretKeys: ReadonlySet<string>,
+	parameters: Readonly<Record<string, string>>,
 ): McpConfigPreview {
-	const masked = Object.fromEntries(
-		Object.entries(parameters).map(([key, value]) => [
-			key,
-			secretKeys.has(key) && value ? SECRET_MASK : value,
-		]),
-	);
-	const substituted = substituteParams(content, masked);
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(substituted);
+		parsed = JSON.parse(content, (_key, value: unknown) =>
+			typeof value === "string" ? fill(value, parameters) : value,
+		);
 	} catch {
-		return { kind: "raw", text: substituted };
+		return { kind: "raw", text: content };
 	}
-	if (!isRecord(parsed)) return { kind: "raw", text: substituted };
-	const entry = normalizeMcpEntry(parsed);
-	return summarize(entry) ?? { kind: "raw", text: JSON.stringify(entry, null, 2) };
+	return isServerConfig(parsed)
+		? summarize(parsed)
+		: { kind: "raw", text: JSON.stringify(parsed, null, 2) };
 }
 
-function summarize(entry: Record<string, unknown>): McpConfigPreview | undefined {
-	const keys = Object.keys(entry);
-	if (entry.type === "local" && keys.every((key) => LOCAL_KEYS.has(key))) {
-		const command = entry.command;
-		const environment = stringEntries(entry.environment ?? {});
-		if (!isStringArray(command) || command.length === 0 || !environment) return undefined;
-		return { kind: "local", commandLine: command.map(shellQuote).join(" "), environment };
-	}
-	if (entry.type === "remote" && keys.every((key) => REMOTE_KEYS.has(key))) {
-		const headers = stringEntries(entry.headers ?? {});
-		if (typeof entry.url !== "string" || !headers) return undefined;
-		return { kind: "remote", url: entry.url, headers };
-	}
-	return undefined;
+/**
+ * The parameters v2 treats as secret. The shared contract carries no
+ * `Parameter.secret` yet (step 29), but v2's preview redacts every secret
+ * parameter while leaving the others as placeholders, so a parameter whose
+ * placeholder is gone from a preview that redacted something is a secret one.
+ */
+export function secretParameterKeys(content: string, keys: readonly string[]): Set<string> {
+	if (!content.includes(REDACTED)) return new Set();
+	return new Set(keys.filter((key) => !content.includes(`{{${key}}}`)));
 }
 
-function substituteParams(template: string, parameters: Record<string, string>): string {
-	return Object.entries(parameters).reduce((text, [key, value]) => {
-		const escaped = escapeJsonValue(value);
-		return text.replaceAll(`{{${key}}}`, escaped).replaceAll(`\${${key}}`, escaped);
-	}, template);
+function fill(text: string, parameters: Readonly<Record<string, string>>): string {
+	return text.replace(
+		PLACEHOLDER,
+		(placeholder, key: string) => parameters[key]?.trim() || placeholder,
+	);
 }
 
-function escapeJsonValue(raw: string): string {
-	return raw
-		.replace(/\\/g, "\\\\")
-		.replace(/"/g, '\\"')
-		.replace(/\n/g, "\\n")
-		.replace(/\r/g, "\\r")
-		.replace(/\t/g, "\\t");
+function summarize(config: Mcp.ServerConfig): McpConfigPreview {
+	if (config.type === "local") {
+		const { type: _type, command, cwd, environment, ...settings } = config;
+		return {
+			kind: "local",
+			commandLine: command.map(shellQuote).join(" "),
+			...(cwd === undefined ? {} : { cwd }),
+			environment: Object.entries(environment ?? {}),
+			settings: settingEntries(settings),
+		};
+	}
+	const { type: _type, url, headers, ...settings } = config;
+	return {
+		kind: "remote",
+		url,
+		headers: Object.entries(headers ?? {}),
+		settings: settingEntries(settings),
+	};
 }
 
-function normalizeMcpEntry(raw: Record<string, unknown>): Record<string, unknown> {
-	if (raw.type === "local" || raw.type === "remote") return raw;
-	if (typeof raw.url === "string") {
-		const entry: Record<string, unknown> = { type: "remote", url: raw.url };
-		if (raw.headers && typeof raw.headers === "object") entry.headers = raw.headers;
-		for (const key of ["enabled", "timeout", "oauth"]) {
-			if (key in raw) entry[key] = raw[key];
-		}
-		return entry;
+function settingEntries(settings: object): Entries {
+	return Object.entries(settings).map(([key, value]) => [key, JSON.stringify(value)]);
+}
+
+function isServerConfig(value: unknown): value is Mcp.ServerConfig {
+	if (!isRecord(value)) return false;
+	if (value.type === "local") {
+		return (
+			isStringArray(value.command) &&
+			value.command.length > 0 &&
+			(value.cwd === undefined || typeof value.cwd === "string") &&
+			isOptionalStringRecord(value.environment)
+		);
 	}
-	if (typeof raw.command === "string") {
-		const args = Array.isArray(raw.args)
-			? raw.args.filter((arg): arg is string => typeof arg === "string")
-			: [];
-		const entry: Record<string, unknown> = { type: "local", command: [raw.command, ...args] };
-		if (raw.env && typeof raw.env === "object" && Object.keys(raw.env).length > 0) {
-			entry.environment = raw.env;
-		}
-		for (const key of ["enabled", "timeout"]) {
-			if (key in raw) entry[key] = raw[key];
-		}
-		return entry;
-	}
-	return raw;
+	return (
+		value.type === "remote" &&
+		typeof value.url === "string" &&
+		isOptionalStringRecord(value.headers)
+	);
 }
 
 function shellQuote(arg: string): string {
 	return SHELL_SAFE.test(arg) ? arg : `'${arg.replaceAll("'", "'\\''")}'`;
 }
 
-function stringEntries(value: unknown): Array<[string, string]> | undefined {
-	if (!isRecord(value)) return undefined;
-	const entries = Object.entries(value);
-	return entries.every((entry): entry is [string, string] => typeof entry[1] === "string")
-		? entries
-		: undefined;
+function isOptionalStringRecord(value: unknown): boolean {
+	return (
+		value === undefined ||
+		(isRecord(value) && Object.values(value).every((entry) => typeof entry === "string"))
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

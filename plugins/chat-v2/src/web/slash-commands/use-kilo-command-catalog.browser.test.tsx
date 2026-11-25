@@ -2,59 +2,26 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Command } from "@kilocode/sdk/v2/client";
 
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
+import { FakeKiloServer } from "../../test/fake-kilo-server";
 import {
 	fetchCommandCatalogForConnection,
 	useKiloCommandCatalog,
 } from "./use-kilo-command-catalog";
 
-/**
- * Answers the Kilo client's requests with `commands` and records which
- * directory each asked about. A stand-in fetch rather than a module mock,
- * which browser-mode runs under load don't always apply.
- */
-function serveCommands(commands: unknown) {
-	const directories: (string | null)[] = [];
-	const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-		const request = input instanceof Request ? input : new Request(input);
-		const url = new URL(request.url);
-		directories.push(
-			url.searchParams.get("directory") ??
-				(request.headers.get("x-kilo-directory") &&
-					decodeURIComponent(request.headers.get("x-kilo-directory")!)),
-		);
-		return new Response(JSON.stringify(commands), {
-			headers: { "content-type": "application/json" },
-		});
-	});
-	return { directories, fetchSpy };
+/** A Kilo v2 server listing `commands`, answering the window's fetch. */
+function serveCommands(commands: Record<string, unknown>[]) {
+	const server = new FakeKiloServer();
+	server.commands = commands;
+	server.install();
+	const commandReads = () =>
+		server.requestsTo("GET", "/api/command").map((request) => request.directory);
+	return { server, commandReads };
 }
 
-const connection: KiloGlobalConnection = {
-	baseUrl: "http://127.0.0.1:4096",
-	username: "kilo-user",
-	password: "kilo-password",
-	version: "7.4.20",
-	globalDirectory: "/kilo/runtime",
-};
-
-const payload: Command[] = [
-	{
-		name: "init",
-		description: "Create an AGENTS.md",
-		source: "command",
-		template: "/init $ARGUMENTS",
-		hints: [],
-	},
-	{
-		name: "compact",
-		description: "Compact the conversation",
-		source: "command",
-		template: "/compact",
-		hints: [],
-	},
+const COMMANDS = [
+	{ name: "init", description: "Create an AGENTS.md", template: "/init $ARGUMENTS" },
+	{ name: "compact", description: "Compact the conversation", template: "/compact" },
 ];
 
 function createWrapper() {
@@ -66,70 +33,60 @@ function createWrapper() {
 
 afterEach(() => {
 	cleanup();
-	vi.restoreAllMocks();
+	vi.unstubAllGlobals();
 });
 
 describe("useKiloCommandCatalog", () => {
 	it("waits for a resolved connection and fetches commands once", async () => {
-		const served = serveCommands(payload);
-		type Props = { connection: KiloGlobalConnection | undefined; directory?: string };
+		const { server, commandReads } = serveCommands(COMMANDS);
+		type Props = { connection: FakeKiloServer["connection"] | undefined; directory?: string };
 		const { result, rerender } = renderHook(
-			({ connection: currentConnection, directory }: Props) =>
-				useKiloCommandCatalog(currentConnection, directory),
-			{
-				initialProps: { connection: undefined } as Props,
-				wrapper: createWrapper(),
-			},
+			({ connection, directory }: Props) => useKiloCommandCatalog(connection, directory),
+			{ initialProps: { connection: undefined } as Props, wrapper: createWrapper() },
 		);
 
 		expect(result.current.fetchStatus).toBe("idle");
-		expect(served.fetchSpy).not.toHaveBeenCalled();
+		expect(server.requests).toEqual([]);
 
-		rerender({ connection, directory: "/workspace/project" });
+		rerender({ connection: server.connection, directory: "/workspace/project" });
 		await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-		expect(served.directories).toEqual(["/workspace/project"]);
+		expect(commandReads()).toEqual(["/workspace/project"]);
 		expect(result.current.data?.map((command) => command.name)).toEqual(["init", "compact"]);
 	});
 
 	it("uses the connection global directory when no workspace folder is given", async () => {
-		const served = serveCommands(payload);
-		const { result } = renderHook(() => useKiloCommandCatalog(connection, undefined), {
+		const { server, commandReads } = serveCommands(COMMANDS);
+		const { result } = renderHook(() => useKiloCommandCatalog(server.connection, undefined), {
 			wrapper: createWrapper(),
 		});
 
 		await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
-		expect(served.directories).toEqual([connection.globalDirectory]);
+		expect(commandReads()).toEqual([server.connection.globalDirectory]);
 	});
 
-	it("keeps only autocomplete metadata from lazy MCP commands", async () => {
-		serveCommands([
-			{
-				name: "release-notes",
-				description: "Draft release notes",
-				source: "mcp",
-				template: {},
-				hints: ["release"],
-			},
+	it("keeps only autocomplete metadata, not the command's template", async () => {
+		const { server } = serveCommands([
+			{ name: "release-notes", description: "Draft release notes", template: "Notes for $1" },
 		]);
 
 		await expect(
-			fetchCommandCatalogForConnection(connection, "/workspace/project"),
+			fetchCommandCatalogForConnection(server.connection, "/workspace/project"),
 		).resolves.toEqual([
 			{
 				name: "release-notes",
 				description: "Draft release notes",
-				source: "mcp",
-				hints: ["release"],
+				source: "command",
+				hints: ["$1"],
 			},
 		]);
 	});
 
 	it("throws when asked to fetch commands before a connection is available", async () => {
-		const served = serveCommands([]);
+		const { server } = serveCommands([]);
 		await expect(fetchCommandCatalogForConnection(undefined, "/workspace")).rejects.toThrow(
 			"Cannot fetch commands before Kilo is connected",
 		);
-		expect(served.fetchSpy).not.toHaveBeenCalled();
+		expect(server.requests).toEqual([]);
 	});
 });

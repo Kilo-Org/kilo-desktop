@@ -10,6 +10,10 @@ import { SIGNED_OUT } from "../../test/kernel-harness";
 import {
 	assistantMessage,
 	FakeKiloServer,
+	nextCreated,
+	reasoningContent,
+	textContent,
+	toolContent,
 	userMessage,
 	type FakeMessage,
 } from "../../test/fake-kilo-server";
@@ -37,24 +41,15 @@ function pngDataUrl(width: number, height: number): string {
 	return canvas.toDataURL("image/png");
 }
 
-const tool = (name: string, state: Record<string, unknown>) => ({
-	type: "tool",
-	tool: name,
-	callID: `call_${name}`,
-	state: { input: {}, time: { start: 1 }, ...state },
-});
+/** A stored v2 prompt file carries its bytes as base64 (`PromptFileAttachment.data`). */
+const pngBase64 = (width: number, height: number) =>
+	pngDataUrl(width, height).slice("data:image/png;base64,".length);
 
 describe("the transcript", () => {
 	it("renders code blocks with a copy button", async () => {
 		const host = await showChat([
-			userMessage("ses_a", "msg_1", "Show me"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "Run `pnpm test`:\n\n```sh\npnpm test\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
+			userMessage("msg_1", "Show me"),
+			assistantMessage("msg_2", [textContent("Run `pnpm test`:\n\n```sh\npnpm test\n```\n")]),
 		]);
 
 		await expect.element(page.getByText("sh", { exact: true })).toBeVisible();
@@ -65,14 +60,8 @@ describe("the transcript", () => {
 
 	it("renders a Mermaid fence as a diagram card with its source", async () => {
 		const host = await showChat([
-			userMessage("ses_a", "msg_1", "Draw it"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "```mermaid\nflowchart TD\n  A --> B\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
+			userMessage("msg_1", "Draw it"),
+			assistantMessage("msg_2", [textContent("```mermaid\nflowchart TD\n  A --> B\n```\n")]),
 		]);
 
 		await expect
@@ -88,11 +77,8 @@ describe("the transcript", () => {
 
 	it("folds reasoning under a disclosure", async () => {
 		await showChat([
-			userMessage("ses_a", "msg_1", "Think"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "reasoning", text: "Weighing the options", time: { start: 1, end: 2 } },
-				{ type: "text", text: "Done.", time: { start: 2, end: 3 } },
-			]),
+			userMessage("msg_1", "Think"),
+			assistantMessage("msg_2", [reasoningContent("Weighing the options"), textContent("Done.")]),
 		]);
 
 		await expect.element(page.getByText("Done.")).toBeVisible();
@@ -105,21 +91,10 @@ describe("the transcript", () => {
 
 	it("shows each tool call's state", async () => {
 		await showChat([
-			userMessage("ses_a", "msg_1", "Go"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				tool("bash", {
-					status: "error",
-					input: { command: "make" },
-					error: "exit 2",
-					time: { start: 1, end: 2 },
-				}),
-				tool("github_list_issues", {
-					status: "completed",
-					output: "[]",
-					title: "",
-					metadata: {},
-					time: { start: 1, end: 2 },
-				}),
+			userMessage("msg_1", "Go"),
+			assistantMessage("msg_2", [
+				toolContent("call_shell", "shell", { command: "make" }, { error: "exit 2" }),
+				toolContent("call_github_list_issues", "github_list_issues", {}, "[]"),
 			]),
 		]);
 
@@ -131,10 +106,8 @@ describe("the transcript", () => {
 
 	it("copies a reply", async () => {
 		const host = await showChat([
-			userMessage("ses_a", "msg_1", "Summarize"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "text", text: "A short summary.", time: { start: 1, end: 2 } },
-			]),
+			userMessage("msg_1", "Summarize"),
+			assistantMessage("msg_2", [textContent("A short summary.")]),
 		]);
 		await expect.element(page.getByText("A short summary.")).toBeVisible();
 
@@ -147,21 +120,16 @@ describe("the transcript", () => {
 	});
 
 	it("explains a reply that ended in an error", async () => {
-		const prompt = userMessage("ses_a", "msg_1", "Go");
-		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
 		await showChat(
 			[
-				prompt,
-				{
-					...failed,
-					info: {
-						...failed.info,
-						error: {
-							name: "APIError",
-							data: { message: 'Gateway said {"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}' },
-						},
+				userMessage("msg_1", "Go"),
+				assistantMessage("msg_2", [], {
+					finish: "error",
+					error: {
+						type: "APIError",
+						message: 'Gateway said {"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}',
 					},
-				},
+				}),
 			],
 			{ identity: SIGNED_OUT },
 		);
@@ -172,19 +140,13 @@ describe("the transcript", () => {
 	});
 
 	it("notes a reply the person stopped", async () => {
-		const stopped = assistantMessage("ses_a", "msg_2", "msg_1", [
-			{ type: "text", text: "Partial", time: { start: 1, end: 2 } },
-		]);
+		const stopped = assistantMessage("msg_2", [textContent("Partial")], {
+			created: 1_500,
+			error: { type: "MessageAbortedError", message: "Aborted" },
+		});
 		await showChat([
-			userMessage("ses_a", "msg_1", "Go", 1_000),
-			{
-				...stopped,
-				info: {
-					...stopped.info,
-					time: { created: 1_500, completed: 4_000 },
-					error: { name: "MessageAbortedError", data: { message: "Aborted" } },
-				},
-			},
+			userMessage("msg_1", "Go", 1_000),
+			{ ...stopped, time: { ...stopped.time, completed: 4_000 } },
 		]);
 
 		await expect
@@ -193,61 +155,44 @@ describe("the transcript", () => {
 	});
 
 	it("shows a running turn's live reasoning and tools", async () => {
-		const host = await showChat([userMessage("ses_a", "msg_1", "Go")]);
+		const host = await showChat([userMessage("msg_1", "Go")]);
 		await expect.element(page.getByText("Go")).toBeVisible();
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
-		const reply = assistantMessage("ses_a", "msg_2", "msg_1", []);
+		const ids = { sessionID: "ses_a", assistantMessageID: "msg_2" };
 
-		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		host.server.emit("message.updated", {
-			info: { ...reply.info, time: { created: Date.now() }, finish: undefined },
+		host.server.startTurn("ses_a");
+		host.server.emit("session.step.started", {
+			...ids,
+			agent: "code",
+			model: { providerID: "kilo", id: "test-model" },
+			started: nextCreated(),
 		});
-		host.server.emit("message.part.updated", {
-			part: {
-				id: "part_r",
-				sessionID: "ses_a",
-				messageID: "msg_2",
-				type: "reasoning",
-				text: "Thinking it through",
-				time: { start: Date.now() },
-			},
+		host.server.emit("session.reasoning.started", { ...ids, ordinal: 0 });
+		host.server.emit("session.reasoning.delta", {
+			...ids,
+			ordinal: 0,
+			delta: "Thinking it through",
 		});
-		host.server.emit("message.part.updated", {
-			part: {
-				id: "part_t",
-				sessionID: "ses_a",
-				messageID: "msg_2",
-				type: "tool",
-				tool: "grep",
-				callID: "call_grep",
-				state: { status: "running", input: { pattern: "login" }, time: { start: Date.now() } },
-			},
+		host.server.emit("session.tool.input.started", { ...ids, id: "call_grep", name: "grep" });
+		host.server.emit("session.tool.called", {
+			...ids,
+			id: "call_grep",
+			input: { pattern: "login" },
+			executed: true,
 		});
 
 		await expect
 			.element(page.getByRole("button", { name: "Searching the codebase" }))
 			.toBeVisible();
-		host.server.emit("session.idle", { sessionID: "ses_a" });
+		host.server.endTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-turn-work-toggle")).toBeVisible();
 	});
 
 	it("shows a sent image", async () => {
-		const sent = userMessage("ses_a", "msg_1", "Look");
 		await showChat([
 			{
-				...sent,
-				parts: [
-					...sent.parts,
-					{
-						id: "msg_1_f",
-						sessionID: "ses_a",
-						messageID: "msg_1",
-						type: "file",
-						mime: "image/png",
-						filename: "shot.png",
-						url: "data:image/png;base64,iVBORw0KGgo=",
-					},
-				],
+				...userMessage("msg_1", "Look"),
+				files: [{ data: "iVBORw0KGgo=", mime: "image/png", name: "shot.png" }],
 			},
 		]);
 
@@ -255,30 +200,12 @@ describe("the transcript", () => {
 	});
 
 	it("opens a sent image and the reply's diagram in one viewer", async () => {
-		const sent = userMessage("ses_a", "msg_1", "Draw this");
 		const host = await showChat([
 			{
-				...sent,
-				parts: [
-					...sent.parts,
-					{
-						id: "msg_1_f",
-						sessionID: "ses_a",
-						messageID: "msg_1",
-						type: "file",
-						mime: "image/png",
-						filename: "shot.png",
-						url: pngDataUrl(40, 20),
-					},
-				],
+				...userMessage("msg_1", "Draw this"),
+				files: [{ data: pngBase64(40, 20), mime: "image/png", name: "shot.png" }],
 			},
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "```mermaid\nflowchart TD\n  A --> B\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
+			assistantMessage("msg_2", [textContent("```mermaid\nflowchart TD\n  A --> B\n```\n")]),
 		]);
 		await expect.element(page.getByTestId("chat-mermaid-expand")).toBeVisible();
 
@@ -387,13 +314,12 @@ describe("the transcript", () => {
 });
 
 describe("the conversation map", () => {
-	const reply = (id: string, parentId: string, text: string) =>
-		assistantMessage("ses_a", id, parentId, [{ type: "text", text, time: { start: 1, end: 2 } }]);
+	const reply = (id: string, text: string) => assistantMessage(id, [textContent(text)]);
 	const twoTurns = () => [
-		userMessage("ses_a", "msg_1", "First prompt"),
-		reply("msg_2", "msg_1", "First answer"),
-		userMessage("ses_a", "msg_3", "Second prompt"),
-		reply("msg_4", "msg_3", "Second answer"),
+		userMessage("msg_1", "First prompt"),
+		reply("msg_2", "First answer"),
+		userMessage("msg_3", "Second prompt"),
+		reply("msg_4", "Second answer"),
 	];
 	const rail = () => document.querySelector<HTMLElement>('[data-slot="conversation-map-rail"]');
 
@@ -404,10 +330,7 @@ describe("the conversation map", () => {
 	}
 
 	it("stays hidden for one user turn", async () => {
-		await showWideChat([
-			userMessage("ses_a", "msg_1", "First prompt"),
-			reply("msg_2", "msg_1", "First answer"),
-		]);
+		await showWideChat([userMessage("msg_1", "First prompt"), reply("msg_2", "First answer")]);
 		await expect.element(page.getByText("First answer")).toBeVisible();
 
 		expect(rail()).toBeNull();
@@ -437,10 +360,10 @@ describe("the conversation map", () => {
 	it("scrolls the viewport to the clicked turn", async () => {
 		const long = "A long answer line.\n\n".repeat(80);
 		await showWideChat([
-			userMessage("ses_a", "msg_1", "First prompt"),
-			reply("msg_2", "msg_1", long),
-			userMessage("ses_a", "msg_3", "Second prompt"),
-			reply("msg_4", "msg_3", long),
+			userMessage("msg_1", "First prompt"),
+			reply("msg_2", long),
+			userMessage("msg_3", "Second prompt"),
+			reply("msg_4", long),
 		]);
 		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
 		const first = () => viewport.querySelector<HTMLElement>('[data-message-id="msg_1"]')!;

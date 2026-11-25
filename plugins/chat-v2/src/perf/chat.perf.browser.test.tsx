@@ -9,7 +9,7 @@ import { cdp, page } from "vitest/browser";
 
 import { chatPaneObject } from "../contracts";
 import { agentPane, chatSummary } from "../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../test/fake-kilo-server";
+import { FakeKiloServer, nextCreated, userMessage } from "../test/fake-kilo-server";
 import { longSession } from "../test/long-session";
 import { renderChat } from "../test/render-chat";
 
@@ -109,7 +109,7 @@ async function openLongSession(turns: number) {
 		id: "ses_a",
 		directory: "/projects/app",
 		title: "Long chat",
-		messages: longSession("ses_a", turns),
+		messages: longSession(turns),
 	});
 	const tasks = observeLongTasks();
 	const started = performance.now();
@@ -154,27 +154,21 @@ async function openLongSession(turns: number) {
 
 async function streamReply(server: FakeKiloServer, turns: number) {
 	const replyStarted = performance.now();
-	server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+	server.startTurn("ses_a");
 	// Stamped on the fixtures' clock, so the reply sorts after the session's last turn.
-	const user = userMessage("ses_a", "msg_live_u", "Go on");
-	const reply = assistantMessage("ses_a", "msg_live_a", user.info.id, []);
-	const { completed: _completed, ...replyTime } = reply.info.time as {
-		created: number;
-		completed?: number;
-	};
-	server.emit("message.updated", { info: user.info });
-	for (const part of user.parts) server.emit("message.part.updated", { part });
-	server.emit("message.updated", { info: { ...reply.info, time: replyTime, finish: undefined } });
-	server.emit("message.part.updated", {
-		part: {
-			id: "part_live",
-			sessionID: "ses_a",
-			messageID: "msg_live_a",
-			type: "text",
-			text: "Streaming",
-			time: { start: replyTime.created },
-		},
+	const user = userMessage("msg_live_u", "Go on");
+	const item = { type: "user", payload: { text: user.text }, delivery: "steer" };
+	server.emit("session.inbox.enqueued", { inboxID: user.id, sessionID: "ses_a", item });
+	server.chats.get("ses_a")!.messages.push(user);
+	server.emit("session.inbox.delivered", { sessionID: "ses_a", inboxID: user.id });
+	server.emit("session.step.started", {
+		...LIVE,
+		agent: "code",
+		model: { providerID: "kilo", id: "test-model" },
+		started: nextCreated(),
 	});
+	server.emit("session.text.started", { ...LIVE, ordinal: 0 });
+	server.emit("session.text.delta", { ...LIVE, ordinal: 0, delta: "Streaming" });
 	await expect
 		.poll(() => document.body.textContent?.includes("Streaming"), { timeout: 30_000, interval: 1 })
 		.toBe(true);
@@ -208,15 +202,16 @@ async function streamReply(server: FakeKiloServer, turns: number) {
 		longTasks: tasks.count(),
 	});
 	await streamBursts(server, turns);
-	server.emit("session.idle", { sessionID: "ses_a" });
+	server.endTurn("ses_a");
 }
 
+/** The live reply's step. */
+const LIVE = { sessionID: "ses_a", assistantMessageID: "msg_live_a" };
+
 const emitDelta = (server: FakeKiloServer, index: number, last: string) =>
-	server.emit("message.part.delta", {
-		sessionID: "ses_a",
-		messageID: "msg_live_a",
-		partID: "part_live",
-		field: "text",
+	server.emit("session.text.delta", {
+		...LIVE,
+		ordinal: 0,
 		delta:
 			index === DELTAS - 1
 				? ` ${last}`

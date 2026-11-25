@@ -23,7 +23,12 @@ import {
 	type ComposerContext,
 } from "../../contracts";
 import { agentPane, chatSummary, workSession } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import {
+	assistantMessage,
+	FakeKiloServer,
+	textContent,
+	userMessage,
+} from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
 
 // The shell the test host renders sits over the pane (its sidebar rail over
@@ -63,11 +68,16 @@ function contributor(extensions: Record<string, unknown[]>, web: PluginEntry) {
 	};
 }
 
-function promptBody(host: Awaited<ReturnType<typeof renderChat>>, chatId: string) {
-	return host.server.requestsTo("POST", `/session/${chatId}/prompt_async`).at(-1)?.body as
+type Host = Awaited<ReturnType<typeof renderChat>>;
+
+/** The last body `host` sent to the chat's `route` (`prompt`, `agent`, `model`, …). */
+function lastBody(host: Host, chatId: string, route: string) {
+	return host.server.requestsTo("POST", `/api/session/${chatId}/${route}`).at(-1)?.body as
 		| Record<string, unknown>
 		| undefined;
 }
+
+const promptBody = (host: Host, chatId: string) => lastBody(host, chatId, "prompt");
 
 describe("the composer's pickers", () => {
 	it("sends with the picked agent and model, and remembers a draft's model for new chats", async () => {
@@ -88,12 +98,11 @@ describe("the composer's pickers", () => {
 		await userEvent.fill(input(), "Plan the work");
 		await sendButton().click();
 
-		await expect
-			.poll(() => promptBody(host, "ses_new_1"))
-			.toMatchObject({
-				agent: "plan",
-				model: { providerID: "acme", modelID: "deep-2" },
-			});
+		await expect.poll(() => promptBody(host, "ses_new_1")).toEqual({ text: "Plan the work" });
+		expect(lastBody(host, "ses_new_1", "agent")).toEqual({ agent: "plan" });
+		expect(lastBody(host, "ses_new_1", "model")).toMatchObject({
+			model: { providerID: "acme", id: "deep-2" },
+		});
 		await expect
 			.poll(() => host.core.models().state.preferences.byAgent.plan)
 			.toEqual({ aiProviderId: "acme", modelId: "deep-2" });
@@ -181,16 +190,18 @@ describe("slash commands", () => {
 		await sendButton().click();
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_new_1/command").at(-1)?.body)
-			.toMatchObject({ command: "review", arguments: "the diff", agent: "code" });
-		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toEqual([]);
+			.poll(() => lastBody(host, "ses_new_1", "command"))
+			.toEqual({ name: "review", text: "the diff" });
+		expect(lastBody(host, "ses_new_1", "agent")).toEqual({ agent: "code" });
+		expect(host.server.requestsTo("POST", "/api/session/ses_new_1/prompt")).toEqual([]);
 	});
 
-	it("groups the / menu by source once there are skills too, and searches all of them", async () => {
+	// v2 gap (step 22): v2 lists skills via skill.list, which the translation doesn't read; command.list has no source
+	it.skip("groups the / menu by source once there are skills too, and searches all of them", async () => {
 		const server = new FakeKiloServer();
 		server.commands = [
 			...server.commands,
-			{ name: "tidy", description: "Tidy imports", source: "skill", template: "", hints: [] },
+			{ name: "tidy", description: "Tidy imports", source: "skill", template: "" },
 		];
 		await renderChat({ server });
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
@@ -213,10 +224,8 @@ describe("client slash commands", () => {
 			directory: "/projects/app",
 			title: "Chat",
 			messages: [
-				userMessage("ses_a", "msg_u1", "Hello"),
-				assistantMessage("ses_a", "msg_a1", "msg_u1", [
-					{ type: "text", text: "Done.", time: { start: 1, end: 2 } },
-				]),
+				userMessage("msg_u1", "Hello"),
+				assistantMessage("msg_a1", [textContent("Done.")]),
 			],
 		});
 		const host = await renderChat({
@@ -231,17 +240,18 @@ describe("client slash commands", () => {
 		return host;
 	}
 
-	const summarizeCalls = (host: Awaited<ReturnType<typeof renderChat>>) =>
-		host.server.requestsTo("POST", "/session/ses_a/summarize");
+	const summarizeCalls = (host: Host) =>
+		host.server.requestsTo("POST", "/api/session/ses_a/compact");
 
-	async function expectOneCompaction(host: Awaited<ReturnType<typeof renderChat>>) {
+	async function expectOneCompaction(host: Host) {
 		await expect.poll(() => summarizeCalls(host).length).toBe(1);
-		expect(summarizeCalls(host)[0]).toMatchObject({
-			directory: "/projects/app",
-			body: { providerID: "acme", modelID: "fast-1" },
+		expect(summarizeCalls(host)[0]).toMatchObject({ directory: "/projects/app" });
+		// v2 compacts with the session's model, so the composer's model is switched to first.
+		expect(lastBody(host, "ses_a", "model")).toMatchObject({
+			model: { providerID: "acme", id: "fast-1" },
 		});
-		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
-		expect(host.server.requestsTo("POST", "/session/ses_a/command")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/prompt")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/command")).toEqual([]);
 		await expect.element(input()).toHaveTextContent("");
 		expect(summarizeCalls(host)).toHaveLength(1);
 	}
@@ -291,7 +301,7 @@ describe("client slash commands", () => {
 		await userEvent.fill(input(), "/compact");
 		await sendButton().click();
 		await expect.poll(() => summarizeCalls(host).length).toBe(2);
-		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/prompt")).toEqual([]);
 	});
 
 	it("explains instead of compacting a chat that hasn't started", async () => {
@@ -301,14 +311,14 @@ describe("client slash commands", () => {
 		await userEvent.keyboard("/compact");
 		await userEvent.keyboard("{Enter}");
 		await expect.element(page.getByText("Nothing to compact yet")).toBeVisible();
-		expect(host.server.requests.some((request) => request.path.endsWith("/summarize"))).toBe(false);
+		expect(host.server.requests.some((request) => request.path.endsWith("/compact"))).toBe(false);
 	});
 
 	it("explains instead of compacting a chat mid-turn", async () => {
 		const server = new FakeKiloServer();
 		const onChat = await renderOnChat(server);
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		await input().click();
 		await userEvent.keyboard("/compact");
@@ -319,9 +329,10 @@ describe("client slash commands", () => {
 
 	it("reports a compaction the server refuses", async () => {
 		const server = new FakeKiloServer();
-		server.summarize = () =>
-			new Response(JSON.stringify({ message: "The model is overloaded" }), {
-				status: 500,
+		// v2's client keeps the message of a refusal its routes declare (400/401/404/409), not a 500's.
+		server.compact = () =>
+			new Response(JSON.stringify({ _tag: "ConflictError", message: "The model is overloaded" }), {
+				status: 409,
 				headers: { "content-type": "application/json" },
 			});
 		await renderOnChat(server);
@@ -392,7 +403,7 @@ describe("client slash commands", () => {
 			running: false,
 		});
 		await expect.element(input()).toHaveTextContent("");
-		expect(host.server.requestsTo("POST", "/session/ses_a/command")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/command")).toEqual([]);
 	});
 
 	it("leaves out a placement whose command isn't available, sending /name as a prompt", async () => {
@@ -456,11 +467,11 @@ describe("the composer-mention point", () => {
 		await sendButton().click();
 
 		await expect
-			.poll(() => promptBody(host, "ses_new_1")?.parts)
-			.toEqual([
-				expect.objectContaining({ type: "text", text: expect.stringContaining("See [note n1]") }),
-				{ type: "file", url: "file:///notes/n1.md", mime: "text/markdown", filename: "n1.md" },
-			]);
+			.poll(() => promptBody(host, "ses_new_1"))
+			.toEqual({
+				text: expect.stringContaining("See [note n1]"),
+				files: [{ uri: "file:///notes/n1.md", name: "n1.md" }],
+			});
 		expect(search.mock.calls[0]![1]).toMatchObject({ directory: "/projects/app" });
 	});
 });

@@ -43,12 +43,12 @@ describe("createChatBackend", () => {
 			.filter((request) => request.directory === "/repo")
 			.map((request) => `${request.method} ${request.path}`);
 		expect(sent).toEqual([
-			"GET /mcp",
-			"GET /session/s1",
-			"GET /mcp",
-			"POST /session/s1/prompt_async",
-			"GET /mcp",
-			"POST /session/s1/prompt_async",
+			"GET /api/mcp",
+			"GET /api/session/s1",
+			"GET /api/mcp",
+			"POST /api/session/s1/prompt",
+			"GET /api/mcp",
+			"POST /api/session/s1/prompt",
 		]);
 	});
 });

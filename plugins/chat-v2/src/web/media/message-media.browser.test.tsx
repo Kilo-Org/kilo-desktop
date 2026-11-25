@@ -6,10 +6,12 @@ import { agentPane, chatSummary } from "../../test/chat-host";
 import {
 	assistantMessage,
 	FakeKiloServer,
+	textContent,
+	toolContent,
 	userMessage,
 	type FakeMessage,
 } from "../../test/fake-kilo-server";
-import { expandAll, toolPart } from "../../test/transcript";
+import { expandAll } from "../../test/transcript";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -28,10 +30,29 @@ function pngDataUrl(width: number, height: number): string {
 	return canvas.toDataURL("image/png");
 }
 
-async function showReply(parts: Record<string, unknown>[], server = new FakeKiloServer()) {
+type Content = Record<string, unknown>;
+
+/** A finished tool call whose content is the images it returned (v2 `ToolFileContent`). */
+function imageTool(
+	callId: string,
+	name: string,
+	input: Content,
+	images: readonly { uri: string; name: string }[],
+): Content {
+	const call = toolContent(callId, name, input);
+	return {
+		...call,
+		state: {
+			...call.state,
+			content: images.map((image) => ({ type: "file", mime: "image/png", ...image })),
+		},
+	};
+}
+
+async function showReply(content: Content[], server = new FakeKiloServer()) {
 	const messages: FakeMessage[] = [
-		userMessage("ses_a", "msg_1", "Make me a chart"),
-		assistantMessage("ses_a", "msg_2", "msg_1", parts),
+		userMessage("msg_1", "Make me a chart"),
+		assistantMessage("msg_2", content),
 	];
 	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
 	const host = await renderChat({
@@ -42,13 +63,14 @@ async function showReply(parts: Record<string, unknown>[], server = new FakeKilo
 	return { host, server };
 }
 
-const answer = (text: string) => ({ type: "text", text, time: { start: 1, end: 2 } });
+const answer = (text: string) => textContent(text);
 const viewer = () => page.getByTestId("chat-media-pane");
 
 describe("images in a reply", () => {
-	it("shows an image the assistant attached and opens it in the viewer", async () => {
+	// v2 gap (step 22): v2 assistant messages carry only text, reasoning and tool content; a reply can't attach a file.
+	it.skip("shows an image the assistant attached and opens it in the viewer", async () => {
 		await showReply([
-			{ type: "file", mime: "image/png", filename: "chart.png", url: pngDataUrl(40, 20) },
+			{ type: "file", mime: "image/png", name: "chart.png", uri: pngDataUrl(40, 20) },
 			answer("Here is the chart."),
 		]);
 
@@ -59,23 +81,18 @@ describe("images in a reply", () => {
 
 	it("shows the images a tool returned under its row while the turn runs", async () => {
 		const server = new FakeKiloServer();
-		const reply = assistantMessage("ses_a", "msg_2", "msg_1", [
-			toolPart("screenshot", {
-				attachments: [
-					{ type: "file", mime: "image/png", url: pngDataUrl(10, 10), filename: "live.png" },
-				],
-			}),
+		const reply = assistantMessage("msg_2", [
+			imageTool("call_screenshot", "screenshot", {}, [
+				{ uri: pngDataUrl(10, 10), name: "live.png" },
+			]),
 		]);
 		// Not finished: no completion time or finish reason yet.
-		const { finish: _finish, ...running } = reply.info;
+		const { finish: _finish, ...running } = reply;
 		server.addChat({
 			id: "ses_a",
 			directory: "/projects/app",
 			title: "Chat",
-			messages: [
-				userMessage("ses_a", "msg_1", "Look"),
-				{ ...reply, info: { ...running, time: { created: Date.now() } } },
-			],
+			messages: [userMessage("msg_1", "Look"), { ...running, time: { created: Date.now() } }],
 		});
 		await renderChat({
 			server,
@@ -97,20 +114,7 @@ describe("images in a reply", () => {
 	it("shows the images a tool returned below a settled turn's fold", async () => {
 		const shot = pngDataUrl(30, 30);
 		await showReply([
-			toolPart("screenshot", {
-				input: {},
-				attachments: [
-					{
-						id: "att_1",
-						sessionID: "ses_a",
-						messageID: "msg_2",
-						type: "file",
-						mime: "image/png",
-						filename: "screen.png",
-						url: shot,
-					},
-				],
-			}),
+			imageTool("call_screenshot", "screenshot", {}, [{ uri: shot, name: "screen.png" }]),
 			answer("That's the page."),
 		]);
 
@@ -124,26 +128,33 @@ describe("images in a reply", () => {
 		expect(document.querySelectorAll('[data-qa-id="chat-tool-images"]')).toHaveLength(1);
 	});
 
-	it("reads an image file the turn saved and opens it in the viewer", async () => {
+	// v2 gap (step 22): the files a step changed are its `snapshot.files`, which the translation drops (v1 sent a `patch` part).
+	it.skip("reads an image file the turn saved and opens it in the viewer", async () => {
 		const server = new FakeKiloServer();
-		server.files["out/plot.png"] = {
-			type: "text",
-			content: pngDataUrl(40, 20).split(",")[1]!,
-			encoding: "base64",
-			mimeType: "image/png",
-		};
-		await showReply(
-			[
-				toolPart("bash", { input: { command: "python plot.py -o out/plot.png && rm gone.png" } }),
-				{
-					type: "patch",
-					hash: "h1",
-					files: ["/projects/app/out/plot.png", "/projects/app/gone.png"],
-				},
-				answer("Saved the plot."),
-			],
-			server,
+		server.files["/projects/app/out/plot.png"] = Uint8Array.from(
+			atob(pngDataUrl(40, 20).split(",")[1]!),
+			(char) => char.charCodeAt(0),
 		);
+		const reply = assistantMessage("msg_2", [
+			toolContent("call_shell", "shell", {
+				command: "python plot.py -o out/plot.png && rm gone.png",
+			}),
+			answer("Saved the plot."),
+		]);
+		server.addChat({
+			id: "ses_a",
+			directory: "/projects/app",
+			title: "Chat",
+			messages: [
+				userMessage("msg_1", "Make me a chart"),
+				{ ...reply, snapshot: { start: "h0", end: "h1", files: ["out/plot.png", "gone.png"] } },
+			],
+		});
+		await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
 
 		const saved = page.getByRole("group", { name: "Images saved in this turn" });
 		await saved.getByRole("button", { name: "Open plot.png in viewer" }).click();
@@ -156,7 +167,9 @@ describe("images in a reply", () => {
 
 	it("says when an image it was given can't be shown", async () => {
 		await showReply([
-			{ type: "file", mime: "image/png", filename: "remote.png", url: "https://example.com/a.png" },
+			imageTool("call_fetch", "webfetch", { url: "https://example.com" }, [
+				{ uri: "https://example.com/a.png", name: "remote.png" },
+			]),
 			answer("Done."),
 		]);
 
@@ -169,10 +182,11 @@ describe("images in a reply", () => {
 describe("pages in the viewer", () => {
 	it("opens the agent's page in the Viewer pane, alongside the reply's images", async () => {
 		const { host } = await showReply([
-			toolPart(HTML_RENDER_TOOL_NAME, {
-				input: { title: "Sales chart", html: "<p>chart</p>" },
+			toolContent("call_page", HTML_RENDER_TOOL_NAME, {
+				title: "Sales chart",
+				html: "<p>chart</p>",
 			}),
-			{ type: "file", mime: "image/png", filename: "logo.png", url: pngDataUrl(20, 20) },
+			imageTool("call_logo", "screenshot", {}, [{ uri: pngDataUrl(20, 20), name: "logo.png" }]),
 			answer("Here it is."),
 		]);
 

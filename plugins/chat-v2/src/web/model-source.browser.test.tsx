@@ -13,6 +13,7 @@ afterEach(() => {
 });
 
 const LOCAL = "kilo-desktop-model-server";
+const PROMPT = "/api/session/ses_new_1/prompt";
 
 function deferred() {
 	let resolve!: () => void;
@@ -108,13 +109,11 @@ describe("the model-source point", () => {
 		await send("Hello local");
 
 		await vi.waitFor(() => expect(prepare).toHaveBeenCalledWith("qwen"), { timeout: 10_000 });
-		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(0);
+		expect(host.server.requestsTo("POST", PROMPT)).toHaveLength(0);
 		loading.resolve();
-		await vi.waitFor(
-			() =>
-				expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
-			{ timeout: 10_000 },
-		);
+		await vi.waitFor(() => expect(host.server.requestsTo("POST", PROMPT)).toHaveLength(1), {
+			timeout: 10_000,
+		});
 	});
 
 	it("sends prompts for other providers without loading anything", async () => {
@@ -127,16 +126,12 @@ describe("the model-source point", () => {
 		await page.getByRole("option", { name: /Deep Two/ }).click();
 		await send("Hello acme");
 
-		await vi.waitFor(
-			() =>
-				expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
-			{ timeout: 10_000 },
-		);
-		const [prompt] = host.server.requestsTo("POST", "/session/ses_new_1/prompt_async");
-		expect((prompt!.body as { model: unknown }).model).toEqual({
-			providerID: "acme",
-			modelID: "deep-2",
+		await vi.waitFor(() => expect(host.server.requestsTo("POST", PROMPT)).toHaveLength(1), {
+			timeout: 10_000,
 		});
+		const model = host.server.requestsTo("POST", "/api/session/ses_new_1/model");
+		// v1 sent the variant beside the model; v2 sends it inside.
+		expect(model.at(-1)?.body).toMatchObject({ model: { providerID: "acme", id: "deep-2" } });
 		expect(prepare).not.toHaveBeenCalled();
 	});
 

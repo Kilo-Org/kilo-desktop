@@ -1,7 +1,7 @@
 // A stand-in for kilo.core in main, for kilo.chat's tests: its server (a
 // FakeKiloServer's connection), chats (prompts, stops and answers reach the
-// server as kilo.core sends them; statuses and pending requests follow the
-// server's events), models and account. Run `activate` as renderShell's
+// server through the Kilo v2 routes core-v2's chat client calls; statuses and
+// pending requests follow the server's events), models and account. Run `activate` as renderShell's
 // `core` stand-in, which boots it under kilo.core's real manifest and
 // CORE_DEFINITIONS.
 import { vi } from "vitest";
@@ -55,7 +55,7 @@ const model = (
 	...patch,
 });
 
-/** The FakeKiloServer's `/provider` fixture as kilo.core lists it: Acme with two models. */
+/** kilo.core's models in tests: Acme with two models. */
 export const TEST_MODELS: ModelsState = {
 	ready: true,
 	followingAccount: false,
@@ -156,8 +156,6 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 	let account: DomainObjectProvider<typeof KiloAccount> | undefined;
 	let sdkRef: PluginSdk | undefined;
 
-	const directoryOf = (chatId: string) => chats?.state.chats[chatId]?.directory ?? "/projects/app";
-
 	/** The `kilo.core/tool` contribution key Kilo's permission name stands for. */
 	const toolKeyOf = (permission: string) =>
 		sdkRef?.extensions.list(Tool).find((tool) => toolWireName(tool.key) === permission)?.key;
@@ -166,17 +164,32 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 		return server.permissions
 			.filter((request) => request.sessionID === chatId)
 			.map((request) => {
-				const permission = String(request.permission);
+				const permission = String(request.action);
 				const toolKey = toolKeyOf(permission);
 				return {
 					id: String(request.id),
 					chatId,
 					permission,
 					...(toolKey ? { toolKey } : {}),
-					patterns: (request.patterns as string[] | undefined) ?? [],
+					patterns: (request.resources as string[] | undefined) ?? [],
 					metadata: (request.metadata as Record<string, unknown> | undefined) ?? {},
 				};
 			});
+	}
+
+	/** core-v2 switches a chat's agent and model before a prompt or command; v2 prompts carry neither. */
+	async function switchTo(chatId: string, input: Pick<PromptChatInput, "agent" | "model">) {
+		if (input.agent)
+			await server.call("POST", `/api/session/${chatId}/agent`, { agent: input.agent });
+		if (input.model) {
+			await server.call("POST", `/api/session/${chatId}/model`, {
+				model: {
+					providerID: input.model.aiProviderId,
+					id: input.model.modelId,
+					...(input.model.variant ? { variant: input.model.variant } : {}),
+				},
+			});
+		}
 	}
 
 	function write(next: ChatSummary): void {
@@ -195,7 +208,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 			const pendingPermissionIds = server.permissions
 				.filter((request) => request.sessionID === chat.id)
 				.map((request) => String(request.id));
-			const pendingQuestionIds = server.questions
+			const pendingQuestionIds = server.forms
 				.filter((request) => request.sessionID === chat.id)
 				.map((request) => String(request.id));
 			const { activity } = chat;
@@ -237,7 +250,7 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				connect: () => server.connection,
 				restart: () => undefined,
 				disposeInstance: () => undefined,
-				userConfigFile: () => ({ path: "/home/kilo/.config/kilo/kilo.json", exists: false }),
+				userConfigFile: () => ({ path: "/home/kilo/.config/kilo2/kilo2.jsonc", exists: false }),
 			},
 		});
 		const provider: DomainObjectProvider<typeof Chats> = sdk.domainObjects.provide(Chats, {
@@ -269,24 +282,18 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 					calls.fork({ id, messageId });
 					const source = provider.state.chats[id];
 					if (!source) throw new KernelError("NOT_FOUND", "The chat was not found.");
-					const forked = await server
-						.fork(id, directoryOf(id), messageId)
+					const forked = (await server
+						.call("POST", `/api/session/${id}/fork`, { before: messageId })
 						.catch((error: unknown) => {
 							throw new KernelError(
 								"UNAVAILABLE",
 								`Could not fork the chat: ${error instanceof Error ? error.message : String(error)}`,
 							);
-						});
+						})) as { id: string };
 					// kilo.core hands every fork a hidden note before returning it.
-					await server.post(`/session/${forked.id}/prompt_async`, directoryOf(id), {
-						noReply: true,
-						parts: [
-							{
-								type: "text",
-								text: "<system-reminder>\nThis session was forked from an existing session in the current repository or worktree.\n</system-reminder>",
-								synthetic: true,
-							},
-						],
+					await server.call("POST", `/api/session/${forked.id}/synthetic`, {
+						text: "<system-reminder>\nThis session was forked from an existing session in the current repository or worktree.\n</system-reminder>",
+						resume: false,
 					});
 					const stored = server.chats.get(forked.id)!;
 					const chat: ChatSummary = {
@@ -325,22 +332,36 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				},
 				prompt: async (input) => {
 					calls.prompt(input);
-					const { chatId, parts, command, model, ...rest } = input;
-					const wireModel = model
-						? {
-								model: { providerID: model.aiProviderId, modelID: model.modelId },
-								...(model.variant ? { variant: model.variant } : {}),
-							}
-						: {};
-					const path = command ? "command" : "prompt_async";
-					const body = command
-						? { command: command.name, arguments: command.arguments, ...rest, ...wireModel }
-						: { parts, ...rest, ...wireModel };
-					await server.post(`/session/${chatId}/${path}`, directoryOf(chatId), body);
+					const { chatId, parts, command } = input;
+					await switchTo(chatId, input);
+					if (command) {
+						await server.call("POST", `/api/session/${chatId}/command`, {
+							name: command.name,
+							text: command.arguments,
+						});
+						return;
+					}
+					if (input.system) {
+						await server.call("POST", `/api/session/${chatId}/synthetic`, {
+							text: `<system-reminder>\n${input.system}\n</system-reminder>`,
+							resume: false,
+						});
+					}
+					const text: string[] = [];
+					const files: { uri: string; name?: string }[] = [];
+					for (const part of parts ?? []) {
+						if (part.type === "text") text.push(part.text);
+						else if (part.type === "file")
+							files.push({ uri: part.url, ...(part.filename ? { name: part.filename } : {}) });
+					}
+					await server.call("POST", `/api/session/${chatId}/prompt`, {
+						text: text.join("\n"),
+						...(files.length > 0 ? { files } : {}),
+					});
 				},
 				abort: async (input) => {
 					calls.abort(input);
-					await server.post(`/session/${input.id}/abort`, directoryOf(input.id), {});
+					await server.call("POST", `/api/session/${input.id}/interrupt`);
 				},
 				setArchived: ({ id, archived }) => {
 					calls.setArchived({ id, archived });
@@ -352,20 +373,29 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 				permissionRequests: ({ id }) => permissionRequests(id),
 				replyPermission: async (input) => {
 					calls.replyPermission(input);
-					await server.post(`/permission/${input.permissionId}/reply`, directoryOf(input.chatId), {
-						reply: input.reply,
-						...(input.message ? { message: input.message } : {}),
-					});
+					await server.call(
+						"POST",
+						`/api/session/${input.chatId}/permission/${input.permissionId}/reply`,
+						{ decision: input.reply, ...(input.message ? { message: input.message } : {}) },
+					);
 				},
 				replyQuestion: async (input) => {
 					calls.replyQuestion(input);
-					await server.post(`/question/${input.questionId}/reply`, directoryOf(input.chatId), {
-						answers: input.answers,
-					});
+					const path = `/api/session/${input.chatId}/form/${input.questionId}`;
+					const form = (await server.call("GET", path)) as {
+						fields: { key: string; type: string }[];
+					};
+					const answer = Object.fromEntries(
+						form.fields.map((field, index) => {
+							const chosen = input.answers[index] ?? [];
+							return [field.key, field.type === "multiselect" ? chosen : (chosen[0] ?? "")];
+						}),
+					);
+					await server.call("POST", `${path}/reply`, { answer });
 				},
 				rejectQuestion: async (input) => {
 					calls.rejectQuestion(input);
-					await server.post(`/question/${input.questionId}/reject`, directoryOf(input.chatId), {});
+					await server.call("DELETE", `/api/session/${input.chatId}/form/${input.questionId}`);
 				},
 				declineSignInTools: (input) => {
 					calls.declineSignInTools(input);

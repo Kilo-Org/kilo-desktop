@@ -3,7 +3,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { chatPaneObject } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import { FakeKiloServer, nextCreated } from "../../test/fake-kilo-server";
 import { longSession } from "../../test/long-session";
 import { renderChat } from "../../test/render-chat";
 
@@ -27,7 +27,7 @@ async function openStreamingChat() {
 		id: "ses_a",
 		directory: "/projects/app",
 		title: "Long chat",
-		messages: longSession("ses_a", TURNS),
+		messages: longSession(TURNS),
 	});
 	await renderChat({
 		server,
@@ -39,37 +39,29 @@ async function openStreamingChat() {
 		.toBeInTheDocument();
 	await vi.waitFor(() => expect(server.openStreams).toBeGreaterThan(0));
 
-	server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-	const user = userMessage("ses_a", "msg_live_u", "Go on");
-	const reply = assistantMessage("ses_a", "msg_live_a", user.info.id, []);
-	const { completed: _completed, ...replyTime } = reply.info.time as {
-		created: number;
-		completed?: number;
-	};
-	server.emit("message.updated", { info: user.info });
-	for (const part of user.parts) server.emit("message.part.updated", { part });
-	server.emit("message.updated", { info: { ...reply.info, time: replyTime, finish: undefined } });
-	server.emit("message.part.updated", {
-		part: {
-			id: "part_live",
-			sessionID: "ses_a",
-			messageID: "msg_live_a",
-			type: "text",
-			text: "Streaming",
-			time: { start: replyTime.created },
-		},
+	server.startTurn("ses_a");
+	// The prompt arrives through the inbox, and the reply streams as v2 events.
+	const user = { type: "user", payload: { text: "Go on" }, delivery: "steer" };
+	server.emit("session.inbox.enqueued", { inboxID: "msg_live_u", sessionID: "ses_a", item: user });
+	server.emit("session.inbox.delivered", { sessionID: "ses_a", inboxID: "msg_live_u" });
+	const ids = { sessionID: "ses_a", assistantMessageID: "msg_live_a" };
+	server.emit("session.step.started", {
+		...ids,
+		agent: "code",
+		model: { providerID: "kilo", id: "test-model" },
+		started: nextCreated(),
 	});
+	server.emit("session.text.started", { ...ids, ordinal: 0 });
+	server.emit("session.text.delta", { ...ids, ordinal: 0, delta: "Streaming" });
 	await expect.element(page.getByText("Streaming")).toBeInTheDocument();
 
 	let delta = 0;
 	/** Streams `count` tokens a frame apart, every 20th starting a paragraph. */
 	const stream = async (count: number) => {
 		for (let index = 0; index < count; index += 1, delta += 1) {
-			server.emit("message.part.delta", {
-				sessionID: "ses_a",
-				messageID: "msg_live_a",
-				partID: "part_live",
-				field: "text",
+			server.emit("session.text.delta", {
+				...ids,
+				ordinal: 0,
 				delta: delta % 20 === 19 ? "\n\nNext paragraph" : ` word${delta}`,
 			});
 			await nextFrame();

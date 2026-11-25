@@ -7,7 +7,7 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
-import { connectionOptions, overriddenKiloWire, type KiloWire } from "./kilo-wire";
+import { connectionOptions, type KiloWire } from "./kilo-wire";
 
 export type { KiloWire } from "./kilo-wire";
 
@@ -41,7 +41,7 @@ export function createKiloV2Wire(): KiloWire {
 let v2Wire: KiloWire | undefined;
 
 /** The wire every window's clients and stream use. */
-export const kiloWire = (): KiloWire => overriddenKiloWire() ?? (v2Wire ??= createKiloV2Wire());
+export const kiloWire = (): KiloWire => (v2Wire ??= createKiloV2Wire());
 
 /**
  * The window's Kilo clients, one per server connection: the global client

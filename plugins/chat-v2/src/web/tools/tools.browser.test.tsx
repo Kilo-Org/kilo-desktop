@@ -17,18 +17,14 @@ import { agentPane, chatSummary } from "../../test/chat-host";
 import {
 	assistantMessage,
 	FakeKiloServer,
+	reasoningContent,
+	textContent,
+	toolContent,
 	userMessage,
 	type FakeMessage,
 } from "../../test/fake-kilo-server";
 import { SIGNED_IN, SIGNED_OUT, TEST_MODELS } from "../../test/chat-host";
-import {
-	button,
-	expandAll,
-	expandUntil,
-	expectPresent,
-	toolPart,
-	turnWork,
-} from "../../test/transcript";
+import { button, expandAll, expandUntil, expectPresent, turnWork } from "../../test/transcript";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -41,12 +37,25 @@ const signInRequiredToolMessage = () =>
 	`${SIGN_IN_REQUIRED_TOOL_ERROR_CODE} The user is not signed in to Kilo, so this tool did not run.`;
 const SIGN_IN_DECLINED_TOOL_MESSAGE = `${SIGN_IN_DECLINED_TOOL_ERROR_CODE} The user chose not to sign in.`;
 
-function chatWith(parts: Record<string, unknown>[], userPatch: Partial<FakeMessage["info"]> = {}) {
-	const user = userMessage("ses_a", "msg_1", QUESTION);
-	return [
-		{ ...user, info: { ...user.info, ...userPatch } },
-		assistantMessage("ses_a", "msg_2", "msg_1", parts),
-	];
+function chatWith(content: Record<string, unknown>[]): FakeMessage[] {
+	return [userMessage("msg_1", QUESTION), assistantMessage("msg_2", content)];
+}
+
+type Content = Record<string, unknown>;
+
+/** A finished v2 tool call; `error` makes it a failed one. */
+function tool(
+	name: string,
+	options: { input?: Content; output?: string; error?: string; metadata?: Content } = {},
+	callId = `call_${name}`,
+): Content {
+	return toolContent(
+		callId,
+		name,
+		options.input ?? {},
+		options.error === undefined ? (options.output ?? "") : { error: options.error },
+		options.metadata,
+	);
 }
 
 async function showChat(
@@ -87,7 +96,7 @@ function contributor(
 	};
 }
 
-const reply = (text: string) => ({ type: "text", text, time: { start: 3, end: 4 } });
+const reply = (text: string) => textContent(text);
 
 /** The code agent remembers Acme's model, so a turn sent after sign-in has a model to run with. */
 const REMEMBERED_MODEL = {
@@ -99,14 +108,14 @@ const REMEMBERED_MODEL = {
 };
 
 const promptsTo = (server: FakeKiloServer) =>
-	server.requestsTo("POST", "/session/ses_a/prompt_async");
+	server.requestsTo("POST", "/api/session/ses_a/prompt");
 
 describe("kilo.chat's tool renderers", () => {
 	it("shows a file edit's diff and counts", async () => {
 		await showChat(
 			chatWith([
-				toolPart("edit", {
-					input: { filePath: "/projects/app/login.ts", oldString: "a\n", newString: "b\nc\n" },
+				tool("edit", {
+					input: { path: "/projects/app/login.ts", oldString: "a\n", newString: "b\nc\n" },
 				}),
 				reply("Edited."),
 			]),
@@ -121,10 +130,10 @@ describe("kilo.chat's tool renderers", () => {
 	it("shows a command and its output", async () => {
 		await showChat(
 			chatWith([
-				toolPart("bash", {
+				tool("shell", {
 					input: { command: "pnpm test", description: "Run the tests" },
 					output: "12 passed",
-					metadata: { output: "12 passed", exit: 0 },
+					metadata: { exit: 0 },
 				}),
 				reply("Tests pass."),
 			]),
@@ -138,11 +147,11 @@ describe("kilo.chat's tool renderers", () => {
 	it("groups a turn's searches and web lookups", async () => {
 		await showChat(
 			chatWith([
-				toolPart("grep", { input: { pattern: "login" }, output: "Found 2 matches" }, "c1"),
-				toolPart("glob", { input: { pattern: "**/*.ts" }, output: "a.ts\nb.ts" }, "c2"),
-				toolPart("webfetch", { input: { url: "https://example.com/docs" } }, "c3"),
-				toolPart("websearch", { input: { query: "oauth" } }, "c4"),
-				toolPart("skill", { input: { name: "tdd" } }, "c5"),
+				tool("grep", { input: { pattern: "login" }, output: "Found 2 matches" }, "c1"),
+				tool("glob", { input: { pattern: "**/*.ts" }, output: "a.ts\nb.ts" }, "c2"),
+				tool("webfetch", { input: { url: "https://example.com/docs" } }, "c3"),
+				tool("websearch", { input: { query: "oauth" } }, "c4"),
+				tool("skill", { input: { id: "tdd" } }, "c5"),
 				reply("Found it."),
 			]),
 		);
@@ -155,7 +164,7 @@ describe("kilo.chat's tool renderers", () => {
 	it("lists a running turn's tasks over the composer", async () => {
 		const host = await showChat(
 			chatWith([
-				toolPart("todowrite", {
+				tool("todowrite", {
 					input: {
 						todos: [
 							{ content: "Write the tests", status: "completed" },
@@ -168,18 +177,18 @@ describe("kilo.chat's tool renderers", () => {
 		);
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
 
-		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		host.server.startTurn("ses_a");
 
 		await expect.element(page.getByText("Port the cards")).toBeInTheDocument();
-		host.server.emit("session.idle", { sessionID: "ses_a" });
+		host.server.endTurn("ses_a");
 		await expect.element(page.getByText("Port the cards")).not.toBeInTheDocument();
 	});
 
 	it("shows a delegation to a subagent", async () => {
 		await showChat(
 			chatWith([
-				toolPart("task", {
-					input: { description: "Audit the login flow", subagent_type: "explore" },
+				tool("subagent", {
+					input: { description: "Audit the login flow", agent: "explore" },
 					output: "<task_result>Looks fine</task_result>",
 				}),
 			]),
@@ -206,88 +215,83 @@ describe("every built-in renderer, opened up", () => {
 	].join("\n");
 
 	const SETTLED_PARTS = [
-		{ type: "reasoning", text: "Planning the change", time: { start: 1, end: 2 } },
-		toolPart("read", { input: { filePath: "/projects/app/src/login.ts" } }, "r1"),
-		toolPart("read", { input: { filePath: "/projects/app/src/auth.ts" } }, "r2"),
-		toolPart(
+		reasoningContent("Planning the change"),
+		tool("read", { input: { path: "/projects/app/src/login.ts" } }, "r1"),
+		tool("read", { input: { path: "/projects/app/src/auth.ts" } }, "r2"),
+		tool(
 			"grep",
 			{ input: { pattern: "login", include: "*.ts" }, output: "Found 3 matches\nsrc/login.ts:1" },
 			"g1",
 		),
-		toolPart(
+		tool(
 			"glob",
 			{ input: { pattern: "**/*.ts", path: "/projects/app" }, output: "src/a.ts\nsrc/b.ts" },
 			"g2",
 		),
-		toolPart("list", { input: { path: "/projects/app/src" }, output: "a.ts\nb.ts" }, "g3"),
-		toolPart("codebase_search", { input: { query: "where is auth" }, output: "src/auth.ts" }, "g4"),
-		toolPart(
+		tool("list", { input: { path: "/projects/app/src" }, output: "a.ts\nb.ts" }, "g3"),
+		tool("codebase_search", { input: { query: "where is auth" }, output: "src/auth.ts" }, "g4"),
+		tool(
 			"webfetch",
 			{ input: { url: "https://example.com/docs", format: "markdown" }, output: "# Docs" },
 			"w1",
 		),
-		toolPart("websearch", { input: { query: "oauth pkce" }, output: "Result: PKCE" }, "w2"),
-		toolPart("skill", { input: { name: "tdd" }, output: "Loaded" }, "s1"),
-		toolPart(
-			"bash",
+		tool("websearch", { input: { query: "oauth pkce" }, output: "Result: PKCE" }, "w2"),
+		tool("skill", { input: { id: "tdd" }, output: "Loaded" }, "s1"),
+		tool(
+			"shell",
 			{
 				input: { command: "pnpm test", description: "Run tests" },
 				output: "12 passed",
-				metadata: { output: "12 passed", exit: 0 },
+				metadata: { exit: 0 },
 			},
 			"b1",
 		),
-		toolPart("bash", { status: "error", input: { command: "make" }, error: "exit 2" }, "b2"),
-		toolPart(
+		tool("shell", { input: { command: "make" }, error: "exit 2" }, "b2"),
+		tool(
 			"edit",
 			{
 				input: {
-					filePath: "/projects/app/src/login.ts",
+					path: "/projects/app/src/login.ts",
 					oldString: "const b = 2;\n",
 					newString: "const b = 3;\nconst c = 4;\n",
 				},
 			},
 			"e1",
 		),
-		toolPart(
+		tool(
 			"write",
 			{
 				input: {
-					filePath: "/projects/app/src/new.ts",
+					path: "/projects/app/src/new.ts",
 					content: "export const x = 1;\nexport const y = 2;\n",
 				},
 			},
 			"e2",
 		),
-		toolPart("apply_patch", { input: { patchText: PATCH } }, "p1"),
-		toolPart(
+		tool("patch", { input: { patchText: PATCH } }, "p1"),
+		tool(
 			"question",
 			{ input: { questions: [{ question: "Which?", options: [] }] }, output: "Answered" },
 			"q1",
 		),
-		toolPart("github_list_issues", { output: "[]" }, "m1"),
-		toolPart(
-			"task",
+		tool("github_list_issues", { output: "[]" }, "m1"),
+		tool(
+			"subagent",
 			{
-				input: { description: "Audit login", subagent_type: "explore" },
+				input: { description: "Audit login", agent: "explore" },
 				output: "<task_result>ok</task_result>",
 				metadata: { sessionId: "ses_child" },
 			},
 			"t1",
 		),
-		toolPart(
-			"task",
+		tool(
+			"subagent",
 			{
-				status: "error",
-				input: { description: "Audit auth", subagent_type: "general" },
+				input: { description: "Audit auth", agent: "general" },
 				error: "Cancelled",
 			},
 			"t2",
 		),
-		{ type: "snapshot", snapshot: "abc" },
-		{ type: "compaction", auto: true },
-		{ type: "agent", name: "explore" },
-		{ type: "mystery" },
 		reply("All changed."),
 	];
 
@@ -302,33 +306,32 @@ describe("every built-in renderer, opened up", () => {
 	});
 
 	it("draws a running turn's work as it happens", async () => {
-		const host = await showChat([userMessage("ses_a", "msg_1", QUESTION)]);
+		const host = await showChat([userMessage("msg_1", QUESTION)]);
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
-		const live = assistantMessage("ses_a", "msg_2", "msg_1", []);
-		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		host.server.emit("message.updated", {
-			info: { ...live.info, time: { created: Date.now() }, finish: undefined },
+		const ids = { sessionID: "ses_a", assistantMessageID: "msg_2" };
+		host.server.startTurn("ses_a");
+		host.server.emit("session.step.started", {
+			...ids,
+			agent: "code",
+			model: { providerID: "kilo", id: "test-model" },
+			started: Date.now(),
 		});
-		const running = (part: Record<string, unknown>, id: string) => ({
-			...part,
-			id,
-			sessionID: "ses_a",
-			messageID: "msg_2",
-			state: { ...(part.state as object), status: "running", time: { start: Date.now() } },
+		host.server.emit("session.reasoning.started", { ...ids, ordinal: 0 });
+		host.server.emit("session.reasoning.delta", {
+			...ids,
+			ordinal: 0,
+			delta: "Planning the change",
 		});
-		for (const [index, part] of SETTLED_PARTS.slice(1, -1).entries()) {
-			host.server.emit("message.part.updated", { part: running(part, `part_${index}`) });
+		for (const call of SETTLED_PARTS.slice(1, -1)) {
+			const { id, name, state } = call as { id: string; name: string; state: { input: Content } };
+			host.server.emit("session.tool.input.started", { ...ids, id, name });
+			host.server.emit("session.tool.called", { ...ids, id, input: state.input, executed: true });
 		}
-		host.server.emit("message.part.updated", {
-			part: {
-				id: "part_retry",
-				sessionID: "ses_a",
-				messageID: "msg_2",
-				type: "retry",
-				attempt: 2,
-				error: { name: "APIError", data: { message: "Overloaded" } },
-				time: { created: Date.now() },
-			},
+		host.server.emit("session.retry.scheduled", {
+			sessionID: "ses_a",
+			attempt: 2,
+			error: { type: "APIError", message: "Overloaded" },
+			at: Date.now() + 60_000,
 		});
 
 		await expect.element(page.getByRole("status").first()).toBeInTheDocument();
@@ -340,10 +343,10 @@ describe("every built-in renderer, opened up", () => {
 describe("the agent's HTML pages", () => {
 	it.each(["desktop_chat_html_render", "desktop_kilo_ui_html_render"])(
 		"shows a %s page above the reply, outside the fold",
-		async (tool) => {
+		async (name) => {
 			await showChat(
 				chatWith([
-					toolPart(tool, { input: { title: "Sales chart", html: "<p>chart</p>" } }),
+					tool(name, { input: { title: "Sales chart", html: "<p>chart</p>" } }),
 					reply("Sales doubled."),
 				]),
 			);
@@ -389,7 +392,7 @@ describe("the tool-renderer point", () => {
 	it("lets a plugin draw its own tool, outside the fold when standalone", async () => {
 		await showChat(
 			chatWith([
-				toolPart(toolWireName("acme.tools/ping"), { input: { host: "example.com" } }),
+				tool(toolWireName("acme.tools/ping"), { input: { host: "example.com" } }),
 				reply("Reachable."),
 			]),
 			{ plugins: [plugin] },
@@ -401,10 +404,10 @@ describe("the tool-renderer point", () => {
 	it("hands an override kilo.chat's renderer to wrap", async () => {
 		await showChat(
 			chatWith([
-				toolPart("bash", {
+				tool("shell", {
 					input: { command: "make", description: "Build" },
 					output: "built",
-					metadata: { output: "built", exit: 0 },
+					metadata: { exit: 0 },
 				}),
 				reply("Built."),
 			]),
@@ -421,7 +424,7 @@ describe("the mcp-app point on Kilo v2", () => {
 	it("hides a contributed widget: its tool's calls render as plain calls", async () => {
 		const loadHtml = vi.fn(() => "<!doctype html><p>widget</p>");
 		await showChat(
-			chatWith([toolPart(toolWireName("acme.tools/list"), { output: "[]" }), reply("Listed.")]),
+			chatWith([tool(toolWireName("acme.tools/list"), { output: "[]" }), reply("Listed.")]),
 			{
 				plugins: [
 					contributor(
@@ -464,11 +467,7 @@ describe("tools that need sign-in", () => {
 		},
 	);
 	const refused = (callID: string) =>
-		toolPart(
-			toolWireName("acme.tools/secret"),
-			{ status: "error", error: signInRequiredToolMessage() },
-			callID,
-		);
+		tool(toolWireName("acme.tools/secret"), { error: signInRequiredToolMessage() }, callID);
 
 	it("asks a signed-out person to sign in where the call was refused", async () => {
 		const host = await showChat(chatWith([refused("call_secret_1")]), {
@@ -560,9 +559,9 @@ describe("tools that need sign-in", () => {
 	it("says the tools are off for a call refused because the person already declined", async () => {
 		await showChat(
 			chatWith([
-				toolPart(
+				tool(
 					toolWireName("acme.tools/secret"),
-					{ status: "error", error: SIGN_IN_DECLINED_TOOL_MESSAGE },
+					{ error: SIGN_IN_DECLINED_TOOL_MESSAGE },
 					"call_secret_after_decline",
 				),
 			]),
@@ -651,9 +650,7 @@ describe("tools that need sign-in", () => {
 			title: "Chat",
 			agent: "code",
 			model: { providerID: "kilo", id: "kilo-auto/free" },
-			messages: chatWith([refused("call_secret_race")], {
-				model: { providerID: "kilo", modelID: "kilo-auto/free" },
-			}),
+			messages: chatWith([refused("call_secret_race")]),
 		});
 		const host = await renderChat({
 			server,
@@ -679,16 +676,16 @@ describe("tools that need sign-in", () => {
 
 		models.setState(kiloModels("kilo-auto/balanced"));
 
-		await expect
-			.poll(() => promptsTo(server)[0]?.body)
-			.toMatchObject({ model: { providerID: "kilo", modelID: "kilo-auto/balanced" } });
+		await expect.poll(() => promptsTo(server).length).toBe(1);
+		expect(server.requestsTo("POST", "/api/session/ses_a/model").at(-1)?.body).toEqual({
+			model: { providerID: "kilo", id: "kilo-auto/balanced" },
+		});
 	});
 
 	it("leaves other tools' errors that mention the marker alone", async () => {
 		await showChat(
 			chatWith([
-				toolPart("bash", {
-					status: "error",
+				tool("shell", {
 					input: { command: "grep" },
 					error: signInRequiredToolMessage(),
 				}),

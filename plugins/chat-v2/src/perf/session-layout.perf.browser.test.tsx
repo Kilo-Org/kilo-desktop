@@ -96,7 +96,7 @@ async function renderLayout() {
 				id: chatId,
 				directory: "/projects/app",
 				title: chatId,
-				messages: longSession(chatId, TURNS),
+				messages: longSession(TURNS),
 			});
 		}
 	}

@@ -11,6 +11,7 @@ import { agentPane, chatSummary, workSession } from "../../test/chat-host";
 import {
 	assistantMessage,
 	FakeKiloServer,
+	textContent,
 	userMessage,
 	type RecordedRequest,
 } from "../../test/fake-kilo-server";
@@ -24,14 +25,12 @@ const input = () => page.getByTestId("kilo-composer-input");
 
 function serverWithChat(cost = 0) {
 	const server = new FakeKiloServer();
-	const prompt = userMessage("ses_a", "msg_u1", "Hello");
-	const answer = assistantMessage("ses_a", "msg_a1", "msg_u1", [
-		{ type: "text", text: "Done.", time: { start: 1, end: 2 } },
-	]);
-	Object.assign(answer.info, {
+	const prompt = userMessage("msg_u1", "Hello");
+	const answer = {
+		...assistantMessage("msg_a1", [textContent("Done.")]),
 		cost,
 		tokens: { input: 1_200, output: 300, reasoning: 0, cache: { read: 0, write: 0 } },
-	});
+	};
 	server.addChat({
 		id: "ses_a",
 		directory: "/projects/app",
@@ -44,17 +43,13 @@ function serverWithChat(cost = 0) {
 async function promptsTo(server: FakeKiloServer, chatId: string): Promise<RecordedRequest[]> {
 	let prompts: RecordedRequest[] = [];
 	await vi.waitFor(() => {
-		prompts = server.requestsTo("POST", `/session/${chatId}/prompt_async`);
+		prompts = server.requestsTo("POST", `/api/session/${chatId}/prompt`);
 		expect(prompts.length).toBeGreaterThan(0);
 	});
 	return prompts;
 }
 
-const textOf = (prompt: RecordedRequest) =>
-	(prompt.body as { parts: { type: string; text?: string }[] }).parts
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("");
+const textOf = (prompt: RecordedRequest) => (prompt.body as { text: string }).text;
 
 describe("attachments", () => {
 	it("adds the files picked from the attach button", async () => {
@@ -99,9 +94,9 @@ describe("the / menu", () => {
 		await expect
 			.element(page.getByLabelText("command: review", { exact: false }))
 			.toBeInTheDocument();
-		expect(host.server.requestsTo("GET", "/command").map((request) => request.directory)).toContain(
-			"/projects/app",
-		);
+		expect(
+			host.server.requestsTo("GET", "/api/command").map((request) => request.directory),
+		).toContain("/projects/app");
 	});
 });
 
@@ -115,7 +110,7 @@ describe("Enter while the agent works", () => {
 		});
 		await expect.element(page.getByText("Done.")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 
 		await input().click();
@@ -124,13 +119,13 @@ describe("Enter while the agent works", () => {
 		await expect
 			.poll(() => page.getByTestId("kilo-composer-queue-toggle").element().textContent)
 			.toContain("1 queued");
-		expect(server.requestsTo("POST", "/session/ses_a/prompt_async")).toHaveLength(0);
+		expect(server.requestsTo("POST", "/api/session/ses_a/prompt")).toHaveLength(0);
 
 		await userEvent.keyboard("{Enter}");
 		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/abort")).toHaveLength(1),
+			expect(server.requestsTo("POST", "/api/session/ses_a/interrupt")).toHaveLength(1),
 		);
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.endTurn("ses_a", "interrupted");
 		const [prompt] = await promptsTo(server, "ses_a");
 		expect(textOf(prompt!)).toBe("Queued by Enter");
 	});
@@ -170,7 +165,7 @@ describe("the footer", () => {
 			id: "ses_a",
 			directory: "/worktrees/fix-login",
 			title: "Fix login",
-			messages: [userMessage("ses_a", "msg_u1", "Hello")],
+			messages: [userMessage("msg_u1", "Hello")],
 		});
 		await renderChat({
 			server,

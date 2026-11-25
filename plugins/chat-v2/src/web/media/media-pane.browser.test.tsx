@@ -14,7 +14,12 @@ import {
 	type MediaItem,
 } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import {
+	assistantMessage,
+	FakeKiloServer,
+	textContent,
+	userMessage,
+} from "../../test/fake-kilo-server";
 import { renderInKernel } from "../../test/kernel-harness";
 import { renderChat } from "../../test/render-chat";
 import { MediaPane } from "./MediaPane";
@@ -45,13 +50,11 @@ async function showDiagrams() {
 		directory: "/projects/app",
 		title: "Chat",
 		messages: [
-			userMessage("ses_a", "msg_1", "Draw"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n",
-					time: { start: 1, end: 2 },
-				},
+			userMessage("msg_1", "Draw"),
+			assistantMessage("msg_2", [
+				textContent(
+					"```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n",
+				),
 			]),
 		],
 	});

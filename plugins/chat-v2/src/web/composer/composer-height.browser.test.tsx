@@ -3,7 +3,12 @@ import { page, userEvent } from "vitest/browser";
 
 import { chatPaneObject } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import {
+	assistantMessage,
+	FakeKiloServer,
+	textContent,
+	userMessage,
+} from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -34,12 +39,7 @@ async function showChat() {
 		id: "ses_a",
 		directory: "/projects/app",
 		title: "Chat",
-		messages: [
-			userMessage("ses_a", "msg_1", "Hello"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "text", text: "Hi there", time: { start: 1, end: 2 } },
-			]),
-		],
+		messages: [userMessage("msg_1", "Hello"), assistantMessage("msg_2", [textContent("Hi there")])],
 	});
 	const host = await renderChat({
 		server,
@@ -160,7 +160,7 @@ describe("the composer's resize edge", () => {
 		await page.getByTestId("kilo-composer-send").click();
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_a/prompt_async").length)
+			.poll(() => host.server.requestsTo("POST", "/api/session/ses_a/prompt").length)
 			.toBe(1);
 		await expect.element(handle()).not.toBeInTheDocument();
 		await expect.poll(() => inputBox().offsetHeight).toBeLessThan(128);

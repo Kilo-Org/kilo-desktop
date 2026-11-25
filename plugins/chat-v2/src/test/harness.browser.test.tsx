@@ -75,12 +75,11 @@ describe("renderAgentPane", () => {
 			model: { aiProviderId: "acme", modelId: "deep-2", variant: "high" },
 		});
 
-		expect(
-			host.server.requestsTo("POST", `/session/${chat.id}/prompt_async`)[0]?.body,
-		).toMatchObject({
-			parts: [{ type: "text", text: "Hello" }],
-			model: { providerID: "acme", modelID: "deep-2" },
-			variant: "high",
+		expect(host.server.requestsTo("POST", `/api/session/${chat.id}/model`)[0]?.body).toEqual({
+			model: { providerID: "acme", id: "deep-2", variant: "high" },
+		});
+		expect(host.server.requestsTo("POST", `/api/session/${chat.id}/prompt`)[0]?.body).toEqual({
+			text: "Hello",
 		});
 		expect(host.core.calls.create).toHaveBeenCalledWith(
 			expect.objectContaining({ workSessionId: "wses_1", workspaceId: "w-app" }),
@@ -91,7 +90,7 @@ describe("renderAgentPane", () => {
 		const host = await renderAgentPane({ chatWeb: probeWeb, chats: [chatSummary("ses_a")] });
 		const chats = host.host.renderer.kernelSdk.domainObjects.get(Chats)!;
 
-		host.server.askPermission("ses_a", { id: "per_1", permission: "bash" });
+		host.server.askPermission("ses_a", { id: "per_1", action: "shell" });
 		await vi.waitFor(() =>
 			expect(chats.getState().chats.ses_a?.activity.pendingPermissionIds).toEqual(["per_1"]),
 		);

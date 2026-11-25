@@ -9,7 +9,12 @@ import { testWebEntry } from "@kilo-desktop/plugin-work-sessions/testing";
 
 import { chatPaneObject } from "../../contracts";
 import { agentPane, chatSummary, workSession } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import {
+	assistantMessage,
+	FakeKiloServer,
+	textContent,
+	userMessage,
+} from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -17,14 +22,13 @@ afterEach(() => {
 });
 
 function chatWith(server: FakeKiloServer, id: string, answer: string) {
-	const user = userMessage(id, `${id}_u`, "Question");
 	server.addChat({
 		id,
 		directory: "/projects/app",
 		title: id,
 		messages: [
-			user,
-			assistantMessage(id, `${id}_a`, user.info.id, [{ type: "text", text: answer }]),
+			userMessage(`${id}_u`, "Question"),
+			assistantMessage(`${id}_a`, [textContent(answer)]),
 		],
 	});
 }
@@ -54,7 +58,7 @@ async function renderTwoSessions() {
 		.getByTestId("session-list-item")
 		.filter({ hasText: "Second" })
 		.getByTestId("session-list-item-trigger");
-	const historyReads = () => server.requestsTo("GET", "/session/ses_b/message").length;
+	const historyReads = () => server.requestsTo("GET", "/api/session/ses_b/message").length;
 	return { host, server, sessionRow, historyReads };
 }
 
@@ -77,7 +81,7 @@ describe("prefetching a work session's chats", () => {
 
 		await sessionRow.hover();
 		await vi.waitFor(() => expect(historyReads()).toBe(1));
-		server.emit("session.status", { sessionID: "ses_b", status: { type: "busy" } });
+		server.startTurn("ses_b");
 		await host.host.renderer.kernelSdk.domainObjects
 			.get(WorkSessionsWindow)!
 			.methods.openWorkSession({ workSessionId: "wses_b" });

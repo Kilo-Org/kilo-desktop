@@ -4,8 +4,12 @@ import { page } from "vitest/browser";
 
 import { chatPaneObject, SUBAGENT_PANE_KIND, subagentPaneId } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
-import { toolPart } from "../../test/transcript";
+import {
+	assistantMessage,
+	FakeKiloServer,
+	toolContent,
+	userMessage,
+} from "../../test/fake-kilo-server";
 import { longSession } from "../../test/long-session";
 import { renderChat } from "../../test/render-chat";
 import {
@@ -26,7 +30,7 @@ async function openLongChat() {
 		id: "ses_a",
 		directory: "/projects/app",
 		title: "Long chat",
-		messages: longSession("ses_a", TURNS),
+		messages: longSession(TURNS),
 	});
 	const host = await renderChat({
 		server,
@@ -74,17 +78,14 @@ describe("windowed transcript", () => {
 			directory: "/projects/app",
 			title: "Chat",
 			messages: [
-				userMessage("ses_a", "msg_1", "Audit login"),
-				assistantMessage("ses_a", "msg_2", "msg_1", [
-					toolPart(
-						"task",
-						{
-							status: "completed",
-							input: { description: "Audit login", subagent_type: "explore" },
-							output: "<task_result>Done</task_result>",
-							metadata: { sessionId: "ses_c1" },
-						},
+				userMessage("msg_1", "Audit login"),
+				assistantMessage("msg_2", [
+					toolContent(
 						"call_t1",
+						"subagent",
+						{ description: "Audit login", agent: "explore" },
+						"<task_result>Done</task_result>",
+						{ sessionId: "ses_c1" },
 					),
 				]),
 			],
@@ -93,7 +94,7 @@ describe("windowed transcript", () => {
 			id: "ses_c1",
 			directory: "/projects/app",
 			title: "Child",
-			messages: longSession("ses_c1", TURNS),
+			messages: longSession(TURNS),
 		});
 		await renderChat({
 			server,

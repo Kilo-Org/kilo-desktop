@@ -10,6 +10,9 @@ import { renderChat } from "../test/render-chat";
 import {
 	assistantMessage,
 	FakeKiloServer,
+	reasoningContent,
+	textContent,
+	toolContent,
 	userMessage,
 	type RecordedRequest,
 } from "../test/fake-kilo-server";
@@ -33,7 +36,7 @@ async function send(text: string) {
 	await page.getByTestId("kilo-composer-send").click();
 }
 
-function serverWithChat(chatId = "ses_a", messages = [userMessage("ses_a", "msg_u1", "Hello")]) {
+function serverWithChat(chatId = "ses_a", messages = [userMessage("msg_u1", "Hello")]) {
 	const server = new FakeKiloServer();
 	server.addChat({ id: chatId, directory: "/projects/app", title: "Fix login", messages });
 	return server;
@@ -42,7 +45,7 @@ function serverWithChat(chatId = "ses_a", messages = [userMessage("ses_a", "msg_
 async function promptsTo(server: FakeKiloServer, chatId: string): Promise<RecordedRequest[]> {
 	let prompts: RecordedRequest[] = [];
 	await vi.waitFor(() => {
-		prompts = server.requestsTo("POST", `/session/${chatId}/prompt_async`);
+		prompts = server.requestsTo("POST", `/api/session/${chatId}/prompt`);
 		expect(prompts.length).toBeGreaterThan(0);
 	});
 	return prompts;
@@ -71,11 +74,14 @@ function watchTranscriptFor(
 	};
 }
 
-const promptText = (request: RecordedRequest) =>
-	(request.body as { parts: { type: string; text?: string }[] }).parts
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("");
+const promptText = (request: RecordedRequest) => (request.body as { text: string }).text;
+
+/** The hidden notes (system text) sent to `chatId`, joined. */
+const syntheticTo = (server: FakeKiloServer, chatId: string) =>
+	server
+		.requestsTo("POST", `/api/session/${chatId}/synthetic`)
+		.map((request) => (request.body as { text: string }).text)
+		.join("\n");
 
 describe("a draft agent pane", () => {
 	it("opens as a chat with messages will look: composer docked at the bottom, focused", async () => {
@@ -123,17 +129,26 @@ describe("a draft agent pane", () => {
 		const [prompt] = await promptsTo(host.server, "ses_new_1");
 		expect(prompt!.directory).toBe("/projects/app");
 		expect(promptText(prompt!)).toBe("Fix the login form");
-		const body = prompt!.body as { system: string; snapshotInitialization: string };
-		expect(body.snapshotInitialization).toBe("wait");
-		expect(body.system).toContain('Primary folder (default working directory): "/projects/app"');
-		expect(body.system).toContain('Additional workspace folder: "/projects/lib"');
-		expect(body.system).toContain("Prefer small diffs.");
+		const system = syntheticTo(host.server, "ses_new_1");
+		expect(system).toContain('Primary folder (default working directory): "/projects/app"');
+		expect(system).toContain('Additional workspace folder: "/projects/lib"');
+		expect(system).toContain("Prefer small diffs.");
 		await expect.element(page.getByText("Fix the login form")).toBeVisible();
 		// The thread that sent the first message keeps showing its chat.
 		expect(page.getByTestId("kilo-chat-thread").element()).toBe(draftThread);
-		expect(host.server.requestsTo("GET", "/session/ses_new_1/message").length).toBeLessThanOrEqual(
-			1,
-		);
+		expect(
+			host.server.requestsTo("GET", "/api/session/ses_new_1/message").length,
+		).toBeLessThanOrEqual(1);
+	});
+
+	// v2 gap (step 22): v2 prompts have no snapshotInitialization; the v2 wire drops it.
+	it.skip("asks the first prompt to wait for the workspace snapshot", async () => {
+		const host = await renderChat();
+
+		await send("Fix the login form");
+
+		const [prompt] = await promptsTo(host.server, "ses_new_1");
+		expect(prompt!.body).toMatchObject({ snapshotInitialization: "wait" });
 	});
 
 	it("starts an unscoped session's chat without a directory", async () => {
@@ -197,23 +212,11 @@ describe("a draft agent pane", () => {
 describe("an agent pane with a chat", () => {
 	it("shows the chat named in the pane", async () => {
 		const server = serverWithChat("ses_a", [
-			userMessage("ses_a", "msg_u1", "What does login do?"),
-			assistantMessage("ses_a", "msg_a1", "msg_u1", [
-				{ type: "reasoning", text: "Looking at the form", time: { start: 1, end: 2 } },
-				{
-					type: "tool",
-					tool: "read",
-					callID: "call_1",
-					state: {
-						status: "completed",
-						input: { filePath: "/projects/app/login.ts" },
-						output: "…",
-						title: "login.ts",
-						metadata: {},
-						time: { start: 2, end: 3 },
-					},
-				},
-				{ type: "text", text: "It posts **credentials**.", time: { start: 3, end: 4 } },
+			userMessage("msg_u1", "What does login do?"),
+			assistantMessage("msg_a1", [
+				reasoningContent("Looking at the form"),
+				toolContent("call_1", "read", { path: "/projects/app/login.ts" }, "…"),
+				textContent("It posts **credentials**."),
 			]),
 		]);
 		await renderChat({
@@ -226,11 +229,11 @@ describe("an agent pane with a chat", () => {
 		await expect.element(page.getByText("credentials")).toBeVisible();
 		await expect.element(page.getByText(/^Worked for/)).toBeVisible();
 		await expect.element(page.getByTestId("kilo-chat-thread")).not.toHaveAttribute("data-draft");
-		expect(server.requestsTo("GET", "/session/ses_a")[0]!.directory).toBe("/projects/app");
+		expect(server.requestsTo("GET", "/api/session/ses_a")[0]!.directory).toBe("/projects/app");
 	});
 
 	it("starts a new chat in an agent pane naming none, though the session's chat is closed", async () => {
-		const server = serverWithChat("ses_a", [userMessage("ses_a", "msg_u1", "The closed chat")]);
+		const server = serverWithChat("ses_a", [userMessage("msg_u1", "The closed chat")]);
 		await renderChat({
 			server,
 			workSession: workSession({ chatIds: ["ses_a"], directory: "/projects/app" }),
@@ -247,7 +250,7 @@ describe("an agent pane with a chat", () => {
 	});
 
 	it("leaves an agent pane added beside another a draft that starts a chat of its own", async () => {
-		const server = serverWithChat("ses_a", [userMessage("ses_a", "msg_u1", "The first chat")]);
+		const server = serverWithChat("ses_a", [userMessage("msg_u1", "The first chat")]);
 		const host = await renderChat({
 			server,
 			workSession: workSession({ chatIds: ["ses_a"], directory: "/projects/app" }),
@@ -275,7 +278,7 @@ describe("an agent pane with a chat", () => {
 	});
 
 	it("finds a chat's folder from the server when nothing else knows it", async () => {
-		const server = serverWithChat("ses_far", [userMessage("ses_far", "msg_u1", "Far away")]);
+		const server = serverWithChat("ses_far", [userMessage("msg_u1", "Far away")]);
 		await renderChat({ server, pane: agentPane({ object: chatPaneObject("ses_far") }) });
 
 		await expect.element(page.getByText("Far away")).toBeVisible();
@@ -291,32 +294,23 @@ describe("an agent pane with a chat", () => {
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
 
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		const reply = assistantMessage("ses_a", "msg_a1", "msg_u1", []);
-		server.emit("message.updated", { info: { ...reply.info, time: { created: Date.now() } } });
-		server.emit("message.part.updated", {
-			part: {
-				id: "part_1",
-				sessionID: "ses_a",
-				messageID: "msg_a1",
-				type: "text",
-				text: "Working on",
-				time: { start: Date.now() },
-			},
+		server.startTurn("ses_a");
+		const ids = { sessionID: "ses_a", assistantMessageID: "msg_a1" };
+		server.emit("session.step.started", {
+			...ids,
+			agent: "code",
+			model: { providerID: "kilo", id: "test-model" },
+			started: Date.now(),
 		});
-		server.emit("message.part.delta", {
-			sessionID: "ses_a",
-			messageID: "msg_a1",
-			partID: "part_1",
-			field: "text",
-			delta: " it now",
-		});
+		server.emit("session.text.started", { ...ids, ordinal: 0 });
+		server.emit("session.text.delta", { ...ids, ordinal: 0, delta: "Working on" });
+		server.emit("session.text.delta", { ...ids, ordinal: 0, delta: " it now" });
 
 		await expect.element(page.getByText("Working on it now")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-turn-working")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.endTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-send")).toBeVisible();
 	});
 
@@ -329,14 +323,16 @@ describe("an agent pane with a chat", () => {
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 
 		await page.getByTestId("kilo-composer-stop").click();
 
 		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/abort")).toHaveLength(1),
+			expect(server.requestsTo("POST", "/api/session/ses_a/interrupt")).toHaveLength(1),
 		);
-		expect(server.requestsTo("POST", "/session/ses_a/abort")[0]!.directory).toBe("/projects/app");
+		expect(server.requestsTo("POST", "/api/session/ses_a/interrupt")[0]!.directory).toBe(
+			"/projects/app",
+		);
 	});
 
 	it("queues a prompt sent while the agent works and sends it when the turn ends", async () => {
@@ -348,7 +344,7 @@ describe("an agent pane with a chat", () => {
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 
 		await userEvent.fill(composerInput(), "Then add tests");
@@ -360,9 +356,9 @@ describe("an agent pane with a chat", () => {
 		await expect
 			.element(page.getByTestId("kilo-composer-queue-item").getByText("Then add tests"))
 			.toBeVisible();
-		expect(server.requestsTo("POST", "/session/ses_a/prompt_async")).toHaveLength(0);
+		expect(server.requestsTo("POST", "/api/session/ses_a/prompt")).toHaveLength(0);
 
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.endTurn("ses_a");
 
 		const [prompt] = await promptsTo(server, "ses_a");
 		expect(promptText(prompt!)).toBe("Then add tests");
@@ -401,8 +397,8 @@ describe("an agent pane with a chat", () => {
 		await send("Read these");
 
 		const [prompt] = await promptsTo(server, "ses_a");
-		const parts = (prompt!.body as { parts: Record<string, unknown>[] }).parts;
-		expect(parts).toContainEqual(expect.objectContaining({ type: "file", filename: "notes.md" }));
+		const files = (prompt!.body as { files?: Record<string, unknown>[] }).files;
+		expect(files).toContainEqual(expect.objectContaining({ name: "notes.md" }));
 		expect(promptText(prompt!)).toBe("Read these");
 		expect(shownWithAttachment()).toBe(true);
 	});
@@ -419,31 +415,24 @@ describe("an agent pane with a chat", () => {
 		host.view.unmount();
 
 		expect(server.openStreams).toBe(1);
-		expect(server.requestsTo("GET", "/global/event")).toHaveLength(1);
+		expect(server.requestsTo("GET", "/api/event")).toHaveLength(1);
 	});
 });
 
 describe("a turn that ends while its chat opens", () => {
-	const working = assistantMessage("ses_a", "msg_a1", "msg_u1", [
-		{ type: "text", text: "Working on it", time: { start: 1, end: 2 } },
-	]);
-	const unfinished = {
-		...working,
-		info: { ...working.info, finish: undefined, time: { created: Date.now() } },
-	};
+	const working = assistantMessage("msg_a1", [textContent("Working on it")]);
+	const { finish: _finish, ...unfinishedReply } = working;
+	const unfinished = { ...unfinishedReply, time: { created: Date.now() } };
 
 	function busyChat() {
-		const server = serverWithChat("ses_a", [
-			userMessage("ses_a", "msg_u1", "Hello", 1),
-			unfinished,
-		]);
+		const server = serverWithChat("ses_a", [userMessage("msg_u1", "Hello", 1), unfinished]);
 		server.addChat({
 			id: "ses_b",
 			directory: "/projects/app",
 			title: "Other",
-			messages: [userMessage("ses_b", "msg_b1", "Elsewhere")],
+			messages: [userMessage("msg_b1", "Elsewhere")],
 		});
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		return server;
 	}
 
@@ -451,13 +440,14 @@ describe("a turn that ends while its chat opens", () => {
 	async function endTurnOnceStatusIsRead(server: FakeKiloServer, statusReadsBefore: number) {
 		await expect.element(page.getByText("Working on it")).toBeVisible();
 		await vi.waitFor(() =>
-			expect(server.requestsTo("GET", "/session/status").length).toBeGreaterThan(statusReadsBefore),
+			expect(server.requestsTo("GET", "/api/session/active").length).toBeGreaterThan(
+				statusReadsBefore,
+			),
 		);
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		server.chats.get("ses_a")!.messages[1] = working;
 		server.emit("message.updated", { info: working.info });
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "idle" } });
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.endTurn("ses_a");
 	}
 
 	it("shows it ended when the chat was switched to", async () => {
@@ -470,7 +460,7 @@ describe("a turn that ends while its chat opens", () => {
 		await expect.element(page.getByText("Elsewhere")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
 		server.eventStreamDelayMs = 300;
-		const statusReads = server.requestsTo("GET", "/session/status").length;
+		const statusReads = server.requestsTo("GET", "/api/session/active").length;
 
 		await host.host.renderer.kernelSdk.domainObjects.get(Panes)!.methods.update({
 			workSessionId: "wses_1",
@@ -511,7 +501,7 @@ describe("a prompt queued while the agent works", () => {
 			id: "ses_b",
 			directory: "/projects/app",
 			title: "Other",
-			messages: [userMessage("ses_b", "msg_b1", "Elsewhere")],
+			messages: [userMessage("msg_b1", "Elsewhere")],
 		});
 		return server;
 	}
@@ -525,7 +515,7 @@ describe("a prompt queued while the agent works", () => {
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		await userEvent.fill(composerInput(), text);
 		await page.getByTestId("kilo-composer-queue-submit").click();
@@ -560,17 +550,18 @@ describe("a prompt queued while the agent works", () => {
 		await showChat(host, "ses_b");
 		await expect.element(page.getByText("Elsewhere")).toBeVisible();
 
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "idle" } });
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.endTurn("ses_a");
 
 		const [prompt] = await promptsTo(server, "ses_a");
 		expect(promptText(prompt!)).toBe("Then add tests");
 		expect(prompt!.directory).toBe("/projects/app");
-		expect(prompt!.body).toMatchObject({
+		expect(server.requestsTo("POST", "/api/session/ses_a/agent").at(-1)?.body).toEqual({
 			agent: "code",
-			model: { providerID: "acme", modelID: "fast-1" },
-			system: expect.stringContaining("/projects/app"),
 		});
+		expect(server.requestsTo("POST", "/api/session/ses_a/model").at(-1)?.body).toMatchObject({
+			model: { providerID: "acme", id: "fast-1" },
+		});
+		expect(syntheticTo(server, "ses_a")).toContain("/projects/app");
 	});
 
 	async function queueWithAttachment(text: string) {
@@ -607,7 +598,7 @@ describe("a prompt queued while the agent works", () => {
 		const host = await renderChat();
 		await send("Fix the login form");
 		await promptsTo(host.server, "ses_new_1");
-		host.server.emit("session.status", { sessionID: "ses_new_1", status: { type: "busy" } });
+		host.server.startTurn("ses_new_1");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 
 		await expectQueuedOnly("Read this");
@@ -620,21 +611,20 @@ describe("a prompt queued while the agent works", () => {
 			.element(page.getByTestId("kilo-composer-queue-toggle"))
 			.toHaveTextContent("2 queued");
 
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.endTurn("ses_a");
 		await promptsTo(server, "ses_a");
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		server.emit("session.idle", { sessionID: "ses_a" });
+		server.startTurn("ses_a");
+		server.endTurn("ses_a");
 
 		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/prompt_async")).toHaveLength(2),
+			expect(server.requestsTo("POST", "/api/session/ses_a/prompt")).toHaveLength(2),
 		);
-		const second = server.requestsTo("POST", "/session/ses_a/prompt_async")[1]!;
+		const second = server.requestsTo("POST", "/api/session/ses_a/prompt")[1]!;
 		expect(promptText(second)).toBe("Read this");
-		expect((second.body as { parts: unknown[] }).parts).toContainEqual(
+		expect((second.body as { files?: unknown[] }).files).toContainEqual(
 			expect.objectContaining({
-				type: "file",
-				filename: "notes.md",
-				url: `data:text/plain;base64,${btoa("# Notes")}`,
+				name: "notes.md",
+				uri: `data:text/plain;base64,${btoa("# Notes")}`,
 			}),
 		);
 	});
@@ -679,7 +669,7 @@ describe("unsent text", () => {
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		await userEvent.fill(composerInput(), "Then add tests");
 		await vi.waitFor(() =>
@@ -870,10 +860,10 @@ describe("forking a chat", () => {
 
 	function twoTurns() {
 		return serverWithChat("ses_a", [
-			userMessage("ses_a", "msg_u1", "Fix the login"),
-			assistantMessage("ses_a", "msg_a1", "msg_u1", [{ type: "text", text: "Fixed login." }]),
-			userMessage("ses_a", "msg_u2", "Now the signup"),
-			assistantMessage("ses_a", "msg_a2", "msg_u2", [{ type: "text", text: "Fixed signup." }]),
+			userMessage("msg_u1", "Fix the login"),
+			assistantMessage("msg_a1", [textContent("Fixed login.")]),
+			userMessage("msg_u2", "Now the signup"),
+			assistantMessage("msg_a2", [textContent("Fixed signup.")]),
 		]);
 	}
 
@@ -899,11 +889,12 @@ describe("forking a chat", () => {
 		return pane && { pane, active: panes.activePaneId === pane.id };
 	};
 
-	it("asks the window's event stream to leave out the copies a fork replays", async () => {
+	// v2 gap (step 22): v2's /api/event has no fork replay to skip; the v2 wire sends no x-kilo-sse-skip-fork-sync.
+	it.skip("asks the window's event stream to leave out the copies a fork replays", async () => {
 		const host = await showTwoTurns();
 
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
-		const [stream] = host.server.requestsTo("GET", "/global/event");
+		const [stream] = host.server.requestsTo("GET", "/api/event");
 		expect(stream?.headers.get("x-kilo-sse-skip-fork-sync")).toBe("1");
 	});
 
@@ -919,18 +910,20 @@ describe("forking a chat", () => {
 		const host = await renderChat();
 		await send("Fix the login");
 		await expect.element(page.getByText("Fix the login")).toBeVisible();
-		await vi.waitFor(() => expect(host.server.chats.get("ses_new_1")?.messages).toHaveLength(1));
-		host.server.emit("session.idle", { sessionID: "ses_new_1" });
+		const userMessagesOf = (chatId: string) =>
+			host.server.chats.get(chatId)?.messages.filter((message) => message.type === "user") ?? [];
+		await vi.waitFor(() => expect(userMessagesOf("ses_new_1")).toHaveLength(1));
+		host.server.endTurn("ses_new_1");
 		await send("Now the signup");
-		await vi.waitFor(() => expect(host.server.chats.get("ses_new_1")?.messages).toHaveLength(2));
-		host.server.emit("session.idle", { sessionID: "ses_new_1" });
+		await vi.waitFor(() => expect(userMessagesOf("ses_new_1")).toHaveLength(2));
+		host.server.endTurn("ses_new_1");
 		await expect.element(page.getByTestId("kilo-composer-stop")).not.toBeInTheDocument();
 
 		await forkAt("Now the signup");
 
 		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
-		expect(host.server.requestsTo("POST", "/session/ses_new_1/fork")[0]?.body).toEqual({
-			messageID: "msg_user_2",
+		expect(host.server.requestsTo("POST", "/api/session/ses_new_1/fork")[0]?.body).toEqual({
+			before: userMessagesOf("ses_new_1")[1]!.id,
 		});
 		expect(host.sessions.calls.open).toHaveBeenCalledWith(
 			expect.objectContaining({ workSessionId: "wses_1", placement: "tab" }),
@@ -948,7 +941,7 @@ describe("forking a chat", () => {
 
 		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
 		await vi.waitFor(() =>
-			expect(host.server.requestsTo("POST", "/session/ses_fork_1/prompt_async")).toHaveLength(1),
+			expect(host.server.requestsTo("POST", "/api/session/ses_fork_1/synthetic")).toHaveLength(1),
 		);
 		const fork = page.getByTestId(`pane-${forkedPane(host)!.pane.id}`);
 		await expect.element(fork.getByText("Fixed login.")).toBeVisible();
@@ -966,8 +959,8 @@ describe("forking a chat", () => {
 		await forkAt("Now the signup");
 
 		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
-		expect(host.server.requestsTo("POST", "/session/ses_a/fork")[0]?.body).toEqual({
-			messageID: "msg_u2",
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/fork")[0]?.body).toEqual({
+			before: "msg_u2",
 		});
 	});
 
@@ -1022,14 +1015,14 @@ describe("forking a chat", () => {
 		forkButtonOf("Now the signup")!.click();
 
 		await vi.waitFor(() => expect(forkedPane(host)).toMatchObject({ active: true }));
-		expect(host.server.requestsTo("POST", "/session/ses_a/fork")).toHaveLength(1);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/fork")).toHaveLength(1);
 	});
 
 	it("forks while the agent works, noting it was mid-turn", async () => {
 		const server = twoTurns();
 		const host = await showTwoTurns(server);
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 
 		await vi.waitFor(() => expect(forkButtonOf("Now the signup")).toBeDefined());

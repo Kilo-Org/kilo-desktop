@@ -9,12 +9,14 @@ import {
 } from "@kilo-desktop/kernel";
 
 import {
+	Chats,
 	KILO_TERMS_URL,
 	KILO_TERMS_VERSION,
 	KiloAccount,
 	KiloServer,
 	KiloTerms,
 	type AccountState,
+	type ChatError,
 	type ServerConnection,
 	type TermsState,
 } from "../../contracts";
@@ -193,8 +195,28 @@ export function activateAccount(sdk: PluginSdk, options: AccountOptions): void {
 			service.setConnection("unavailable");
 		},
 	});
+
+	// A chat's request is where Kilo refusing the sign-in shows up mid-session.
+	let stopChats: (() => void) | undefined;
+	sdk.domainObjects.track(Chats, {
+		added(chats) {
+			stopChats = chats.on("turn-ended", ({ error }) => {
+				if (error && isSignInRefused(error)) void service.signInRefused();
+			});
+		},
+		removed() {
+			stopChats?.();
+			stopChats = undefined;
+		},
+	});
 	sdk.onDispose(() => {
 		stopServer?.();
+		stopChats?.();
 		service.cancelSignIn();
 	});
+}
+
+/** The Kilo Gateway's answer to a request made with a sign-in it no longer accepts. */
+function isSignInRefused(error: ChatError): boolean {
+	return error.status === 401 && error.code === "INVALID_TOKEN";
 }

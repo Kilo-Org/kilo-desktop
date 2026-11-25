@@ -15,6 +15,7 @@ import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/k
 
 import manifest from "../../../plugin.json";
 import {
+	Chats,
 	CORE_DEFINITIONS,
 	KILO_TERMS_URL,
 	KILO_TERMS_VERSION,
@@ -23,6 +24,7 @@ import {
 	KiloTerms,
 	SIGNED_IN_KEY,
 	TERMS_ACCEPTED_KEY,
+	type ChatError,
 	type KiloProfile,
 	type ServerConnection,
 	type ServerStatus,
@@ -119,6 +121,8 @@ interface Booted {
 	readonly kernel: MainKernel;
 	readonly account: FakeKiloAccount;
 	readonly setServerStatus: (status: ServerStatus) => void;
+	/** A chat's turn ends, as `kilo.core/chats` reports it. */
+	readonly endTurn: (error?: ChatError) => void;
 	/** Events delivered through `kernel/telemetry`. */
 	readonly tracked: TelemetryEnvelope[];
 	readonly storage: Storage;
@@ -143,6 +147,10 @@ async function boot(
 	const tracked: TelemetryEnvelope[] = [];
 	const focusMain = vi.fn();
 	let server: DomainObjectProvider<typeof KiloServer> | undefined;
+	let chats: DomainObjectProvider<typeof Chats> | undefined;
+	const unused = () => {
+		throw new Error("not used by the account");
+	};
 	const kernel = createMainKernel({
 		host: createTestHost({
 			windows: { open: vi.fn(), focus: vi.fn(), close: vi.fn(), setHidden: vi.fn(), focusMain },
@@ -167,6 +175,25 @@ async function boot(
 								restart: () => {},
 								disposeInstance: () => {},
 								userConfigFile: () => ({ path: "/home/.config/kilo/kilo.jsonc", exists: false }),
+							},
+						});
+						chats = sdk.domainObjects.provide(Chats, {
+							initialState: { ready: true, chats: {}, declinedSignInTools: [] },
+							methods: {
+								create: unused,
+								setWorktreeBranch: unused,
+								fork: unused,
+								chatConfig: unused,
+								rename: unused,
+								delete: unused,
+								setArchived: unused,
+								replyQuestion: unused,
+								rejectQuestion: unused,
+								declineSignInTools: unused,
+								permissionRequests: () => [],
+								replyPermission: unused,
+								prompt: unused,
+								abort: unused,
 							},
 						});
 					},
@@ -199,6 +226,7 @@ async function boot(
 		kernel,
 		account,
 		setServerStatus: (status) => server?.setState(status),
+		endTurn: (error) => chats?.emit("turn-ended", { chatId: "ses-1", ...(error ? { error } : {}) }),
 		tracked,
 		storage,
 		focusMain,
@@ -276,6 +304,45 @@ describe("the Kilo account", () => {
 		expect(account.authenticated).toBe(false);
 		expect(account.disposed).toHaveBeenCalled();
 		expect(kernel.kernelSdk.context.get(SIGNED_IN_KEY)).toBe(false);
+	});
+
+	it("signs out when a chat's request finds Kilo no longer accepts the sign-in", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		const { kernel, endTurn } = await boot({ account });
+		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(true));
+
+		endTurn({ name: "APIError", message: "Signed out", status: 401, code: "INVALID_TOKEN" });
+
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState()).toMatchObject({
+				signedIn: false,
+				signInExpired: true,
+				profile: null,
+			}),
+		);
+		expect(account.authenticated).toBe(false);
+	});
+
+	it("keeps the sign-in through other failed chat requests", async () => {
+		const account = new FakeKiloAccount();
+		account.authenticated = true;
+		const { kernel, endTurn } = await boot({ account });
+		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(true));
+
+		endTurn({
+			name: "APIError",
+			message: "Sign in",
+			status: 401,
+			code: "PAID_MODEL_AUTH_REQUIRED",
+		});
+		endTurn({ name: "APIError", message: "Odd", status: 500, code: "INVALID_TOKEN" });
+		endTurn({ name: "APIError", message: "Rate limited", status: 429 });
+		endTurn();
+		await accountOf(kernel).methods.refresh(undefined);
+
+		expect(accountOf(kernel).getState()).toMatchObject({ signedIn: true, signInExpired: false });
+		expect(account.authenticated).toBe(true);
 	});
 
 	it("treats an unreadable sign-in status as signed out", async () => {

@@ -26,7 +26,14 @@ export const Chat = defineObjectType({
 export const chatStatusSchema = z.enum(["idle", "busy", "retry"]);
 export type ChatStatus = z.output<typeof chatStatusSchema>;
 
-export const chatErrorSchema = z.object({ name: z.string(), message: z.string() });
+export const chatErrorSchema = z.object({
+	name: z.string(),
+	message: z.string(),
+	/** The HTTP status of the provider request that failed, when there was one. */
+	status: z.number().optional(),
+	/** The error code in that request's response body, e.g. a Kilo Gateway code. */
+	code: z.string().optional(),
+});
 export type ChatError = z.output<typeof chatErrorSchema>;
 
 export const chatActivitySchema = z.object({

@@ -84,6 +84,8 @@ export interface AccountServiceOptions {
  * checked further: if Kilo refuses the credentials they are removed and the
  * account reads signed out with `signInExpired`, which the next successful
  * read clears. Any other failure stays a `profileError` the person can retry.
+ * Mid-session the profile is not read again, so a chat request Kilo refuses
+ * for the same reason (`signInRefused`) takes the same way out.
  */
 export class AccountService {
 	readonly #options: AccountServiceOptions;
@@ -91,6 +93,7 @@ export class AccountService {
 	#attempt = 0;
 	#abort: AbortController | undefined;
 	#signingIn: Promise<{ signedIn: boolean }> | undefined;
+	#expiring: Promise<void> | undefined;
 
 	constructor(options: AccountServiceOptions) {
 		this.#options = options;
@@ -120,6 +123,19 @@ export class AccountService {
 		} finally {
 			this.#set({ refreshing: false });
 		}
+	}
+
+	/**
+	 * A request Kilo made for this sign-in was refused because Kilo no longer
+	 * accepts it. Several chats can report it at once; it is handled once.
+	 */
+	signInRefused(): Promise<void> {
+		const client = this.#options.client();
+		if (!client || this.#state.signedIn !== true || this.#signInInProgress()) {
+			return Promise.resolve();
+		}
+		this.#expiring ??= this.#signOutRefused(client).finally(() => (this.#expiring = undefined));
+		return this.#expiring;
 	}
 
 	signIn(): Promise<{ signedIn: boolean }> {
@@ -247,9 +263,13 @@ export class AccountService {
 	 * remove the new ones.
 	 */
 	async #refused(client: KiloAccountClient): Promise<boolean> {
-		const status = this.#state.deviceSignIn.status;
-		if (status === "initiating" || status === "waiting") return false;
+		if (this.#signInInProgress()) return false;
 		return client.signInRefused().catch(() => false);
+	}
+
+	#signInInProgress(): boolean {
+		const status = this.#state.deviceSignIn.status;
+		return status === "initiating" || status === "waiting";
 	}
 
 	/**

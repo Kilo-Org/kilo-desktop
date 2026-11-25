@@ -265,7 +265,9 @@ function LocalModelServerSettingsContent() {
 
 	function selectCatalogModel(model: ModelCatalogEntry): void {
 		dismissInstallRequest();
-		setCatalogSelection({ model });
+		// Clicking the row that is already selected keeps the current selection: rebuilding it
+		// would drop a deep link's quantization override and fall back to the recommendation.
+		setCatalogSelection((current) => (current?.model.id === model.id ? current : { model }));
 	}
 
 	if (openedInstallRequestId !== installRequest?.id) {

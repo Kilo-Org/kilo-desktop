@@ -285,6 +285,36 @@ describe("kilo-desktop://models/install deep links", () => {
 		await expect.element(quantization.getByText("Q4_K_M")).toBeVisible();
 	});
 
+	it("keeps the requested file when the already-selected model row is clicked again", async () => {
+		const startDownload = vi.fn(
+			async (identity: { modelId: string; quantizationId: string }): Promise<ModelDownload> => ({
+				...identity,
+				status: "downloading",
+				transferredBytes: 0,
+				totalBytes: 8 * 1024 ** 3,
+				percentage: 0,
+			}),
+		);
+		await renderModelLink({
+			search: installSearch({ model: MODEL_UUID, file: Q8_FILE_UUID }),
+			handlers: { startDownload },
+		});
+
+		const dialog = page.getByTestId("local-model-catalog-dialog");
+		const quantization = dialog.getByRole("combobox", { name: "Quantization" });
+		await expect.element(quantization.getByText("Q8_0")).toBeVisible();
+
+		const row = dialog.getByRole("row", { name: /Catalog Model/ });
+		await expect.element(row).toHaveAttribute("aria-selected", "true");
+		await row.click();
+
+		await expect.element(quantization.getByText("Q8_0")).toBeVisible();
+		await dialog.getByTestId("model-catalog-download").click();
+		await expect
+			.poll(() => startDownload)
+			.toHaveBeenCalledWith({ modelId: MODEL_UUID, quantizationId: Q8_FILE_UUID });
+	});
+
 	it("shows a toast and leaves the catalog open for browsing when the model is not found", async () => {
 		await renderModelLink({
 			search: installSearch({ model: "unknown-model-id" }),

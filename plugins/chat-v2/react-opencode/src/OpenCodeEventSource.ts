@@ -10,32 +10,40 @@ export type OpenCodeEventSubscriber = (options: {
 	sseMaxRetryAttempts: number;
 }) => Promise<{ stream: AsyncIterable<unknown> }>;
 
-const asRecord = (value: unknown): Record<string, unknown> | null => {
-	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-};
-
 /** The session a Kilo v2 event is about: its `sessionID`, or its form's. */
-const extractSessionId = (data: Record<string, unknown>): string | undefined => {
-	if (typeof data.sessionID === "string") return data.sessionID;
-	const form = asRecord(data.form);
-	return form && typeof form.sessionID === "string" ? form.sessionID : undefined;
+const sessionIdOf = (event: OpenCodeEvent): string | undefined => {
+	if (event.type === "form.created") return event.data.form.sessionID;
+	const data: object = event.data;
+	return "sessionID" in data && typeof data.sessionID === "string" ? data.sessionID : undefined;
 };
 
-const normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {
-	const candidate = asRecord(event);
-	const data = asRecord(candidate?.data);
-	if (!candidate || typeof candidate.type !== "string" || !data) return null;
-	const location = asRecord(candidate.location);
+const isKiloEvent = (value: unknown): value is OpenCodeEvent => {
+	const candidate = value as { type?: unknown; data?: unknown } | null;
+	return (
+		typeof candidate?.type === "string" &&
+		typeof candidate.data === "object" &&
+		candidate.data !== null
+	);
+};
+
+/**
+ * The stream reconnected. A subscriber's stream may also yield
+ * `{ type: STREAM_RECONNECTED_EVENT_TYPE }` itself to have every thread resync.
+ */
+export const STREAM_RECONNECTED_EVENT_TYPE = "stream.reconnected";
+
+const toServerEvent = (value: unknown): OpenCodeServerEvent | null => {
+	if ((value as { type?: unknown } | null)?.type === STREAM_RECONNECTED_EVENT_TYPE) {
+		return { type: STREAM_RECONNECTED_EVENT_TYPE };
+	}
+	if (!isKiloEvent(value)) return null;
 	return {
-		type: candidate.type,
-		properties: data,
-		directory: typeof location?.directory === "string" ? location.directory : undefined,
-		sessionId: extractSessionId(data),
-		raw: event as OpenCodeEvent,
+		type: "kilo.event",
+		event: value,
+		sessionId: sessionIdOf(value),
+		directory: value.location?.directory,
 	};
 };
-
-export const STREAM_RECONNECTED_EVENT_TYPE = "stream.reconnected";
 
 export class OpenCodeEventSource {
 	private readonly listeners = new Set<Listener>();
@@ -122,12 +130,7 @@ export class OpenCodeEventSource {
 				this.nextReconnectDelayMs = this.reconnectDelayMs;
 
 				if (this.hadConnection) {
-					this.emit({
-						type: STREAM_RECONNECTED_EVENT_TYPE,
-						sessionId: undefined,
-						raw: undefined,
-						properties: {},
-					});
+					this.emit({ type: STREAM_RECONNECTED_EVENT_TYPE });
 				}
 				this.hadConnection = true;
 
@@ -136,7 +139,7 @@ export class OpenCodeEventSource {
 						return;
 					}
 
-					const normalized = normalizeEventPayload(event);
+					const normalized = toServerEvent(event);
 					if (!normalized) continue;
 					this.onEvent?.(normalized);
 					this.emit(normalized);

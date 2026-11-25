@@ -8,13 +8,15 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 
+import type { KiloModelRef } from "./model-catalog";
+
 /** An agent as the switcher renders it, from Kilo's `agent.list`. */
 export type KiloCatalogAgent = {
 	name: string;
 	displayName: string;
 	icon: LucideIcon;
 	color?: string;
-	model?: { providerID: string; modelID: string };
+	model?: KiloModelRef;
 	variant?: string;
 };
 
@@ -39,15 +41,6 @@ const SWITCHER_AGENTS = [
 export const OPTIMISTIC_AGENT_CATALOG: KiloAgentCatalog = {
 	agents: SWITCHER_AGENTS,
 };
-
-/** Older Kilo builds used `build` for the coding agent. */
-const AGENT_ALIASES: Record<string, string> = {
-	build: "code",
-};
-
-function canonicalizeAgentName(name: string): string {
-	return AGENT_ALIASES[name] ?? name;
-}
 
 function isSelectableAgent(agent: Pick<AgentInfo, "mode" | "hidden">): boolean {
 	if (agent.hidden) {
@@ -85,15 +78,11 @@ function prettifyAgentId(id: string): string {
  */
 export function buildAgentCatalog(agents: readonly AgentInfo[]): KiloAgentCatalog {
 	const selectable = agents.filter(isSelectableAgent);
-	const available = new Map(
-		selectable.map((agent) => [canonicalizeAgentName(agent.id), agent] as const),
-	);
+	const available = new Map(selectable.map((agent) => [agent.id, agent] as const));
 	const builtInNames: Set<string> = new Set(SWITCHER_AGENTS.map((entry) => entry.name));
 
 	const configuredDefaults = (agent: AgentInfo) => ({
-		...(agent.model
-			? { model: { providerID: agent.model.providerID, modelID: agent.model.id } }
-			: {}),
+		...(agent.model ? { model: { providerID: agent.model.providerID, id: agent.model.id } } : {}),
 		...(agent.model?.variant ? { variant: agent.model.variant } : {}),
 	});
 	const builtIns = SWITCHER_AGENTS.flatMap((entry) => {
@@ -104,7 +93,7 @@ export function buildAgentCatalog(agents: readonly AgentInfo[]): KiloAgentCatalo
 	const seen: Set<string> = new Set(builtInNames);
 	const custom: KiloCatalogAgent[] = [];
 	for (const agent of selectable) {
-		const name = canonicalizeAgentName(agent.id);
+		const name = agent.id;
 		if (seen.has(name)) continue;
 		seen.add(name);
 		const color = isCssColor(agent.color) ? agent.color : undefined;

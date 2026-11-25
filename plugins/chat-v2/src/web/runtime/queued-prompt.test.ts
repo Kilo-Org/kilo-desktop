@@ -54,8 +54,7 @@ describe("prepareQueuedPrompt", () => {
 	it("fixes what the composer holds, with the model as kilo.core names it", async () => {
 		const prompt = await prepareQueuedPrompt(message("Then add tests"), "ses_a", {
 			getAgent: () => "code",
-			getModel: () => ({ providerID: "acme", modelID: "deep-2" }),
-			getVariant: () => "high",
+			getModel: () => ({ providerID: "acme", id: "deep-2", variant: "high" }),
 			getSystem: () => "Be brief.",
 		});
 

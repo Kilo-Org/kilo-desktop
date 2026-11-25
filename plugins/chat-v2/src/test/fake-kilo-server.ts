@@ -573,17 +573,25 @@ export class FakeKiloServer {
 					return empty();
 				}
 				chat.revert = { messageID: String(body.messageID) };
-				this.emit("session.revert.staged", {
-					sessionID: chat.id,
-					messageID: chat.revert.messageID,
-				});
+				this.emit("session.revert.staged", { sessionID: chat.id, revert: chat.revert });
 				return json({ data: this.#info(chat) });
 			case "fork": {
 				await this.forkGate;
 				if (this.failForks)
 					return json({ _tag: "ServerError", message: "The chat is locked" }, 500);
-				const fork = this.#fork(chat, typeof body.before === "string" ? body.before : undefined);
-				this.emit("session.forked", { sessionID: fork.id, sourceID: chat.id }, fork.directory);
+				const before = typeof body.before === "string" ? body.before : undefined;
+				const fork = this.#fork(chat, before);
+				this.emit(
+					"session.forked",
+					{
+						sessionID: fork.id,
+						parentID: chat.id,
+						boundary: before
+							? { type: "before", messageID: before }
+							: { type: "through", messageID: chat.messages.at(-1)?.id ?? "" },
+					},
+					fork.directory,
+				);
 				return json({ data: this.#info(fork) });
 			}
 			case "permission":

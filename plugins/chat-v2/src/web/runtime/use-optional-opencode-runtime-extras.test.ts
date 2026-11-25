@@ -18,8 +18,8 @@ describe("useOptionalOpenCodeRuntimeExtras", () => {
 
 	it("returns extras when reply helpers are present", () => {
 		const extras = {
-			replyToQuestion: vi.fn(),
-			rejectQuestion: vi.fn(),
+			replyToForm: vi.fn(),
+			cancelForm: vi.fn(),
 			replyToPermission: vi.fn(),
 			session: null,
 			state: {},

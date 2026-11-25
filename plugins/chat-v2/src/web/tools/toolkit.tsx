@@ -5,13 +5,7 @@ import type { Contribution } from "@kilo-desktop/kernel";
 import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
 import { toolWireName } from "@kilo-desktop/plugin-core/contracts";
 
-import {
-	McpApp,
-	ToolRenderer,
-	type ToolCategory,
-	type ToolRendererImplementation,
-} from "../../contracts";
-import { setHostableMcpApps, type HostableMcpApp } from "../mcp-apps/mcp-app-registry";
+import { ToolRenderer, type ToolCategory, type ToolRendererImplementation } from "../../contracts";
 import { toToolCallProps, type ToolCallProps } from "./tool-call";
 import { setContributedToolCategories } from "./tool-categories";
 import { ToolCallFallback } from "./tool-ui-inline";
@@ -91,42 +85,12 @@ export function buildToolkit(contributions: readonly RendererContribution[]): Co
 }
 
 /**
- * The window's tool renderers as the thread's toolkit. Contributed
- * categories and MCP Apps are window-wide (pure grouping helpers and the
- * patched projection read them), so they are published here too.
+ * The window's tool renderers as the thread's toolkit. Contributed categories
+ * are window-wide (pure grouping helpers read them), so they are published
+ * here too.
  */
 export function useContributedToolkit(): Toolkit {
-	const renderers = useExtensions(ToolRenderer);
-	const apps = useExtensions(McpApp);
-	return publishToolkit(renderers, apps);
-}
-
-/** The toolkit, publishing its categories and hostable MCP Apps window-wide on the way. */
-function publishToolkit(
-	renderers: readonly RendererContribution[],
-	apps: readonly Contribution<typeof McpApp>[],
-): Toolkit {
-	const { toolkit, categories } = buildToolkit(renderers);
+	const { toolkit, categories } = buildToolkit(useExtensions(ToolRenderer));
 	setContributedToolCategories(categories);
-	// Kilo v2 serves no MCP App resources, so widgets are hidden (decision): their tools render as plain calls.
-	void apps;
-	setHostableMcpApps(new Map());
 	return toolkit;
-}
-
-export function hostableMcpApps(
-	contributions: readonly Contribution<typeof McpApp>[],
-): ReadonlyMap<string, HostableMcpApp> {
-	const apps = new Map<string, HostableMcpApp>();
-	for (const contribution of contributions) {
-		for (const tool of contribution.metadata.tools.map(toolNameOf)) {
-			if (apps.has(tool)) continue;
-			apps.set(tool, {
-				resourceUri: contribution.metadata.resourceUri,
-				serverId: contribution.metadata.serverId,
-				implementation: contribution.implementation,
-			});
-		}
-	}
-	return apps;
 }

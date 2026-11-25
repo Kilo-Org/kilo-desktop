@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { FormInfo, OpenCodeQuestionRequest } from "@kilo-desktop/react-opencode-v2";
+import type { FormInfo, OpenCodeFormRequest } from "@kilo-desktop/react-opencode-v2";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -39,10 +39,10 @@ const isMultiple = (field: FormField) => field.type === "multiselect";
 const allowsCustom = (field: FormField) => !("custom" in field) || field.custom !== false;
 
 /** What the field asks, as Kilo's question tool puts it in a form. */
-const questionText = (field: FormField, request: OpenCodeQuestionRequest) =>
+const questionText = (field: FormField, request: OpenCodeFormRequest) =>
 	field.description ?? field.title ?? request.title;
 
-const buildQuestionnaireItems = (request: OpenCodeQuestionRequest) =>
+const buildQuestionnaireItems = (request: OpenCodeFormRequest) =>
 	request.fields.map((field, index) => ({
 		name: questionName(index),
 		required: true as const,
@@ -54,7 +54,7 @@ const buildQuestionnaireItems = (request: OpenCodeQuestionRequest) =>
  * order (an option's value, or what was typed).
  */
 export const encodeAnswersFromFormData = (
-	request: OpenCodeQuestionRequest,
+	request: OpenCodeFormRequest,
 	formData: FormData,
 ): string[][] =>
 	request.fields.map((field, index) => {
@@ -76,7 +76,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 	request,
 	origin,
 }: {
-	request: OpenCodeQuestionRequest;
+	request: OpenCodeFormRequest;
 	/** Set when a subagent, not the chat's own session, asked the question. */
 	origin?: SubagentOrigin | undefined;
 }) => {

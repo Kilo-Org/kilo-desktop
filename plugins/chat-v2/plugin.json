@@ -327,19 +327,19 @@
 				},
 				{
 					"id": "search",
-					"tools": ["grep", "codebase_search", "semantic_search"]
+					"tools": ["grep", "semantic_search"]
 				},
 				{
 					"id": "glob",
-					"tools": ["glob", "list"]
+					"tools": ["glob"]
 				},
 				{
 					"id": "web-search",
-					"tools": ["websearch", "webSearch"]
+					"tools": ["websearch"]
 				},
 				{
 					"id": "web-fetch",
-					"tools": ["webfetch", "webFetch"]
+					"tools": ["webfetch"]
 				},
 				{
 					"id": "patch",
@@ -355,15 +355,15 @@
 				},
 				{
 					"id": "question",
-					"tools": ["question", "ask_question", "request_user_input", "requestUserInput"]
+					"tools": ["question"]
 				},
 				{
 					"id": "todo",
-					"tools": ["todowrite", "todoread"]
+					"tools": ["todowrite"]
 				},
 				{
 					"id": "html-render",
-					"tools": ["kilo.chat/html_render", "desktop_kilo_ui_html_render"]
+					"tools": ["kilo.chat/html_render"]
 				},
 				{
 					"id": "plan-exit",

@@ -3,34 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
 
 import { kiloShellReport } from "../runtime/kilo-transcript";
-import { normalizeBashOutput, parseBashResult } from "./tool-ui-shared";
-
-describe("parseBashResult", () => {
-	it("reads stdout/stderr/exitCode objects and JSON strings", () => {
-		expect(parseBashResult({ stdout: "ok", stderr: "warn", exitCode: 2 })).toEqual({
-			stdout: "ok",
-			stderr: "warn",
-			exitCode: 2,
-		});
-		expect(parseBashResult(JSON.stringify({ stdout: "ok", exitCode: 0 }))).toEqual({
-			stdout: "ok",
-			stderr: undefined,
-			exitCode: 0,
-		});
-	});
-
-	it("treats OpenCode output/exit fields as stdout/exitCode", () => {
-		expect(parseBashResult({ output: "hello\n", exit: 0 })).toEqual({
-			stdout: "hello\n",
-			stderr: undefined,
-			exitCode: 0,
-		});
-	});
-
-	it("keeps plain text as stdout", () => {
-		expect(parseBashResult("plain")).toEqual({ stdout: "plain" });
-	});
-});
+import { normalizeBashOutput } from "./tool-ui-shared";
 
 describe("normalizeBashOutput", () => {
 	it("strips ANSI color and normalizes carriage returns", () => {

@@ -75,10 +75,10 @@ export const kiloToolFileChanges = (tool: KiloToolCall | undefined): KiloFileCha
 	if (!Array.isArray(files)) return [];
 	return files.flatMap((entry) => {
 		if (!isRecord(entry) || typeof entry.patch !== "string" || entry.patch.length === 0) return [];
-		const file = typeof entry.file === "string" ? entry.file : String(entry.path ?? "");
+		if (typeof entry.file !== "string") return [];
 		return [
 			{
-				file,
+				file: entry.file,
 				patch: entry.patch,
 				...(typeof entry.additions === "number" ? { additions: entry.additions } : {}),
 				...(typeof entry.deletions === "number" ? { deletions: entry.deletions } : {}),

@@ -75,6 +75,7 @@ import type {
 import { KILO_PROVIDER_ID } from "./provider-ids";
 import { useChatModelSelection } from "./ChatModelSelectionContext";
 import {
+	catalogModelRef,
 	isKiloGatewayProvider,
 	modelRefToId,
 	parseModelId,
@@ -291,9 +292,9 @@ function optimisticTriggerModel(
 	const efforts = effortsForOptimisticTrigger(meta.effort, meta.efforts);
 	return {
 		id: modelRefToId(ref),
-		name: meta.name ?? ref.modelID,
+		name: meta.name ?? ref.id,
 		providerID: ref.providerID,
-		modelID: ref.modelID,
+		modelID: ref.id,
 		...(efforts ? { efforts } : {}),
 	};
 }
@@ -912,10 +913,7 @@ export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open
 								scrollToHighlightedRef={scrollToHighlightedRef}
 								isListScrollingRef={isListScrollingRef}
 								onToggleFavorite={(entry) => {
-									toggleFavorite({
-										providerID: entry.providerID,
-										modelID: entry.modelID,
-									});
+									toggleFavorite(catalogModelRef(entry));
 								}}
 							/>
 						)}

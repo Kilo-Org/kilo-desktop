@@ -48,6 +48,7 @@ import type { PromptPart } from "./runtime/prompt-options";
 import { chatSystemPrompt, sessionFolders, type PromptFolder } from "./runtime/system-prompt";
 import { useChatRuntime } from "./runtime/use-chat-runtime";
 import { ComposerSelectionProvider, type PromptSelection } from "./selection/composer-selection";
+import { withVariant } from "./selection/model-catalog";
 import { prepareForPrompt, useModelSourcesRef } from "./selection/model-source";
 import {
 	ClientSlashSelectionProvider,
@@ -405,8 +406,10 @@ export function ChatThread({
 		...options,
 		onCreateFailed: reportStartFailure,
 		getAgent: () => selection.current.agent,
-		getModel: () => selection.current.model,
-		getVariant: () => selection.current.variant,
+		getModel: () => {
+			const { model, variant } = selection.current;
+			return model && withVariant(model, variant);
+		},
 		getKnownCommandNames: () => commandNames.current,
 		getKnownSkills: () => skills.current,
 		prepareModel: (model) => prepareForPrompt(model, modelSources.current),

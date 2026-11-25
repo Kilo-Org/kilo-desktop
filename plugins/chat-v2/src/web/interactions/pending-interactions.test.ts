@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createOpenCodeThreadState,
 	type OpenCodePermissionRequest,
-	type OpenCodeQuestionRequest,
+	type OpenCodeFormRequest,
 	type OpenCodeThreadState,
 } from "@kilo-desktop/react-opencode-v2";
 
@@ -16,7 +16,7 @@ const permission = (id: string, sessionID: string, askedAt: number): OpenCodePer
 	askedAt,
 });
 
-const question = (id: string, sessionID: string, askedAt: number): OpenCodeQuestionRequest => ({
+const form = (id: string, sessionID: string, askedAt: number): OpenCodeFormRequest => ({
 	id,
 	sessionID,
 	askedAt,
@@ -28,12 +28,12 @@ const session = (
 	sessionId: string,
 	{
 		permissions = [],
-		questions = [],
+		forms = [],
 		children = {},
 		taskCalls = {},
 	}: {
 		permissions?: OpenCodePermissionRequest[];
-		questions?: OpenCodeQuestionRequest[];
+		forms?: OpenCodeFormRequest[];
 		children?: Record<string, OpenCodeThreadState>;
 		taskCalls?: Record<string, string>;
 	} = {},
@@ -69,9 +69,9 @@ const session = (
 				...base.interactions.permissions,
 				pending: Object.fromEntries(permissions.map((request) => [request.id, request])),
 			},
-			questions: {
-				...base.interactions.questions,
-				pending: Object.fromEntries(questions.map((request) => [request.id, request])),
+			forms: {
+				...base.interactions.forms,
+				pending: Object.fromEntries(forms.map((request) => [request.id, request])),
 			},
 		},
 	};
@@ -88,7 +88,7 @@ describe("collectPendingInteractions", () => {
 					taskCalls: { grandchild: "List scoped dirs" },
 					children: {
 						grandchild: session("grandchild", {
-							questions: [question("grandchild-question", "grandchild", 1)],
+							forms: [form("grandchild-question", "grandchild", 1)],
 						}),
 					},
 				}),
@@ -103,14 +103,14 @@ describe("collectPendingInteractions", () => {
 			"child-permission",
 			"root-permission",
 		]);
-		expect(interactions.questions.map((request) => request.id)).toEqual(["grandchild-question"]);
+		expect(interactions.forms.map((request) => request.id)).toEqual(["grandchild-question"]);
 		expect(subagentOriginOf(interactions, "root")).toBeUndefined();
 		expect(subagentOriginOf(interactions, "child")).toEqual({ title: "Explore the repo" });
 		expect(subagentOriginOf(interactions, "grandchild")).toEqual({ title: "List scoped dirs" });
 	});
 
 	it("uses the runtime's own root prompts instead of the root state's records", () => {
-		const own = { permissions: [permission("live-root", "root", 4)], questions: [] };
+		const own = { permissions: [permission("live-root", "root", 4)], forms: [] };
 		const interactions = collectPendingInteractions({ state: tree(), own });
 
 		expect(interactions.permissions.map((request) => request.id)).toEqual([
@@ -123,11 +123,11 @@ describe("collectPendingInteractions", () => {
 		const interactions = collectPendingInteractions({
 			state: tree(),
 			scopeSessionId: "child",
-			own: { permissions: [permission("live-root", "root", 4)], questions: [] },
+			own: { permissions: [permission("live-root", "root", 4)], forms: [] },
 		});
 
 		expect(interactions.permissions.map((request) => request.id)).toEqual(["child-permission"]);
-		expect(interactions.questions.map((request) => request.id)).toEqual(["grandchild-question"]);
+		expect(interactions.forms.map((request) => request.id)).toEqual(["grandchild-question"]);
 		expect(subagentOriginOf(interactions, "child")).toEqual({ title: "Explore the repo" });
 	});
 

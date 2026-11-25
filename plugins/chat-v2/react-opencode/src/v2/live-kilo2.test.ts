@@ -261,7 +261,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 		await live.load();
 
 		await send(live, "Please ask me");
-		const pending = () => Object.values(live.getState().interactions.questions.pending);
+		const pending = () => Object.values(live.getState().interactions.forms.pending);
 		await vi.waitFor(() => expect(pending()).toHaveLength(1), { timeout: 4_000 });
 		expect(pending()[0]).toMatchObject({
 			fields: [
@@ -282,7 +282,7 @@ describe.skipIf(!KILO2_BIN)("the thread controller on a real kilo2", () => {
 			expect.objectContaining({ id: pending()[0]!.id }),
 		]);
 
-		await live.replyToQuestion(pending()[0]!.id, { q0: "Yes" });
+		await live.replyToForm(pending()[0]!.id, { q0: "Yes" });
 		await vi.waitFor(
 			() => {
 				expect(toolCalls(live.getState())).toContainEqual(

@@ -1,3 +1,5 @@
+import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode-v2";
+
 import type { Contribution } from "@kilo-desktop/kernel";
 import { useExtensions } from "@kilo-desktop/kernel/web";
 import { Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
@@ -10,6 +12,8 @@ import {
 } from "../../contracts";
 import { useOptionalExtensions } from "../optional-extensions";
 
+type PermissionSource = NonNullable<OpenCodePermissionRequest["source"]>;
+
 export type PermissionRendererContribution = Contribution<typeof PermissionRenderer>;
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -20,20 +24,20 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 /**
  * The arguments of the tool call a permission request is about. The request
- * names the call (`tool: {messageID, callID}`) but carries no arguments, so
- * the call is found in the thread by its id.
+ * names the call (its `source`) but carries no arguments, so the call is found
+ * in the thread by its id.
  */
 export function findPermissionToolArgs(
 	messages: readonly unknown[] | undefined,
-	tool: { readonly messageID: string; readonly callID: string } | undefined,
+	source: PermissionSource | undefined,
 ): unknown {
-	if (!tool?.callID) return undefined;
+	if (!source?.id) return undefined;
 	for (const message of messages ?? []) {
 		const content = asRecord(message)?.content;
 		if (!Array.isArray(content)) continue;
 		for (const part of content) {
 			const record = asRecord(part);
-			if (record?.type === "tool-call" && record.toolCallId === tool.callID) return record.args;
+			if (record?.type === "tool-call" && record.toolCallId === source.id) return record.args;
 		}
 	}
 	return undefined;

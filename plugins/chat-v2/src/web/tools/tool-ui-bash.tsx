@@ -1,14 +1,12 @@
 import { useAuiState } from "@assistant-ui/react";
 import { CheckIcon, CircleXIcon } from "lucide-react";
 
-import { cn } from "@kilo-desktop/ui/lib/utils";
-
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
 import {
 	getCommandSummary,
 	isCancelledToolStatus,
 	normalizeBashOutput,
-	parseBashResult,
+	resultText,
 	ToolOutputBlock,
 } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
@@ -25,12 +23,10 @@ export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCall
 		(s) => kiloShellReport(kiloMessagesOf(s.message.metadata?.custom), toolCallId).exit,
 	);
 
-	const parsed = parseBashResult(result);
-	const stdoutRaw = parsed.stdout || liveOutput;
-	const stdout = stdoutRaw ? normalizeBashOutput(stdoutRaw) : undefined;
-	const stderr = parsed.stderr ? normalizeBashOutput(parsed.stderr) : undefined;
-	const exitCode = parsed.exitCode ?? reportedExit ?? 0;
-	const hasOutput = Boolean(stdout || stderr);
+	const outputRaw = resultText(result) || liveOutput;
+	const output = outputRaw ? normalizeBashOutput(outputRaw) : undefined;
+	const exitCode = reportedExit ?? 0;
+	const hasOutput = Boolean(output);
 	const isError = !isRunning && exitCode !== 0;
 
 	const summaryText = getCommandSummary(args);
@@ -55,18 +51,8 @@ export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCall
 			detail={
 				<ToolOutputBlock>
 					{command ? <div className="text-muted-foreground mb-2">$ {command}</div> : null}
-					{stdout ? (
-						<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{stdout}</pre>
-					) : null}
-					{stderr ? (
-						<pre
-							className={cn(
-								"text-destructive wrap-break-word whitespace-pre-wrap",
-								stdout && "mt-2",
-							)}
-						>
-							{stderr}
-						</pre>
+					{output ? (
+						<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{output}</pre>
 					) : null}
 				</ToolOutputBlock>
 			}

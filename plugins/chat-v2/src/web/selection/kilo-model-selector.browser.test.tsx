@@ -57,7 +57,7 @@ async function renderSelector({
 	login?: () => void;
 	navigate?: (path: string, options?: { search?: Record<string, unknown> }) => void;
 	selection: {
-		model: { providerID: string; modelID: string } | undefined;
+		model: { providerID: string; id: string } | undefined;
 		setModel?: () => void;
 		effort?: string;
 		setEffort?: () => void;
@@ -131,7 +131,7 @@ describe("KiloModelSelector", () => {
 	it("shows the stored display name and effort on the trigger while the catalog is pending", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				model: { providerID: "anthropic", id: "claude-sonnet" },
 				effort: "high",
 				name: "Claude Sonnet",
 				efforts: [
@@ -211,7 +211,7 @@ describe("KiloModelSelector", () => {
 			login,
 			navigate,
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				name: "Auto Frontier",
 				catalog: kiloCatalog,
 				isCatalogPending: false,
@@ -235,7 +235,7 @@ describe("KiloModelSelector", () => {
 		const screen = await renderSelector({
 			auth: signedOutAuth,
 			selection: {
-				model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				model: { providerID: "anthropic", id: "claude-sonnet" },
 				name: "Claude Sonnet",
 				catalog: {
 					providers: [
@@ -309,7 +309,7 @@ describe("KiloModelSelector", () => {
 		const screen = await renderSelector({
 			navigate,
 			selection: {
-				model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				model: { providerID: "anthropic", id: "claude-sonnet" },
 				name: "Claude Sonnet",
 				modelSource: localSource({ status: { status: "idle" }, start: startLocalInference }),
 				catalog: {
@@ -361,7 +361,7 @@ describe("KiloModelSelector", () => {
 		const startLocalInference = vi.fn(async () => undefined);
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				model: { providerID: "anthropic", id: "claude-sonnet" },
 				name: "Claude Sonnet",
 				modelSource: localSource({
 					status: { status: "ready" },
@@ -398,7 +398,7 @@ describe("KiloModelSelector", () => {
 	it("keeps showing skeletons while a catalog refetch may still add local models", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "anthropic", modelID: "claude-sonnet" },
+				model: { providerID: "anthropic", id: "claude-sonnet" },
 				name: "Claude Sonnet",
 				modelSource: localSource({ status: { status: "ready" }, hasModels: true }),
 				catalog: {
@@ -433,7 +433,7 @@ describe("KiloModelSelector", () => {
 		const screen = await renderSelector({
 			navigate,
 			selection: {
-				model: { providerID: "kilo-desktop-model-server", modelID: "qwen-3" },
+				model: { providerID: "kilo-desktop-model-server", id: "qwen-3" },
 				name: "Qwen 3",
 				modelSource: localSource({ status: { status: "ready" }, start: startLocalInference }),
 				catalog: {
@@ -476,7 +476,7 @@ describe("KiloModelSelector", () => {
 		}));
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "provider-0", modelID: "model-0" },
+				model: { providerID: "provider-0", id: "model-0" },
 				catalog: {
 					providers,
 					models: [
@@ -513,7 +513,7 @@ describe("KiloModelSelector", () => {
 	it("does not show a sign-in hint when already signed in", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				name: "Auto Frontier",
 				catalog: kiloCatalog,
 				isCatalogPending: false,
@@ -532,7 +532,7 @@ describe("KiloModelSelector", () => {
 	it("groups Kilo Gateway models into Auto and Recommended sections", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "kilo-auto/efficient" },
+				model: { providerID: "kilo", id: "kilo-auto/efficient" },
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
 					models: [
@@ -597,7 +597,7 @@ describe("KiloModelSelector", () => {
 		const setModel = vi.fn();
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "openai/gpt-5" },
+				model: { providerID: "kilo", id: "openai/gpt-5" },
 				setModel,
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
@@ -653,7 +653,7 @@ describe("KiloModelSelector", () => {
 		const setModel = vi.fn();
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				setModel,
 				catalog: kiloCatalog,
 				isCatalogPending: false,
@@ -680,7 +680,7 @@ describe("KiloModelSelector", () => {
 	it("uses the Kilo logo when a model publisher has no registered icon", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "unknown-vendor/model" },
+				model: { providerID: "kilo", id: "unknown-vendor/model" },
 				catalog: {
 					...kiloCatalog,
 					models: [
@@ -706,7 +706,7 @@ describe("KiloModelSelector", () => {
 	it("omits the primary metric row when details have no benchmark", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				catalog: {
 					...kiloCatalog,
 					models: [
@@ -738,7 +738,7 @@ describe("KiloModelSelector", () => {
 	it("keeps sub-cent Gateway costs distinguishable from free", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				catalog: {
 					...kiloCatalog,
 					models: [
@@ -769,7 +769,7 @@ describe("KiloModelSelector", () => {
 	it("marks the current model independently of list highlighting", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				catalog: {
 					...kiloCatalog,
 					models: [
@@ -798,7 +798,7 @@ describe("KiloModelSelector", () => {
 	it("closes model information when the catalog scrolls", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				catalog: {
 					...kiloCatalog,
 					models: [
@@ -832,7 +832,7 @@ describe("KiloModelSelector", () => {
 	it("shows row provider icons only when the list spans providers", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "auto-frontier" },
+				model: { providerID: "kilo", id: "auto-frontier" },
 				catalog: {
 					providers: [
 						{ id: "kilo", name: "Kilo Gateway", connected: true },
@@ -872,7 +872,7 @@ describe("KiloModelSelector", () => {
 	it("filters Gateway models by estimated cost while keeping auto routing separate", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "openai/gpt-low" },
+				model: { providerID: "kilo", id: "openai/gpt-low" },
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
 					models: [
@@ -938,7 +938,7 @@ describe("KiloModelSelector", () => {
 	it("combines publisher choices with cost and offers a clear action when none match", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "openai/gpt-high" },
+				model: { providerID: "kilo", id: "openai/gpt-high" },
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
 					models: [
@@ -1006,7 +1006,7 @@ describe("KiloModelSelector", () => {
 	it("groups ~-prefixed latest aliases under their publisher's single filter choice", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "anthropic/claude-pinned" },
+				model: { providerID: "kilo", id: "anthropic/claude-pinned" },
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
 					models: [
@@ -1056,7 +1056,7 @@ describe("KiloModelSelector", () => {
 	it("scopes Gateway filters away from other providers and cross-provider search", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "openai/gpt-high" },
+				model: { providerID: "kilo", id: "openai/gpt-high" },
 				catalog: {
 					providers: [
 						{ id: "kilo", name: "Kilo Gateway", connected: true },
@@ -1132,7 +1132,7 @@ describe("KiloModelSelector", () => {
 		}));
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "publisher-0/model" },
+				model: { providerID: "kilo", id: "publisher-0/model" },
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
 					models,
@@ -1164,7 +1164,7 @@ describe("KiloModelSelector", () => {
 		}));
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "anthropic", modelID: "model-0" },
+				model: { providerID: "anthropic", id: "model-0" },
 				catalog: {
 					providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
 					models,
@@ -1208,7 +1208,7 @@ describe("KiloModelSelector", () => {
 		}));
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "anthropic", modelID: "model-0" },
+				model: { providerID: "anthropic", id: "model-0" },
 				catalog: {
 					providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
 					models,
@@ -1232,7 +1232,7 @@ describe("KiloModelSelector", () => {
 	it("marks free models with a Free label, data-training icon, and data-auto-free attribute", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "kilo-auto/free" },
+				model: { providerID: "kilo", id: "kilo-auto/free" },
 				name: "Auto Free",
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
@@ -1281,7 +1281,7 @@ describe("KiloModelSelector", () => {
 	it("marks recommended models flagged free via Gateway details", async () => {
 		const screen = await renderSelector({
 			selection: {
-				model: { providerID: "kilo", modelID: "kilo-auto/free" },
+				model: { providerID: "kilo", id: "kilo-auto/free" },
 				name: "Auto Free",
 				catalog: {
 					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],

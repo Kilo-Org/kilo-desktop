@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { useOpenCodePermissions, useOpenCodeQuestions } from "@kilo-desktop/react-opencode-v2";
+import { useOpenCodePermissions, useOpenCodeForms } from "@kilo-desktop/react-opencode-v2";
 
 import { useStableValue } from "@kilo-desktop/ui/hooks/use-stable";
 
@@ -18,11 +18,11 @@ const FamilyPendingInteractionsContext = createContext<PendingInteractions | nul
 function useSessionFamilyInteractions(scopeSessionId?: string): PendingInteractions {
 	const state = useOptionalOpenCodeRuntimeExtras()?.state;
 	const { pending: permissions } = useOpenCodePermissions();
-	const questions = useOpenCodeQuestions();
+	const forms = useOpenCodeForms();
 	const collected = collectPendingInteractions({
 		state,
 		scopeSessionId,
-		own: { permissions, questions },
+		own: { permissions, forms },
 	});
 	// Auto-approve answers subagent requests too, so the whole family is filtered.
 	const visiblePermissions = useVisiblePermissionRequests(collected.permissions);

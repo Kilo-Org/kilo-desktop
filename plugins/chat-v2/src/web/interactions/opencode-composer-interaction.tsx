@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type {
 	OpenCodePermissionRequest,
-	OpenCodeQuestionRequest,
+	OpenCodeFormRequest,
 } from "@kilo-desktop/react-opencode-v2";
 
 import { isPlanFollowupRequest } from "../plan/plan-followup";
@@ -16,13 +16,13 @@ import { OpenCodeQuestionQuestionnaire } from "./opencode-question-card";
 
 type PendingComposerInteraction =
 	| { kind: "permission"; request: OpenCodePermissionRequest; origin: SubagentOrigin | undefined }
-	| { kind: "question"; request: OpenCodeQuestionRequest; origin: SubagentOrigin | undefined };
+	| { kind: "question"; request: OpenCodeFormRequest; origin: SubagentOrigin | undefined };
 
 function oldestPendingInteraction(
 	interactions: PendingInteractions,
 ): PendingComposerInteraction | null {
 	// The plan follow-up is answered by Approve (plan card, plan pane) or the composer's Refine.
-	const questions = interactions.questions.filter((question) => !isPlanFollowupRequest(question));
+	const questions = interactions.forms.filter((question) => !isPlanFollowupRequest(question));
 	const pending: PendingComposerInteraction[] = [
 		...interactions.permissions.map((request) => ({
 			kind: "permission" as const,

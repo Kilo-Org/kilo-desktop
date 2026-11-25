@@ -2,11 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
 	createKiloSlashFormatter,
-	extractPromptText,
 	isLeadingSlashQuery,
 	parseSlashDraft,
-	slashCommandFromPromptArgs,
-	slashSourceCategory,
+	slashCommandFromPromptText,
 } from "./kilo-slash-command";
 
 describe("parseSlashDraft", () => {
@@ -43,7 +41,6 @@ describe("createKiloSlashFormatter", () => {
 			["init", "command"],
 			["compact", "command"],
 			["frontend-design", "skill"],
-			["browser", "mcp"],
 			["smol", "action"],
 		]),
 	);
@@ -67,22 +64,20 @@ describe("createKiloSlashFormatter", () => {
 			{ kind: "mention", type: "skill", label: "frontend-design", id: "frontend-design" },
 			{ kind: "text", text: " dark theme" },
 		]);
-		expect(formatter.parse("/browser open docs")).toEqual([
-			{ kind: "mention", type: "mcp", label: "browser", id: "browser" },
-			{ kind: "text", text: " open docs" },
-		]);
 		expect(formatter.parse("/smol")).toEqual([
 			{ kind: "mention", type: "action", label: "smol", id: "smol" },
 		]);
 	});
 
-	it("chips a namespaced MCP command", () => {
-		const mcpFormatter = createKiloSlashFormatter(new Map([["mcp_everything:args-prompt", "mcp"]]));
+	it("chips a namespaced command", () => {
+		const mcpFormatter = createKiloSlashFormatter(
+			new Map([["mcp_everything:args-prompt", "command"]]),
+		);
 
 		expect(mcpFormatter.parse("/mcp_everything:args-prompt hello")).toEqual([
 			{
 				kind: "mention",
-				type: "mcp",
+				type: "command",
 				label: "mcp_everything:args-prompt",
 				id: "mcp_everything:args-prompt",
 			},
@@ -117,45 +112,25 @@ describe("isLeadingSlashQuery", () => {
 	});
 });
 
-describe("slashSourceCategory", () => {
-	it("files a server command under its source, and under commands without one", () => {
-		expect(slashSourceCategory("skill")).toBe("skill");
-		expect(slashSourceCategory("mcp")).toBe("mcp");
-		expect(slashSourceCategory(undefined)).toBe("command");
-	});
-});
-
-describe("slashCommandFromPromptArgs", () => {
-	it("extracts a known slash command from text parts", () => {
-		expect(
-			slashCommandFromPromptArgs({ parts: [{ type: "text", text: "/init write AGENTS.md" }] }, [
-				"init",
-				"compact",
-			]),
-		).toEqual({ command: "init", arguments: "write AGENTS.md" });
+describe("slashCommandFromPromptText", () => {
+	it("extracts a known slash command from a prompt's text", () => {
+		expect(slashCommandFromPromptText("/init write AGENTS.md", ["init", "compact"])).toEqual({
+			command: "init",
+			arguments: "write AGENTS.md",
+		});
 	});
 
-	it("extracts a known namespaced MCP command", () => {
+	it("extracts a known namespaced command", () => {
 		expect(
-			slashCommandFromPromptArgs({ text: "/mcp_everything:args-prompt hello" }, [
+			slashCommandFromPromptText("/mcp_everything:args-prompt hello", [
 				"mcp_everything:args-prompt",
 			]),
 		).toEqual({ command: "mcp_everything:args-prompt", arguments: "hello" });
 	});
 
 	it("ignores unknown names and non-slash text", () => {
-		expect(
-			slashCommandFromPromptArgs({ parts: [{ type: "text", text: "/unknown" }] }, ["init"]),
-		).toBeUndefined();
-		expect(
-			slashCommandFromPromptArgs({ parts: [{ type: "text", text: "hello" }] }, ["init"]),
-		).toBeUndefined();
-		expect(
-			slashCommandFromPromptArgs({ parts: [{ type: "text", text: "/init" }] }, []),
-		).toBeUndefined();
-	});
-
-	it("reads a bare text field", () => {
-		expect(extractPromptText({ text: "/compact" })).toBe("/compact");
+		expect(slashCommandFromPromptText("/unknown", ["init"])).toBeUndefined();
+		expect(slashCommandFromPromptText("hello", ["init"])).toBeUndefined();
+		expect(slashCommandFromPromptText("/init", [])).toBeUndefined();
 	});
 });

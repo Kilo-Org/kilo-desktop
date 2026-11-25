@@ -1,5 +1,6 @@
 import { useAuiState } from "@assistant-ui/react";
 
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import { useChatModelSelection } from "../selection/ChatModelSelectionContext";
 import {
 	fallbackTotalsFromMessages,
@@ -11,15 +12,15 @@ import {
 } from "./session-model-usage";
 
 /**
- * The composer's usage view from the transcript alone. On Kilo v2 there is no
- * per-session usage route, so the per-model cost breakdown is hidden
- * (decision) and the totals come from the thread's own step costs and tokens.
+ * The composer's usage view: the session's billed totals, the latest step's
+ * context fill and the last turn's cost.
  */
 export function useComposerUsageView(): ComposerUsageView | undefined {
 	const isDraft = useAuiState(
 		(state) => state.thread.messages.length === 0 && state.threadListItem.status === "new",
 	);
 	const { model, catalog } = useChatModelSelection();
+	const session = useOptionalOpenCodeSession();
 	const tokens = useAuiState((state) =>
 		lastAssistantTokens(state.thread.messages as readonly ThreadUsageMessage[]),
 	);
@@ -30,17 +31,16 @@ export function useComposerUsageView(): ComposerUsageView | undefined {
 		lastAssistantCost(state.thread.messages as readonly ThreadUsageMessage[]),
 	);
 	const contextWindow = catalog?.models.find(
-		(entry) => entry.providerID === model?.providerID && entry.modelID === model?.modelID,
+		(entry) => entry.providerID === model?.providerID && entry.modelID === model?.id,
 	)?.contextWindow;
 
 	if (isDraft) return undefined;
 
 	return toComposerUsageView({
-		usage: undefined,
+		totals: session ? { cost: session.cost, tokens: session.tokens } : undefined,
 		fallback,
 		...(tokens === undefined ? {} : { tokens }),
 		contextWindow,
-		catalog: catalog?.models,
 		runCost,
 	});
 }

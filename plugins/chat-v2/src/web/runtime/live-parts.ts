@@ -1,4 +1,8 @@
-import type { OpenCodeServerEvent, SessionMessageInfo } from "@kilo-desktop/react-opencode-v2";
+import type {
+	OpenCodeEvent,
+	OpenCodeServerEvent,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode-v2";
 
 /*
  * The text of every step item (text or reasoning) the window's stream is
@@ -39,10 +43,21 @@ interface LiveItem {
 	expires?: number;
 }
 
-type UnknownRecord = Record<string, unknown>;
+type StreamEvent = Extract<
+	OpenCodeEvent,
+	{
+		type:
+			| "session.text.started"
+			| "session.text.delta"
+			| "session.text.ended"
+			| "session.reasoning.started"
+			| "session.reasoning.delta"
+			| "session.reasoning.ended";
+	}
+>;
 
 const STREAM_EVENT = /^session\.(text|reasoning)\.(started|delta|ended)$/;
-const TURN_ENDED = /^session\.(execution\.(succeeded|failed|interrupted)|idle)$/;
+const TURN_ENDED = /^session\.execution\.(succeeded|failed|interrupted)$/;
 
 const keyOf = (sessionId: string, messageId: string, kind: Kind, ordinal: number) =>
 	`${sessionId}:${messageId}:${kind}:${ordinal}`;
@@ -50,16 +65,16 @@ const keyOf = (sessionId: string, messageId: string, kind: Kind, ordinal: number
 export class LiveParts {
 	readonly #items = new Map<string, LiveItem>();
 
-	apply(event: OpenCodeServerEvent): void {
+	apply(item: OpenCodeServerEvent): void {
 		this.#dropExpired();
-		const sessionId = event.sessionId;
-		if (!sessionId) return;
+		if (item.type !== "kilo.event" || !item.sessionId) return;
+		const { event, sessionId } = item;
 		const match = STREAM_EVENT.exec(event.type);
 		if (match) {
-			this.#stream(sessionId, match[1] as Kind, match[2]!, event.properties);
+			this.#stream(sessionId, match[1] as Kind, match[2]!, event as StreamEvent);
 			return;
 		}
-		if (TURN_ENDED.test(event.type)) this.#drop(sessionId, (item) => item.expires === undefined);
+		if (TURN_ENDED.test(event.type)) this.#drop(sessionId, (live) => live.expires === undefined);
 		else if (event.type === "session.deleted") this.#drop(sessionId, () => true);
 	}
 
@@ -77,9 +92,8 @@ export class LiveParts {
 		this.#items.clear();
 	}
 
-	#stream(sessionId: string, kind: Kind, phase: string, data: UnknownRecord): void {
-		const { assistantMessageID: messageId, ordinal } = data;
-		if (typeof messageId !== "string" || typeof ordinal !== "number") return;
+	#stream(sessionId: string, kind: Kind, phase: string, event: StreamEvent): void {
+		const { assistantMessageID: messageId, ordinal } = event.data;
 		const key = keyOf(sessionId, messageId, kind, ordinal);
 		if (phase === "started") {
 			this.#items.set(key, { sessionId, messageId, text: "" });
@@ -87,16 +101,16 @@ export class LiveParts {
 		}
 		const live = this.#items.get(key);
 		if (phase === "delta") {
-			if (live && live.expires === undefined && typeof data.delta === "string") {
-				live.text += data.delta;
+			if (live && live.expires === undefined && "delta" in event.data) {
+				live.text += event.data.delta;
 			}
 			return;
 		}
-		if (typeof data.text !== "string") return;
+		if (!("text" in event.data)) return;
 		this.#items.set(key, {
 			sessionId,
 			messageId,
-			text: data.text,
+			text: event.data.text,
 			expires: Date.now() + ENDED_PART_TTL_MS,
 		});
 	}

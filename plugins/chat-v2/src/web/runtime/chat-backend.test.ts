@@ -4,6 +4,7 @@ import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import type { KiloServer } from "@kilo-desktop/plugin-core/contracts";
 
 import { FakeKiloServer } from "../../test/fake-kilo-server";
+import { streamEvent } from "../../test/stream-events";
 import { createChatBackend } from "./chat-backend";
 import { ChatServices } from "./chat-services";
 
@@ -56,18 +57,8 @@ describe("createChatBackend", () => {
 			createChat: async () => ({ id: "s1", directory: "/repo" }),
 		});
 		const ids = { sessionID: "s1", assistantMessageID: "msg_1", ordinal: 0 };
-		services.liveParts.apply({
-			type: "session.text.started",
-			sessionId: "s1",
-			properties: ids,
-			raw: undefined,
-		});
-		services.liveParts.apply({
-			type: "session.text.delta",
-			sessionId: "s1",
-			properties: { ...ids, delta: "Hello" },
-			raw: undefined,
-		});
+		services.liveParts.apply(streamEvent("session.text.started", ids));
+		services.liveParts.apply(streamEvent("session.text.delta", { ...ids, delta: "Hello" }));
 
 		const [message] = backend.patchHistory!("s1", [
 			{

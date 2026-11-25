@@ -9,13 +9,16 @@ import {
 	type PersistedModelPreferences,
 } from "./use-persisted-model-selection";
 
+/** A catalog model's own fields for `ref`. */
+const catalogFields = (ref: KiloModelRef) => ({ providerID: ref.providerID, modelID: ref.id });
+
 const defaultModel: KiloModelRef = {
 	providerID: "anthropic",
-	modelID: "claude-sonnet",
+	id: "claude-sonnet",
 };
 const alternateModel: KiloModelRef = {
 	providerID: "anthropic",
-	modelID: "claude-opus",
+	id: "claude-opus",
 };
 const catalog: KiloModelCatalog = {
 	providers: [{ id: "anthropic", name: "Anthropic", connected: true }],
@@ -23,7 +26,7 @@ const catalog: KiloModelCatalog = {
 		{
 			id: "anthropic/claude-sonnet",
 			name: "Claude Sonnet",
-			...defaultModel,
+			...catalogFields(defaultModel),
 			efforts: [
 				{ id: "low", name: "Low" },
 				{ id: "medium", name: "Med" },
@@ -33,7 +36,7 @@ const catalog: KiloModelCatalog = {
 		{
 			id: "anthropic/claude-opus",
 			name: "Claude Opus",
-			...alternateModel,
+			...catalogFields(alternateModel),
 			efforts: [
 				{ id: "low", name: "Low" },
 				{ id: "medium", name: "Med" },
@@ -78,7 +81,7 @@ describe("usePersistedModelSelection", () => {
 	it("falls through an unavailable preferred model to the agent's remembered model", () => {
 		const preferences: PersistedModelPreferences = {
 			modelSelections: { code: alternateModel },
-			preferred: { providerID: "missing", modelID: "removed", variant: "high" },
+			preferred: { providerID: "missing", id: "removed", variant: "high" },
 			variantSelections: { "code/anthropic/claude-opus": "max" },
 			recentModels: [],
 			favorites: [],
@@ -154,11 +157,11 @@ describe("usePersistedModelSelection", () => {
 	});
 
 	it("uses the organization recommendation instead of personal recents", () => {
-		const orgModel = { providerID: "kilo", modelID: "org-recommended" };
+		const orgModel = { providerID: "kilo", id: "org-recommended" };
 		const orgCatalog: KiloModelCatalog = {
 			providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }, ...catalog.providers],
 			models: [
-				{ id: "kilo/org-recommended", name: "Org Recommended", ...orgModel },
+				{ id: "kilo/org-recommended", name: "Org Recommended", ...catalogFields(orgModel) },
 				...catalog.models,
 			],
 			defaults: { kilo: "org-recommended", ...catalog.defaults },
@@ -200,10 +203,13 @@ describe("usePersistedModelSelection", () => {
 	});
 
 	it("suppresses pending Kilo preferences while retaining connected external models", () => {
-		const kiloModel = { providerID: "kilo", modelID: "kilo-auto/free" };
+		const kiloModel = { providerID: "kilo", id: "kilo-auto/free" };
 		const pendingCatalog: KiloModelCatalog = {
 			providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }, ...catalog.providers],
-			models: [{ id: "kilo/kilo-auto/free", name: "Auto Free", ...kiloModel }, ...catalog.models],
+			models: [
+				{ id: "kilo/kilo-auto/free", name: "Auto Free", ...catalogFields(kiloModel) },
+				...catalog.models,
+			],
 			defaults: { kilo: "kilo-auto/free", ...catalog.defaults },
 			connected: ["kilo", "anthropic"],
 			providerReady: false,
@@ -386,7 +392,7 @@ describe("usePersistedModelSelection", () => {
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(catalog, undefined, {
 				agent: "code",
-				model: { providerID: "missing", modelID: "removed" },
+				model: { providerID: "missing", id: "removed" },
 				effort: "high",
 			}),
 		);
@@ -417,7 +423,7 @@ describe("usePersistedModelSelection", () => {
 	it("clears effort when switching to a model that has none", () => {
 		const noEffortModel: KiloModelRef = {
 			providerID: "anthropic",
-			modelID: "claude-haiku",
+			id: "claude-haiku",
 		};
 		const catalogWithNoEffortModel: KiloModelCatalog = {
 			...catalog,
@@ -426,7 +432,7 @@ describe("usePersistedModelSelection", () => {
 				{
 					id: "anthropic/claude-haiku",
 					name: "Claude Haiku",
-					...noEffortModel,
+					...catalogFields(noEffortModel),
 				},
 			],
 		};
@@ -676,12 +682,15 @@ describe("usePersistedModelSelection", () => {
 		});
 
 		it("falls back to the automatic default, not another chat's recent pick, when a chat's model is gone", () => {
-			const autoFree: KiloModelRef = { providerID: "kilo", modelID: "kilo-auto/free" };
+			const autoFree: KiloModelRef = { providerID: "kilo", id: "kilo-auto/free" };
 			const kiloCatalog: KiloModelCatalog = {
 				...catalog,
 				providerReady: true,
 				providers: [...catalog.providers, { id: "kilo", name: "Kilo", connected: true }],
-				models: [...catalog.models, { id: "kilo/kilo-auto/free", name: "Auto Free", ...autoFree }],
+				models: [
+					...catalog.models,
+					{ id: "kilo/kilo-auto/free", name: "Auto Free", ...catalogFields(autoFree) },
+				],
 			};
 			const chats = new ChatSelections();
 			const { result } = renderHook(() =>
@@ -698,7 +707,7 @@ describe("usePersistedModelSelection", () => {
 			act(() =>
 				result.current.hydrateThreadModel("chat-a", {
 					agent: "code",
-					model: { providerID: "missing", modelID: "removed" },
+					model: { providerID: "missing", id: "removed" },
 				}),
 			);
 

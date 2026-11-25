@@ -79,7 +79,7 @@ const task = (callID: string, childId: string, description: string, status = "co
 	const input = { description, agent: "explore" };
 	const metadata = { sessionID: childId };
 	return status === "completed"
-		? toolContent(callID, "subagent", input, "<task_result>Done</task_result>", metadata)
+		? toolContent(callID, "subagent", input, "Done", metadata)
 		: runningTool(callID, "subagent", input, metadata);
 };
 

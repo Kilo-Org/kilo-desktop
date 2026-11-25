@@ -1,3 +1,4 @@
+import type { ModelRef } from "@kilo-desktop/react-opencode-v2";
 import { useEffect, useEffectEvent, useRef, type ReactNode } from "react";
 
 import type { Contribution } from "@kilo-desktop/kernel";
@@ -5,18 +6,14 @@ import { useExtensions } from "@kilo-desktop/kernel/web";
 import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 
 import { ModelSource, type ModelSourceState } from "../../contracts";
-import type { PromptModelRef } from "../runtime/prompt-options";
 import type { ActiveModelSource } from "./ChatModelSelectionContext";
 
 type Source = Contribution<typeof ModelSource>;
 
 /** Loads a prompt's model first when a model source serves its provider. */
-export async function prepareForPrompt(
-	model: PromptModelRef,
-	sources: readonly Source[],
-): Promise<void> {
+export async function prepareForPrompt(model: ModelRef, sources: readonly Source[]): Promise<void> {
 	const source = sources.find((candidate) => candidate.metadata.aiProviderId === model.providerID);
-	await source?.implementation?.prepare?.(model.modelID);
+	await source?.implementation?.prepare?.(model.id);
 }
 
 /** The window's model sources, latest at call time (for prompts sent later). */

@@ -1,18 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { needsPerson, neverAutoReplied } from "./person-required";
+import { needsPerson } from "./person-required";
 
-describe("permission requests a person must answer on Kilo v2", () => {
-	it("never auto-replies to requests v2 marks interactive, nor v1's flags", () => {
-		expect(neverAutoReplied({ interactive: true })).toBe(true);
-		expect(neverAutoReplied({ sandboxEscalation: true })).toBe(true);
-		expect(neverAutoReplied({ configProtected: true })).toBe(true);
-		expect(neverAutoReplied({ interactive: false, command: "ls" })).toBe(false);
-	});
-
-	it("shows every such request, and skill-shell ones, to the person", () => {
+describe("requests a person must decide", () => {
+	it("are Kilo v2's interactive requests and sandbox escalations", () => {
 		expect(needsPerson({ interactive: true })).toBe(true);
-		expect(needsPerson({ skillShell: true })).toBe(true);
+		expect(needsPerson({ sandboxEscalation: true, interactive: true })).toBe(true);
+		expect(needsPerson({ sandboxEscalation: true })).toBe(true);
+		expect(needsPerson({ interactive: false, command: "ls" })).toBe(false);
 		expect(needsPerson({})).toBe(false);
 	});
 });

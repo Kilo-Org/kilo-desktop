@@ -1,30 +1,27 @@
-import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode-v2";
+import {
+	STREAM_RECONNECTED_EVENT_TYPE,
+	type OpenCodeServerEvent,
+} from "@kilo-desktop/react-opencode-v2";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { streamEvent, streamEventType } from "../../test/stream-events";
 import { createEventBatcher, EVENT_BATCH_INTERVAL_MS } from "./event-batcher";
 
-const delta = (text: string, ordinal = 0, sessionId = "ses_1"): OpenCodeServerEvent => {
-	const properties = { sessionID: sessionId, assistantMessageID: "msg_1", ordinal, delta: text };
-	return {
-		type: "session.text.delta",
-		sessionId,
-		raw: { type: "session.text.delta", data: properties } as OpenCodeServerEvent["raw"],
-		properties,
-	};
-};
+const delta = (text: string, ordinal = 0, sessionId = "ses_1"): OpenCodeServerEvent =>
+	streamEvent("session.text.delta", {
+		sessionID: sessionId,
+		assistantMessageID: "msg_1",
+		ordinal,
+		delta: text,
+	});
 
-const event = (type: string): OpenCodeServerEvent => ({
-	type,
-	sessionId: "ses_1",
-	raw: undefined,
-	properties: {},
-});
+const event = (type: string): OpenCodeServerEvent => streamEvent(type, { sessionID: "ses_1" });
 
 const summary = (events: readonly OpenCodeServerEvent[]) =>
 	events.map((received) =>
-		received.type === "session.text.delta"
-			? `${received.properties.ordinal}:${received.properties.delta}`
-			: received.type,
+		received.type === "kilo.event" && received.event.type === "session.text.delta"
+			? `${received.event.data.ordinal}:${received.event.data.delta}`
+			: streamEventType(received),
 	);
 
 beforeEach(() => {
@@ -55,12 +52,12 @@ describe("createEventBatcher", () => {
 		batcher.subscribe((next) => received.push(next));
 
 		batcher.push(delta("a"));
-		batcher.push(event("stream.reconnected"));
+		batcher.push({ type: STREAM_RECONNECTED_EVENT_TYPE });
 
 		expect(summary(received)).toEqual(["0:a", "stream.reconnected"]);
 	});
 
-	it("joins a run of deltas to the same item into one, raw event and all", () => {
+	it("joins a run of deltas to the same item into one, rewriting only its delta", () => {
 		const batcher = createEventBatcher();
 		const received: OpenCodeServerEvent[] = [];
 		batcher.subscribe((next) => received.push(next));
@@ -69,7 +66,14 @@ describe("createEventBatcher", () => {
 		batcher.flush();
 
 		expect(summary(received)).toEqual(["0:Hello world"]);
-		expect(received[0]?.raw?.data).toMatchObject({ delta: "Hello world" });
+		expect(received[0]).toMatchObject({
+			type: "kilo.event",
+			sessionId: "ses_1",
+			event: {
+				type: "session.text.delta",
+				data: { sessionID: "ses_1", assistantMessageID: "msg_1", ordinal: 0, delta: "Hello world" },
+			},
+		});
 	});
 
 	it("keeps the order of everything else, joining only adjacent deltas to one item", () => {
@@ -112,12 +116,12 @@ describe("createEventBatcher", () => {
 		batcher.subscribe(() => {
 			throw new Error("broken");
 		});
-		batcher.subscribe((next) => received.push(next.type));
+		batcher.subscribe((next) => received.push(streamEventType(next)));
 
-		batcher.push(event("session.idle"));
+		batcher.push(event("session.execution.succeeded"));
 		batcher.flush();
 
-		expect(received).toEqual(["session.idle"]);
+		expect(received).toEqual(["session.execution.succeeded"]);
 	});
 
 	it("drops what's queued when disposed", () => {

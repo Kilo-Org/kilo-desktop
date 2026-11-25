@@ -24,8 +24,6 @@ const toolPart = (toolCallId: string, toolName: string): PartState =>
 const refusedToolPart = (toolCallId: string, toolName: string, result: string): PartState =>
 	({ ...toolPart(toolCallId, toolName), result, isError: true }) as PartState;
 
-const dataPart = (name: string): PartState => ({ type: "data", name, data: {} }) as PartState;
-
 const textPart = (text: string): PartState => ({ type: "text", text }) as PartState;
 
 const pagePart = (toolCallId: string): PartState =>
@@ -51,20 +49,18 @@ describe("createActivityGroupBy", () => {
 
 	it("treats projected task-list calls as hidden activity structure", () => {
 		expect(
-			groupPaths([toolPart("todo-write", "todowrite"), toolPart("todo-read", "todoread")]),
+			groupPaths([toolPart("todo-write-1", "todowrite"), toolPart("todo-write-2", "todowrite")]),
 		).toEqual([["group-activity"], ["group-activity"]]);
 	});
 
-	it("keeps same-kind tools grouped across hidden OpenCode step boundaries", () => {
+	it("keeps same-kind tools grouped across hidden task-list updates", () => {
 		const parts = [
 			toolPart("web-1", "websearch"),
-			dataPart("opencode-step-finish"),
-			dataPart("opencode-step-start"),
+			toolPart("todo-1", "todowrite"),
 			toolPart("web-2", "webfetch"),
 		];
 
 		expect(groupPaths(parts)).toEqual([
-			["group-activity", "group-web"],
 			["group-activity", "group-web"],
 			["group-activity", "group-web"],
 			["group-activity", "group-web"],
@@ -74,9 +70,9 @@ describe("createActivityGroupBy", () => {
 	it("does not bridge activity groups across visible text", () => {
 		const parts = [
 			toolPart("web-1", "websearch"),
-			dataPart("opencode-step-finish"),
+			toolPart("todo-1", "todowrite"),
 			textPart("Interim result"),
-			dataPart("opencode-step-start"),
+			toolPart("todo-2", "todowrite"),
 			toolPart("web-2", "webfetch"),
 		];
 
@@ -89,10 +85,10 @@ describe("createActivityGroupBy", () => {
 		]);
 	});
 
-	it("keeps a hidden marker with the preceding kind when the activity changes", () => {
+	it("keeps a hidden part with the preceding kind when the activity changes", () => {
 		const parts = [
 			toolPart("web-1", "websearch"),
-			dataPart("opencode-step-finish"),
+			toolPart("todo-1", "todowrite"),
 			toolPart("bash-1", "shell"),
 		];
 
@@ -122,9 +118,9 @@ describe("createActivityGroupBy", () => {
 	it("keeps a delegation run together across parts that render nothing", () => {
 		const parts = [
 			toolPart("task-1", "subagent"),
-			dataPart("opencode-step-finish"),
+			toolPart("todo-1", "todowrite"),
 			textPart("  "),
-			dataPart("opencode-step-start"),
+			toolPart("todo-2", "todowrite"),
 			toolPart("task-2", "subagent"),
 		];
 
@@ -170,8 +166,8 @@ describe("createTurnWorkGroupBy", () => {
 
 	it("does not create a worked fold for hidden lifecycle parts alone", () => {
 		const parts = [
-			dataPart("opencode-step-finish"),
-			dataPart("opencode-step-start"),
+			toolPart("todo-1", "todowrite"),
+			toolPart("todo-2", "todowrite"),
 			textPart("Final answer"),
 		];
 		const groupBy = createTurnWorkGroupBy(parts);
@@ -187,8 +183,8 @@ describe("createTurnWorkGroupBy", () => {
 		const parts = [
 			toolPart("read-1", "read"),
 			toolPart("write-plan", "write"),
-			dataPart("opencode-step-finish"),
-			dataPart("opencode-step-start"),
+			toolPart("todo-1", "todowrite"),
+			toolPart("todo-2", "todowrite"),
 			textPart("Final answer"),
 		];
 		const groupBy = createTurnWorkGroupBy(parts, {

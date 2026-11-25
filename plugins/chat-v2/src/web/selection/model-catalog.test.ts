@@ -56,16 +56,16 @@ const ANTHROPIC = state(
 
 describe("model-catalog", () => {
 	it("round-trips model ids", () => {
-		expect(modelRefToId({ providerID: "anthropic", modelID: "claude-sonnet" })).toBe(
+		expect(modelRefToId({ providerID: "anthropic", id: "claude-sonnet" })).toBe(
 			"anthropic/claude-sonnet",
 		);
 		expect(parseModelId("anthropic/claude-sonnet")).toEqual({
 			providerID: "anthropic",
-			modelID: "claude-sonnet",
+			id: "claude-sonnet",
 		});
 		expect(parseModelId("anthropic/org/model")).toEqual({
 			providerID: "anthropic",
-			modelID: "org/model",
+			id: "org/model",
 		});
 		expect(parseModelId("bad")).toBeNull();
 	});
@@ -73,9 +73,9 @@ describe("model-catalog", () => {
 	it("converts between kilo.core's model refs and the picker's", () => {
 		expect(toKiloModelRef({ aiProviderId: "acme", modelId: "fast-1" })).toEqual({
 			providerID: "acme",
-			modelID: "fast-1",
+			id: "fast-1",
 		});
-		expect(toModelRef({ providerID: "acme", modelID: "fast-1" })).toEqual({
+		expect(toModelRef({ providerID: "acme", id: "fast-1" })).toEqual({
 			aiProviderId: "acme",
 			modelId: "fast-1",
 		});
@@ -146,7 +146,7 @@ describe("model-catalog", () => {
 			}),
 		);
 		expect(catalog.defaults).toEqual({ anthropic: "claude-sonnet" });
-		expect(catalog.configuredModel).toEqual({ providerID: "anthropic", modelID: "claude-sonnet" });
+		expect(catalog.configuredModel).toEqual({ providerID: "anthropic", id: "claude-sonnet" });
 	});
 
 	it("carries what the account says about the gateway", () => {
@@ -250,7 +250,7 @@ describe("model-catalog", () => {
 					),
 				),
 			),
-		).toEqual({ providerID: "kilo", modelID: "kilo-auto/free" });
+		).toEqual({ providerID: "kilo", id: "kilo-auto/free" });
 		expect(
 			pickDefaultModel(
 				buildCatalogFromModels(
@@ -260,10 +260,10 @@ describe("model-catalog", () => {
 					),
 				),
 			),
-		).toEqual({ providerID: "kilo", modelID: "kilo-auto/frontier" });
+		).toEqual({ providerID: "kilo", id: "kilo-auto/frontier" });
 		expect(pickDefaultModel(buildCatalogFromModels(ANTHROPIC))).toEqual({
 			providerID: "anthropic",
-			modelID: "claude-sonnet",
+			id: "claude-sonnet",
 		});
 		expect(
 			pickDefaultModel(
@@ -277,12 +277,12 @@ describe("model-catalog", () => {
 					),
 				),
 			),
-		).toEqual({ providerID: "anthropic", modelID: "claude-sonnet" });
+		).toEqual({ providerID: "anthropic", id: "claude-sonnet" });
 		expect(
 			pickDefaultModel(
 				buildCatalogFromModels({ ...ANTHROPIC, defaults: { anthropic: "claude-opus" } }),
 			),
-		).toEqual({ providerID: "anthropic", modelID: "claude-opus" });
+		).toEqual({ providerID: "anthropic", id: "claude-opus" });
 		expect(pickDefaultModel(undefined)).toBeUndefined();
 	});
 });

@@ -13,12 +13,14 @@ import type {
 import type {
 	FormAnswer,
 	FormInfo,
+	ModelRef,
 	OpenCodeEvent,
 	PermissionRequest as KiloPermissionRequest,
 	SessionInboxItem,
 	SessionInfo,
 	SessionMessageAssistant,
 	SessionMessageInfo,
+	SessionStatus,
 } from "@kilocode/client";
 import type { KiloClient } from "./kilo";
 import type {
@@ -34,6 +36,7 @@ export type {
 	FileDiffInfo,
 	FormAnswer,
 	FormInfo,
+	ModelRef,
 	OpenCodeEvent,
 	SessionInboxItem,
 	SessionInfo,
@@ -43,6 +46,7 @@ export type {
 	SessionMessageShell,
 	SessionMessageUser,
 	SessionRevert,
+	SessionStatus,
 	SkillInfo,
 	ToolContent,
 } from "@kilocode/client";
@@ -53,15 +57,6 @@ export type KiloAssistantContent = SessionMessageAssistant["content"][number];
 export type KiloToolCall = Extract<KiloAssistantContent, { type: "tool" }>;
 export type KiloToolState = KiloToolCall["state"];
 
-/**
- * Whether the session runs, as the thread reads it from Kilo v2's execution
- * events (`session.execution.*`, `session.retry.scheduled`).
- */
-export type OpenCodeSessionStatus =
-	| { type: "idle" }
-	| { type: "busy" }
-	| { type: "retry"; attempt: number; message: string; next: number };
-
 /** A permission reply, as Kilo v2 takes it (`permission.reply`'s `decision`). */
 export type OpenCodePermissionResponse = "once" | "always" | "reject";
 
@@ -71,7 +66,7 @@ export type OpenCodePermissionRequest = KiloPermissionRequest & {
 };
 
 /** A Kilo v2 form waiting on the person (the question tool asks through one), and when it was asked. */
-export type OpenCodeQuestionRequest = FormInfo & {
+export type OpenCodeFormRequest = FormInfo & {
 	askedAt: number;
 };
 
@@ -109,13 +104,6 @@ export type OpenCodeRunState =
 	| { type: "reverting" }
 	| { type: "error"; error: unknown };
 
-export type OpenCodeUnhandledEvent = {
-	type: string;
-	sessionId: string | undefined;
-	properties: Record<string, unknown>;
-	seenAt: number;
-};
-
 /**
  * Whether the server holds messages older than those loaded: a session loads
  * its newest page first and the rest after (`loading` until it lands).
@@ -128,7 +116,8 @@ export type OpenCodeOlderHistory =
 export type OpenCodeThreadState = {
 	sessionId: string;
 	session: SessionInfo | null;
-	sessionStatus: OpenCodeSessionStatus | null;
+	/** Whether the session runs, as the thread reads it from Kilo v2's execution and status events. */
+	sessionStatus: SessionStatus | null;
 	loadState: OpenCodeLoadState;
 	/** Absent means complete. */
 	olderHistory?: OpenCodeOlderHistory;
@@ -153,30 +142,29 @@ export type OpenCodeThreadState = {
 				>
 			>;
 		};
-		questions: {
-			pending: Readonly<Record<string, OpenCodeQuestionRequest>>;
-			answered: Readonly<
+		forms: {
+			pending: Readonly<Record<string, OpenCodeFormRequest>>;
+			replied: Readonly<
 				Record<
 					string,
 					{
-						request: OpenCodeQuestionRequest;
+						request: OpenCodeFormRequest;
 						answer: FormAnswer;
 						respondedAt: number;
 					}
 				>
 			>;
-			rejected: Readonly<
+			cancelled: Readonly<
 				Record<
 					string,
 					{
-						request: OpenCodeQuestionRequest;
-						rejectedAt: number;
+						request: OpenCodeFormRequest;
+						cancelledAt: number;
 					}
 				>
 			>;
 		};
 	};
-	unhandledEvents: readonly OpenCodeUnhandledEvent[];
 	sync: {
 		lastHistoryLoadAt?: number;
 		lastEventAt?: number;
@@ -184,19 +172,10 @@ export type OpenCodeThreadState = {
 	};
 };
 
-/** A model as Kilo v2 names it (`session.switchModel`). */
-export type OpenCodeModelRef = {
-	providerID: string;
-	id: string;
-	variant?: string | undefined;
-};
-
 /** What a prompt switches the session to before it is sent. */
 export type OpenCodeUserMessageOptions = {
-	model?: OpenCodeModelRef | undefined;
+	model?: ModelRef | undefined;
 	agent?: string | undefined;
-	/** Adds the message without starting a turn (`resume: false`). */
-	noReply?: boolean | undefined;
 };
 
 export type OpenCodeSessionRef = {
@@ -251,7 +230,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
 	backend?: OpenCodeRuntimeBackend | undefined;
 	baseUrl?: string | undefined;
 	initialSessionId?: string | undefined;
-	defaultModel?: OpenCodeModelRef | undefined;
+	defaultModel?: ModelRef | undefined;
 	defaultAgent?: string | undefined;
 	onError?: (error: unknown) => void;
 	/**
@@ -280,15 +259,15 @@ export type OpenCodeRuntimeExtras = {
 	session: SessionInfo | null;
 	state: OpenCodeThreadState;
 	permissions: OpenCodeThreadState["interactions"]["permissions"]["pending"];
-	questions: OpenCodeThreadState["interactions"]["questions"]["pending"];
+	forms: OpenCodeThreadState["interactions"]["forms"]["pending"];
 	fork: (messageId: string) => Promise<string>;
 	revert: (messageId: string) => Promise<void>;
 	unrevert: () => Promise<void>;
 	cancel: () => Promise<void>;
 	refresh: () => Promise<void>;
 	replyToPermission: (permissionId: string, response: OpenCodePermissionResponse) => Promise<void>;
-	replyToQuestion: (questionId: string, answer: FormAnswer) => Promise<void>;
-	rejectQuestion: (questionId: string) => Promise<void>;
+	replyToForm: (formId: string, answer: FormAnswer) => Promise<void>;
+	cancelForm: (formId: string) => Promise<void>;
 	/** Present when the runtime was created with `messageQueue`. */
 	messageQueue?: OpenCodeMessageQueueControls | undefined;
 };
@@ -297,14 +276,19 @@ export type OpenCodeRuntime = AssistantRuntime;
 
 export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
 
-/** A Kilo v2 event (`raw`), with its session and location picked out; `properties` is its `data`. */
-export type OpenCodeServerEvent = {
-	type: string;
-	sessionId: string | undefined;
-	directory?: string | undefined;
-	raw: OpenCodeEvent | undefined;
-	properties: Record<string, unknown>;
-};
+/**
+ * What the window's event stream delivers: a Kilo v2 event, with the session
+ * and folder it is about picked out, or word that the stream reconnected (and
+ * anything may have been missed).
+ */
+export type OpenCodeServerEvent =
+	| {
+			type: "kilo.event";
+			event: OpenCodeEvent;
+			sessionId: string | undefined;
+			directory: string | undefined;
+	  }
+	| { type: "stream.reconnected" };
 
 export type OpenCodeStateEvent =
 	| {
@@ -324,8 +308,10 @@ export type OpenCodeStateEvent =
 	| { type: "history.olderFailed"; error: unknown }
 	| { type: "history.failed"; error: unknown }
 	| { type: "session.updated"; session: SessionInfo }
-	| { type: "session.status"; status: OpenCodeSessionStatus }
-	| { type: "session.idle"; sessionId: string }
+	/** The session's status as read from the server (`session.active`). */
+	| { type: "status.synced"; status: SessionStatus }
+	/** A run this thread drove over HTTP (revert, unrevert) ended; no event follows it. */
+	| { type: "run.settled" }
 	| { type: "run.started" }
 	| { type: "run.cancelling" }
 	| { type: "run.reverting" }
@@ -338,14 +324,13 @@ export type OpenCodeStateEvent =
 			permissionId: string;
 			reply: OpenCodePermissionResponse;
 	  }
-	| { type: "question.asked"; request: OpenCodeQuestionRequest }
+	| { type: "form.created"; request: OpenCodeFormRequest }
 	| {
-			type: "question.replied";
-			questionId: string;
+			type: "form.replied";
+			formId: string;
 			answer: FormAnswer;
 	  }
-	| { type: "question.rejected"; questionId: string }
-	| { type: "unhandled.event"; event: OpenCodeUnhandledEvent }
+	| { type: "form.cancelled"; formId: string }
 	| { type: "local.message.queued"; pending: PendingUserMessage }
 	| {
 			type: "local.message.reconciled";
@@ -369,13 +354,8 @@ export type OpenCodeThreadControllerLike = {
 	unrevert(): Promise<void>;
 	fork(messageId: string): Promise<string>;
 	replyToPermission(permissionId: string, response: OpenCodePermissionResponse): Promise<void>;
-	replyToQuestion(questionId: string, answer: FormAnswer): Promise<void>;
-	rejectQuestion(questionId: string): Promise<void>;
-};
-
-export type OpenCodePartPayload = {
-	readonly name: string;
-	readonly data: Record<string, unknown>;
+	replyToForm(formId: string, answer: FormAnswer): Promise<void>;
+	cancelForm(formId: string): Promise<void>;
 };
 
 export type OpenCodeProjectedThreadMessage = ThreadMessageLike;

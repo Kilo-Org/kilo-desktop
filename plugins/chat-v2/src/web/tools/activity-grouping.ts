@@ -1,9 +1,7 @@
-import { getMcpAppFromToolPart, type GroupByContext, type PartState } from "@assistant-ui/react";
+import type { GroupByContext, PartState } from "@assistant-ui/react";
 
 import { isHtmlRenderToolName, readHtmlRenderArgs } from "../../contracts";
-import { isHostableMcpAppTool } from "../mcp-apps/mcp-app-registry";
 import { shouldExcludeToolCallFromActivityGroup } from "../plan/plan-projection";
-import { isHiddenOpenCodeDataPart } from "./opencode-data-part";
 import { isSignInRefusedToolPart } from "./tool-sign-in";
 import { getGroupKeyForTool, isComposerProjectedTool, isDelegationTool } from "./tool-categories";
 
@@ -45,8 +43,7 @@ export const showsHoistedPage = (part: {
 const isComposerProjectedPart = (part: PartState): boolean =>
 	part.type === "tool-call" && isComposerProjectedTool(part.toolName);
 
-const isHiddenStructuralPart = (part: PartState): boolean =>
-	(part.type === "data" && isHiddenOpenCodeDataPart(part.name)) || isComposerProjectedPart(part);
+const isHiddenStructuralPart = (part: PartState): boolean => isComposerProjectedPart(part);
 
 const isActivityPart = (part: PartState): boolean =>
 	part.type === "reasoning" || part.type === "tool-call";
@@ -114,7 +111,6 @@ const shouldKeepPartOutsideActivity = (
 	part.type === "tool-call" &&
 	(isComposerProjectedPart(part) ||
 		isSignInRefusedToolPart(part) ||
-		Boolean(getMcpAppFromToolPart(part) && isHostableMcpAppTool(part.toolName)) ||
 		Boolean(context.toolUIs?.[part.toolName]?.[0]?.standalone) ||
 		shouldExcludeToolCallFromActivityGroup(part, options));
 

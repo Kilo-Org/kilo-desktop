@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Contribution, QualifiedId } from "@kilo-desktop/kernel";
 
-import { McpApp, ToolRenderer } from "../../contracts";
-import { buildToolkit, hostableMcpApps, toolNameOf } from "./toolkit";
+import { ToolRenderer } from "../../contracts";
+import { buildToolkit, toolNameOf } from "./toolkit";
 
 const NOTHING = { component: () => null };
 
@@ -60,28 +60,5 @@ describe("buildToolkit", () => {
 		const { implementation: _bound, ...remote } = renderer("kilo.other/x", { tools: ["x"] });
 
 		expect(buildToolkit([{ ...remote, implementedRemotely: true }]).toolkit).toEqual({});
-	});
-});
-
-describe("hostableMcpApps", () => {
-	it("keys widgets by wire name, the first contribution for a tool winning", () => {
-		const app = (key: QualifiedId, resourceUri: string): Contribution<typeof McpApp> => ({
-			key,
-			pointId: McpApp.id,
-			pluginId: "kilo.notebooks",
-			id: key.slice(key.indexOf("/") + 1),
-			priority: 0,
-			metadata: { tools: ["kilo.notebooks/show_chart"], resourceUri, serverId: "desktop" },
-			implementedRemotely: false,
-			source: "manifest",
-		});
-
-		const apps = hostableMcpApps([
-			app("kilo.notebooks/chart", "ui://chart"),
-			app("kilo.notebooks/other", "ui://other"),
-		]);
-
-		expect([...apps.keys()]).toEqual(["desktop_notebooks_show_chart"]);
-		expect(apps.get("desktop_notebooks_show_chart")?.resourceUri).toBe("ui://chart");
 	});
 });

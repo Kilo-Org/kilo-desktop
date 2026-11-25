@@ -1,15 +1,14 @@
 import type { KiloClient, OpenCodeServerEvent } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it, vi } from "vitest";
 
+import { streamEvent, streamEventType } from "../../test/stream-events";
 import { withPendingPrompts } from "./pending-prompts";
 
 function liveSource() {
 	const listeners = new Set<(event: OpenCodeServerEvent) => void>();
 	return {
-		emit: (type: string, properties: Record<string, unknown>) => {
-			for (const listener of listeners) {
-				listener({ type, properties, sessionId: undefined, raw: undefined });
-			}
+		emit: (type: string, data: Record<string, unknown>) => {
+			for (const listener of listeners) listener(streamEvent(type, data));
 		},
 		source: {
 			subscribe: (listener: (event: OpenCodeServerEvent) => void) => {
@@ -38,10 +37,7 @@ function clientWith(permissions: Promise<unknown>, forms: Promise<unknown>) {
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-const asked = (events: OpenCodeServerEvent[]) =>
-	events
-		.filter((event) => event.type === "permission.asked")
-		.map((event) => event.properties["id"]);
+const types = (events: OpenCodeServerEvent[]) => events.map(streamEventType);
 
 describe("withPendingPrompts", () => {
 	it("replays each chat's pending permissions and forms as the Kilo v2 events that ask them", async () => {
@@ -59,11 +55,29 @@ describe("withPendingPrompts", () => {
 
 		expect(permissionList).toHaveBeenCalledWith({ sessionID: "ses_1" });
 		expect(formList).toHaveBeenCalledWith({ sessionID: "ses_1" });
-		expect(
-			events.map(({ type, sessionId, properties }) => ({ type, sessionId, properties })),
-		).toEqual([
-			{ type: "permission.asked", sessionId: "ses_1", properties: permission },
-			{ type: "form.created", sessionId: "ses_1", properties: { form } },
+		expect(events).toEqual([
+			{
+				type: "kilo.event",
+				event: {
+					id: expect.stringMatching(/^evt_/),
+					created: expect.any(Number),
+					type: "permission.asked",
+					data: permission,
+				},
+				sessionId: "ses_1",
+				directory: undefined,
+			},
+			{
+				type: "kilo.event",
+				event: {
+					id: expect.stringMatching(/^evt_/),
+					created: expect.any(Number),
+					type: "form.created",
+					data: { form },
+				},
+				sessionId: "ses_1",
+				directory: undefined,
+			},
 		]);
 	});
 
@@ -75,13 +89,13 @@ describe("withPendingPrompts", () => {
 		const events: OpenCodeServerEvent[] = [];
 
 		withPendingPrompts(source, () => [["ses_1", client]]).subscribe((event) => events.push(event));
-		emit("permission.replied", { requestID: "per_1", reply: "once" });
+		emit("permission.replied", { sessionID: "ses_1", requestID: "per_1", reply: "once" });
 		emit("form.cancelled", { id: "frm_1", sessionID: "ses_1" });
 		permissions.resolve([{ id: "per_1", sessionID: "ses_1" }]);
 		forms.resolve([{ id: "frm_1", sessionID: "ses_1", fields: [] }]);
 		await settle();
 
-		expect(events.map((event) => event.type)).toEqual(["permission.replied", "form.cancelled"]);
+		expect(types(events)).toEqual(["permission.replied", "form.cancelled"]);
 	});
 
 	it("replays nothing to a subscriber that already let go", async () => {
@@ -97,7 +111,6 @@ describe("withPendingPrompts", () => {
 		permissions.resolve([{ id: "per_1", sessionID: "ses_1" }]);
 		await settle();
 
-		expect(asked(events)).toEqual([]);
 		expect(events).toEqual([]);
 	});
 
@@ -110,9 +123,9 @@ describe("withPendingPrompts", () => {
 		const events: OpenCodeServerEvent[] = [];
 
 		withPendingPrompts(source, () => [["ses_1", client]]).subscribe((event) => events.push(event));
-		emit("session.idle", { sessionID: "ses_1" });
+		emit("session.execution.succeeded", { sessionID: "ses_1" });
 		await settle();
 
-		expect(events.map((event) => event.type)).toEqual(["session.idle"]);
+		expect(types(events)).toEqual(["session.execution.succeeded"]);
 	});
 });

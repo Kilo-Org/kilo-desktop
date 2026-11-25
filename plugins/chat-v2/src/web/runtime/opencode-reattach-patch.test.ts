@@ -1,13 +1,16 @@
 import {
 	OpenCodeThreadController,
+	STREAM_RECONNECTED_EVENT_TYPE,
 	type KiloClient,
 	type OpenCodeServerEvent,
 } from "@kilo-desktop/react-opencode-v2";
 import { describe, expect, it, vi } from "vitest";
 
+import { streamEvent } from "../../test/stream-events";
+
 /*
  * Reattaching in kilo.chat's react-opencode fork
- * (plugins/chat/react-opencode): a thread whose listeners all
+ * (plugins/chat-v2/react-opencode): a thread whose listeners all
  * left (a hidden Activity, a tab switched away) only watches whether anything
  * for it arrived. Coming back refreshes its history only if something did,
  * so showing a kept chat again doesn't fetch and rebuild its whole history.
@@ -35,8 +38,8 @@ function setup() {
 		}),
 		"ses_1",
 	);
-	const emit = (event: Partial<OpenCodeServerEvent>) => {
-		for (const listener of [...listeners]) listener(event as OpenCodeServerEvent);
+	const emit = (event: OpenCodeServerEvent) => {
+		for (const listener of [...listeners]) listener(event);
 	};
 	return { controller, messages, emit, listeners };
 }
@@ -66,7 +69,7 @@ describe("OpenCodeThreadController reattaching", () => {
 	it("refreshes the history when an event for the thread arrived while no one listened", async () => {
 		const { controller, messages, emit } = await loadedAndDetached();
 
-		emit({ type: "message.part.updated", sessionId: "ses_1", properties: {} } as never);
+		emit(streamEvent("session.renamed", { sessionID: "ses_1", title: "Renamed" }));
 		controller.subscribe(() => undefined);
 		await settle();
 
@@ -76,7 +79,7 @@ describe("OpenCodeThreadController reattaching", () => {
 	it("refreshes after a stream reconnect, which may have dropped events", async () => {
 		const { controller, messages, emit } = await loadedAndDetached();
 
-		emit({ type: "stream.reconnected" } as never);
+		emit({ type: STREAM_RECONNECTED_EVENT_TYPE });
 		controller.subscribe(() => undefined);
 		await settle();
 
@@ -86,9 +89,9 @@ describe("OpenCodeThreadController reattaching", () => {
 	it("ignores other threads' events, and stops watching once it knows", async () => {
 		const { controller, emit, listeners } = await loadedAndDetached();
 
-		emit({ type: "message.part.updated", sessionId: "ses_other", properties: {} } as never);
+		emit(streamEvent("session.renamed", { sessionID: "ses_other", title: "Renamed" }));
 		expect(listeners.size).toBe(1);
-		emit({ type: "message.part.updated", sessionId: "ses_1", properties: {} } as never);
+		emit(streamEvent("session.renamed", { sessionID: "ses_1", title: "Renamed" }));
 		expect(listeners.size).toBe(0);
 
 		controller.dispose();

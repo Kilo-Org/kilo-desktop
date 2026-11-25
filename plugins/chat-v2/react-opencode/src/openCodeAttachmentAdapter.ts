@@ -115,12 +115,11 @@ const textBytes = (bytes: Uint8Array) => {
 	return count / bytes.length <= 0.3;
 };
 
-// Port of `attachmentMime` in OpenCode's app (packages/app/src/components/prompt-input/files.ts).
-// The server only inlines a data url file part as readable text when its mime
-// is exactly `text/plain`, and forwards every other non-image, non-pdf mime to
-// the provider as an unrenderable binary part, so text-like inputs have to be
-// normalized before they go on the wire.
-const resolveOpenCodeMime = async (file: File): Promise<string | undefined> => {
+// What an attachment is, for the composer: an image, a PDF, or readable text
+// (shown as a text file); anything else is refused. Kilo v2 reads a prompt
+// file's type from its bytes, not from its data URL, so this only decides
+// what the composer accepts and how it shows the attachment.
+const resolveAttachmentMime = async (file: File): Promise<string | undefined> => {
 	const type = kind(file.type);
 	if (IMAGE_MIMES.has(type)) return type;
 	if (type === "application/pdf") return type;
@@ -145,12 +144,10 @@ export type OpenCodeAttachmentAdapterOptions = {
 };
 
 /**
- * Converts browser files into standard assistant-ui attachments that preserve
- * OpenCode's native file semantics. The MIME type is normalized the same way
- * OpenCode's own clients do (exact image types and PDF pass through, text-like
- * inputs become `text/plain`, unreadable binaries are rejected), the filename
- * and payload ride as an inline data url, and the thread controller turns the
- * resulting message part into an OpenCode `FilePartInput`.
+ * Converts browser files into standard assistant-ui attachments: images, PDFs
+ * and readable text (unreadable binaries are refused), the payload inline as
+ * a data URL with the file's name. The thread controller sends each as one of
+ * Kilo v2's prompt `files` (`{ uri, name }`).
  */
 export class OpenCodeAttachmentAdapter implements AttachmentAdapter {
 	public accept: string;
@@ -160,7 +157,7 @@ export class OpenCodeAttachmentAdapter implements AttachmentAdapter {
 	}
 
 	public async add(state: { file: File }): Promise<PendingAttachment> {
-		const mimeType = await resolveOpenCodeMime(state.file);
+		const mimeType = await resolveAttachmentMime(state.file);
 		if (!mimeType) {
 			throw new Error(
 				`OpenCodeAttachmentAdapter: ${state.file.name} is not an image, a PDF, or readable text`,

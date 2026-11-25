@@ -30,9 +30,9 @@ export function userPromptText(message: { content: readonly PromptPart[] }): str
 
 /**
  * Retry a failed turn. With a `retry` callback (server-backed session) the
- * turn is re-prompted in place through the previous user message id — no
- * revert, no duplicate prompt. Without one (local runtime / tests) the
- * previous user prompt is appended as a fresh turn. The tail guard keeps the
+ * previous user message is sent again (`retryFailedTurn`), handed its id to
+ * read it back. Without one (local runtime / tests) the previous user prompt
+ * is appended as a fresh turn. The tail guard keeps the
  * retry target unambiguous: only the failed assistant message at the very end
  * of the thread can be retried.
  */

@@ -25,9 +25,8 @@ function makeState(
 		pendingUserMessages: {},
 		interactions: {
 			permissions: { pending: {}, resolved: {} },
-			questions: { pending: {}, answered: {}, rejected: {} },
+			forms: { pending: {}, replied: {}, cancelled: {} },
 		},
-		unhandledEvents: [],
 		sync: {},
 	} as OpenCodeThreadState;
 }

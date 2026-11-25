@@ -10,23 +10,23 @@ import type {
 	ModelRef,
 	ModelsState,
 } from "@kilo-desktop/plugin-core/contracts";
+import type { ModelRef as KiloV2ModelRef } from "@kilo-desktop/react-opencode-v2";
 import { modelCostTier, type ModelCostTier } from "./model-cost";
 
-/** Selection shape accepted by `useKiloRuntime` / Kilo `session.prompt`. */
-export type KiloModelRef = {
-	providerID: string;
-	modelID: string;
-};
+/**
+ * A model as Kilo v2 names it (`session.switchModel`). The picker tracks the
+ * reasoning effort apart from the model, so its refs carry no `variant`; a
+ * prompt adds it (`withVariant`).
+ */
+export type KiloModelRef = Pick<KiloV2ModelRef, "providerID" | "id">;
 
-export function isKiloModelRef(value: unknown): value is KiloModelRef {
-	return (
-		!!value &&
-		typeof value === "object" &&
-		typeof (value as KiloModelRef).providerID === "string" &&
-		typeof (value as KiloModelRef).modelID === "string" &&
-		(value as KiloModelRef).providerID.length > 0 &&
-		(value as KiloModelRef).modelID.length > 0
-	);
+/** `model` with the chosen reasoning effort, as Kilo v2 takes it. */
+export function withVariant(model: KiloModelRef, variant: string | undefined): KiloV2ModelRef {
+	return {
+		providerID: model.providerID,
+		id: model.id,
+		...(variant ? { variant } : {}),
+	};
 }
 
 export type KiloProviderGroup = {
@@ -57,7 +57,7 @@ export type KiloCatalogModel = ModelOption & {
 export type KiloModelCatalog = {
 	providers: KiloProviderGroup[];
 	models: KiloCatalogModel[];
-	/** providerID → default modelID */
+	/** Provider id → its default model's id. */
 	defaults: Record<string, string>;
 	/** Top-level model from the user's merged Kilo configuration. */
 	configuredModel?: KiloModelRef;
@@ -86,18 +86,22 @@ function effortsOf(model: ModelInfo): readonly ModelSelectorEffortOption[] | und
 	return model.variants.map((id) => ({ id, name: formatEffortLabel(id) }));
 }
 
-/** A kilo.core model reference in the shape Kilo's prompts and the picker use. */
+/**
+ * A kilo.core model reference (its contract's `{ aiProviderId, modelId }`)
+ * as Kilo v2 names it. One of the two boundary adapters for kilo.core's
+ * v1-shaped `ModelRef`; the contract goes v2 in step 29 of the migration plan.
+ */
 export function toKiloModelRef(ref: ModelRef): KiloModelRef {
-	return { providerID: ref.aiProviderId, modelID: ref.modelId };
+	return { providerID: ref.aiProviderId, id: ref.modelId };
 }
 
-/** A picker model as kilo.core names it. */
+/** A Kilo v2 model as kilo.core's contract names it (see `toKiloModelRef`). */
 export function toModelRef(ref: KiloModelRef): ModelRef {
-	return { aiProviderId: ref.providerID, modelId: ref.modelID };
+	return { aiProviderId: ref.providerID, modelId: ref.id };
 }
 
 export function modelRefToId(ref: KiloModelRef): string {
-	return `${ref.providerID}/${ref.modelID}`;
+	return `${ref.providerID}/${ref.id}`;
 }
 
 export function parseModelId(id: string): KiloModelRef | null {
@@ -107,9 +111,15 @@ export function parseModelId(id: string): KiloModelRef | null {
 	}
 	return {
 		providerID: id.slice(0, separator),
-		modelID: id.slice(separator + 1),
+		id: id.slice(separator + 1),
 	};
 }
+
+/** The ref of a catalog model. */
+export const catalogModelRef = (model: KiloCatalogModel): KiloModelRef => ({
+	providerID: model.providerID,
+	id: model.modelID,
+});
 
 /** Kilo's built-in OAuth gateway — keep first in the provider rail (below favorites). */
 export function isKiloGatewayProvider(provider: { id: string; name?: string }): boolean {
@@ -259,13 +269,13 @@ export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloMod
 				model.id === AUTO_FREE_MODEL_ID ||
 				/^auto\s*free$/i.test(model.name.trim())),
 	);
-	if (autoFree) return { providerID: autoFree.providerID, modelID: autoFree.modelID };
+	if (autoFree) return catalogModelRef(autoFree);
 	const kiloAuto = catalog.models.find(
 		(model) =>
 			!model.disabled &&
 			(model.modelID.startsWith("kilo-auto/") || model.id.startsWith("kilo-auto/")),
 	);
-	if (kiloAuto) return { providerID: kiloAuto.providerID, modelID: kiloAuto.modelID };
+	if (kiloAuto) return catalogModelRef(kiloAuto);
 	const firstConnected = catalog.providers.find((provider) => provider.connected);
 	if (!firstConnected) return undefined;
 	const defaultModelID = catalog.defaults[firstConnected.id];
@@ -275,5 +285,5 @@ export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloMod
 	const model =
 		offered.find((candidate) => candidate.modelID === defaultModelID) ??
 		offered.toSorted(byRecommendation)[0];
-	return model ? { providerID: model.providerID, modelID: model.modelID } : undefined;
+	return model ? catalogModelRef(model) : undefined;
 }

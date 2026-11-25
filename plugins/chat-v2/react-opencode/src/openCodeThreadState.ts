@@ -1,4 +1,4 @@
-import type { OpenCodeEvent, SessionMessageInfo } from "@kilocode/client";
+import type { OpenCodeEvent, SessionMessageInfo, SessionStatus } from "@kilocode/client";
 
 import { foldKiloEvent, foldKiloSessionEvent } from "./kiloTranscript";
 import type {
@@ -10,11 +10,9 @@ import type {
 	PendingUserMessage,
 	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
-	OpenCodeQuestionRequest,
+	OpenCodeFormRequest,
 	FormAnswer,
 } from "./types";
-
-const MAX_UNHANDLED_EVENTS = 25;
 
 /** Transcript order for messages from different reads: by creation time, ids breaking ties. */
 const compareMessages = (
@@ -150,8 +148,8 @@ const historyPrepended = (
 };
 
 // A step's events imply activity only while status is unknown or busy. While
-// cancelling, reverting, or after an explicit idle they are cleanup output, not
-// a new turn; a new turn always announces itself with its execution first.
+// cancelling, reverting, or once idle they are cleanup output, not a new turn;
+// a new turn always announces itself with its execution first.
 const activityFromStepEvent = (
 	state: OpenCodeThreadState,
 ): Pick<OpenCodeThreadState, "runState" | "sessionStatus"> => {
@@ -193,34 +191,44 @@ export const createOpenCodeThreadState = (sessionId: string): OpenCodeThreadStat
 				>
 			>,
 		},
-		questions: {
-			pending: {} as Readonly<Record<string, OpenCodeQuestionRequest>>,
-			answered: {} as Readonly<
+		forms: {
+			pending: {} as Readonly<Record<string, OpenCodeFormRequest>>,
+			replied: {} as Readonly<
 				Record<
 					string,
 					{
-						request: OpenCodeQuestionRequest;
+						request: OpenCodeFormRequest;
 						answer: FormAnswer;
 						respondedAt: number;
 					}
 				>
 			>,
-			rejected: {} as Readonly<
+			cancelled: {} as Readonly<
 				Record<
 					string,
 					{
-						request: OpenCodeQuestionRequest;
-						rejectedAt: number;
+						request: OpenCodeFormRequest;
+						cancelledAt: number;
 					}
 				>
 			>,
 		},
 	},
-	unhandledEvents: [],
 	sync: {},
 });
 
 const STEP_EVENT = /^session\.(step|text|reasoning|tool)\./;
+
+/** Run state for a status: idle settles the run; otherwise a run is underway unless it is ending. */
+const runStateFor = (
+	state: OpenCodeThreadState,
+	status: SessionStatus,
+): OpenCodeThreadState["runState"] =>
+	status.type === "idle"
+		? { type: "idle" }
+		: state.runState.type === "cancelling" || state.runState.type === "reverting"
+			? state.runState
+			: { type: "streaming" };
 
 const runStatusFromEvent = (
 	state: OpenCodeThreadState,
@@ -238,8 +246,13 @@ const runStatusFromEvent = (
 		case "session.execution.succeeded":
 		case "session.execution.failed":
 		case "session.execution.interrupted":
-		case "session.idle":
 			return { sessionStatus: { type: "idle" }, runState: { type: "idle" } };
+		// Declared by Kilo v2 though its core does not publish it yet.
+		case "session.status":
+			return {
+				sessionStatus: event.data.status,
+				runState: runStateFor(state, event.data.status),
+			};
 		case "session.retry.scheduled":
 			return {
 				sessionStatus: {
@@ -345,23 +358,18 @@ export const reduceOpenCodeThreadState = (
 				},
 			};
 
-		case "session.status":
+		case "status.synced":
 			return {
 				...state,
 				sessionStatus: event.status,
-				runState:
-					event.status.type === "idle"
-						? { type: "idle" }
-						: state.runState.type === "cancelling" || state.runState.type === "reverting"
-							? state.runState
-							: { type: "streaming" },
+				runState: runStateFor(state, event.status),
 				sync: {
 					...state.sync,
 					lastEventAt: Date.now(),
 				},
 			};
 
-		case "session.idle":
+		case "run.settled":
 			return {
 				...state,
 				sessionStatus: { type: "idle" },
@@ -423,15 +431,15 @@ export const reduceOpenCodeThreadState = (
 			};
 		}
 
-		case "question.asked":
+		case "form.created":
 			return {
 				...state,
 				interactions: {
 					...state.interactions,
-					questions: {
-						...state.interactions.questions,
+					forms: {
+						...state.interactions.forms,
 						pending: {
-							...state.interactions.questions.pending,
+							...state.interactions.forms.pending,
 							[event.request.id]: event.request,
 						},
 					},
@@ -442,22 +450,22 @@ export const reduceOpenCodeThreadState = (
 				},
 			};
 
-		case "question.replied": {
-			const pending = { ...state.interactions.questions.pending };
-			const request = pending[event.questionId];
-			delete pending[event.questionId];
+		case "form.replied": {
+			const pending = { ...state.interactions.forms.pending };
+			const request = pending[event.formId];
+			delete pending[event.formId];
 			if (!request) return state;
 
 			return {
 				...state,
 				interactions: {
 					...state.interactions,
-					questions: {
-						...state.interactions.questions,
+					forms: {
+						...state.interactions.forms,
 						pending,
-						answered: {
-							...state.interactions.questions.answered,
-							[event.questionId]: {
+						replied: {
+							...state.interactions.forms.replied,
+							[event.formId]: {
 								request,
 								answer: event.answer,
 								respondedAt: Date.now(),
@@ -472,24 +480,24 @@ export const reduceOpenCodeThreadState = (
 			};
 		}
 
-		case "question.rejected": {
-			const pending = { ...state.interactions.questions.pending };
-			const request = pending[event.questionId];
-			delete pending[event.questionId];
+		case "form.cancelled": {
+			const pending = { ...state.interactions.forms.pending };
+			const request = pending[event.formId];
+			delete pending[event.formId];
 			if (!request) return state;
 
 			return {
 				...state,
 				interactions: {
 					...state.interactions,
-					questions: {
-						...state.interactions.questions,
+					forms: {
+						...state.interactions.forms,
 						pending,
-						rejected: {
-							...state.interactions.questions.rejected,
-							[event.questionId]: {
+						cancelled: {
+							...state.interactions.forms.cancelled,
+							[event.formId]: {
 								request,
-								rejectedAt: Date.now(),
+								cancelledAt: Date.now(),
 							},
 						},
 					},
@@ -500,16 +508,6 @@ export const reduceOpenCodeThreadState = (
 				},
 			};
 		}
-
-		case "unhandled.event":
-			return {
-				...state,
-				unhandledEvents: [...state.unhandledEvents.slice(-(MAX_UNHANDLED_EVENTS - 1)), event.event],
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
 
 		case "local.message.queued":
 			return {

@@ -9,6 +9,7 @@ import {
 	type ModelSelectionState as SelectionState,
 } from "./chat-selections";
 import {
+	catalogModelRef,
 	modelRefToId,
 	pickDefaultModel,
 	toKiloModelRef,
@@ -85,15 +86,15 @@ function markLoaded(chatId: string) {
 }
 
 function sameModel(left: KiloModelRef | undefined, right: KiloModelRef | undefined): boolean {
-	return left?.providerID === right?.providerID && left?.modelID === right?.modelID;
+	return left?.providerID === right?.providerID && left?.id === right?.id;
 }
 
 function modelRef(model: KiloModelRef): KiloModelRef {
-	return { providerID: model.providerID, modelID: model.modelID };
+	return { providerID: model.providerID, id: model.id };
 }
 
 function variantKey(agent: string, model: KiloModelRef): string {
-	return `${agent}/${model.providerID}/${model.modelID}`;
+	return `${agent}/${model.providerID}/${model.id}`;
 }
 
 function normalizeEffort(effort: string | undefined): string | undefined {
@@ -146,25 +147,25 @@ function automaticDefault(
 					!candidate.disabled &&
 					(defaultModelID ? candidate.modelID === defaultModelID : true),
 			);
-			if (model) return { providerID: model.providerID, modelID: model.modelID };
+			if (model) return catalogModelRef(model);
 		}
 		return undefined;
 	}
 	if (catalog.organizationId) {
 		const recommended = resolveCatalogModel(
 			catalog,
-			catalog.defaults.kilo ? { providerID: "kilo", modelID: catalog.defaults.kilo } : undefined,
+			catalog.defaults.kilo ? { providerID: "kilo", id: catalog.defaults.kilo } : undefined,
 		);
 		if (recommended) return recommended;
 		const firstKilo = catalog.models.find((model) => model.providerID === "kilo");
-		return firstKilo ? { providerID: firstKilo.providerID, modelID: firstKilo.modelID } : undefined;
+		return firstKilo ? catalogModelRef(firstKilo) : undefined;
 	}
 	for (const recent of recentModels) {
 		const resolved = resolveCatalogModel(catalog, recent);
 		if (resolved) return resolved;
 	}
 	return (
-		resolveCatalogModel(catalog, { providerID: "kilo", modelID: "kilo-auto/free" }) ??
+		resolveCatalogModel(catalog, { providerID: "kilo", id: "kilo-auto/free" }) ??
 		pickDefaultModel(catalog)
 	);
 }
@@ -316,7 +317,7 @@ export function usePersistedModelSelection(
 			const existing = current[hydratedScope];
 			const matches =
 				existing?.modelOverride?.providerID === next.model.providerID &&
-				existing.modelOverride.modelID === next.model.modelID &&
+				existing.modelOverride.id === next.model.id &&
 				existing.effort === next.effort;
 			if (existing?.dirty && !matches) return current;
 			if (matches && !existing.dirty) return current;

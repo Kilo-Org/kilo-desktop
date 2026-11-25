@@ -1,6 +1,6 @@
 import type {
 	OpenCodePermissionRequest,
-	OpenCodeQuestionRequest,
+	OpenCodeFormRequest,
 	OpenCodeThreadState,
 } from "@kilo-desktop/react-opencode-v2";
 
@@ -12,7 +12,7 @@ import {
 } from "../subagents/subagent-state";
 
 /**
- * Prompts (permissions + questions) waiting on the user across a chat's
+ * Prompts (permissions + forms) waiting on the user across a chat's
  * session family: the chat's own session plus every subagent below it.
  * OpenCode raises a subagent's prompt on the child session, and the runtime
  * only exposes the root session's prompts, so without this walk a subagent
@@ -22,7 +22,7 @@ export type PendingInteractions = {
 	/** The chat's own session; prompts from any other session came from a subagent. */
 	rootSessionId: string | undefined;
 	permissions: readonly OpenCodePermissionRequest[];
-	questions: readonly OpenCodeQuestionRequest[];
+	forms: readonly OpenCodeFormRequest[];
 	/** Display titles for subagent sessions that currently hold a prompt. */
 	subagentTitles: ReadonlyMap<string, string>;
 };
@@ -30,13 +30,13 @@ export type PendingInteractions = {
 export const EMPTY_PENDING_INTERACTIONS: PendingInteractions = {
 	rootSessionId: undefined,
 	permissions: [],
-	questions: [],
+	forms: [],
 	subagentTitles: new Map(),
 };
 
 type OwnPendingInteractions = {
 	permissions: readonly OpenCodePermissionRequest[];
-	questions: readonly OpenCodeQuestionRequest[];
+	forms: readonly OpenCodeFormRequest[];
 };
 
 const sameItems = <T>(left: readonly T[], right: readonly T[]) =>
@@ -51,7 +51,7 @@ export function samePendingInteractions(
 		left === right ||
 		(left.rootSessionId === right.rootSessionId &&
 			sameItems(left.permissions, right.permissions) &&
-			sameItems(left.questions, right.questions) &&
+			sameItems(left.forms, right.forms) &&
 			left.subagentTitles.size === right.subagentTitles.size &&
 			[...left.subagentTitles].every(([id, title]) => right.subagentTitles.get(id) === title))
 	);
@@ -87,12 +87,12 @@ export function collectPendingInteractions({
 	own?: OwnPendingInteractions | undefined;
 }): PendingInteractions {
 	const permissions: OpenCodePermissionRequest[] = [];
-	const questions: OpenCodeQuestionRequest[] = [];
+	const forms: OpenCodeFormRequest[] = [];
 	const subagentTitles = new Map<string, string>();
 
 	if (!scopeSessionId && own) {
 		permissions.push(...own.permissions);
-		questions.push(...own.questions);
+		forms.push(...own.forms);
 	}
 
 	if (state) {
@@ -108,17 +108,17 @@ export function collectPendingInteractions({
 			if (isRoot && own) continue;
 
 			const ownPermissions = Object.values(session.interactions.permissions.pending);
-			const ownQuestions = Object.values(session.interactions.questions.pending);
-			if (ownPermissions.length === 0 && ownQuestions.length === 0) continue;
+			const ownForms = Object.values(session.interactions.forms.pending);
+			if (ownPermissions.length === 0 && ownForms.length === 0) continue;
 			permissions.push(...ownPermissions);
-			questions.push(...ownQuestions);
+			forms.push(...ownForms);
 			if (isRoot || !parent) continue;
 			const title = taskTitleForChild(parent, session.sessionId) ?? session.session?.title;
 			if (title) subagentTitles.set(session.sessionId, title);
 		}
 	}
 
-	if (permissions.length === 0 && questions.length === 0) {
+	if (permissions.length === 0 && forms.length === 0) {
 		return state
 			? { ...EMPTY_PENDING_INTERACTIONS, rootSessionId: state.sessionId }
 			: EMPTY_PENDING_INTERACTIONS;
@@ -126,7 +126,7 @@ export function collectPendingInteractions({
 	return {
 		rootSessionId: state?.sessionId,
 		permissions: permissions.toSorted(byAskedAt),
-		questions: questions.toSorted(byAskedAt),
+		forms: forms.toSorted(byAskedAt),
 		subagentTitles,
 	};
 }

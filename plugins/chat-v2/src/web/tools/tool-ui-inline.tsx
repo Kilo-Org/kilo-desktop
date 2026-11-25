@@ -41,7 +41,12 @@ const ToolCallShell = ({
 	);
 };
 
-const SUMMARY_KEYS = ["file_path", "path", "pattern", "command", "query", "glob", "url"] as const;
+/**
+ * Arguments the fallback row summarises a call by. It renders tools without a
+ * renderer of their own (MCP servers', other plugins'), which name their
+ * arguments as they like, so it tries the common names (`file_path` included).
+ */
+const SUMMARY_KEYS = ["path", "file_path", "pattern", "command", "query", "glob", "url"] as const;
 
 const ToolCallFallbackImpl: ToolCallComponent = ({ toolName, args, status }) => {
 	let summary = "";

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { OpenCodeQuestionRequest } from "@kilo-desktop/react-opencode-v2";
+import type { OpenCodeFormRequest } from "@kilo-desktop/react-opencode-v2";
 
 import { encodeAnswersFromFormData } from "./opencode-question-card";
 
-const request: OpenCodeQuestionRequest = {
+const request: OpenCodeFormRequest = {
 	id: "question-1",
 	sessionID: "session-1",
 	askedAt: 1,

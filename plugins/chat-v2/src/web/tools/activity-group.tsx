@@ -396,7 +396,7 @@ function useActivityGroupSummary(group: GroupLike) {
 	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
 	const kiloMessages = useKiloMessages();
-	const { questions, permissions } = usePendingInteractions();
+	const { forms: questions, permissions } = usePendingInteractions();
 	return {
 		parts,
 		kiloMessages,
@@ -633,7 +633,7 @@ function useActivitySegment(group: GroupLike, kind: ActivityKind) {
 	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
 	const kiloMessages = useKiloMessages();
-	const { questions, permissions } = usePendingInteractions();
+	const { forms: questions, permissions } = usePendingInteractions();
 	const segment = activitySegment(
 		parts,
 		group.indices,

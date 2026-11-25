@@ -165,8 +165,8 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
 	unrevert: async () => {},
 	fork: async () => "",
 	replyToPermission: async () => {},
-	replyToQuestion: async () => {},
-	rejectQuestion: async () => {},
+	replyToForm: async () => {},
+	cancelForm: async () => {},
 };
 
 const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
@@ -273,7 +273,7 @@ const useOpenCodeThreadStore = (
 				session: state.session,
 				state,
 				permissions: state.interactions.permissions.pending,
-				questions: state.interactions.questions.pending,
+				forms: state.interactions.forms.pending,
 				fork: (messageId: string) => controller.fork(messageId),
 				revert: (messageId: string) => controller.revert(messageId),
 				unrevert: () => controller.unrevert(),
@@ -281,9 +281,8 @@ const useOpenCodeThreadStore = (
 				refresh: () => controller.refresh(),
 				replyToPermission: (permissionId: string, response: "once" | "always" | "reject") =>
 					controller.replyToPermission(permissionId, response),
-				replyToQuestion: (questionId: string, answer: FormAnswer) =>
-					controller.replyToQuestion(questionId, answer),
-				rejectQuestion: (questionId: string) => controller.rejectQuestion(questionId),
+				replyToForm: (formId: string, answer: FormAnswer) => controller.replyToForm(formId, answer),
+				cancelForm: (formId: string) => controller.cancelForm(formId),
 			}),
 		[controller, state],
 	);

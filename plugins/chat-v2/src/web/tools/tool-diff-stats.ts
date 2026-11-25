@@ -12,16 +12,9 @@ import { getPatchInfo, str } from "./tool-ui-shared";
  * can aggregate counts on the group trigger without an import cycle.
  */
 
-const FILE_PATH_KEYS = ["file_path", "filePath", "path", "file"] as const;
-
-export const getToolFilePath = (args: Record<string, unknown> | undefined): string => {
-	if (!args) return "";
-	for (const key of FILE_PATH_KEYS) {
-		const value = str(args[key]);
-		if (value) return value;
-	}
-	return "";
-};
+/** The file a Kilo v2 file tool (`read`, `edit`, `write`) works on: its `path`. */
+export const getToolFilePath = (args: Record<string, unknown> | undefined): string =>
+	str(args?.path);
 
 /** The unified diff Kilo reports for a file tool call (its `metadata.files` patches), when it has one. */
 export const getToolUnifiedDiff = (
@@ -45,40 +38,24 @@ export const sumFileDiffStats = (fileDiffs: readonly FileDiffMetadata[]): FileDi
 	return { added, removed };
 };
 
-const EDIT_OLD_KEYS = ["oldString", "old_string", "oldText", "old_text"] as const;
-const EDIT_NEW_KEYS = ["newString", "new_string", "newText", "new_text"] as const;
-const WRITE_CONTENT_KEYS = ["content", "contents"] as const;
-
-const firstStringArg = (
-	args: Record<string, unknown> | undefined,
-	keys: readonly string[],
-): string | undefined => {
-	if (!args) return undefined;
-	for (const key of keys) {
-		const value = args[key];
-		if (typeof value === "string") return value;
-	}
-	return undefined;
+const stringArg = (args: Record<string, unknown> | undefined, key: string): string | undefined => {
+	const value = args?.[key];
+	return typeof value === "string" ? value : undefined;
 };
 
+/** Kilo v2's `edit` takes `{ path, oldString, newString }`. */
 export const getEditOldString = (args: Record<string, unknown> | undefined): string =>
-	firstStringArg(args, EDIT_OLD_KEYS) ?? "";
+	stringArg(args, "oldString") ?? "";
 
 export const getEditNewString = (args: Record<string, unknown> | undefined): string =>
-	firstStringArg(args, EDIT_NEW_KEYS) ?? "";
+	stringArg(args, "newString") ?? "";
 
 export const hasEditStringArgs = (args: Record<string, unknown> | undefined): boolean =>
-	firstStringArg(args, EDIT_OLD_KEYS) !== undefined ||
-	firstStringArg(args, EDIT_NEW_KEYS) !== undefined;
+	stringArg(args, "oldString") !== undefined || stringArg(args, "newString") !== undefined;
 
-export const getWriteContent = (args: Record<string, unknown> | undefined): string => {
-	if (!args) return "";
-	for (const key of WRITE_CONTENT_KEYS) {
-		const value = str(args[key]);
-		if (value) return value;
-	}
-	return "";
-};
+/** Kilo v2's `write` takes `{ path, content }`. */
+export const getWriteContent = (args: Record<string, unknown> | undefined): string =>
+	str(args?.content);
 
 const statsFromUnifiedDiff = (unifiedDiff: string): FileDiffStats | null => {
 	try {
@@ -110,7 +87,7 @@ export const getPartDiffStats = (
 		return added > 0 || removed > 0 ? { added, removed } : null;
 	}
 
-	const isEdit = toolName === "edit" || toolName === "notebook_edit";
+	const isEdit = toolName === "edit";
 	const isWrite = toolName === "write";
 	if (!isEdit && !isWrite) return null;
 
@@ -124,8 +101,8 @@ export const getPartDiffStats = (
 		return sumFileDiffStats([parseDiffFromFile(null, { name: "write", contents: content })]);
 	}
 
-	const oldString = firstStringArg(args, EDIT_OLD_KEYS);
-	const newString = firstStringArg(args, EDIT_NEW_KEYS);
+	const oldString = stringArg(args, "oldString");
+	const newString = stringArg(args, "newString");
 	if (oldString === undefined && newString === undefined) return null;
 	return sumFileDiffStats([
 		parseDiffFromFile(

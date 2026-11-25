@@ -46,7 +46,7 @@ export function* walkSessionTree(root: OpenCodeThreadState): Generator<SessionTr
 
 const hasOwnPendingInteractions = (state: OpenCodeThreadState) =>
 	Object.keys(state.interactions.permissions.pending).length > 0 ||
-	Object.keys(state.interactions.questions.pending).length > 0;
+	Object.keys(state.interactions.forms.pending).length > 0;
 
 /** True when the session or any subagent below it is waiting on a permission or question. */
 export function sessionTreeHasPendingInteractions(root: OpenCodeThreadState): boolean {

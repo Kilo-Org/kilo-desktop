@@ -98,7 +98,7 @@ describe("subagent state", () => {
 			...createOpenCodeThreadState("grandchild"),
 			interactions: {
 				...child.interactions,
-				questions: { ...child.interactions.questions, pending: { question: {} as never } },
+				forms: { ...child.interactions.forms, pending: { frm_1: {} as never } },
 			},
 		};
 		expect(

@@ -436,7 +436,13 @@ describe("a turn that ends while its chat opens", () => {
 		);
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		server.chats.get("ses_a")!.messages[1] = working;
-		server.emit("message.updated", { info: working.info });
+		server.emit("session.step.ended", {
+			sessionID: "ses_a",
+			assistantMessageID: "msg_a1",
+			finish: "stop",
+			cost: 0,
+			tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+		});
 		server.endTurn("ses_a");
 	}
 

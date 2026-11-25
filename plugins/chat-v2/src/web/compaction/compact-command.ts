@@ -41,6 +41,8 @@ export function createCompactCommand(chat: ChatServices): CommandHandler {
 		}
 		try {
 			const client = chat.clients.client(await chat.connection());
+			// The client-slash-command contract names the model `{ providerID, modelID }`
+			// until step 29 of the migration plan takes it to v2.
 			await client.session.switchModel({
 				sessionID: chatId,
 				model: {

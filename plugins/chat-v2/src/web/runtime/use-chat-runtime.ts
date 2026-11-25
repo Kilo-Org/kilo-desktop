@@ -37,7 +37,6 @@ function queuePromptOptions(current: ChatRuntimeOptions): QueuePromptOptions {
 		getSystem: current.getSystem,
 		...(current.getAgent ? { getAgent: current.getAgent } : {}),
 		...(current.getModel ? { getModel: current.getModel } : {}),
-		...(current.getVariant ? { getVariant: current.getVariant } : {}),
 		...(current.getKnownCommandNames ? { getKnownCommandNames: current.getKnownCommandNames } : {}),
 		...(current.resolveParts ? { resolveParts: current.resolveParts } : {}),
 	};
@@ -82,7 +81,6 @@ function chatRuntimeBackend(
 		getSystem: (chatId) => latest.current.getSystem(chatId),
 		getAgent: () => latest.current.getAgent?.(),
 		getModel: () => latest.current.getModel?.(),
-		getVariant: () => latest.current.getVariant?.(),
 		getKnownCommandNames: () => latest.current.getKnownCommandNames?.() ?? [],
 		getKnownSkills: () => latest.current.getKnownSkills?.() ?? new Map(),
 		prepareModel: async (model) => {

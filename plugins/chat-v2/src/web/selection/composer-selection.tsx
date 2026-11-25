@@ -10,7 +10,6 @@ import {
 	type ModelsState,
 } from "@kilo-desktop/plugin-core/contracts";
 import { useChatConnection, useChatSelections } from "../runtime/chat-connection";
-import type { PromptModelRef } from "../runtime/prompt-options";
 import { findCatalogAgent, type KiloAgentCatalog } from "./agent-catalog";
 import { ChatAgentSelectionProvider } from "./ChatAgentSelectionContext";
 import { ChatModelSelectionProvider, type ActiveModelSource } from "./ChatModelSelectionContext";
@@ -33,7 +32,7 @@ import { persistedPreferences, usePersistedModelSelection } from "./use-persiste
 /** What the pane's next prompt is sent with. */
 export interface PromptSelection {
 	readonly agent?: string | undefined;
-	readonly model?: PromptModelRef | undefined;
+	readonly model?: KiloModelRef | undefined;
 	readonly variant?: string | undefined;
 }
 

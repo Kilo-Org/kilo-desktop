@@ -63,21 +63,20 @@ describe("agent-catalog", () => {
 		]);
 
 		expect(findCatalogAgent(catalog, "code")).toMatchObject({
-			model: { providerID: "anthropic", modelID: "claude-sonnet" },
+			model: { providerID: "anthropic", id: "claude-sonnet" },
 			variant: "high",
 		});
 		expect(findCatalogAgent(catalog, "docs-writer")).toMatchObject({
-			model: { providerID: "anthropic", modelID: "claude-opus" },
+			model: { providerID: "anthropic", id: "claude-opus" },
 		});
 	});
 
-	it("aliases legacy build to code", () => {
+	it("lists an agent by its id", () => {
 		const catalog = buildAgentCatalog([
 			agent({ id: "build", mode: "primary" }),
 			agent({ id: "plan", mode: "primary" }),
 		]);
-		expect(catalog.agents.map((entry) => entry.name)).toEqual(["code", "plan"]);
-		expect(findCatalogAgent(catalog, "code")?.displayName).toBe("Code");
+		expect(catalog.agents.map((entry) => entry.name)).toEqual(["plan", "build"]);
 	});
 
 	it("omits switcher agents that are missing or not selectable", () => {

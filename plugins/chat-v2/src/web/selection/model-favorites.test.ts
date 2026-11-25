@@ -11,8 +11,8 @@ describe("model-favorites", () => {
 			{ id: "openai/d" },
 		];
 		const favoriteIds = favoriteKeySet([
-			{ providerID: "openai", modelID: "d" },
-			{ providerID: "anthropic", modelID: "b" },
+			{ providerID: "openai", id: "d" },
+			{ providerID: "anthropic", id: "b" },
 		]);
 		expect(sortModelsWithFavoritesFirst(models, favoriteIds).map((model) => model.id)).toEqual([
 			"anthropic/b",

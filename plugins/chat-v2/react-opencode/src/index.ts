@@ -5,8 +5,8 @@ export {
 } from "./openCodeAttachmentAdapter";
 
 export {
+	useOpenCodeForms,
 	useOpenCodePermissions,
-	useOpenCodeQuestions,
 	useOpenCodeRuntimeExtras,
 	useOpenCodeSession,
 	useOpenCodeThreadState,
@@ -44,10 +44,8 @@ export {
 	createOpenCodeProjectionCache,
 	projectOpenCodeThreadMessages,
 	projectOpenCodeThreadRepository,
-	setLocalMcpApps,
 	toolCallOutput,
 	userFileUrl,
-	type LocalMcpApp,
 	type OpenCodeProjectionCache,
 } from "./openCodeMessageProjection";
 
@@ -57,14 +55,12 @@ export type {
 	KiloToolState,
 	OpenCodeInboxEntry,
 	OpenCodeLoadState,
-	OpenCodeModelRef,
 	OpenCodeOlderHistory,
 	OpenCodeEventSourceLike,
-	OpenCodePartPayload,
+	OpenCodeFormRequest,
 	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
 	OpenCodeProjectedThreadMessage,
-	OpenCodeQuestionRequest,
 	OpenCodeRunState,
 	OpenCodeRuntime,
 	OpenCodeRuntimeBackend,
@@ -73,13 +69,11 @@ export type {
 	OpenCodeServerEvent,
 	OpenCodeSessionRef,
 	OpenCodeServerMessage,
-	OpenCodeSessionStatus,
 	OpenCodeStateEvent,
 	OpenCodeThreadControllerLike,
 	OpenCodeThreadControllerSnapshot,
 	OpenCodeThreadState,
 	OpenCodeThreadStateSelector,
-	OpenCodeUnhandledEvent,
 	OpenCodeUserMessageOptions,
 	PendingUserMessage,
 } from "./types";
@@ -91,6 +85,7 @@ export type {
 	FormAnswer,
 	FormInfo,
 	KiloClient,
+	ModelRef,
 	OpenCodeEvent,
 	SessionInboxItem,
 	SessionInfo,
@@ -100,6 +95,7 @@ export type {
 	SessionMessageShell,
 	SessionMessageUser,
 	SessionRevert,
+	SessionStatus,
 	SkillInfo,
 	ToolContent,
 } from "./types";

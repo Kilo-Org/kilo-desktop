@@ -12,7 +12,7 @@ import {
 	type ModelsState,
 } from "@kilo-desktop/plugin-core/contracts";
 
-import { chatPaneObject, McpApp, ToolRenderer, type ToolRendererProps } from "../../contracts";
+import { chatPaneObject, ToolRenderer, type ToolRendererProps } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
 import {
 	assistantMessage,
@@ -87,7 +87,6 @@ function contributor(
 			version: "1.0.0",
 			requires: {
 				"kilo.chat/tool-renderer": "optional",
-				"kilo.chat/mcp-app": "optional",
 				"kilo.core/tool": "optional",
 			},
 			contributes: { extensions },
@@ -189,7 +188,7 @@ describe("kilo.chat's tool renderers", () => {
 			chatWith([
 				tool("subagent", {
 					input: { description: "Audit the login flow", agent: "explore" },
-					output: "<task_result>Looks fine</task_result>",
+					output: "Looks fine",
 				}),
 			]),
 		);
@@ -228,8 +227,7 @@ describe("every built-in renderer, opened up", () => {
 			{ input: { pattern: "**/*.ts", path: "/projects/app" }, output: "src/a.ts\nsrc/b.ts" },
 			"g2",
 		),
-		tool("list", { input: { path: "/projects/app/src" }, output: "a.ts\nb.ts" }, "g3"),
-		tool("codebase_search", { input: { query: "where is auth" }, output: "src/auth.ts" }, "g4"),
+		tool("semantic_search", { input: { query: "where is auth" }, output: "src/auth.ts" }, "g4"),
 		tool(
 			"webfetch",
 			{ input: { url: "https://example.com/docs", format: "markdown" }, output: "# Docs" },
@@ -279,8 +277,8 @@ describe("every built-in renderer, opened up", () => {
 			"subagent",
 			{
 				input: { description: "Audit login", agent: "explore" },
-				output: "<task_result>ok</task_result>",
-				metadata: { sessionId: "ses_child" },
+				output: "ok",
+				metadata: { sessionID: "ses_child", status: "completed" },
 			},
 			"t1",
 		),
@@ -341,7 +339,7 @@ describe("every built-in renderer, opened up", () => {
 });
 
 describe("the agent's HTML pages", () => {
-	it.each(["desktop_chat_html_render", "desktop_kilo_ui_html_render"])(
+	it.each(["desktop_chat_html_render"])(
 		"shows a %s page above the reply, outside the fold",
 		async (name) => {
 			await showChat(
@@ -417,37 +415,6 @@ describe("the tool-renderer point", () => {
 		await expandUntil([turnWork, button(/^(Ran|Build)/)], () =>
 			expect(expectPresent('[data-qa-id="acme-framed"]').textContent).toMatch(/make|Build/),
 		);
-	});
-});
-
-describe("the mcp-app point on Kilo v2", () => {
-	it("hides a contributed widget: its tool's calls render as plain calls", async () => {
-		const loadHtml = vi.fn(() => "<!doctype html><p>widget</p>");
-		await showChat(
-			chatWith([tool(toolWireName("acme.tools/list"), { output: "[]" }), reply("Listed.")]),
-			{
-				plugins: [
-					contributor(
-						{
-							"kilo.chat/mcp-app": [
-								{ id: "list", tools: ["acme.tools/list"], resourceUri: "ui://acme/list" },
-							],
-						},
-						{
-							web: {
-								activate(sdk) {
-									sdk.extensions.implement(McpApp, "list", { loadHtml });
-								},
-							},
-						},
-					),
-				],
-			},
-		);
-
-		await expect.element(page.getByText("Listed.")).toBeVisible();
-		expect(document.querySelector('iframe[title="MCP App"]')).toBeNull();
-		expect(loadHtml).not.toHaveBeenCalled();
 	});
 });
 

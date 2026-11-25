@@ -1,4 +1,4 @@
-import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode-v2";
+import type { OpenCodeEvent, OpenCodeServerEvent } from "@kilo-desktop/react-opencode-v2";
 
 /*
  * Delivers the window's streamed tokens in batches, at most one per frame.
@@ -28,33 +28,37 @@ type Listener = (event: OpenCodeServerEvent) => void;
 
 export const EVENT_BATCH_INTERVAL_MS = 16;
 
-/** Kilo v2's streaming deltas: a step's text and reasoning, and a tool call's input. */
-const DELTAS: ReadonlySet<string> = new Set([
-	"session.text.delta",
-	"session.reasoning.delta",
-	"session.tool.input.delta",
-]);
+type KiloEvent = Extract<OpenCodeServerEvent, { type: "kilo.event" }>;
+type DeltaEvent = Extract<
+	OpenCodeEvent,
+	{ type: "session.text.delta" | "session.reasoning.delta" | "session.tool.input.delta" }
+>;
 
-/** What a delta extends: its event type, step and item (ordinal or tool call id). */
-const deltaTarget = (event: OpenCodeServerEvent): string | null => {
-	if (!DELTAS.has(event.type) || typeof event.properties.delta !== "string") return null;
-	const { assistantMessageID, ordinal, id } = event.properties;
-	return `${event.type}:${event.sessionId}:${String(assistantMessageID)}:${String(ordinal ?? id)}`;
+/** Kilo v2's streaming deltas: a step's text and reasoning, and a tool call's input. */
+const isDelta = (event: OpenCodeServerEvent): event is KiloEvent & { event: DeltaEvent } =>
+	event.type === "kilo.event" &&
+	(event.event.type === "session.text.delta" ||
+		event.event.type === "session.reasoning.delta" ||
+		event.event.type === "session.tool.input.delta");
+
+/** What a delta extends: its event type, session, step and item (ordinal or tool call id). */
+const deltaTarget = ({ event, sessionId }: KiloEvent & { event: DeltaEvent }): string => {
+	const item = event.type === "session.tool.input.delta" ? event.data.id : event.data.ordinal;
+	return `${event.type}:${sessionId}:${event.data.assistantMessageID}:${item}`;
 };
 
 function joinDeltas(
 	previous: OpenCodeServerEvent,
 	next: OpenCodeServerEvent,
 ): OpenCodeServerEvent | null {
-	const target = deltaTarget(previous);
-	if (!target || target !== deltaTarget(next)) return null;
-	const delta = `${String(previous.properties.delta)}${String(next.properties.delta)}`;
-	const properties = { ...previous.properties, delta };
-	return {
-		...previous,
-		properties,
-		...(previous.raw ? { raw: { ...previous.raw, data: properties } as typeof previous.raw } : {}),
-	};
+	if (!isDelta(previous) || !isDelta(next) || deltaTarget(previous) !== deltaTarget(next)) {
+		return null;
+	}
+	const event = {
+		...previous.event,
+		data: { ...previous.event.data, delta: previous.event.data.delta + next.event.data.delta },
+	} as DeltaEvent;
+	return { ...previous, event };
 }
 
 export interface EventBatcher {
@@ -89,7 +93,7 @@ export function createEventBatcher(intervalMs = EVENT_BATCH_INTERVAL_MS): EventB
 
 	return {
 		push(event) {
-			if (!DELTAS.has(event.type)) {
+			if (!isDelta(event)) {
 				queue.push(event);
 				flush();
 				return;

@@ -78,24 +78,24 @@ describe("auto mode", () => {
 		expect(autoApprove.getState().holding).toEqual([]);
 	});
 
-	it("leaves sandbox escalation, protected config and Kilo v2's interactive requests to a person, and answers skill-shell unheld", async () => {
+	it("leaves Kilo v2's interactive requests and sandbox escalations to a person", async () => {
 		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
 		await autoApprove.methods.setMode({ mode: "auto" });
 		core.requests.set("ses_a", [
-			request("per_sandbox", "ses_a", { metadata: { sandboxEscalation: true } }),
-			request("per_config", "ses_a", { metadata: { configProtected: true } }),
-			request("per_skill", "ses_a", { metadata: { skillShell: true } }),
+			request("per_sandbox", "ses_a", {
+				metadata: { sandboxEscalation: true, interactive: true },
+			}),
 			request("per_interactive", "ses_a", { metadata: { interactive: true } }),
+			request("per_shell", "ses_a", { metadata: { command: "ls" } }),
 		]);
 
 		core.ask("ses_a", "per_sandbox");
-		core.ask("ses_a", "per_config");
-		core.ask("ses_a", "per_skill");
 		core.ask("ses_a", "per_interactive");
+		core.ask("ses_a", "per_shell");
 		await settle();
 
-		expect(core.replies.map((reply) => reply.permissionId)).toEqual(["per_skill"]);
-		expect(autoApprove.getState().holding).toEqual([]);
+		expect(core.replies.map((reply) => reply.permissionId)).toEqual(["per_shell"]);
+		expect(autoApprove.getState().holding).toEqual(["per_shell"]);
 	});
 
 	it("shows a request it can't read or that is gone", async () => {
@@ -247,7 +247,7 @@ describe("manual mode", () => {
 			plugins: [signInToolPlugin()],
 		});
 		core.requests.set("ses_a", [
-			request("per_tool", "ses_a", { toolKey: SIGN_IN_TOOL, metadata: { skillShell: true } }),
+			request("per_tool", "ses_a", { toolKey: SIGN_IN_TOOL, metadata: { interactive: true } }),
 		]);
 
 		core.ask("ses_a", "per_tool");

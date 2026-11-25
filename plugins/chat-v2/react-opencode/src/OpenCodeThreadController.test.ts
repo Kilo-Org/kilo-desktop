@@ -76,8 +76,14 @@ function manualEvents() {
 				return () => listeners.delete(listener);
 			},
 		},
-		emit(type: string, properties: Record<string, unknown>, sessionId = SESSION.id) {
-			for (const listener of listeners) listener({ type, sessionId, properties, raw: undefined });
+		emit(type: string, data: Record<string, unknown>, sessionId = SESSION.id) {
+			const event = { id: `evt_${type}`, created: 0, type, data } as unknown as OpenCodeEvent;
+			for (const listener of listeners) {
+				listener({ type: "kilo.event", event, sessionId, directory: undefined });
+			}
+		},
+		reconnect() {
+			for (const listener of listeners) listener({ type: STREAM_RECONNECTED_EVENT_TYPE });
 		},
 	};
 }
@@ -109,7 +115,7 @@ describe("the thread controller on Kilo v2", () => {
 			),
 			{ agent: "plan", model: { providerID: "kilo", id: "fast", variant: "high" } },
 		);
-		await controller.sendMessage(message([{ type: "text", text: "Note" }]), { noReply: true });
+		await controller.sendMessage(message([{ type: "text", text: "Note" }]));
 
 		const prompts = calls.filter(([name]) => name === "session.prompt");
 		// Each prompt goes out under a new Kilo message id, which its pending copy waits for.
@@ -134,7 +140,7 @@ describe("the thread controller on Kilo v2", () => {
 					files: [{ uri: "data:image/png;base64,AQID", name: "a.png" }],
 				},
 			],
-			["session.prompt", { sessionID: "ses_1", id: sentIds[1], text: "Note", resume: false }],
+			["session.prompt", { sessionID: "ses_1", id: sentIds[1], text: "Note" }],
 		]);
 	});
 
@@ -193,14 +199,14 @@ describe("the thread controller on Kilo v2", () => {
 		const controller = new OpenCodeThreadController(client, () => events.source, SESSION.id);
 		const unsubscribe = controller.subscribe(() => undefined);
 
-		events.emit(STREAM_RECONNECTED_EVENT_TYPE, {}, undefined as never);
+		events.reconnect();
 		await vi.waitFor(() => {
-			const { permissions, questions } = controller.getState().interactions;
+			const { permissions, forms } = controller.getState().interactions;
 			expect(Object.values(permissions.pending)).toEqual([expect.objectContaining(PERMISSION)]);
-			expect(Object.values(questions.pending)).toEqual([expect.objectContaining(FORM)]);
+			expect(Object.values(forms.pending)).toEqual([expect.objectContaining(FORM)]);
 		});
 		await controller.replyToPermission("per_1", "always");
-		await controller.replyToQuestion("frm_1", { q0: "Yes" });
+		await controller.replyToForm("frm_1", { q0: "Yes" });
 
 		expect(calls).toContainEqual(["permission.list", { sessionID: SESSION.id }]);
 		expect(calls).toContainEqual(["session.form.list", { sessionID: SESSION.id }]);
@@ -212,7 +218,7 @@ describe("the thread controller on Kilo v2", () => {
 			"session.form.reply",
 			{ sessionID: SESSION.id, formID: "frm_1", answer: { q0: "Yes" } },
 		]);
-		expect(controller.getState().interactions.questions.answered.frm_1?.answer).toEqual({
+		expect(controller.getState().interactions.forms.replied.frm_1?.answer).toEqual({
 			q0: "Yes",
 		});
 		unsubscribe();
@@ -229,17 +235,17 @@ describe("the thread controller on Kilo v2", () => {
 		events.emit("form.created", { form: FORM });
 		events.emit("form.created", { form: { ...FORM, id: "frm_2" } });
 		expect(interactions().permissions.pending.per_1).toMatchObject({ action: "shell" });
-		expect(Object.keys(interactions().questions.pending)).toEqual(["frm_1", "frm_2"]);
+		expect(Object.keys(interactions().forms.pending)).toEqual(["frm_1", "frm_2"]);
 
 		events.emit("permission.replied", { sessionID: SESSION.id, requestID: "per_1", reply: "once" });
 		events.emit("form.replied", { sessionID: SESSION.id, id: "frm_1", answer: { q0: "No" } });
 		events.emit("form.cancelled", { sessionID: SESSION.id, id: "frm_2" });
-		await controller.rejectQuestion("frm_3");
+		await controller.cancelForm("frm_3");
 
 		expect(interactions().permissions.resolved.per_1?.reply).toBe("once");
-		expect(interactions().questions.answered.frm_1?.answer).toEqual({ q0: "No" });
-		expect(Object.keys(interactions().questions.rejected)).toEqual(["frm_2"]);
-		expect(interactions().questions.pending).toEqual({});
+		expect(interactions().forms.replied.frm_1?.answer).toEqual({ q0: "No" });
+		expect(Object.keys(interactions().forms.cancelled)).toEqual(["frm_2"]);
+		expect(interactions().forms.pending).toEqual({});
 		expect(calls).toContainEqual([
 			"session.form.cancel",
 			{ sessionID: SESSION.id, formID: "frm_3" },

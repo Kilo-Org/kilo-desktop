@@ -12,7 +12,8 @@ import {
 	type PromptPart as QueuedPromptPart,
 	type QueuedPrompt,
 } from "../../contracts";
-import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command";
+import { toModelRef } from "../selection/model-catalog";
+import { slashCommandFromPromptText } from "../slash-commands/kilo-slash-command";
 import type { PromptOptions, PromptPart } from "./prompt-options";
 
 /** Above this, an image attachment shows in the queue as a file, not its picture. */
@@ -21,7 +22,7 @@ const MAX_PREVIEW_IMAGE_LENGTH = 256 * 1024;
 /** What a queued prompt needs from the window that queues it. */
 export type QueuePromptOptions = Pick<
 	PromptOptions,
-	"getAgent" | "getModel" | "getVariant" | "getSystem" | "getKnownCommandNames" | "resolveParts"
+	"getAgent" | "getModel" | "getSystem" | "getKnownCommandNames" | "resolveParts"
 >;
 
 /** What a queued prompt is made from: the message's content and attachments. */
@@ -134,10 +135,10 @@ export async function prepareText(
 ): Promise<PreparedText> {
 	const raw: PromptPart[] = text ? [{ type: "text", text }] : [];
 	const textParts = options.resolveParts ? [...(await options.resolveParts(raw))] : raw;
-	const draft = slashCommandFromPromptArgs(
-		{ parts: textParts },
-		options.getKnownCommandNames?.() ?? [],
-	);
+	const resolvedText = textParts
+		.flatMap((part) => (part.type === "text" && typeof part.text === "string" ? [part.text] : []))
+		.join("");
+	const draft = slashCommandFromPromptText(resolvedText, options.getKnownCommandNames?.() ?? []);
 	return {
 		text,
 		textParts: toQueuedParts(textParts),
@@ -162,15 +163,14 @@ export async function prepareQueuedPrompt(
 	]);
 	const agent = options.getAgent?.();
 	const model = options.getModel?.();
-	const variant = options.getVariant?.();
 	const preview = attachmentPreview(message);
 	return {
 		...text,
 		attachmentParts: toQueuedParts(fileParts(message)),
 		...(preview ? { attachmentPreview: preview } : {}),
 		...(agent ? { agent } : {}),
-		...(model ? { model: { aiProviderId: model.providerID, modelId: model.modelID } } : {}),
-		...(variant ? { variant } : {}),
+		...(model ? { model: toModelRef(model) } : {}),
+		...(model?.variant ? { variant: model.variant } : {}),
 		...(system ? { system } : {}),
 	};
 }

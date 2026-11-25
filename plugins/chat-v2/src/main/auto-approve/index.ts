@@ -20,7 +20,7 @@ import {
 	CHAT_PLUGIN_ID,
 	type ApprovalMode,
 } from "../../contracts";
-import { neverAutoReplied } from "../../shared/person-required";
+import { needsPerson } from "../../shared/person-required";
 
 const SIGNED_IN_KEY = "kilo.core/signedIn";
 
@@ -49,9 +49,8 @@ const DROP_RESOLVED_AFTER_MS = 1_000;
  *
  * - **Auto:** each `permission-requested` is answered "once". Requests already
  *   pending are drained when Auto turns on and whenever kilo.core's chat list
- *   becomes ready (start, reconnect). Sandbox escalation, protected-config and
- *   skill-shell prompts are left for a person (the server refuses machine
- *   replies to skill-shell anyway).
+ *   becomes ready (start, reconnect). Requests Kilo v2 marks for a person
+ *   (`needsPerson`: interactive ones, sandbox escalations) are left to one.
  * - **Manual:** one kind is still answered: a call to a `requiresSignIn` tool
  *   while signed out. The gateway will refuse it, so asking first only puts
  *   Kilo's prompt before (or, if denied, instead of) chat's sign-in prompt.
@@ -174,12 +173,10 @@ export function activateAutoApprove(sdk: PluginSdk): void {
 			const request = await requestOf(handle, chatId, permissionId);
 			// The mode changed while reading: what was decided for it no longer holds.
 			if (generation !== snapshot) return;
-			if (!request || neverAutoReplied(request.metadata)) return;
+			if (!request || needsPerson(request.metadata)) return;
 			if (auto) {
-				// Skill-shell is answered unheld: the server refuses machine replies, so its card must show.
-				if (request.metadata["skillShell"] !== true) hold(permissionId);
+				hold(permissionId);
 			} else if (
-				request.metadata["skillShell"] === true ||
 				sdk.context.get(SIGNED_IN_KEY) ||
 				!request.toolKey ||
 				!signInTools().has(request.toolKey)

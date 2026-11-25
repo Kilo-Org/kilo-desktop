@@ -10,17 +10,9 @@ export const SLASH_CATEGORIES = [
 	{ id: "action", label: "Actions" },
 	{ id: "command", label: "Commands" },
 	{ id: "skill", label: "Skills" },
-	{ id: "mcp", label: "MCP" },
 ] as const;
 
 export type SlashCategory = (typeof SLASH_CATEGORIES)[number]["id"];
-/** Where a server command comes from. */
-export type SlashSourceCategory = Exclude<SlashCategory, "action">;
-
-export function slashSourceCategory(source: string | undefined): SlashSourceCategory {
-	if (source === "skill" || source === "mcp") return source;
-	return "command";
-}
 
 const SLASH_DRAFT = /^\/([A-Za-z][\w:-]*)(?:\s+([\s\S]*))?$/;
 const LEADING_SLASH_TOKEN = /^\/([A-Za-z][\w:-]*)/;
@@ -70,25 +62,13 @@ export function createKiloSlashFormatter(
 	};
 }
 
-export function extractPromptText(args: Record<string, unknown>): string {
-	if (typeof args.text === "string") return args.text;
-	if (!Array.isArray(args.parts)) return "";
-	return args.parts
-		.flatMap((part) => {
-			if (typeof part !== "object" || part === null) return [];
-			const record = part as { type?: unknown; text?: unknown };
-			if (record.type !== "text" || typeof record.text !== "string") return [];
-			return [record.text];
-		})
-		.join("");
-}
-
-export function slashCommandFromPromptArgs(
-	args: Record<string, unknown>,
+/** The known `/name args` command a prompt's text runs, if it runs one. */
+export function slashCommandFromPromptText(
+	text: string,
 	knownNames: readonly string[],
 ): SlashDraft | undefined {
 	if (knownNames.length === 0) return undefined;
-	const parsed = parseSlashDraft(extractPromptText(args));
+	const parsed = parseSlashDraft(text);
 	if (!parsed || !knownNames.includes(parsed.command)) return undefined;
 	return parsed;
 }

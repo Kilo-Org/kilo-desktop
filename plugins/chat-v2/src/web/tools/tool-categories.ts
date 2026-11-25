@@ -21,17 +21,14 @@ import {
 	getCommandSummary,
 	getPatchInfo,
 	isCancelledToolStatus,
-	isTaskErrorOutput,
-	parseBashResult,
 	resultText,
 	str,
 	truncate,
-	unwrapTaskOutput,
 } from "./tool-ui-shared";
 
 /**
- * Tool grouping for the activity view. Categories mirror the built-in tool
- * set of Kilo (the opencode fork used as the backend). MCP tools are named
+ * Tool grouping for the activity view. Categories mirror Kilo v2's own tool
+ * set. MCP tools are named
  * `{server}_{tool}` and group by server; anything else unmapped lands in the
  * generic tools group. Known MCP servers can override their display label and
  * icon (e.g. notebooks → Notebook, matching the chat notebook pane).
@@ -44,30 +41,21 @@ export type McpActivityKind = `mcp:${string}`;
 
 export type ActivityKind = ToolCategory | "tools" | "thinking" | McpActivityKind;
 
+/** Kilo v2's own tools (its core and Kilo plugin) by name. */
 const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	edit: "editing",
 	patch: "editing",
-	notebook_edit: "editing",
 	write: "writing",
 	read: "reading",
-	notebook_read: "reading",
 	grep: "searching",
 	glob: "searching",
-	list: "searching",
-	codebase_search: "searching",
 	semantic_search: "searching",
 	webfetch: "web",
 	websearch: "web",
 	shell: "terminal",
-	interactive_terminal: "terminal",
-	background_process: "terminal",
 	todowrite: "planning",
-	todoread: "planning",
 	plan_exit: "planning",
 	question: "asking",
-	ask_question: "asking",
-	request_user_input: "asking",
-	requestuserinput: "asking",
 	skill: "skill",
 	subagent: "subagent",
 	board_read: "subagent",
@@ -94,11 +82,9 @@ export const isSkillTool = (toolName: string): boolean => getToolCategory(toolNa
 
 export const isTaskTool = (toolName: string): boolean => getToolCategory(toolName) === "subagent";
 
-const COMPOSER_PROJECTED_TOOLS = new Set(["todowrite", "todoread"]);
-
 /** Tools whose calls surface in the composer task shelf instead of the transcript. */
 export const isComposerProjectedTool = (toolName: string): boolean =>
-	COMPOSER_PROJECTED_TOOLS.has(toolName.toLowerCase());
+	toolName.toLowerCase() === "todowrite";
 
 /** Subagent delegations render in their own transcript group, never inside activity summaries. */
 export const isDelegationTool = (toolName: string): boolean =>
@@ -507,20 +493,15 @@ const mcpKindMeta = (kind: McpActivityKind): KindMeta => {
 export const getKindMeta = (kind: ActivityKind): KindMeta =>
 	isMcpActivityKind(kind) ? mcpKindMeta(kind) : KIND_META[kind];
 
-const FILE_ARG_KEYS = ["file_path", "filePath", "path", "file"] as const;
-
-/** Files touched by a single tool-call part (multi-file for patch). */
+/** Files touched by a single tool-call part: Kilo v2's `path`, or every file a patch names. */
 export const getPartFiles = (part: ActivityPart): string[] => {
 	const args = part.args as Record<string, unknown> | undefined;
 	if (!args) return [];
 	if (part.toolName?.toLowerCase() === "patch") {
 		return getPatchInfo(str(args.patchText)).files;
 	}
-	for (const key of FILE_ARG_KEYS) {
-		const value = str(args[key]);
-		if (value) return [value];
-	}
-	return [];
+	const path = str(args.path);
+	return path ? [path] : [];
 };
 
 const uniqueFiles = (parts: readonly ActivityPart[], indices: readonly number[]): string[] => {
@@ -533,6 +514,7 @@ const uniqueFiles = (parts: readonly ActivityPart[], indices: readonly number[])
 	return [...files];
 };
 
+/** Kilo v2's `question` tool asks `{ questions: [{ question, header, options }] }`. */
 const questionSummaryFromArgs = (args: unknown): string | undefined => {
 	if (!args || typeof args !== "object") return undefined;
 	const record = args as Record<string, unknown>;
@@ -546,15 +528,10 @@ const questionSummaryFromArgs = (args: unknown): string | undefined => {
 		return undefined;
 	};
 
-	if (Array.isArray(record.questions) && record.questions.length > 0) {
-		const first = fromQuestionInfo(record.questions[0]);
-		if (first) return first;
-		if (record.questions.length > 1) return `${record.questions.length} questions`;
-	}
-
-	return (
-		fromQuestionInfo(record) ?? (str(record.prompt) ? truncate(str(record.prompt), 48) : undefined)
-	);
+	if (!Array.isArray(record.questions) || record.questions.length === 0) return undefined;
+	const first = fromQuestionInfo(record.questions[0]);
+	if (first) return first;
+	return record.questions.length > 1 ? `${record.questions.length} questions` : undefined;
 };
 
 /** Prefer the first concrete question prompt in the segment. */
@@ -662,15 +639,10 @@ export const soloRowHidesItself = (kind: ActivityKind, part: ActivityPart | unde
 	if (!part) return false;
 	if (kind === "terminal") {
 		if (isCancelledToolStatus(part.status)) return false;
-		const running = part.status?.type === "running";
-		const parsed = parseBashResult(part.result);
-		if (!running && (parsed.exitCode ?? 0) !== 0) return false;
-		return !(parsed.stdout || parsed.stderr);
+		return !resultText(part.result);
 	}
 	if (kind === "subagent") {
-		const raw = resultText(part.result);
-		if (isTaskErrorOutput(raw)) return false;
-		return !(part.status?.type !== "running" && unwrapTaskOutput(raw).length > 0);
+		return !(part.status?.type !== "running" && resultText(part.result).trim().length > 0);
 	}
 	return false;
 };

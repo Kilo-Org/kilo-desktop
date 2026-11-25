@@ -177,13 +177,13 @@ describe("reduceOpenCodeThreadState", () => {
 		expect(prepended.olderHistory).toEqual({ type: "complete" });
 	});
 
-	it("stores pending questions separately from permissions", () => {
+	it("stores pending forms separately from permissions", () => {
 		const initial = createOpenCodeThreadState("ses_1");
 
-		const withQuestion = reduceOpenCodeThreadState(initial, {
-			type: "question.asked",
+		const withForm = reduceOpenCodeThreadState(initial, {
+			type: "form.created",
 			request: {
-				id: "question_1",
+				id: "frm_1",
 				sessionID: "ses_1",
 				title: "Questions",
 				fields: [
@@ -202,13 +202,11 @@ describe("reduceOpenCodeThreadState", () => {
 			},
 		});
 
-		expect(withQuestion.interactions.questions.pending.question_1?.fields[0]?.title).toBe(
-			"Confirm",
-		);
-		expect(Object.keys(withQuestion.interactions.permissions.pending)).toHaveLength(0);
+		expect(withForm.interactions.forms.pending.frm_1?.fields[0]?.title).toBe("Confirm");
+		expect(Object.keys(withForm.interactions.permissions.pending)).toHaveLength(0);
 	});
 
-	it("retains request details for resolved questions and permissions", () => {
+	it("retains request details for replied forms and resolved permissions", () => {
 		const initial = createOpenCodeThreadState("ses_1");
 
 		const withPermission = reduceOpenCodeThreadState(initial, {
@@ -233,10 +231,10 @@ describe("reduceOpenCodeThreadState", () => {
 			resolvedPermission.interactions.permissions.resolved.permission_1?.request.source?.id,
 		).toBe("call_1");
 
-		const withQuestion = reduceOpenCodeThreadState(initial, {
-			type: "question.asked",
+		const withForm = reduceOpenCodeThreadState(initial, {
+			type: "form.created",
 			request: {
-				id: "question_1",
+				id: "frm_1",
 				sessionID: "ses_1",
 				title: "Questions",
 				fields: [{ key: "q0", type: "string", description: "Should I continue?" }],
@@ -244,13 +242,13 @@ describe("reduceOpenCodeThreadState", () => {
 			},
 		});
 
-		const answeredQuestion = reduceOpenCodeThreadState(withQuestion, {
-			type: "question.replied",
-			questionId: "question_1",
+		const repliedForm = reduceOpenCodeThreadState(withForm, {
+			type: "form.replied",
+			formId: "frm_1",
 			answer: { q0: "Yes" },
 		});
 
-		expect(answeredQuestion.interactions.questions.answered.question_1).toMatchObject({
+		expect(repliedForm.interactions.forms.replied.frm_1).toMatchObject({
 			request: { fields: [{ key: "q0" }] },
 			answer: { q0: "Yes" },
 		});

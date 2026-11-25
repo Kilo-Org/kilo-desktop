@@ -108,10 +108,8 @@ describe("soloRowHidesItself", () => {
 	});
 
 	it("hides a delegation without output", () => {
-		expect(soloRowHidesItself("subagent", call("task", {}, { result: "" }))).toBe(true);
-		expect(
-			soloRowHidesItself("subagent", call("task", {}, { result: "<task_result>ok</task_result>" })),
-		).toBe(false);
+		expect(soloRowHidesItself("subagent", call("subagent", {}, { result: "" }))).toBe(true);
+		expect(soloRowHidesItself("subagent", call("subagent", {}, { result: "ok" }))).toBe(false);
 		expect(soloRowHidesItself("reading", call("read"))).toBe(false);
 	});
 });

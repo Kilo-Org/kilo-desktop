@@ -32,7 +32,7 @@ export function KiloSessionSelectionSync({
 	const sessionId = session?.id;
 	const agent = session?.agent;
 	const providerID = session?.model?.providerID;
-	const modelID = session?.model?.id;
+	const modelId = session?.model?.id;
 	const effort = normalizeVariant(session?.model?.variant);
 
 	// Syncs the parent's selection with Kilo's session, an external store the runtime owns that
@@ -41,11 +41,11 @@ export function KiloSessionSelectionSync({
 		if (!remoteId || remoteId !== sessionId) return;
 		// react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
 		if (agent) hydrateAgent(remoteId, agent);
-		if (agent && providerID && modelID) {
+		if (agent && providerID && modelId) {
 			// react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
 			hydrateModel(remoteId, {
 				agent,
-				model: { providerID, modelID },
+				model: { providerID, id: modelId },
 				...(effort ? { effort } : {}),
 			});
 		} else {
@@ -58,7 +58,7 @@ export function KiloSessionSelectionSync({
 		hydrateAgent,
 		hydrateModel,
 		markLoaded,
-		modelID,
+		modelId,
 		providerID,
 		remoteId,
 		sessionId,

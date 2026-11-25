@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 
 import {
 	useOptionalOpenCodeSession,
-	usePendingQuestions,
+	usePendingForms,
 } from "../runtime/use-optional-opencode-runtime-extras";
 import { useOptionalChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import { findPlanFollowupRequest } from "./plan-followup";
@@ -16,7 +16,7 @@ const isPlanningAgent = (agent: string) => agent === "plan" || agent === "archit
  */
 export function FollowPlanApproval() {
 	const selection = useOptionalChatAgentSelection();
-	const followupId = findPlanFollowupRequest(usePendingQuestions())?.id;
+	const followupId = findPlanFollowupRequest(usePendingForms())?.id;
 	const kiloAgent = useOptionalOpenCodeSession()?.agent;
 	const agentWhileAsked = useRef<string | undefined>(undefined);
 	const answeredFrom = useRef<string | undefined>(undefined);

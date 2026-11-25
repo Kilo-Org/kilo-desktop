@@ -38,7 +38,6 @@ describe("autoAnswers", () => {
 	it("in Auto, takes everything a person needn't see", () => {
 		expect(autoAnswers(described(), AUTO)).toBe(true);
 		expect(autoAnswers(described({ metadata: { sandboxEscalation: true } }), AUTO)).toBe(false);
-		expect(autoAnswers(described({ metadata: { skillShell: true } }), AUTO)).toBe(false);
 		expect(autoAnswers(described({ metadata: { interactive: true } }), AUTO)).toBe(false);
 	});
 
@@ -51,7 +50,7 @@ describe("autoAnswers", () => {
 		).toBe(false);
 		expect(
 			autoAnswers(
-				described({ permission: "desktop_x", metadata: { configProtected: true } }),
+				described({ permission: "desktop_x", metadata: { interactive: true } }),
 				signedOut,
 			),
 		).toBe(false);

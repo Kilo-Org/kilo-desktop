@@ -11,8 +11,8 @@ export function selectOpenCodeExtras(extras: unknown): OpenCodeRuntimeExtras | u
 	if (typeof extras !== "object" || extras === null) return undefined;
 	const candidate = extras as Partial<OpenCodeRuntimeExtras>;
 	if (
-		typeof candidate.replyToQuestion === "function" &&
-		typeof candidate.rejectQuestion === "function" &&
+		typeof candidate.replyToForm === "function" &&
+		typeof candidate.cancelForm === "function" &&
 		typeof candidate.replyToPermission === "function"
 	) {
 		return candidate as OpenCodeRuntimeExtras;
@@ -41,19 +41,19 @@ const selectSession = (extras: OpenCodeRuntimeExtras) => extras.session;
 /** The OpenCode session the thread shows, re-rendering only when it changes. */
 export const useOptionalOpenCodeSession = () => useOpenCodeExtrasSlice(selectSession);
 
-const selectQuestions = (extras: OpenCodeRuntimeExtras) => extras.questions;
-const NO_QUESTIONS: readonly PendingQuestion[] = [];
+const selectForms = (extras: OpenCodeRuntimeExtras) => extras.forms;
+const NO_FORMS: readonly PendingForm[] = [];
 
-type PendingQuestion = OpenCodeRuntimeExtras["questions"][string];
+type PendingForm = OpenCodeRuntimeExtras["forms"][string];
 
 /**
- * The chat's pending questions, re-rendering only when they change.
- * react-opencode's `useOpenCodeQuestions` subscribes to the whole extras,
- * which change with every streamed token.
+ * The chat's pending forms, re-rendering only when they change.
+ * react-opencode's `useOpenCodeForms` subscribes to the whole extras, which
+ * change with every streamed token.
  */
-export function usePendingQuestions(): readonly PendingQuestion[] {
-	const questions = useOpenCodeExtrasSlice(selectQuestions);
-	return questions ? Object.values(questions) : NO_QUESTIONS;
+export function usePendingForms(): readonly PendingForm[] {
+	const forms = useOpenCodeExtrasSlice(selectForms);
+	return forms ? Object.values(forms) : NO_FORMS;
 }
 
 const selectOlderHistory = (extras: OpenCodeRuntimeExtras) =>

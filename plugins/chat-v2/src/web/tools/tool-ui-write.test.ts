@@ -4,10 +4,9 @@ import { hostnameFromUrl } from "./tool-ui-activity-row";
 import { resultText } from "./tool-ui-shared";
 
 describe("resultText", () => {
-	it("reads string results and output/stdout fields", () => {
+	it("reads a result's text, and nothing from anything else", () => {
 		expect(resultText("plain")).toBe("plain");
-		expect(resultText({ output: "out" })).toBe("out");
-		expect(resultText({ stdout: "std" })).toBe("std");
+		expect(resultText({ output: "out" })).toBe("");
 		expect(resultText(null)).toBe("");
 	});
 });

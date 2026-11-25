@@ -5,15 +5,16 @@ import {
 } from "@kilo-desktop/react-opencode-v2";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { streamEvent } from "../../test/stream-events";
 import { ENDED_PART_TTL_MS, LiveParts } from "./live-parts";
 
 const CHAT = "ses_1";
 
 const event = (
 	type: string,
-	properties: Record<string, unknown>,
+	data: Record<string, unknown>,
 	sessionId: string | undefined = CHAT,
-): OpenCodeServerEvent => ({ type, properties, sessionId, raw: undefined });
+): OpenCodeServerEvent => streamEvent(type, data, sessionId);
 
 const ids = { assistantMessageID: "msg_1", ordinal: 0 };
 const started = () => event("session.text.started", ids);
@@ -95,13 +96,12 @@ describe("LiveParts", () => {
 
 	it("keeps what streamed across a reconnect", () => {
 		const live = streaming("Hello");
-		live.apply(event(STREAM_RECONNECTED_EVENT_TYPE, {}, undefined));
+		live.apply({ type: STREAM_RECONNECTED_EVENT_TYPE });
 		expect(readText(live, "")).toBe("Hello");
 	});
 
 	it.each([
 		["its chat's turn ends", event("session.execution.succeeded", {})],
-		["its chat goes idle", event("session.idle", {})],
 		["its chat is deleted", event("session.deleted", {})],
 	])("forgets a streaming item when %s", (_, drop) => {
 		const live = streaming("Hello");

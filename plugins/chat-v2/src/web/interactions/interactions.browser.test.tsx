@@ -101,7 +101,7 @@ describe("permission requests", () => {
 			action: "shell",
 			resources: ["rm -rf build", "*"],
 			save: ["rm *"],
-			metadata: { description: "Clean the build" },
+			message: "Clean the build",
 		});
 
 		await expect.element(page.getByTestId("kilo-permission-card")).toBeVisible();
@@ -355,7 +355,7 @@ describe("permission requests", () => {
 		});
 	});
 
-	it("show what permission renderers for a Kilo permission add, matched on its name, not the card's label", async () => {
+	it("show what permission renderers for a Kilo permission add, matched on its name", async () => {
 		const host = await showChat(chatWith([reply("Ready.")]), {
 			plugins: [
 				contributor(
@@ -364,6 +364,7 @@ describe("permission requests", () => {
 						web: {
 							activate(sdk) {
 								sdk.extensions.implement(PermissionRenderer, "run", {
+									permissionTitle: () => "Run code",
 									PermissionDetail: ({ request }: PermissionDetailProps) => (
 										<p data-qa-id="acme-run-detail">{request.permission}</p>
 									),
@@ -380,11 +381,11 @@ describe("permission requests", () => {
 			id: "per_run",
 			action: "acme_execute",
 			resources: ["notebook-1"],
-			metadata: { toolName: "Run code", title: "Run code?" },
+			metadata: { input: { cell: 1 } },
 		});
 
 		const card = page.getByTestId("kilo-permission-card");
-		await expect.element(card.getByText("Run code", { exact: true })).toBeVisible();
+		await expect.element(card.getByText("Allow Run code?", { exact: true })).toBeVisible();
 		await expect.element(page.getByTestId("acme-run-detail")).toHaveTextContent("acme_execute");
 	});
 
@@ -415,7 +416,7 @@ describe("permission requests", () => {
 			action: "acme_execute",
 			resources: ["notebook-1"],
 			save: ["notebook-1"],
-			metadata: { toolName: "Run code", title: "Run code?", notebook: "analysis.ipynb" },
+			metadata: { notebook: "analysis.ipynb" },
 		});
 
 		const card = page.getByTestId("kilo-permission-card");

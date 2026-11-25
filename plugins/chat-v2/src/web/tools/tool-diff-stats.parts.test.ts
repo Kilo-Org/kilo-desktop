@@ -22,21 +22,19 @@ const DIFF = [
 ].join("\n");
 
 describe("reading tool args", () => {
-	it("finds a file path, edit strings and written content by any of their names", () => {
+	it("reads Kilo v2's path, edit strings and written content, and no other names", () => {
 		expect(getToolFilePath(undefined)).toBe("");
-		expect(getToolFilePath({ file: "a.ts" })).toBe("a.ts");
-		expect(getToolFilePath({})).toBe("");
-		expect(getToolFilePath({ file_path: "/a.ts", filePath: "/b.ts" })).toBe("/a.ts");
-		expect(getToolFilePath({ path: "c.ts", file: "d.ts" })).toBe("c.ts");
-		expect(getEditOldString({ old_string: "b" })).toBe("b");
-		expect(getEditNewString({ new_string: "d" })).toBe("d");
-		expect(getEditOldString({ old_text: "a" })).toBe("a");
+		expect(getToolFilePath({ path: "c.ts" })).toBe("c.ts");
+		expect(getToolFilePath({ filePath: "/b.ts" })).toBe("");
+		expect(getEditOldString({ oldString: "b" })).toBe("b");
+		expect(getEditNewString({ newString: "d" })).toBe("d");
+		expect(getEditOldString({ old_string: "a" })).toBe("");
 		expect(getEditNewString(undefined)).toBe("");
-		expect(hasEditStringArgs({ newText: "" })).toBe(true);
-		expect(hasEditStringArgs({})).toBe(false);
+		expect(hasEditStringArgs({ newString: "" })).toBe(true);
+		expect(hasEditStringArgs({ new_string: "x" })).toBe(false);
 		expect(getWriteContent(undefined)).toBe("");
-		expect(getWriteContent({ contents: "x" })).toBe("x");
-		expect(getWriteContent({})).toBe("");
+		expect(getWriteContent({ content: "x" })).toBe("x");
+		expect(getWriteContent({ contents: "x" })).toBe("");
 	});
 
 	it("takes the server's unified diff for the call when there is one", () => {

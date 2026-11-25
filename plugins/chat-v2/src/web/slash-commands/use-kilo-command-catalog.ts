@@ -13,8 +13,8 @@ import { kiloClient } from "../runtime/kilo-client";
 export interface KiloCommandCatalogEntry {
 	readonly name: string;
 	readonly description?: string;
-	/** Where it comes from (`command.list`, `skill.list`, or an MCP server's prompt). */
-	readonly source: "command" | "skill" | "mcp";
+	/** Where it comes from (`command.list` or `skill.list`). */
+	readonly source: "command" | "skill";
 	/** A command's argument placeholders (`$1`, `$ARGUMENTS`), from its template. */
 	readonly hints: readonly string[];
 	/** A skill's id, which a prompt names to use it. */

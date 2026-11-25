@@ -32,36 +32,23 @@ import { visiblePermissionPatterns } from "./permission-labels";
 const selectDetail = (implementation: PermissionRendererImplementation) =>
 	implementation.PermissionDetail;
 
-const stringOf = (value: unknown) => (typeof value === "string" ? value : undefined);
-
-/** The first of `keys` the record has. */
-const firstOf = (record: Readonly<Record<string, unknown>>, keys: readonly string[]) =>
-	record[keys.find((key) => key in record) ?? ""];
-
 /** What a Kilo v2 tool attached to its request, without the bare `*` a tool-level rule matches on. */
 function describeRequest(request: OpenCodePermissionRequest) {
 	const metadata: Readonly<Record<string, unknown>> = request.metadata ?? {};
 	return {
 		metadata,
-		// A tool may name itself more kindly than its action (`metadata.toolName`).
-		label: stringOf(metadata["toolName"]) ?? request.action,
-		title: stringOf(firstOf(metadata, ["title", "message", "prompt"])),
-		description: stringOf(metadata["description"]) ?? request.message,
-		toolInput: firstOf(metadata, ["toolInput", "input", "args", "arguments"]),
+		label: request.action,
+		description: request.message,
+		// An MCP tool's request carries its call's input (`metadata.input`).
+		toolInput: metadata["input"],
 		patterns: visiblePermissionPatterns(request.resources),
-		// The call it is about, as the transcript names it.
-		tool: request.source
-			? { messageID: request.source.messageID, callID: request.source.id }
-			: undefined,
 	};
 }
 
 /**
  * A permission request waiting on the person, answered through kilo.core's
  * chats (to the chat that asked: a subagent's request goes to its chat). The
- * person's approvals are `interactive`, without which the Kilo server
- * ignores approvals of sensitive requests. The card leaves when the server
- * announces the reply on the stream.
+ * card leaves when the server announces the reply on the stream.
  */
 export const OpenCodePermissionCard = ({
 	request,
@@ -135,13 +122,13 @@ export const OpenCodePermissionCard = ({
 	const { label: permissionLabel, patterns, toolInput, description } = described;
 	// The request carries no arguments, so read them from the call in the thread.
 	const threadArgs = useAuiState((state) =>
-		findPermissionToolArgs(state.thread.messages, described.tool),
+		findPermissionToolArgs(state.thread.messages, request.source),
 	);
 	const args = threadArgs ?? toolInput;
 	const renderers = usePermissionRenderers();
 	const tools = useDesktopTools();
 	const toolKey = toolKeyOf(tools, request.action);
-	// Renderers see Kilo's permission name (v2's action); the label may be a tool's friendlier one.
+	// Renderers see Kilo's permission name (v2's action).
 	const interaction: PermissionInteraction = {
 		permission: request.action,
 		...(toolKey ? { toolKey } : {}),
@@ -174,7 +161,7 @@ export const OpenCodePermissionCard = ({
 				</div>
 				<div className="space-y-1.5">
 					<h3 className="text-base leading-snug font-medium tracking-tight text-pretty">
-						{described.title ?? `Allow ${presentation.title ?? permissionLabel}?`}
+						{`Allow ${presentation.title ?? permissionLabel}?`}
 					</h3>
 					<p className="text-muted-foreground text-sm text-pretty">
 						{description ?? `${requester} requesting permission to use ${permissionLabel}.`}

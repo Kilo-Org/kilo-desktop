@@ -27,7 +27,7 @@ vi.mock("@assistant-ui/react", () => ({
 
 vi.mock("@kilo-desktop/react-opencode-v2", async (importOriginal) => ({
 	...(await importOriginal<object>()),
-	useOpenCodeQuestions: () => [],
+	useOpenCodeForms: () => [],
 	useOpenCodePermissions: () => ({ pending: runtime.permissions, reply: vi.fn() }),
 	projectOpenCodeThreadMessages: () => [],
 }));
@@ -265,18 +265,10 @@ describe("Editing activity subgroup", () => {
 });
 
 describe("Web activity subgroup", () => {
-	it("does not count hidden OpenCode lifecycle parts as web requests", async () => {
+	it("does not count a hidden task-list update as a web request", async () => {
 		const search = toolPart("web-1", "websearch", { query: "Numba" });
 		const fetch = toolPart("web-2", "webfetch", { url: "https://example.com" });
-		runtime.message.parts = [
-			search,
-			{
-				type: "data",
-				name: "opencode-step-finish",
-				data: {},
-			} as unknown as ToolCallMessagePartProps,
-			fetch,
-		];
+		runtime.message.parts = [search, toolPart("todo-1", "todowrite", { todos: [] }), fetch];
 
 		const { getByRole, queryByRole } = await mount(
 			<ActivityGroup group={{ indices: [0, 1, 2] }}>
@@ -567,7 +559,7 @@ describe("Self-describing solo tool rows", () => {
 	it("keeps an expanded row from the first subgroup visible when activity advances", async () => {
 		const completedCommand = {
 			...toolPart("call-1", "shell", { command: "pnpm test" }),
-			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+			result: "2 passed\n",
 		};
 		const runningCommand = {
 			...toolPart("call-2", "shell", { command: "pnpm lint" }),
@@ -686,7 +678,7 @@ describe("Self-describing solo tool rows", () => {
 	it("keeps a solo command with output expandable", async () => {
 		const part = {
 			...toolPart("call-1", "shell", { command: "pnpm test" }),
-			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+			result: "2 passed\n",
 		};
 		runtime.message.status = { type: "complete" };
 		const { getByRole, getByText, queryByText } = await renderActivity(
@@ -719,7 +711,7 @@ describe("Self-describing solo tool rows", () => {
 	it("preserves an expanded command when its activity subtree remounts", async () => {
 		const command = {
 			...toolPart("call-1", "shell", { command: "pnpm test" }),
-			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+			result: "2 passed\n",
 		};
 		const otherCommand = toolPart("call-2", "shell", { command: "pnpm lint" });
 		runtime.message.parts = [command, otherCommand];
@@ -754,7 +746,7 @@ describe("Activity group settling", () => {
 		const completedRead = readPart("call-1", "/src/example.ts");
 		const runningEdit = {
 			...toolPart("call-2", "edit", {
-				file_path: "/src/example.ts",
+				path: "/src/example.ts",
 				oldString: "const before = true;\n",
 				newString: "const after = true;\nconst added = true;\n",
 			}),

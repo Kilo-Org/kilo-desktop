@@ -6,7 +6,7 @@ import { create } from "zustand";
 import {
 	selectOpenCodeExtras,
 	useOpenCodeExtrasSlice,
-	usePendingQuestions,
+	usePendingForms,
 } from "../runtime/use-optional-opencode-runtime-extras";
 import { useOptionalChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import {
@@ -58,28 +58,28 @@ const selectCanReply = () => true;
 export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 	const aui = useAui();
 	const selection = useOptionalChatAgentSelection();
-	const pendingQuestions = usePendingQuestions();
+	const pendingForms = usePendingForms();
 	// Read at reply time: the extras (and their functions) change with every streamed token.
-	const canReplyToQuestions = useOpenCodeExtrasSlice(selectCanReply) === true;
-	const replyToQuestion = canReplyToQuestions
-		? (...args: Parameters<OpenCodeRuntimeExtras["replyToQuestion"]>) =>
-				selectOpenCodeExtras(aui.thread.getState().extras)!.replyToQuestion(...args)
+	const canReplyToForms = useOpenCodeExtrasSlice(selectCanReply) === true;
+	const replyToForm = canReplyToForms
+		? (...args: Parameters<OpenCodeRuntimeExtras["replyToForm"]>) =>
+				selectOpenCodeExtras(aui.thread.getState().extras)!.replyToForm(...args)
 		: undefined;
-	const rejectQuestion = canReplyToQuestions
-		? (...args: Parameters<OpenCodeRuntimeExtras["rejectQuestion"]>) =>
-				selectOpenCodeExtras(aui.thread.getState().extras)!.rejectQuestion(...args)
+	const cancelForm = canReplyToForms
+		? (...args: Parameters<OpenCodeRuntimeExtras["cancelForm"]>) =>
+				selectOpenCodeExtras(aui.thread.getState().extras)!.cancelForm(...args)
 		: undefined;
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const planFollowup = findPlanFollowupRequest(pendingQuestions);
+	const planFollowup = findPlanFollowupRequest(pendingForms);
 	const key = resolvePlanApprovalKey(planFollowup?.id, options?.fallbackApprovalScope);
 	const fallbackKey = resolvePlanApprovalKey(undefined, options?.fallbackApprovalScope);
 	const approved = usePlanApprovalUiStore((state) =>
 		key ? Boolean(state.approvedKeys[key]) : false,
 	);
 	const markApproved = usePlanApprovalUiStore((state) => state.markApproved);
-	const canReply = Boolean(planFollowup && replyToQuestion);
+	const canReply = Boolean(planFollowup && replyToForm);
 
 	const approve = () => {
 		if (submitting || approved) return;
@@ -88,8 +88,8 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 		selection?.setAgent(IMPLEMENTING_AGENT);
 		void (async () => {
 			try {
-				if (planFollowup && replyToQuestion) {
-					await replyToQuestion(planFollowup.id, buildPlanImplementAnswer(planFollowup));
+				if (planFollowup && replyToForm) {
+					await replyToForm(planFollowup.id, buildPlanImplementAnswer(planFollowup));
 				} else {
 					aui.thread().append(PLAN_IMPLEMENT_FALLBACK_PROMPT);
 				}
@@ -110,12 +110,12 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 	 * it until the chat is idle.
 	 */
 	const refine = () => {
-		if (!planFollowup || !rejectQuestion || submitting || approved) return;
+		if (!planFollowup || !cancelForm || submitting || approved) return;
 		setSubmitting(true);
 		setError(null);
 		void (async () => {
 			try {
-				await rejectQuestion(planFollowup.id);
+				await cancelForm(planFollowup.id);
 				aui.composer.send();
 			} catch (caught) {
 				setError(errorText(caught, "Could not refine the plan."));

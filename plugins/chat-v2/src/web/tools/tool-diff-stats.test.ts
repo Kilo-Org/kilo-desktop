@@ -54,13 +54,13 @@ const messagesWithDiff = (id: string, patch: string): SessionMessageInfo[] => [
 
 describe("getPartDiffStats", () => {
 	it("counts write content as pure additions", () => {
-		const part = toolPart("write", { file_path: "/a.txt", content: "one\ntwo\n" });
+		const part = toolPart("write", { path: "/a.txt", content: "one\ntwo\n" });
 		expect(getPartDiffStats(part, [])).toEqual({ added: 2, removed: 0 });
 	});
 
 	it("counts edit old/new string replacements", () => {
 		const part = toolPart("edit", {
-			file_path: "/a.txt",
+			path: "/a.txt",
 			oldString: "one\ntwo\nthree\n",
 			newString: "one\n2\nthree\nfour\n",
 		});
@@ -70,7 +70,7 @@ describe("getPartDiffStats", () => {
 	it("prefers the backend unified diff over args", () => {
 		const part = toolPart(
 			"edit",
-			{ file_path: "/x.ts", oldString: "a", newString: "b" },
+			{ path: "/x.ts", oldString: "a", newString: "b" },
 			{ toolCallId: "call_1" },
 		);
 		expect(getPartDiffStats(part, messagesWithDiff("call_1", BACKEND_DIFF))).toEqual({
@@ -89,7 +89,7 @@ describe("getPartDiffStats", () => {
 	it("skips in-flight calls whose args are still streaming", () => {
 		const part = toolPart(
 			"write",
-			{ file_path: "/a.txt", content: "one\n" },
+			{ path: "/a.txt", content: "one\n" },
 			{ status: { type: "running" } },
 		);
 		expect(getPartDiffStats(part, [])).toBeNull();
@@ -113,10 +113,10 @@ describe("getPartDiffStats", () => {
 describe("getGroupDiffStats", () => {
 	it("aggregates counts across the group's mutation parts", () => {
 		const parts = [
-			toolPart("write", { file_path: "/a.txt", content: "one\ntwo\n" }),
+			toolPart("write", { path: "/a.txt", content: "one\ntwo\n" }),
 			{ type: "text" } as ActivityPart,
 			toolPart("edit", {
-				file_path: "/b.txt",
+				path: "/b.txt",
 				oldString: "x\n",
 				newString: "y\n",
 			}),

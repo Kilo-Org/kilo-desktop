@@ -104,7 +104,6 @@ const FooterUsage: FC<{ view: ComposerUsageView }> = ({ view }) => (
 		<CostMeter
 			runCost={view.runCost}
 			sessionCost={view.sessionCost}
-			lines={view.lines}
 			className="max-w-none border-0 bg-transparent p-0 shadow-none"
 		/>
 	</ComposerUsage>

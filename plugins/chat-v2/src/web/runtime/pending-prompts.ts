@@ -1,15 +1,17 @@
 import type {
-	FormInfo,
 	KiloClient,
+	OpenCodeEvent,
 	OpenCodeEventSourceLike,
 	OpenCodeServerEvent,
 } from "@kilo-desktop/react-opencode-v2";
 
-/** Events that settle a pending prompt, and where they name it. */
-const SETTLING_EVENTS: Readonly<Record<string, string>> = {
-	"permission.replied": "requestID",
-	"form.replied": "id",
-	"form.cancelled": "id",
+/** The prompt an event settles: a replied permission, or a replied or cancelled form. */
+const settledPromptId = (item: OpenCodeServerEvent): string | undefined => {
+	if (item.type !== "kilo.event") return undefined;
+	const { event } = item;
+	if (event.type === "permission.replied") return event.data.requestID;
+	if (event.type === "form.replied" || event.type === "form.cancelled") return event.data.id;
+	return undefined;
 };
 
 /** A chat a thread may show, and the client that reaches it. */
@@ -44,34 +46,32 @@ export function withPendingPrompts(
 			let subscribed = true;
 			const settled = new Set<string>();
 			const unsubscribe = source.subscribe((event) => {
-				const key = SETTLING_EVENTS[event.type];
-				const requestId = key ? event.properties[key] : undefined;
-				if (typeof requestId === "string") settled.add(requestId);
+				const settledId = settledPromptId(event);
+				if (settledId) settled.add(settledId);
 				listener(event);
 			});
-			const replay = (
-				events: readonly OpenCodeServerEvent[],
-				id: (event: OpenCodeServerEvent) => unknown,
-			) => {
-				for (const event of events) {
-					const requestId = id(event);
-					if (!subscribed || (typeof requestId === "string" && settled.has(requestId))) continue;
-					listener(event);
-				}
+			const replay = (promptId: string, sessionId: string, event: OpenCodeEvent) => {
+				if (!subscribed || settled.has(promptId)) return;
+				listener({ type: "kilo.event", event, sessionId, directory: undefined });
 			};
 			for (const [chatId, client] of chats()) {
-				void readPending(() => client.permission.list({ sessionID: chatId })).then((requests) =>
-					replay(
-						requests.map((request) => event("permission.asked", request.sessionID, request)),
-						(asked) => asked.properties["id"],
-					),
-				);
-				void readPending(() => client.session.form.list({ sessionID: chatId })).then((forms) =>
-					replay(
-						forms.map((form: FormInfo) => event("form.created", form.sessionID, { form })),
-						(created) => (created.properties["form"] as FormInfo).id,
-					),
-				);
+				void readPending(() => client.permission.list({ sessionID: chatId })).then((requests) => {
+					for (const request of requests) {
+						replay(request.id, request.sessionID, {
+							...replayed(),
+							type: "permission.asked",
+							data: request,
+						});
+					}
+				});
+				void readPending(() => client.session.form.list({ sessionID: chatId })).then((forms) => {
+					for (const form of forms) {
+						// The list's form and the event's are generated apart (the list's
+						// integer bounds may read "Infinity"); they are the same form.
+						const data = { form } as Extract<OpenCodeEvent, { type: "form.created" }>["data"];
+						replay(form.id, form.sessionID, { ...replayed(), type: "form.created", data });
+					}
+				});
 			}
 			return () => {
 				subscribed = false;
@@ -90,12 +90,7 @@ async function readPending<T>(list: () => Promise<readonly T[]>): Promise<readon
 	}
 }
 
-/** A Kilo v2 event as the window's stream delivers it. */
-function event(type: string, sessionId: string, properties: object): OpenCodeServerEvent {
-	return {
-		type,
-		sessionId,
-		properties: properties as Record<string, unknown>,
-		raw: undefined,
-	};
+/** The envelope of an event replayed from a pending list rather than the stream. */
+function replayed(): { id: string; created: number } {
+	return { id: `evt_replayed_${crypto.randomUUID()}`, created: Date.now() };
 }

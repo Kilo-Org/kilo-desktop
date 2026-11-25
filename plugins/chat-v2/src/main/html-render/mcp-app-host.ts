@@ -5,7 +5,6 @@ import {
 	MCP_APP_HOST,
 	MCP_APP_SHELL_HTML_MESSAGE,
 	MCP_APP_SHELL_READY_MESSAGE,
-	MCP_APP_WIDGET_DOCUMENT_PATH,
 } from "../../contracts";
 
 /**
@@ -17,8 +16,8 @@ const SHELL_READY_RETRY_MS = 100;
 const SHELL_READY_MAX_ATTEMPTS = 50;
 
 /**
- * The shell document served on the `mcp-app` host. Untrusted widget and page
- * HTML runs here — an isolated, opaque-origin frame with no app bridge —
+ * The shell document served on the `mcp-app` host. Untrusted page HTML runs
+ * here — an isolated, opaque-origin frame with no app bridge —
  * instead of a `blob:` frame that would inherit the app origin's CSP. It
  * announces READY to its parent, takes the HTML by postMessage (from its
  * parent only), drops its listener and writes the HTML into its own document,
@@ -74,15 +73,13 @@ export const mcpAppShellHtml = (title: string) => `<!doctype html>
 	</body>
 </html>`;
 
-/** The host's named CSPs (see the app's embedded web host security profiles). */
-const ACTIVE_UNTRUSTED_CONTENT_PROFILE = "active-untrusted-content";
+/** The host's named CSP (see the app's embedded web host security profiles). */
 const HTML_RENDER_CONTENT_PROFILE = "html-render-content";
 
 /**
- * Registers the `mcp-app` embedded host: no bundle, two inline shell
- * documents — the MCP App widget shell under the active-untrusted CSP and the
- * agent page shell under the stricter html-render CSP (no network, no
- * loopback).
+ * Registers the `mcp-app` embedded host (named for the MCP App widgets it was
+ * built for): no bundle, one inline shell document — the agent page shell
+ * under the html-render CSP (no network, no loopback).
  */
 export function registerMcpAppHost(sdk: PluginSdk): void {
 	const embeddedHosts = mainHost(sdk).embeddedHosts;
@@ -91,14 +88,8 @@ export function registerMcpAppHost(sdk: PluginSdk): void {
 		embeddedHosts.register({
 			host: MCP_APP_HOST,
 			root: undefined,
-			documents: {
-				[MCP_APP_WIDGET_DOCUMENT_PATH]: mcpAppShellHtml("MCP App"),
-				[HTML_RENDER_DOCUMENT_PATH]: mcpAppShellHtml("HTML page"),
-			},
-			securityProfiles: {
-				[MCP_APP_WIDGET_DOCUMENT_PATH]: ACTIVE_UNTRUSTED_CONTENT_PROFILE,
-				[HTML_RENDER_DOCUMENT_PATH]: HTML_RENDER_CONTENT_PROFILE,
-			},
+			documents: { [HTML_RENDER_DOCUMENT_PATH]: mcpAppShellHtml("HTML page") },
+			securityProfiles: { [HTML_RENDER_DOCUMENT_PATH]: HTML_RENDER_CONTENT_PROFILE },
 		}),
 	);
 }

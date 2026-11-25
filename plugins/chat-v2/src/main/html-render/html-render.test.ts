@@ -12,7 +12,6 @@ import {
 	HtmlPages,
 	MCP_APP_HOST,
 	MCP_APP_SHELL_HTML_MESSAGE,
-	MCP_APP_WIDGET_DOCUMENT_PATH,
 } from "../../contracts";
 import { bootChatMain } from "../test-boot";
 import { writeNewFile } from "./files";
@@ -189,7 +188,7 @@ describe("writeNewFile", () => {
 });
 
 describe("the mcp-app embedded host", () => {
-	it("serves the widget and page shells under their own security profiles", async () => {
+	it("serves the page shell under the html-render security profile", async () => {
 		const { register } = await boot();
 
 		expect(register).toHaveBeenCalledTimes(1);
@@ -200,11 +199,11 @@ describe("the mcp-app embedded host", () => {
 		};
 		expect(registration.host).toBe(MCP_APP_HOST);
 		expect(registration.securityProfiles).toEqual({
-			[MCP_APP_WIDGET_DOCUMENT_PATH]: "active-untrusted-content",
 			[HTML_RENDER_DOCUMENT_PATH]: "html-render-content",
 		});
+		expect(Object.keys(registration.documents)).toEqual([HTML_RENDER_DOCUMENT_PATH]);
 		expect(registration.documents[HTML_RENDER_DOCUMENT_PATH]).toContain(MCP_APP_SHELL_HTML_MESSAGE);
-		expect(registration.documents[MCP_APP_WIDGET_DOCUMENT_PATH]).toContain(
+		expect(registration.documents[HTML_RENDER_DOCUMENT_PATH]).toContain(
 			"event.source !== window.parent",
 		);
 	});

@@ -33,16 +33,12 @@ afterEach(() => {
 });
 
 describe("mergeSlashCommands", () => {
-	it("lists client commands as actions first, then server commands, skills and MCP prompts", () => {
-		const merged = mergeSlashCommands(
-			[compact],
-			[server("tidy", "skill"), server("browser:open", "mcp"), server("review")],
-		);
+	it("lists client commands as actions first, then server commands and skills", () => {
+		const merged = mergeSlashCommands([compact], [server("tidy", "skill"), server("review")]);
 		expect(merged.map((command) => [command.id, command.category])).toEqual([
 			["compact", "action"],
 			["review", "command"],
 			["tidy", "skill"],
-			["browser:open", "mcp"],
 		]);
 		expect(merged[0]).toMatchObject({
 			clientKey: "kilo.chat/compact",
@@ -98,13 +94,10 @@ describe("mergeSlashCommands", () => {
 
 describe("groupSlashCommands", () => {
 	it("groups the menu by category, leaving out empty ones", () => {
-		const groups = groupSlashCommands(
-			mergeSlashCommands([compact], [server("review"), server("browser:open", "mcp")]),
-		);
+		const groups = groupSlashCommands(mergeSlashCommands([compact], [server("review")]));
 		expect(groups.map((group) => [group.label, group.items.map((item) => item.id)])).toEqual([
 			["Actions", ["compact"]],
 			["Commands", ["review"]],
-			["MCP", ["browser:open"]],
 		]);
 	});
 });

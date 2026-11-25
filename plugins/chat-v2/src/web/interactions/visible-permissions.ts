@@ -16,7 +16,7 @@ import {
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { AutoApprove, type ApprovalMode } from "../../contracts";
-import { needsPerson, neverAutoReplied } from "../../shared/person-required";
+import { needsPerson } from "../../shared/person-required";
 import { useOptionalExtensions } from "../optional-extensions";
 
 const NOTHING_HELD: readonly string[] = [];
@@ -51,10 +51,7 @@ export function autoAnswers(
 ): boolean {
 	if (rules.mode === "auto") return !needsPerson(request.metadata);
 	return (
-		!rules.signedIn &&
-		rules.signInTools.has(request.permission) &&
-		!neverAutoReplied(request.metadata) &&
-		request.metadata["skillShell"] !== true
+		!rules.signedIn && rules.signInTools.has(request.permission) && !needsPerson(request.metadata)
 	);
 }
 

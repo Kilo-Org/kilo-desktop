@@ -85,11 +85,16 @@ export function ClientSlashSelectionProvider({
 	return <SelectionContext.Provider value={getSelection}>{children}</SelectionContext.Provider>;
 }
 
+/**
+ * The composer's selection as kilo.chat's client-slash-command contract takes
+ * it: its model as `{ providerID, modelID }`. The contract's boundary adapter;
+ * it goes v2 in step 29 of the migration plan.
+ */
 function toCommandSelection(selection: PromptSelection): ClientSlashCommandContext["selection"] {
 	return {
 		...(selection.agent ? { agent: selection.agent } : {}),
 		...(selection.model
-			? { model: { providerID: selection.model.providerID, modelID: selection.model.modelID } }
+			? { model: { providerID: selection.model.providerID, modelID: selection.model.id } }
 			: {}),
 		...(selection.variant ? { variant: selection.variant } : {}),
 	};

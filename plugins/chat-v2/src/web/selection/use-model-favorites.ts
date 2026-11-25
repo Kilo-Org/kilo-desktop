@@ -1,7 +1,7 @@
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Models, type ModelRef, type ModelsState } from "@kilo-desktop/plugin-core/contracts";
 
-import { toKiloModelRef, type KiloModelRef } from "./model-catalog";
+import { modelRefToId, toKiloModelRef, toModelRef, type KiloModelRef } from "./model-catalog";
 import { favoriteKeySet } from "./model-favorites";
 
 const NO_FAVORITES: readonly ModelRef[] = [];
@@ -14,11 +14,7 @@ export function useModelFavorites() {
 	const favoriteIds = favoriteKeySet(favorites.map(toKiloModelRef));
 	const toggleFavorite = (target: KiloModelRef) => {
 		void models?.methods
-			.setFavorite({
-				aiProviderId: target.providerID,
-				modelId: target.modelID,
-				favorite: !favoriteIds.has(`${target.providerID}/${target.modelID}`),
-			})
+			.setFavorite({ ...toModelRef(target), favorite: !favoriteIds.has(modelRefToId(target)) })
 			.catch(() => undefined);
 	};
 	return { favoriteIds, toggleFavorite, hasFavorites: favorites.length > 0 };

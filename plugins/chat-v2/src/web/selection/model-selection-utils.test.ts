@@ -29,12 +29,10 @@ describe("model-selection-utils", () => {
 	});
 
 	it("resolves a model only when it exists in the catalog", () => {
-		const model = { providerID: "anthropic", modelID: "claude-sonnet" };
+		const model = { providerID: "anthropic", id: "claude-sonnet" };
 		expect(resolveCatalogModel(undefined, model)).toBeUndefined();
 		expect(resolveCatalogModel(catalog, model)).toEqual(model);
-		expect(
-			resolveCatalogModel(catalog, { providerID: "openai", modelID: "gpt-5" }),
-		).toBeUndefined();
+		expect(resolveCatalogModel(catalog, { providerID: "openai", id: "gpt-5" })).toBeUndefined();
 	});
 
 	it("normalizes catalog effort flags and options", () => {

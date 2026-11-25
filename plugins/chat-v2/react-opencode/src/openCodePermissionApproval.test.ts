@@ -29,7 +29,7 @@ describe("OpenCode permission approvals", () => {
 				{
 					id: "always",
 					kind: "allow-always",
-					description: "Allow these patterns until OpenCode is restarted.",
+					description: "Allow these patterns in this project from now on.",
 					grants: ["git *"],
 					confirm: true,
 				},

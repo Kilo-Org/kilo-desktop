@@ -22,7 +22,7 @@ describe("task-list activity presentation", () => {
 			{ type: "reasoning", status: { type: "complete" } },
 			{ type: "tool-call", toolName: "todowrite", status: { type: "complete" } },
 			{ type: "tool-call", toolName: "read", status: { type: "complete" } },
-			{ type: "tool-call", toolName: "todoread", status: { type: "complete" } },
+			{ type: "tool-call", toolName: "todowrite", status: { type: "complete" } },
 		];
 
 		expect(parts.map(getActivityKind)).toEqual(["thinking", undefined, "reading", undefined]);
@@ -45,10 +45,8 @@ describe("getMcpServerFromToolName", () => {
 
 	it("ignores built-in tools even when they contain underscores", () => {
 		expect(getMcpServerFromToolName("plan_exit")).toBeUndefined();
-		expect(getMcpServerFromToolName("notebook_edit")).toBeUndefined();
-		expect(getMcpServerFromToolName("codebase_search")).toBeUndefined();
-		expect(getMcpServerFromToolName("ask_question")).toBeUndefined();
-		expect(getMcpServerFromToolName("request_user_input")).toBeUndefined();
+		expect(getMcpServerFromToolName("semantic_search")).toBeUndefined();
+		expect(getMcpServerFromToolName("board_read")).toBeUndefined();
 	});
 
 	it("ignores names without a server_tool shape", () => {
@@ -61,8 +59,6 @@ describe("getMcpServerFromToolName", () => {
 describe("asking activity grouping", () => {
 	it("maps question tools into the asking subgroup", () => {
 		expect(getGroupKeyForTool("question")).toBe("group-asking");
-		expect(getGroupKeyForTool("ask_question")).toBe("group-asking");
-		expect(getGroupKeyForTool("request_user_input")).toBe("group-asking");
 		expect(activityKindFromGroupKey("group-asking")).toBe("asking");
 	});
 
@@ -94,7 +90,7 @@ describe("asking activity grouping", () => {
 		expect(stats.question).toBe("What would you like to work on next?");
 	});
 
-	it("falls back to the question's header, its count, or a bare prompt", () => {
+	it("falls back to the question's header, or its count", () => {
 		const question = (args: unknown) =>
 			getSegmentStats([{ type: "tool-call", toolName: "question", args }], {
 				kind: "asking",
@@ -104,7 +100,7 @@ describe("asking activity grouping", () => {
 			}).question;
 		expect(question({ questions: [{ header: "Env" }] })).toBe("Env");
 		expect(question({ questions: [{}, {}] })).toBe("2 questions");
-		expect(question({ prompt: "Go on?" })).toBe("Go on?");
+		expect(question({ prompt: "Go on?" })).toBeUndefined();
 		expect(question("nope")).toBeUndefined();
 	});
 

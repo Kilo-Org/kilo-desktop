@@ -1,4 +1,4 @@
-import { SLASH_CATEGORIES, slashSourceCategory, type SlashCategory } from "./kilo-slash-command";
+import { SLASH_CATEGORIES, type SlashCategory } from "./kilo-slash-command";
 import type { KiloCommandCatalogEntry } from "./use-kilo-command-catalog";
 
 /** A `kilo.chat/client-slash-command` placement whose command is available, highest priority first. */
@@ -28,12 +28,11 @@ export type TypedSlash =
 	| { readonly kind: "client"; readonly key: string }
 	| { readonly kind: "server"; readonly name: string };
 
-const CATEGORY_ORDER: readonly SlashCategory[] = ["action", "command", "skill", "mcp"];
+const CATEGORY_ORDER: readonly SlashCategory[] = ["action", "command", "skill"];
 
 /**
  * The `/` menu's commands, as Kilo's VS Code extension lists them: client
- * commands (Actions) first, then the server's commands, skills and MCP
- * prompts. A client command hides a server command of its name (its aliases
+ * commands (Actions) first, then the server's commands and skills. A client command hides a server command of its name (its aliases
  * never do); a skill sharing a server command's name is listed and sent as
  * `name:skill`, which the server resolves to the skill. Of two client
  * commands with one name, the first (highest priority) is kept.
@@ -67,7 +66,7 @@ export function mergeSlashCommands(
 	);
 	const seen = new Set<string>();
 	const fromServer = shown.flatMap((command): SlashMenuCommand[] => {
-		const category = slashSourceCategory(command.source);
+		const category = command.source;
 		const id =
 			category === "skill" && commandNames.has(command.name)
 				? `${command.name}:skill`

@@ -1,11 +1,6 @@
-import { systemNote, type KiloClient } from "@kilo-desktop/react-opencode-v2";
+import { systemNote, type KiloClient, type ModelRef } from "@kilo-desktop/react-opencode-v2";
 
-import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command";
-
-export interface PromptModelRef {
-	readonly providerID: string;
-	readonly modelID: string;
-}
+import { slashCommandFromPromptText } from "../slash-commands/kilo-slash-command";
 
 /** A piece of a prompt as the composer builds it: text, or a file by URL. */
 export type PromptPart = Readonly<Record<string, unknown>>;
@@ -13,8 +8,8 @@ export type PromptPart = Readonly<Record<string, unknown>>;
 /** What every prompt carries, read when it is sent. */
 export interface PromptOptions {
 	readonly getAgent?: () => string | undefined;
-	readonly getModel?: () => PromptModelRef | undefined;
-	readonly getVariant?: () => string | undefined;
+	/** The model prompts go out with, with its reasoning effort (`variant`). */
+	readonly getModel?: () => ModelRef | undefined;
 	/** The system prompt for the chat being prompted. */
 	readonly getSystem?: (chatId: string) => Promise<string | undefined> | string | undefined;
 	/** Kilo's slash commands for the chat's folder: `/name args` prompts run them instead. */
@@ -24,7 +19,7 @@ export interface PromptOptions {
 	/** Turns the composer's mention chips into agent context (text and file parts). */
 	readonly resolveParts?: (parts: readonly PromptPart[]) => Promise<readonly PromptPart[]>;
 	/** Loads the prompt's model first (a `model-source` that serves its provider). */
-	readonly prepareModel?: (model: PromptModelRef) => Promise<void>;
+	readonly prepareModel?: (model: ModelRef) => Promise<void>;
 	/** The server accepted a prompt or command for this chat. */
 	readonly onPrompted?: (chatId: string) => void;
 	/** A prompt or command for this chat failed, preparing or sending it (the send rejects). */
@@ -94,19 +89,9 @@ export function withPromptOptions(client: KiloClient, options: PromptOptions): K
 			const prepare = async (sessionID: string, system: string | undefined) => {
 				const agent = options.getAgent?.();
 				const model = options.getModel?.();
-				const variant = options.getVariant?.();
 				if (model) await options.prepareModel?.(model);
 				if (agent) await session.switchAgent({ sessionID, agent });
-				if (model) {
-					await session.switchModel({
-						sessionID,
-						model: {
-							providerID: model.providerID,
-							id: model.modelID,
-							...(variant ? { variant } : {}),
-						},
-					});
-				}
+				if (model) await session.switchModel({ sessionID, model });
 				if (system) {
 					await session.synthetic({ sessionID, text: systemNote(system), resume: false });
 				}
@@ -120,7 +105,7 @@ export function withPromptOptions(client: KiloClient, options: PromptOptions): K
 					]);
 					const commandNames = options.getKnownCommandNames?.() ?? [];
 					const skills = options.getKnownSkills?.() ?? new Map<string, string>();
-					const draft = slashCommandFromPromptArgs({ text }, [...commandNames, ...skills.keys()]);
+					const draft = slashCommandFromPromptText(text, [...commandNames, ...skills.keys()]);
 					const skill = draft ? skills.get(draft.command) : undefined;
 					await prepare(input.sessionID, system);
 					if (draft && skill === undefined) {

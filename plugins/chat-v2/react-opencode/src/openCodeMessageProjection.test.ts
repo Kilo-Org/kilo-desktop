@@ -67,7 +67,7 @@ const contentOf = (message: { content: unknown } | undefined) =>
 	(message?.content ?? []) as { type: string; [key: string]: unknown }[];
 
 describe("projectOpenCodeThreadMessages", () => {
-	it("projects a run of steps as one assistant message, each step's content under its marker", () => {
+	it("projects a run of steps as one assistant message, each step's content in order", () => {
 		const messages = project([
 			user("msg_u", "Read it"),
 			step("msg_a1", [{ type: "text", text: "Let me look." }], { finish: "tool-calls" }),
@@ -83,21 +83,15 @@ describe("projectOpenCodeThreadMessages", () => {
 		]);
 		const assistant = messages[1]!;
 		expect(contentOf(assistant).map((part) => [part.type, part.name ?? part.text])).toEqual([
-			["data", "opencode-step-start"],
 			["text", "Let me look."],
-			["data", "opencode-step-finish"],
-			["data", "opencode-step-start"],
 			["reasoning", "Done"],
 			["text", "It says hi."],
-			["data", "opencode-step-finish"],
 		]);
 		expect(assistant.status).toEqual({ type: "complete", reason: "stop" });
 		expect(assistant.metadata?.custom).toMatchObject({
 			opencode: { message: { id: "msg_a2" }, messages: [{ id: "msg_a1" }, { id: "msg_a2" }] },
-			modelID: "m",
-			providerID: "kilo",
-			agent: "code",
 		});
+		expect(assistant.metadata?.custom).not.toHaveProperty("modelID");
 	});
 
 	it("projects tool calls with Kilo v2's names, inputs and text output", () => {
@@ -235,7 +229,7 @@ describe("projectOpenCodeThreadMessages", () => {
 			interactions: { ...base, permissions: { pending: { per_1: request }, resolved: {} } },
 		})[0]!;
 		expect(waiting.status).toEqual({ type: "requires-action", reason: "tool-calls" });
-		expect(contentOf(waiting)[1]).toMatchObject({ approval: { id: "per_1" } });
+		expect(contentOf(waiting)[0]).toMatchObject({ approval: { id: "per_1" } });
 
 		const answered = project(messages, {
 			interactions: {
@@ -246,7 +240,7 @@ describe("projectOpenCodeThreadMessages", () => {
 				},
 			},
 		})[0]!;
-		expect(contentOf(answered)[1]).toMatchObject({
+		expect(contentOf(answered)[0]).toMatchObject({
 			approval: { id: "per_1", approved: true, optionId: "once" },
 		});
 	});
@@ -262,11 +256,11 @@ describe("projectOpenCodeThreadMessages", () => {
 		const messages = [step("msg_a", [subagent])];
 
 		expect(
-			contentOf(project(messages, { childSessionsById: { ses_child: loading } })[0])[1],
+			contentOf(project(messages, { childSessionsById: { ses_child: loading } })[0])[0],
 		).not.toHaveProperty("messages");
 
-		const first = contentOf(project(messages, { childSessionsById: { ses_child: child } })[0])[1];
-		const second = contentOf(project(messages, { childSessionsById: { ses_child: child } })[0])[1];
+		const first = contentOf(project(messages, { childSessionsById: { ses_child: child } })[0])[0];
+		const second = contentOf(project(messages, { childSessionsById: { ses_child: child } })[0])[0];
 		expect(first?.messages).toHaveLength(1);
 		expect(second?.messages).toBe(first?.messages);
 	});

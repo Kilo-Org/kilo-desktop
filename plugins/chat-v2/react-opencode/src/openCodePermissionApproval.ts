@@ -17,7 +17,7 @@ export const projectOpenCodePermissionApproval = (
 					{
 						id: "always",
 						kind: "allow-always",
-						description: "Allow these patterns until OpenCode is restarted.",
+						description: "Allow these patterns in this project from now on.",
 						grants: request.save ?? [],
 						confirm: true,
 					},

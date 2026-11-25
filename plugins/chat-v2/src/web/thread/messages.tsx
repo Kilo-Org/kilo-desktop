@@ -65,7 +65,7 @@ import { useChatConnection } from "../runtime/chat-connection";
 import { usePlanHiddenCallIds, usePlanReady } from "../plan/use-plan-thread-projection";
 import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import { useOptionalChatModelSelection } from "../selection/ChatModelSelectionContext";
-import { isKiloGatewayProvider } from "../selection/model-catalog";
+import { isKiloGatewayProvider, withVariant } from "../selection/model-catalog";
 import { useKiloSignIn } from "../selection/use-kilo-sign-in";
 import { useDelegationRevealNonce } from "../subagents/delegation-reveal-store";
 import { useSubagentActivity } from "../subagents/SubagentActivityContext";
@@ -149,7 +149,8 @@ const KiloMessageErrorBanner: FC = () => {
 	const aui = useAui();
 	const session = useOptionalOpenCodeSession() ?? null;
 	const { connection } = useChatConnection();
-	const model = useOptionalChatModelSelection()?.model;
+	const modelSelection = useOptionalChatModelSelection();
+	const model = modelSelection?.model;
 	const authenticated = useDomainObjectState(KiloAccount, selectAuthenticated) ?? null;
 	const connectionUnavailable =
 		useDomainObjectState(KiloAccount, selectConnectionUnavailable) ?? true;
@@ -177,7 +178,7 @@ const KiloMessageErrorBanner: FC = () => {
 								sessionID: session.id,
 								directory: session.location.directory,
 								messageID: userMessageId,
-								...(model ? { model } : {}),
+								...(model ? { model: withVariant(model, modelSelection?.effort) } : {}),
 							}),
 					}
 				: {}),
@@ -390,7 +391,7 @@ const AssistantMessage: FC = () => {
 	const hiddenPlanCallIds = usePlanHiddenCallIds(messageId);
 	const pendingInteractions = usePendingInteractions();
 	const pendingUserInteractions =
-		pendingInteractions.questions.length + pendingInteractions.permissions.length;
+		pendingInteractions.forms.length + pendingInteractions.permissions.length;
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
 	const isStreamingText = useAuiState((s) =>
 		openCodeTextIsStreaming(kiloMessagesOf(s.message.metadata?.custom)),

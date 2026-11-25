@@ -14,7 +14,7 @@ export interface HtmlRenderOptions {
 /**
  * The agent's HTML pages: the `html_render` tool, saving pages into a
  * workspace folder (`html-pages`) and the `mcp-app` embedded host that frames
- * them and MCP App widgets.
+ * them.
  */
 export function activateHtmlRender(sdk: PluginSdk, options: HtmlRenderOptions = {}): void {
 	implementHtmlRenderTool(sdk);

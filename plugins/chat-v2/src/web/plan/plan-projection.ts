@@ -30,16 +30,9 @@ export type PlanThreadProjection = {
 	newest: PlanProjection | undefined;
 };
 
-const getString = (
-	value: Record<string, unknown> | null | undefined,
-	keys: readonly string[],
-): string => {
-	if (!value) return "";
-	for (const key of keys) {
-		const candidate = value[key];
-		if (typeof candidate === "string" && candidate.length > 0) return candidate;
-	}
-	return "";
+const stringOf = (value: Record<string, unknown> | undefined, key: string): string | undefined => {
+	const candidate = value?.[key];
+	return typeof candidate === "string" ? candidate : undefined;
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
@@ -52,31 +45,27 @@ type Part = KiloAssistantContent;
 const inputOf = (part: ToolPart): Record<string, unknown> =>
 	part.state.status === "streaming" ? {} : part.state.input;
 
+/**
+ * The file a plan tool call names: `write`'s and `edit`'s `path`, and
+ * `plan_exit`'s optional `path`, else the plan it found (its result's
+ * `metadata.plan`).
+ */
 const getToolPath = (part: ToolPart): string => {
-	const input = inputOf(part);
-	const directPath = getString(input, ["filePath", "filepath", "path", "file_path", "file"]);
-	if (directPath) return normalizePlanPath(directPath);
-
-	const nested = getString(asRecord(input.metadata), ["plan", "path"]);
-	if (nested) return normalizePlanPath(nested);
-
-	const stateMetadata = part.state.status === "streaming" ? undefined : part.state.metadata;
-	return normalizePlanPath(getString(stateMetadata, ["plan", "path"]));
+	const path = stringOf(inputOf(part), "path");
+	if (path) return normalizePlanPath(path);
+	const metadata = part.state.status === "streaming" ? undefined : part.state.metadata;
+	return normalizePlanPath(stringOf(metadata, "plan") ?? "");
 };
 
+/** `write` takes `{ path, content }`. */
 const getDirectPlanMarkdown = (part: ToolPart): string =>
-	getString(inputOf(part), ["content", "contents", "text", "markdown"]);
+	part.name === "write" ? (stringOf(inputOf(part), "content") ?? "") : "";
 
-const getEditOldString = (part: ToolPart): string =>
-	getString(inputOf(part), ["oldString", "old_string", "oldText", "old_text"]);
+/** `edit` takes `{ path, oldString, newString }`. */
+const getEditOldString = (part: ToolPart): string => stringOf(inputOf(part), "oldString") ?? "";
 
-const getEditNewString = (part: ToolPart): string | undefined => {
-	for (const key of ["newString", "new_string", "newText", "new_text"] as const) {
-		const candidate = inputOf(part)[key];
-		if (typeof candidate === "string") return candidate;
-	}
-	return undefined;
-};
+const getEditNewString = (part: ToolPart): string | undefined =>
+	stringOf(inputOf(part), "newString");
 
 const replaceFirst = (source: string, search: string, replacement: string): string => {
 	if (!search) return source;
@@ -201,12 +190,12 @@ export function shouldExcludeToolCallFromActivityGroup(
 ): boolean {
 	if (part.toolCallId && options?.hiddenPlanCallIds?.has(part.toolCallId)) return true;
 	const toolName = part.toolName?.toLowerCase();
-	if (toolName === "todowrite" || toolName === "todoread") return true;
+	if (toolName === "todowrite") return true;
 	if (part.toolName === "plan_exit") return true;
 	if (part.toolName !== "write" && part.toolName !== "edit") return false;
 	const args = asRecord(part.args);
 	if (!args) return false;
-	return isPlanFilePath(getString(args, ["filePath", "filepath", "path", "file_path", "file"]));
+	return isPlanFilePath(stringOf(args, "path") ?? "");
 }
 
 const findPriorMarkdown = (
@@ -234,10 +223,7 @@ const endsAssistantRun = (info: { finish?: unknown; error?: unknown }): boolean 
 		info.finish !== "tool-calls" &&
 		info.finish !== "unknown");
 
-const isPlanningAgent = (agent: string | undefined): boolean => {
-	const normalized = agent?.toLowerCase();
-	return normalized === "plan" || normalized === "architect";
-};
+const isPlanningAgent = (agent: string | undefined): boolean => agent?.toLowerCase() === "plan";
 
 /** Project Kilo's messages once per immutable thread-state object. */
 export function projectPlanThread(source: PlanThreadSource): PlanThreadProjection {

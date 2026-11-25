@@ -11,13 +11,12 @@ import { streamedAssistantId } from "./kiloTranscript";
 import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState";
 import type {
 	OpenCodePermissionRequest,
+	OpenCodeFormRequest,
 	OpenCodePermissionResponse,
-	OpenCodeQuestionRequest,
 	OpenCodeServerEvent,
 	OpenCodeStateEvent,
 	OpenCodeThreadControllerLike,
 	OpenCodeThreadState,
-	OpenCodeUnhandledEvent,
 	OpenCodeUserMessageOptions,
 	PendingUserMessage,
 } from "./types";
@@ -115,26 +114,11 @@ const toPermissionRequest = (request: KiloPermissionRequest): OpenCodePermission
 		? { ...request, askedAt: Date.now() }
 		: null;
 
-const toQuestionRequest = (form: FormInfo | undefined): OpenCodeQuestionRequest | null =>
-	typeof form?.id === "string" && typeof form.sessionID === "string"
-		? { ...form, askedAt: Date.now() }
-		: null;
-
-const record = (value: unknown): Record<string, unknown> =>
-	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-
-const PERMISSION_REPLIES: ReadonlySet<unknown> = new Set(["once", "always", "reject"]);
-
-const normalizeUnhandledEvent = (event: OpenCodeServerEvent): OpenCodeUnhandledEvent => ({
-	type: event.type,
-	sessionId: event.sessionId,
-	properties: event.properties as Record<string, unknown>,
-	seenAt: Date.now(),
-});
+const toFormRequest = (form: FormInfo): OpenCodeFormRequest => ({ ...form, askedAt: Date.now() });
 
 const STATUS_EVENT_TYPES: ReadonlySet<OpenCodeStateEvent["type"]> = new Set([
-	"session.status",
-	"session.idle",
+	"status.synced",
+	"run.settled",
 	"run.started",
 	"run.cancelling",
 	"run.reverting",
@@ -142,7 +126,7 @@ const STATUS_EVENT_TYPES: ReadonlySet<OpenCodeStateEvent["type"]> = new Set([
 
 const setsStatus = (event: OpenCodeStateEvent) =>
 	STATUS_EVENT_TYPES.has(event.type) ||
-	(event.type === "kilo.event" && /^session\.(execution\.|retry\.|idle$)/.test(event.event.type));
+	(event.type === "kilo.event" && /^session\.(execution\.|retry\.|status$)/.test(event.event.type));
 
 /** Events that change which child sessions a message's subagent calls run in. */
 const CHILD_SESSION_EVENTS: ReadonlySet<string> = new Set([
@@ -388,9 +372,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		if (this.stopStaleWatch) return;
 		this.stopStaleWatch = this.getEventSource().subscribe((event) => {
 			if (event === applied) return;
-			if (event.type !== STREAM_RECONNECTED_EVENT_TYPE && event.sessionId !== this.sessionId) {
-				return;
-			}
+			if (event.type === "kilo.event" && event.sessionId !== this.sessionId) return;
 			this.stale = true;
 			this.stopWatchingForStaleness();
 		});
@@ -415,7 +397,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				return;
 			}
 			if (event.sessionId !== this.sessionId) return;
-			this.handleServerEvent(event);
+			this.handleServerEvent(event.event);
 			this.detachFromEventsIfUnobserved(event);
 		});
 		// Status only arrives as live events; any missed while unsubscribed (never
@@ -430,11 +412,10 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			.catch(() => null)
 			.then((active) => {
 				if (!active || epoch !== this.statusEpoch) return;
-				if (active[this.sessionId]) {
-					this.dispatch({ type: "session.status", status: { type: "busy" } });
-				} else {
-					this.dispatch({ type: "session.idle", sessionId: this.sessionId });
-				}
+				this.dispatch({
+					type: "status.synced",
+					status: active[this.sessionId] ? { type: "busy" } : { type: "idle" },
+				});
 			});
 	}
 
@@ -465,13 +446,10 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			.catch(() => null)
 			.then((forms) => {
 				if (!forms || token !== this.reconnectSyncToken) return;
-				for (const item of forms) {
-					const request = toQuestionRequest(item);
-					if (!request || request.sessionID !== this.sessionId) continue;
-					if (request.id in this.state.interactions.questions.pending) {
-						continue;
-					}
-					this.dispatch({ type: "question.asked", request });
+				for (const form of forms) {
+					if (form.sessionID !== this.sessionId) continue;
+					if (form.id in this.state.interactions.forms.pending) continue;
+					this.dispatch({ type: "form.created", request: toFormRequest(form) });
 				}
 			});
 	}
@@ -605,7 +583,6 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 				id: pending.messageId,
 				text,
 				...(files.length > 0 ? { files } : {}),
-				...(options?.noReply ? { resume: false } : {}),
 			});
 		} catch (error) {
 			this.dispatch({
@@ -672,10 +649,9 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			// the boundary lands at once rather than waiting for its event.
 			const info = await this.client.session.get({ sessionID: this.sessionId });
 			this.dispatch({ type: "session.updated", session: info });
-			// Revert requires an already-idle session, so no session.idle SSE
-			// follows the HTTP call — clear the reverting state here or the
-			// runtime stays "running" forever.
-			this.dispatch({ type: "session.idle", sessionId: this.sessionId });
+			// Revert requires an idle session, so no execution event follows the
+			// call: settle the reverting state here or the thread stays running.
+			this.dispatch({ type: "run.settled" });
 		} catch (error) {
 			this.dispatch({ type: "run.failed", error });
 			throw error;
@@ -689,7 +665,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 			// Apply the session (its revert now cleared) before returning to idle.
 			const info = await this.client.session.get({ sessionID: this.sessionId });
 			this.dispatch({ type: "session.updated", session: info });
-			this.dispatch({ type: "session.idle", sessionId: this.sessionId });
+			this.dispatch({ type: "run.settled" });
 		} catch (error) {
 			this.dispatch({ type: "run.failed", error });
 			throw error;
@@ -718,27 +694,20 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		});
 	}
 
-	public async replyToQuestion(questionId: string, answer: FormAnswer) {
+	public async replyToForm(formId: string, answer: FormAnswer) {
 		await this.client.session.form.reply({
 			sessionID: this.sessionId,
-			formID: questionId,
+			formID: formId,
 			answer: answer as Record<string, string | number | boolean | readonly string[]>,
 		});
 
-		this.dispatch({
-			type: "question.replied",
-			questionId,
-			answer,
-		});
+		this.dispatch({ type: "form.replied", formId, answer });
 	}
 
-	public async rejectQuestion(questionId: string) {
-		await this.client.session.form.cancel({ sessionID: this.sessionId, formID: questionId });
+	public async cancelForm(formId: string) {
+		await this.client.session.form.cancel({ sessionID: this.sessionId, formID: formId });
 
-		this.dispatch({
-			type: "question.rejected",
-			questionId,
-		});
+		this.dispatch({ type: "form.cancelled", formId });
 	}
 
 	private refreshInBackground() {
@@ -747,83 +716,48 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
 		});
 	}
 
-	private handleServerEvent(event: OpenCodeServerEvent) {
+	private handleServerEvent(event: OpenCodeEvent) {
 		switch (event.type) {
 			case "permission.asked": {
-				const request = toPermissionRequest(event.properties as KiloPermissionRequest);
-				if (request) {
-					this.dispatch({
-						type: "permission.asked",
-						request,
-					});
-				}
+				const request = toPermissionRequest(event.data);
+				if (request) this.dispatch({ type: "permission.asked", request });
 				return;
 			}
 
 			case "permission.replied":
-				if (
-					typeof event.properties.requestID === "string" &&
-					PERMISSION_REPLIES.has(event.properties.reply)
-				) {
-					this.dispatch({
-						type: "permission.replied",
-						permissionId: event.properties.requestID,
-						reply: event.properties.reply as OpenCodePermissionResponse,
-					});
-				}
+				this.dispatch({
+					type: "permission.replied",
+					permissionId: event.data.requestID,
+					reply: event.data.reply,
+				});
 				return;
 
-			case "form.created": {
-				const request = toQuestionRequest(event.properties.form as FormInfo | undefined);
-				if (request) {
-					this.dispatch({
-						type: "question.asked",
-						request,
-					});
-				}
+			case "form.created":
+				this.dispatch({ type: "form.created", request: toFormRequest(event.data.form) });
 				return;
-			}
 
 			case "form.replied":
-				if (typeof event.properties.id === "string") {
-					this.dispatch({
-						type: "question.replied",
-						questionId: event.properties.id,
-						answer: record(event.properties.answer) as FormAnswer,
-					});
-				}
+				this.dispatch({ type: "form.replied", formId: event.data.id, answer: event.data.answer });
 				return;
 
 			case "form.cancelled":
-				if (typeof event.properties.id === "string") {
-					this.dispatch({
-						type: "question.rejected",
-						questionId: event.properties.id,
-					});
-				}
+				this.dispatch({ type: "form.cancelled", formId: event.data.id });
 				return;
 		}
 
-		if (event.raw && this.applyKiloEvent(event.raw)) return;
-
-		this.dispatch({
-			type: "unhandled.event",
-			event: normalizeUnhandledEvent(event),
-		});
+		this.applyKiloEvent(event);
 	}
 
-	/** Folds a Kilo v2 event into the thread; false when it changes nothing. */
-	private applyKiloEvent(event: OpenCodeEvent): boolean {
+	/** Folds a Kilo v2 event into the thread's transcript, session and status. */
+	private applyKiloEvent(event: OpenCodeEvent) {
 		// A step this thread never saw start (it joined mid-turn, or missed
 		// events) streams into nothing: the history has it.
 		const assistantId = streamedAssistantId(event);
 		if (assistantId && !(assistantId in this.state.messagesById)) {
 			if (this.state.loadState.type === "ready") this.refreshInBackground();
-			return true;
+			return;
 		}
-		const before = this.state;
 		this.dispatch({ type: "kilo.event", event });
-		return this.state !== before;
 	}
 
 	private dispatch(event: Parameters<typeof reduceOpenCodeThreadState>[1]) {

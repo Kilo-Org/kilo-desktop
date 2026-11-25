@@ -79,8 +79,8 @@ function SubagentPane({
  * same prompt, so the Enter shortcut stays with the composer.
  */
 function SubagentPanePrompt() {
-	const { permissions, questions } = usePendingInteractions();
-	if (permissions.length === 0 && questions.length === 0) return null;
+	const { permissions, forms } = usePendingInteractions();
+	if (permissions.length === 0 && forms.length === 0) return null;
 	return (
 		<div className="shrink-0 p-3" data-qa-id="subagent-pane-prompt">
 			<PendingInteractionPrompt fallback={null} acceptOnEnter={false} />

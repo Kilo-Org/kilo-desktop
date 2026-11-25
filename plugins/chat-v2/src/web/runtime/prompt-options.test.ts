@@ -30,8 +30,7 @@ describe("withPromptOptions", () => {
 		const getSystem = vi.fn(async () => "Workspace context");
 		const wrapped = withPromptOptions(client, {
 			getAgent: () => "plan",
-			getModel: () => ({ providerID: "kilo", modelID: "m" }),
-			getVariant: () => "high",
+			getModel: () => ({ providerID: "kilo", id: "m", variant: "high" }),
 			getSystem,
 		});
 
@@ -82,7 +81,7 @@ describe("withPromptOptions", () => {
 		);
 		const { client, calls } = fakeClient();
 		const wrapped = withPromptOptions(client, {
-			getModel: () => ({ providerID: "kilo-desktop-model-server", modelID: "qwen-3" }),
+			getModel: () => ({ providerID: "kilo-desktop-model-server", id: "qwen-3" }),
 			prepareModel,
 		});
 
@@ -91,7 +90,7 @@ describe("withPromptOptions", () => {
 
 		expect(prepareModel).toHaveBeenCalledWith({
 			providerID: "kilo-desktop-model-server",
-			modelID: "qwen-3",
+			id: "qwen-3",
 		});
 		expect(calls).toEqual([]);
 		release();
@@ -143,7 +142,7 @@ describe("withPromptOptions mentions", () => {
 		const { client, calls } = fakeClient();
 		const wrapped = withPromptOptions(client, {
 			getAgent: () => "code",
-			getModel: () => ({ providerID: "kilo", modelID: "auto" }),
+			getModel: () => ({ providerID: "kilo", id: "auto" }),
 			getKnownCommandNames: () => ["init", "compact"],
 		});
 

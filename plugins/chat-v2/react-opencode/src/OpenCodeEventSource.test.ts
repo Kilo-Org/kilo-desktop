@@ -102,9 +102,12 @@ describe("OpenCodeEventSource", () => {
 		const unsubscribe = source.subscribe(listener);
 
 		await waitFor(() => {
-			expect(listener).toHaveBeenCalledWith(
-				expect.objectContaining({ type: "form.created", sessionId: "ses_1", directory: "/w" }),
-			);
+			expect(listener).toHaveBeenCalledWith({
+				type: "kilo.event",
+				event: expect.objectContaining({ id: "evt_1", type: "form.created" }),
+				sessionId: "ses_1",
+				directory: "/w",
+			});
 		});
 		unsubscribe();
 		source.dispose();
@@ -122,12 +125,7 @@ describe("OpenCodeEventSource", () => {
 		});
 		source.listeners.add(listener);
 
-		source.emit({
-			type: "session.updated",
-			sessionId: "ses_1",
-			properties: {},
-			raw: {},
-		});
+		source.emit({ type: STREAM_RECONNECTED_EVENT_TYPE });
 
 		expect(listener).toHaveBeenCalledTimes(1);
 		expect(errorSpy).toHaveBeenCalledTimes(1);

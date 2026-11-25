@@ -32,7 +32,7 @@ describe("retryFailedTurn", () => {
 			sessionID: "s1",
 			directory: "/repo",
 			messageID: "m1",
-			model: { providerID: "kilo", modelID: "auto" },
+			model: { providerID: "kilo", id: "auto" },
 		});
 
 		expect(server.requestsTo("POST", "/api/session/s1/model")[0]?.body).toEqual({

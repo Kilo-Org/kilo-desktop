@@ -43,8 +43,8 @@ export const useOpenCodePermissions = () => {
 	);
 };
 
-/** Pending question requests. */
-export const useOpenCodeQuestions = () => {
+/** Pending forms (the question tool asks through them). */
+export const useOpenCodeForms = () => {
 	// Left uncompiled, as upstream ships it from node_modules (outside React
 	// Compiler), so moving the fork into the workspace keeps its memoization.
 	"use no memo";
@@ -52,9 +52,7 @@ export const useOpenCodeQuestions = () => {
 
 	return useMemo(
 		() =>
-			extras
-				? (Object.values(extras.questions) as Array<OpenCodeRuntimeExtras["questions"][string]>)
-				: [],
+			extras ? (Object.values(extras.forms) as Array<OpenCodeRuntimeExtras["forms"][string]>) : [],
 		[extras],
 	);
 };

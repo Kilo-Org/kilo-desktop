@@ -27,7 +27,7 @@ import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
  * Kilo v2's transcript as assistant-ui messages. A user message is one
  * message; a run of assistant steps (and composer shell runs) between user
  * messages is one assistant message, each step's text, reasoning and tool
- * calls in order under a step marker; a compaction is its own assistant
+ * calls in order (parented to the step's id); a compaction is its own assistant
  * message (a "Compaction" marker, then its summary). Hidden notes, system
  * text, skills, the agent/model/location markers and a turn's idle marker are
  * Kilo's context, not the conversation: not shown, and a run goes on past
@@ -39,22 +39,6 @@ import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
  */
 
 type ProjectedContentPart = Exclude<OpenCodeProjectedThreadMessage["content"], string>[number];
-
-export interface LocalMcpApp {
-	resourceUri: string;
-	serverId: string;
-}
-
-let _localMcpApps: Record<string, LocalMcpApp> = {};
-
-/**
- * Inject a host-local MCP App registry (tool name -> ui:// resource). The
- * projection synthesizes `mcp.app` metadata for matching tool-call parts so
- * hosts can render MCP Apps for tools whose wire metadata lacks `_meta.ui`.
- */
-export function setLocalMcpApps(registry: Record<string, LocalMcpApp>): void {
-	_localMcpApps = registry;
-}
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
 	return typeof value === "object" && value !== null;
@@ -198,24 +182,6 @@ const sanitizeReasoningText = (text: string | undefined) =>
 		.replaceAll("\\t", "\t")
 		.trim();
 
-const mcpAppOf = (tool: KiloToolCall) => {
-	const localApp = _localMcpApps[tool.name];
-	if (localApp) {
-		return { mcp: { app: { resourceUri: localApp.resourceUri, serverId: localApp.serverId } } };
-	}
-	const metadata = tool.state.status === "streaming" ? undefined : tool.state.metadata;
-	const app = metadata?.["mcpApp"] as { resourceUri: string; serverId?: string } | undefined;
-	if (!app) return {};
-	return {
-		mcp: {
-			app: {
-				resourceUri: app.resourceUri,
-				...(app.serverId !== undefined ? { serverId: app.serverId } : {}),
-			},
-		},
-	};
-};
-
 const projectToolCall = (
 	state: OpenCodeThreadState,
 	tool: KiloToolCall,
@@ -243,7 +209,6 @@ const projectToolCall = (
 			: resolvedPermission
 				? { approval: projectResolvedOpenCodePermissionApproval(resolvedPermission) }
 				: {}),
-		...mcpAppOf(tool),
 		parentId,
 	};
 };
@@ -265,18 +230,16 @@ const projectContentItem = (
 	}
 };
 
-/** One step: its marker, its content, and (once it ends) its finish with usage and snapshot. */
+/**
+ * One step: its content, and its retry while it waits on one. What the chat
+ * reads of the step itself (finish, usage, snapshot) it reads from the Kilo v2
+ * message the projected message carries (`metadata.custom.opencode`).
+ */
 const projectStep = (
 	state: OpenCodeThreadState,
 	message: SessionMessageAssistant,
 ): ProjectedContentPart[] => {
-	const content: ProjectedContentPart[] = [
-		makeDataPart("opencode-step-start", {
-			id: message.id,
-			depth: 0,
-			snapshot: message.snapshot?.start,
-		}),
-	];
+	const content: ProjectedContentPart[] = [];
 	for (const item of message.content) {
 		const part = projectContentItem(state, item, message.id);
 		if (part) content.push(part);
@@ -284,18 +247,6 @@ const projectStep = (
 	if (message.retry && message.time.completed === undefined) {
 		content.push(
 			makeDataPart("opencode-retry", { id: `${message.id}:retry`, ...message.retry }, message.id),
-		);
-	}
-	if (message.time.completed !== undefined) {
-		content.push(
-			makeDataPart("opencode-step-finish", {
-				id: message.id,
-				reason: message.finish,
-				cost: message.cost,
-				tokens: message.tokens,
-				snapshot: message.snapshot?.end,
-				files: message.snapshot?.files,
-			}),
 		);
 	}
 	return content;
@@ -520,14 +471,7 @@ const assistantCustom = (group: ServerMessageGroup) => {
 	const step = group.sources.findLast(
 		(source): source is SessionMessageAssistant => source.type === "assistant",
 	);
-	if (!step) return {};
-	return {
-		modelID: step.model.id,
-		providerID: step.model.providerID,
-		cost: step.cost,
-		tokens: step.tokens,
-		agent: step.agent,
-	};
+	return step ? { cost: step.cost, tokens: step.tokens } : {};
 };
 
 const projectServerMessage = (
@@ -667,8 +611,7 @@ const projectionInputs = (
 		isActiveMessage,
 		isActiveMessage && activity.isActiveRun,
 		state.interactions.permissions,
-		state.interactions.questions.pending,
-		_localMcpApps,
+		state.interactions.forms.pending,
 	);
 	for (const tool of toolCallsOf(group.sources)) {
 		const childSessionId = getOpenCodeTaskSessionId(tool);

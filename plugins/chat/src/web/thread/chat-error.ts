@@ -73,6 +73,12 @@ export function displayChatError(message: string | undefined): string {
 	return kiloErrorTitle(message, body) ?? embeddedMessage(body) ?? message;
 }
 
+/** What to do about a chat error, when the title alone doesn't say. */
+export function chatErrorHint(message: string | undefined): string | undefined {
+	if (!message || !isSignedOutError(message, embeddedJson(message))) return undefined;
+	return "Sign in again, then resend your message.";
+}
+
 /** The error of a message that ended in one, as text. */
 export function messageErrorText(
 	status: { type?: string; reason?: string; error?: unknown } | undefined,

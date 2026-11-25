@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { displayChatError, messageErrorText } from "./chat-error";
+import { chatErrorHint, displayChatError, isKiloSignInError, messageErrorText } from "./chat-error";
 
 describe("displayChatError", () => {
 	it("is empty without a message", () => {
@@ -20,6 +20,28 @@ describe("displayChatError", () => {
 		expect(displayChatError("PROMOTION_MODEL_LIMIT_REACHED: wait")).toBe(
 			"You need to sign up for Kilo to keep going",
 		);
+	});
+
+	it("says the person was signed out when Kilo no longer accepts the sign-in", () => {
+		expect(displayChatError("Your authentication token is invalid. Please sign in again.")).toBe(
+			"You've been signed out of Kilo",
+		);
+		expect(
+			displayChatError('{"error":{"code":"INVALID_TOKEN","message":"Please sign in again."}}'),
+		).toBe("You've been signed out of Kilo");
+		// Not a sign-in prompt to retry: until the account notices, it still reads signed in.
+		expect(isKiloSignInError("Your authentication token is invalid. Please sign in again.")).toBe(
+			false,
+		);
+	});
+
+	it("tells a signed-out person to resend once signed in again, and nobody else", () => {
+		expect(chatErrorHint("Your authentication token is invalid. Please sign in again.")).toBe(
+			"Sign in again, then resend your message.",
+		);
+		expect(chatErrorHint('{"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}')).toBeUndefined();
+		expect(chatErrorHint("Rate limited")).toBeUndefined();
+		expect(chatErrorHint(undefined)).toBeUndefined();
 	});
 
 	it("unwraps an embedded JSON message", () => {

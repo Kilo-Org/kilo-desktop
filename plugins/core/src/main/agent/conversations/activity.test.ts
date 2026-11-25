@@ -157,6 +157,33 @@ describe("applying Kilo events", () => {
 		expect(apply(chats, status("ses-1", "busy"))["ses-1"]?.activity.lastError).toBeUndefined();
 	});
 
+	it("keeps the HTTP status and Kilo error code of a turn's failed request", () => {
+		let chats = apply({}, status("ses-1", "busy"));
+		chats = apply(chats, {
+			type: "session.error",
+			properties: {
+				sessionID: "ses-1",
+				error: {
+					name: "APIError",
+					data: {
+						message: "Your authentication token is invalid. Please sign in again.",
+						statusCode: 401,
+						isRetryable: false,
+						responseBody:
+							'{"error":{"code":"INVALID_TOKEN","message":"Your authentication token is invalid. Please sign in again."},"error_type":"authentication_required"}',
+					},
+				},
+			},
+		});
+
+		expect(chats["ses-1"]?.activity.lastError).toEqual({
+			name: "APIError",
+			message: "Your authentication token is invalid. Please sign in again.",
+			status: 401,
+			code: "INVALID_TOKEN",
+		});
+	});
+
 	it("records chat info from created and updated events, and where events came from", () => {
 		const raw = {
 			id: "ses-1",

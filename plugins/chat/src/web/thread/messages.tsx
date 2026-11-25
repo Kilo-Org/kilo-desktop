@@ -91,7 +91,7 @@ import {
 	openCodeTextIsStreaming,
 } from "./assistant-working-indicator-mode";
 import { UserMessageAttachments } from "./attachment";
-import { displayChatError, isKiloSignInError, messageErrorText } from "./chat-error";
+import { chatErrorHint, displayChatError, isKiloSignInError, messageErrorText } from "./chat-error";
 import { MarkdownText } from "./markdown-text";
 import { Reasoning } from "./reasoning";
 import { TooltipIconButton } from "./tooltip-icon-button";
@@ -155,6 +155,7 @@ const KiloMessageErrorBanner: FC = () => {
 	const signingIn = useDomainObjectState(KiloAccount, selectSigningIn) ?? false;
 	const { signIn } = useKiloSignIn();
 	const errorText = useAuiState((s) => messageErrorText(s.message.status));
+	const hint = chatErrorHint(errorText);
 	const isLast = useAuiState((s) => s.message.isLast);
 	const isKiloModel = model !== undefined && isKiloGatewayProvider({ id: model.providerID });
 	const offerSignIn = isKiloModel && !connectionUnavailable && authenticated === false;
@@ -217,8 +218,11 @@ const KiloMessageErrorBanner: FC = () => {
 			className="aui-message-error-root border-border bg-background mt-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm"
 			data-qa-id="chat-message-error"
 		>
-			<span className="aui-message-error-message text-destructive line-clamp-2 min-w-0 flex-1">
-				{displayChatError(errorText)}
+			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<span className="aui-message-error-message text-destructive line-clamp-2">
+					{displayChatError(errorText)}
+				</span>
+				{hint ? <span className="text-muted-foreground">{hint}</span> : null}
 			</span>
 			{offerSignIn ? (
 				<Button

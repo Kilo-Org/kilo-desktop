@@ -1,11 +1,23 @@
 import { createKiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloProfile, ServerConnection } from "../../contracts";
-import type { KiloAccountClient } from "./account-service";
+import { errorMessage, KiloUnauthorizedError, type KiloAccountClient } from "./account-service";
+
+/** The HTTP status the SDK attaches to a failed request (`cause.status`). */
+function statusOf(error: unknown): number | undefined {
+	const cause = error instanceof Error ? error.cause : undefined;
+	const status =
+		typeof cause === "object" && cause !== null
+			? (cause as { status?: unknown }).status
+			: undefined;
+	return typeof status === "number" ? status : undefined;
+}
 
 const KILO_PROVIDER = "kilo";
 /** Kilo's device sign-in method for its own provider. */
 const DEVICE_METHOD = 0;
+/** How Kilo reports a catalog it refused to list for the stored credentials. */
+const REFUSED = new Set(["unauthorized", "unauthenticated"]);
 
 /** The account API of a running Kilo server, through its SDK. */
 export function createKiloAccountClient(connection: ServerConnection): KiloAccountClient {
@@ -22,11 +34,26 @@ export function createKiloAccountClient(connection: ServerConnection): KiloAccou
 	return {
 		async authStatus() {
 			const { data } = await client.kilo.authStatus({ directory }, options);
-			return { authenticated: data.authenticated === true };
+			return { authenticated: data.authenticated === true, oauth: data.type === "oauth" };
 		},
 		async profile() {
-			const { data } = await client.kilo.profile({ directory }, options);
-			return data as KiloProfile;
+			try {
+				const { data } = await client.kilo.profile({ directory }, options);
+				return data as KiloProfile;
+			} catch (error) {
+				if (statusOf(error) === 401)
+					throw new KiloUnauthorizedError(errorMessage(error, "Unauthorized"));
+				throw error;
+			}
+		},
+		// For servers whose profile route reports every failure alike: the model catalog keeps
+		// why it failed. Only an organisation's catalog does (a personal one falls back to the
+		// free models), and the catalog is only fetched again when the server reloads.
+		async catalogRefusesSignIn() {
+			const { data } = await client.provider.list({ directory }, options);
+			return data.failures.some(
+				(failure) => failure.providerID === KILO_PROVIDER && REFUSED.has(failure.kind),
+			);
 		},
 		async authorize() {
 			const { data } = await client.provider.oauth.authorize(

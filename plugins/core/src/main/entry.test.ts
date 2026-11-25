@@ -43,6 +43,7 @@ const PROFILE: KiloProfile = {
 const signedInAccount: KiloAccountClient = {
 	authStatus: async () => ({ authenticated: true }),
 	profile: async () => PROFILE,
+	catalogRefusesSignIn: async () => false,
 	authorize: async () => ({ url: "https://app.kilo.ai/device" }),
 	callback: async () => {},
 	signOut: async () => {},

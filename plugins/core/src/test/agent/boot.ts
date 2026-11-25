@@ -90,6 +90,7 @@ function accountState(signedIn: boolean): AccountState {
 		signedIn,
 		profile: null,
 		profileError: null,
+		signInExpired: false,
 		deviceSignIn: { status: "idle" },
 		organizationError: null,
 		refreshing: false,

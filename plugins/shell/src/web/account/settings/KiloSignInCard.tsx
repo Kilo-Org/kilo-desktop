@@ -23,10 +23,13 @@ const SIGN_IN_BENEFITS = [
 export function KiloSignInCard({
 	onLogin,
 	embedded = false,
+	expired = false,
 }: {
 	onLogin: () => void;
 	/** Skip the outer frame when nested inside another bordered card. */
 	embedded?: boolean;
+	/** The previous sign-in stopped working, so this asks to sign in again. */
+	expired?: boolean;
 }) {
 	return (
 		<div
@@ -35,10 +38,13 @@ export function KiloSignInCard({
 		>
 			<div className="flex flex-col items-center px-6 pt-6 pb-5 text-center">
 				<KiloMark />
-				<h2 className="mt-4 text-sm font-medium">Connect your Kilo account</h2>
+				<h2 className="mt-4 text-sm font-medium">
+					{expired ? "Your Kilo sign-in has expired or was revoked" : "Connect your Kilo account"}
+				</h2>
 				<p className="text-muted-foreground mt-1.5 max-w-sm text-sm text-balance">
-					One connection for frontier models, your credit balance, and team workspaces — without
-					leaving the app.
+					{expired
+						? "Sign in again to keep using your models, credit balance, and team workspaces."
+						: "One connection for frontier models, your credit balance, and team workspaces — without leaving the app."}
 				</p>
 				<Button type="button" className="mt-4" onClick={onLogin} data-qa-id="kilo-account-login">
 					Sign in

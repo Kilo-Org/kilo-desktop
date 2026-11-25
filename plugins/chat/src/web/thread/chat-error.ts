@@ -2,6 +2,9 @@ const KILO_SIGN_IN_ERROR = "You need to sign in to use this model";
 const KILO_SIGN_UP_ERROR = "You need to sign up to keep going";
 const KILO_SIGN_IN_TITLE = "You need to connect to Kilo to use this model";
 const KILO_SIGN_UP_TITLE = "You need to sign up for Kilo to keep going";
+/** The Gateway's message when it no longer accepts the sign-in (code INVALID_TOKEN). */
+const KILO_SIGNED_OUT_ERROR = "Your authentication token is invalid";
+const KILO_SIGNED_OUT_TITLE = "You've been signed out of Kilo";
 
 const KILO_ERROR_TITLES: Readonly<Record<string, string>> = {
 	PAID_MODEL_AUTH_REQUIRED: KILO_SIGN_IN_TITLE,
@@ -55,11 +58,25 @@ function embeddedMessage(body: JsonObject | undefined): string | undefined {
 	return undefined;
 }
 
+function isSignedOutError(message: string, body: JsonObject | undefined): boolean {
+	const nested = isObject(body?.error) ? body.error : undefined;
+	return (
+		(nested?.code ?? body?.code) === "INVALID_TOKEN" || message.includes(KILO_SIGNED_OUT_ERROR)
+	);
+}
+
 /** User-facing chat error text: Gateway JSON dumps unwrapped into tidy titles. */
 export function displayChatError(message: string | undefined): string {
 	if (!message) return "";
 	const body = embeddedJson(message);
+	if (isSignedOutError(message, body)) return KILO_SIGNED_OUT_TITLE;
 	return kiloErrorTitle(message, body) ?? embeddedMessage(body) ?? message;
+}
+
+/** What to do about a chat error, when the title alone doesn't say. */
+export function chatErrorHint(message: string | undefined): string | undefined {
+	if (!message || !isSignedOutError(message, embeddedJson(message))) return undefined;
+	return "Sign in again, then resend your message.";
 }
 
 /** The error of a message that ended in one, as text. */

@@ -108,12 +108,31 @@ export function sameInfo(a: ChatInfo | undefined, b: ChatInfo): boolean {
 	);
 }
 
+/** The `code` of a provider error body: `{ error: { code } }` or `{ code }`. */
+function responseCode(body: unknown): string | undefined {
+	if (typeof body !== "string") return undefined;
+	try {
+		const parsed = asRecord(JSON.parse(body));
+		return asString(asRecord(parsed?.error)?.code) ?? asString(parsed?.code);
+	} catch {
+		return undefined;
+	}
+}
+
 function readError(value: unknown): ChatError | undefined {
 	const error = asRecord(value);
 	const name = asString(error?.name);
 	if (!name || name === "MessageAbortedError") return undefined;
-	const message = asString(asRecord(error?.data)?.message) ?? asString(error?.message) ?? name;
-	return { name, message };
+	const data = asRecord(error?.data);
+	const message = asString(data?.message) ?? asString(error?.message) ?? name;
+	const status = typeof data?.statusCode === "number" ? data.statusCode : undefined;
+	const code = responseCode(data?.responseBody);
+	return {
+		name,
+		message,
+		...(status === undefined ? {} : { status }),
+		...(code === undefined ? {} : { code }),
+	};
 }
 
 function withRecord(
@@ -430,8 +449,12 @@ function activityEvents(chatId: string, before: ChatActivity, after: ChatActivit
 			payload: { chatId, ...(after.lastError ? { error: after.lastError } : {}) },
 		});
 	}
-	const added = (key: PendingKey) => after[key].filter((id) => !before[key].includes(id));
-	const removed = (key: PendingKey) => before[key].filter((id) => !after[key].includes(id));
+	const missingFrom = (ids: readonly string[], other: readonly string[]) => {
+		const present = new Set(other);
+		return ids.filter((id) => !present.has(id));
+	};
+	const added = (key: PendingKey) => missingFrom(after[key], before[key]);
+	const removed = (key: PendingKey) => missingFrom(before[key], after[key]);
 	for (const permissionId of added("pendingPermissionIds")) {
 		events.push({ name: "permission-requested", payload: { chatId, permissionId } });
 	}

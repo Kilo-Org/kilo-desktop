@@ -107,7 +107,7 @@ export function KiloGatewayAccountPanel({
 			) : null}
 
 			{!showDeviceAuth && !signedIn && !profileFailed ? (
-				<KiloSignInCard embedded onLogin={auth.signIn} />
+				<KiloSignInCard embedded expired={auth.signInExpired} onLogin={auth.signIn} />
 			) : null}
 
 			{signedIn && auth.profile ? (

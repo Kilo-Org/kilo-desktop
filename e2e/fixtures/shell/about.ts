@@ -6,6 +6,7 @@ import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 import { AboutPage } from "../../pages/shell/about-page.js";
 import { aboutData } from "../../testdata/about.js";
+import { packagedServerLine } from "../../utils/kilo-server-line.js";
 import { test as shellTest } from "../shell.js";
 
 export const test = shellTest.extend<{ aboutPage: AboutPage; globalKiloConfigPath: string }>({
@@ -28,7 +29,10 @@ export const test = shellTest.extend<{ aboutPage: AboutPage; globalKiloConfigPat
 	globalKiloConfigPath: async ({ electronApp }, use) => {
 		const xdgConfigHome = await electronApp.evaluate(() => process.env.XDG_CONFIG_HOME);
 		if (!xdgConfigHome) throw new Error("Packaged app should launch with XDG_CONFIG_HOME set");
-		const configPath = path.join(xdgConfigHome, "kilo", aboutData.kiloConfigFileName);
+		const configPath = path.join(
+			xdgConfigHome,
+			...aboutData.kiloConfigRelativePath[packagedServerLine()],
+		);
 		await mkdir(path.dirname(configPath), { recursive: true });
 		await writeFile(configPath, aboutData.kiloConfigFileContents);
 		await reloadAtHome();

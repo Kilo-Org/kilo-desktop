@@ -36,6 +36,7 @@
 	},
 	"devDependencies": {
 		"@anaconda/playwright-utils": "2.1.0",
+		"@kilocode/client": "0.0.0-v2-239",
 		"@playwright/test": "catalog:",
 		"@types/node": "^26.0.0",
 		"playwright": "catalog:",

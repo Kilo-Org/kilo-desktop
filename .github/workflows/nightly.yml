@@ -24,10 +24,12 @@ jobs:
             blacksmith-4vcpu-ubuntu-2404,
             blacksmith-8vcpu-windows-2025,
           ]
+        # The Kilo server lines (docs/adr/003-kilo-server-line.md).
+        server-line: [v1, v2]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     concurrency:
-      group: nightly-e2e-${{ matrix.os }}
+      group: nightly-e2e-${{ matrix.os }}-${{ matrix.server-line }}
       cancel-in-progress: false
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
@@ -40,5 +42,6 @@ jobs:
       - uses: ./.github/actions/run-e2e
         with:
           xvfb: ${{ runner.os == 'Linux' }}
-          report-name: playwright-report-nightly-${{ matrix.os }}
+          server-line: ${{ matrix.server-line }}
+          report-name: playwright-report-nightly${{ matrix.server-line == 'v2' && '-v2' || '' }}-${{ matrix.os }}
           upload-on: always

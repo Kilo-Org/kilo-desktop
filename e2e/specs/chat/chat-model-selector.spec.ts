@@ -1,5 +1,4 @@
 import { test } from "../../fixtures/chat.js";
-import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
 
 /**
  * Model selector coverage against the packaged app: the trigger, the menu,
@@ -101,7 +100,7 @@ test.describe("Chat model selector", () => {
 		chatComposerPage,
 		chatModelSelectorPage,
 	}) => {
-		const { query, publisherPrefix } = chatModelSelectorData.gatewayInfoSmokeSearchTerm;
+		const { query, publisherPrefix } = await chatModelSelectorPage.gatewaySmokeSearchTerm();
 		await appShellPage.verifyShellIsLoaded();
 		await chatComposerPage.openDraft();
 		await chatModelSelectorPage.openModelSelector();

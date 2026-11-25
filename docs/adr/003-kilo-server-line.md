@@ -54,7 +54,9 @@ contract imports and saved state (pane kinds, storage folders, allow-lists).
   tests that need `KILO2_BIN` (chat-v2's thread controller, notebook's v2 Kilo
   plugin, marketplace-v2's live catalog); and the plugin isolation check
   covers the v2 copies. Every build stages both lines' CLIs, so packaging hosts
-  cache both. E2e against a v2 build is still to come.
+  cache both. E2e runs every leg on both lines (PR, merge queue and nightly;
+  the `run-e2e` action's `server-line` input), and specs read the line from
+  the packaged CLI (`e2e/utils/kilo-server-line.ts`).
 - **Cutover** deletes the v1 packages, moves the contracts into the v2
   packages, drops the `-v2` names and deletes `server-line.ts` and its
   aliases.

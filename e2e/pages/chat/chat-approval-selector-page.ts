@@ -14,8 +14,8 @@ import {
 	pressPageKeyboard,
 	reloadPage,
 } from "@anaconda/playwright-utils";
-import { getPage } from "@anaconda/playwright-utils/page-utils";
 
+import { kiloServer } from "../../utils/kilo-server.js";
 import {
 	kiloServerConnection,
 	openNewSession,
@@ -147,14 +147,6 @@ export class ChatApprovalSelectorPage {
 	}
 
 	private async listSessions(connection: KiloConnection): Promise<KiloSession[]> {
-		return getPage().evaluate(async (currentConnection) => {
-			const authorization = `Basic ${btoa(`${currentConnection.username}:${currentConnection.password}`)}`;
-			const response = await fetch(
-				`${currentConnection.baseUrl}/experimental/session?roots=true&archived=true`,
-				{ headers: { Authorization: authorization }, cache: "no-store" },
-			);
-			if (!response.ok) throw new Error(`Global session list failed with ${response.status}.`);
-			return (await response.json()) as KiloSession[];
-		}, connection);
+		return kiloServer.rootSessions(connection);
 	}
 }

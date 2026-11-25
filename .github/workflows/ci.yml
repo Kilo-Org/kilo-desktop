@@ -289,13 +289,15 @@ jobs:
 
   # PR e2e runs on Linux (xvfb): setup, install and packaging there take
   # ~15 s where Windows took 55-100 s per shard. Windows e2e coverage comes
-  # from the merge queue (e2e-merge) and nightly.
+  # from the merge queue (e2e-merge) and nightly. Each Kilo server line
+  # (docs/adr/003-kilo-server-line.md) packages and runs the same specs.
   e2e-pr:
     needs: e2e-plan
     if: github.event_name == 'pull_request' && needs.e2e-plan.outputs.total != '0'
     strategy:
       fail-fast: false
       matrix:
+        server-line: [v1, v2]
         shard: ${{ fromJSON(needs.e2e-plan.outputs.shards) }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
@@ -315,9 +317,10 @@ jobs:
         with:
           script: test:e2e
           xvfb: "true"
+          server-line: ${{ matrix.server-line }}
           grep: ${{ needs.e2e-plan.outputs.grep }}
           shard: ${{ matrix.shard }}/${{ needs.e2e-plan.outputs.total }}
-          report-name: playwright-report-pr-${{ matrix.shard }}
+          report-name: playwright-report-pr${{ matrix.server-line == 'v2' && '-v2' || '' }}-${{ matrix.shard }}
           # Results for refreshing scripts/test-durations; full reports on failure.
           upload-on: results
 
@@ -325,7 +328,8 @@ jobs:
   # supported desktop platforms. This replaces, rather than repeats, PR e2e,
   # and is the first Windows e2e run a change gets. Each platform's suite is
   # split across shards by recorded test time (scripts/test-durations/e2e.json);
-  # each shard packages its own app.
+  # each shard packages its own app. The v2 server line repeats every leg
+  # (docs/adr/003-kilo-server-line.md); its shard names start with "v2-".
   e2e-merge:
     if: github.event_name == 'merge_group'
     strategy:
@@ -333,20 +337,45 @@ jobs:
       matrix:
         include:
           - os: blacksmith-6vcpu-macos-latest
+            server-line: v1
             shard: 1/2
             shard-name: blacksmith-6vcpu-macos-latest-1
           - os: blacksmith-6vcpu-macos-latest
+            server-line: v1
             shard: 2/2
             shard-name: blacksmith-6vcpu-macos-latest-2
           - os: blacksmith-8vcpu-windows-2025
+            server-line: v1
             shard: 1/3
             shard-name: blacksmith-8vcpu-windows-2025-1
           - os: blacksmith-8vcpu-windows-2025
+            server-line: v1
             shard: 2/3
             shard-name: blacksmith-8vcpu-windows-2025-2
           - os: blacksmith-8vcpu-windows-2025
+            server-line: v1
             shard: 3/3
             shard-name: blacksmith-8vcpu-windows-2025-3
+          - os: blacksmith-6vcpu-macos-latest
+            server-line: v2
+            shard: 1/2
+            shard-name: v2-blacksmith-6vcpu-macos-latest-1
+          - os: blacksmith-6vcpu-macos-latest
+            server-line: v2
+            shard: 2/2
+            shard-name: v2-blacksmith-6vcpu-macos-latest-2
+          - os: blacksmith-8vcpu-windows-2025
+            server-line: v2
+            shard: 1/3
+            shard-name: v2-blacksmith-8vcpu-windows-2025-1
+          - os: blacksmith-8vcpu-windows-2025
+            server-line: v2
+            shard: 2/3
+            shard-name: v2-blacksmith-8vcpu-windows-2025-2
+          - os: blacksmith-8vcpu-windows-2025
+            server-line: v2
+            shard: 3/3
+            shard-name: v2-blacksmith-8vcpu-windows-2025-3
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     concurrency:
@@ -366,11 +395,12 @@ jobs:
           cache-node-modules: "false"
       - uses: ./.github/actions/run-e2e
         with:
+          server-line: ${{ matrix.server-line }}
           shard: ${{ matrix.shard }}
           report-name: playwright-report-merge-${{ matrix.shard-name }}
           upload-on: always
 
-  # One HTML report per sharded merge-queue platform. Informational only:
+  # One HTML report per sharded merge-queue platform and server line. Informational only:
   # `Check` depends on the test jobs, never on this merge.
   e2e-merge-report:
     if: always() && github.event_name == 'merge_group'
@@ -389,7 +419,7 @@ jobs:
       - name: Download shard reports
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: playwright-report-merge-blacksmith-*
+          pattern: playwright-report-merge-*
           path: shard-reports
       # Duration-balanced shards pick their spec files themselves rather than
       # through Playwright's `shard` option, so every shard's blob is named
@@ -397,18 +427,21 @@ jobs:
       - name: Merge shard reports per platform
         shell: bash
         run: |
-          for platform in blacksmith-6vcpu-macos-latest blacksmith-8vcpu-windows-2025; do
-            blobs="$GITHUB_WORKSPACE/blob-reports/$platform"
-            mkdir -p "$blobs"
-            for shard in shard-reports/playwright-report-merge-"$platform"-*/; do
-              for blob in "$shard"blob-report/*.zip; do
-                [ -f "$blob" ] && cp "$blob" "$blobs/$(basename "$shard")-$(basename "$blob")"
+          for line in "" "v2-"; do
+            for platform in blacksmith-6vcpu-macos-latest blacksmith-8vcpu-windows-2025; do
+              name="$line$platform"
+              blobs="$GITHUB_WORKSPACE/blob-reports/$name"
+              mkdir -p "$blobs"
+              for shard in shard-reports/playwright-report-merge-"$name"-*/; do
+                for blob in "$shard"blob-report/*.zip; do
+                  [ -f "$blob" ] && cp "$blob" "$blobs/$(basename "$shard")-$(basename "$blob")"
+                done
               done
+              ls "$blobs"
+              [ -n "$(ls -A "$blobs")" ] || continue
+              pnpm --filter @kilo-desktop/e2e exec playwright merge-reports --reporter html "$blobs"
+              mv e2e/playwright-report "merged-$name"
             done
-            ls "$blobs"
-            [ -n "$(ls -A "$blobs")" ] || continue
-            pnpm --filter @kilo-desktop/e2e exec playwright merge-reports --reporter html "$blobs"
-            mv e2e/playwright-report "merged-$platform"
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -420,6 +453,18 @@ jobs:
         with:
           name: playwright-report-merge-blacksmith-8vcpu-windows-2025
           path: merged-blacksmith-8vcpu-windows-2025/
+          if-no-files-found: warn
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-merge-v2-blacksmith-6vcpu-macos-latest
+          path: merged-v2-blacksmith-6vcpu-macos-latest/
+          if-no-files-found: warn
+          retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-merge-v2-blacksmith-8vcpu-windows-2025
+          path: merged-v2-blacksmith-8vcpu-windows-2025/
           if-no-files-found: warn
           retention-days: 30
 

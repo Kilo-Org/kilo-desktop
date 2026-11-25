@@ -30,6 +30,8 @@
  *   the chat model selector spec (its model source) and the settings overview
  *   (its sign-in gated section).
  *   kilo.environments' live in `e2e/specs/environments`.
+ *   The Kilo server line copies (`plugins/core-v2`, `chat-v2`,
+ *   `marketplace-v2`) run their v1 plugin's specs (`SERVER_LINE_COPIES`).
  *   kilo.anaconda's live in `e2e/specs/anaconda`; it also runs kilo.shell's
  *   account specs (its Anaconda row is in Settings → Account).
  *   kilo.workspace-board's live in `e2e/specs/workspace-board`; the board is a
@@ -153,6 +155,16 @@ const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
 	"workspace-board": [specDirectory("e2e", "specs", "workspace-board")],
 };
 
+/**
+ * The Kilo server line copies (docs/adr/003-kilo-server-line.md): each has
+ * its v1 plugin's id, so it is exercised by that plugin's specs.
+ */
+const SERVER_LINE_COPIES: Readonly<Record<string, string>> = {
+	"core-v2": "core",
+	"chat-v2": "chat",
+	"marketplace-v2": "marketplace",
+};
+
 /** Workspace packages owned by one plugin's behavior (`packages/<dir>` → `plugins/<dir>`). */
 const PACKAGE_PLUGINS: Readonly<Record<string, string>> = {
 	"pane-layout": "work-sessions",
@@ -175,7 +187,11 @@ export function selectPrE2eGrep(
 	for (const changed of normalized) {
 		const pluginMatch = /^plugins\/([^/]+)\//.exec(changed)?.[1];
 		const packageMatch = /^packages\/([^/]+)\//.exec(changed)?.[1];
-		const pluginId = pluginMatch ?? (packageMatch ? PACKAGE_PLUGINS[packageMatch] : undefined);
+		const pluginDirectory =
+			pluginMatch ?? (packageMatch ? PACKAGE_PLUGINS[packageMatch] : undefined);
+		const pluginId = pluginDirectory
+			? (SERVER_LINE_COPIES[pluginDirectory] ?? pluginDirectory)
+			: undefined;
 		if (!pluginId) {
 			patterns.add(SMOKE);
 			continue;

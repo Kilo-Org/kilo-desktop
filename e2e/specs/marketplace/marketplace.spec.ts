@@ -1,10 +1,18 @@
 import { createServer } from "node:http";
 
 import { test } from "../../fixtures/marketplace.js";
+import { KILO_GATEWAY_STUB_URL_ENV } from "../../utils/app-launcher.js";
+import { packagedServerLine } from "../../utils/kilo-server-line.js";
 
+/**
+ * A fake Kilo Marketplace. The v1 CLI reads it from `KILO_MARKETPLACE_BASE_URL`
+ * (`/mcps`); Kilo v2 reads `/api/marketplace/mcps` on its Kilo API server, so
+ * on v2 this stands in for the whole Kilo API (`KILO_API_URL`) and answers
+ * every other route with 404, which a signed-out server tolerates.
+ */
 const server = createServer((request, response) => {
 	response.setHeader("content-type", "application/json");
-	if (request.url === "/mcps") {
+	if (request.url === "/mcps" || request.url === "/api/marketplace/mcps") {
 		response.end(
 			JSON.stringify({
 				items: [
@@ -24,6 +32,11 @@ const server = createServer((request, response) => {
 		);
 		return;
 	}
+	if (request.url?.startsWith("/api/") && !request.url.startsWith("/api/marketplace/")) {
+		response.statusCode = 404;
+		response.end(JSON.stringify({ error: "Not served by the e2e marketplace" }));
+		return;
+	}
 	response.end(JSON.stringify({ items: [] }));
 });
 await new Promise<void>((resolve, reject) => {
@@ -38,6 +51,9 @@ test.use({
 	appIsolationKey: "kilo-marketplace",
 	appLaunchEnv: {
 		KILO_MARKETPLACE_BASE_URL: `http://127.0.0.1:${address.port}`,
+		...(packagedServerLine() === "v2"
+			? { [KILO_GATEWAY_STUB_URL_ENV]: `http://127.0.0.1:${address.port}` }
+			: {}),
 	},
 });
 

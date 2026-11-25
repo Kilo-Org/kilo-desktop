@@ -9,8 +9,11 @@ const COMPLETIONS_PATH = "/chat/completions";
 /** Introspection route workers query over HTTP — the stub runs in the global-setup process, a separate process from every worker, so only HTTP (not an in-process method) crosses that boundary. Same pattern as the Kilo Gateway stub's catalog route, queried via `getRequest` in `chat-model-selector-page.ts`. */
 export const CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH = "/__e2e__/requests";
 const DEFAULT_REPLY = "MOCK_REPLY_NO_MATCH";
-/** Kilo's title agent opens its system prompt with this (case-insensitive). */
-const TITLE_REQUEST_PATTERN = /title generator/i;
+/**
+ * Kilo's title agent opens its system prompt with this (case-insensitive):
+ * "title generator" on the v1 server line, "You name conversations" on v2.
+ */
+const TITLE_REQUEST_PATTERN = /title generator|you name conversations/i;
 const REQUEST_LOG_LIMIT = 20;
 
 /**

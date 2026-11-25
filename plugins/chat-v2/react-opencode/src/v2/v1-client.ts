@@ -32,7 +32,17 @@ type V2Client = ReturnType<typeof OpenCode.make>;
 export interface V1ClientOptions {
 	/** The chat directory per-location reads use. */
 	readonly directory?: string | undefined;
+	/**
+	 * Where a client without a directory reads agents and MCP status. v1's
+	 * server answered those from its own working directory; v2 answers them
+	 * only in a location and lists no agents without one.
+	 */
+	readonly defaultDirectory?: string | undefined;
 }
+
+/** How long and how often a location's agent or command list waits for its plugins, which provide them. */
+const PLUGINS_WAIT_MS = 30_000;
+const PLUGINS_POLL_MS = 100;
 
 type Args = Record<string, unknown>;
 type PromptPart = Record<string, unknown>;
@@ -139,10 +149,35 @@ export const systemNote = (system: string) => `<system-reminder>\n${system}\n</s
 
 export function createV1Client(client: V2Client, options: V1ClientOptions = {}): OpencodeClient {
 	const location = options.directory ? { location: { directory: options.directory } } : undefined;
+	const lookupDirectory = options.directory ?? options.defaultDirectory;
+	const lookupLocation = lookupDirectory ? { location: { directory: lookupDirectory } } : undefined;
 	/** Which session a listed request belongs to, for replies that don't say. */
 	const requestSessions = new Map<string, string>();
 
 	const getSession = (sessionID: string) => client.session.get({ sessionID });
+
+	/**
+	 * A location starts on its first request and lists only some agents and
+	 * commands, or none, until its plugins register; they register together,
+	 * so its lists are complete once the plugin inventory is not empty. A
+	 * server without the inventory fails the read: stop waiting.
+	 */
+	async function pluginsRegistered(at: { location: { directory: string } }) {
+		const deadline = Date.now() + PLUGINS_WAIT_MS;
+		while (Date.now() < deadline) {
+			const listed = await client.plugin.list(at).then(
+				(result) => result.data.length > 0,
+				() => true,
+			);
+			if (listed) return;
+			await new Promise((resolve) => setTimeout(resolve, PLUGINS_POLL_MS));
+		}
+	}
+
+	async function locationAgents() {
+		if (lookupLocation) await pluginsRegistered(lookupLocation);
+		return (await client.agent.list(lookupLocation)).data;
+	}
 
 	async function allMessages(sessionID: string): Promise<SessionMessageInfo[]> {
 		const messages: SessionMessageInfo[] = [];
@@ -350,9 +385,9 @@ export function createV1Client(client: V2Client, options: V1ClientOptions = {}):
 		command: {
 			list: async (args: Args = {}) => {
 				const directory = typeof args.directory === "string" ? args.directory : options.directory;
-				const { data } = await client.command.list(
-					directory ? { location: { directory } } : undefined,
-				);
+				const at = directory ? { location: { directory } } : undefined;
+				if (at) await pluginsRegistered(at);
+				const { data } = await client.command.list(at);
 				return ok(
 					data.map((command) => {
 						const model = commandModel(command.model);
@@ -370,7 +405,7 @@ export function createV1Client(client: V2Client, options: V1ClientOptions = {}):
 		},
 		app: {
 			agents: async () => {
-				const { data } = await client.agent.list(location);
+				const data = await locationAgents();
 				return ok(
 					data.map((agent) => ({
 						name: agent.id,
@@ -402,7 +437,7 @@ export function createV1Client(client: V2Client, options: V1ClientOptions = {}):
 		},
 		mcp: {
 			status: async () => {
-				const { data } = await client.mcp.list(location);
+				const { data } = await client.mcp.list(lookupLocation);
 				return ok(Object.fromEntries(data.map((server) => [server.name, server.status])));
 			},
 		},

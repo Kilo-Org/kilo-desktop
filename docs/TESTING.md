@@ -48,6 +48,13 @@ any runner packages the app: about 75 s of recorded test time per shard, up to s
 only `junit.xml` and `results.json` on success (enough for `record-test-durations.mjs`) and the full
 report on failure.
 
+Every e2e job runs once per Kilo server line ([ADR-003](./adr/003-kilo-server-line.md)): the
+`run-e2e` action's `server-line` input packages the app with `KILO_SERVER_LINE` and runs the
+same specs. Specs follow the packaged build, not an environment variable:
+`e2e/utils/kilo-server-line.ts` reads the line from the CLI it carries, and
+`e2e/utils/kilo-server.ts` reads what the UI created from either server. Run the v2 suite
+locally with `KILO_SERVER_LINE=v2 pnpm test:e2e`.
+
 Playwright runs two workers locally and one per 2 vCPUs in CI (4 on the
 8-vCPU Windows and Linux runners, 3 on macOS, 2 on 4-vCPU Linux), set by the `run-e2e` action
 (`E2E_WORKERS` overrides; set `1` to serialize while debugging). Each worker owns its app and profile and stops only its own

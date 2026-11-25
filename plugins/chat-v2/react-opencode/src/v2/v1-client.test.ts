@@ -56,6 +56,9 @@ function fakeV2(overrides: Record<string, unknown> = {}) {
 		message: {
 			list: record("message.list", () => ({ data: turn.messages, cursor: {} })),
 		},
+		plugin: {
+			list: async () => ({ data: [{ id: "opencode.agent" }] }),
+		},
 		permission: {
 			request: {
 				list: record("permission.request.list", () => ({
@@ -312,6 +315,114 @@ describe("the chat surfaces on Kilo v2", () => {
 				model: { providerID: "kilo", modelID: "big" },
 				variant: "high",
 			}),
+		]);
+	});
+
+	it("lists agents and MCP status in the default location when the client has no directory", async () => {
+		const calls: [string, unknown][] = [];
+		const base = fakeV2();
+		const lookups = { ...(base.client as object), ...extra(calls) } as Record<string, unknown>;
+		lookups.agent = {
+			list: async (input: unknown) => {
+				calls.push(["agent.list", input]);
+				return { data: [{ id: "code", name: "Code", mode: "primary", hidden: false }] };
+			},
+		};
+		lookups.mcp = {
+			list: async (input: unknown) => {
+				calls.push(["mcp.list", input]);
+				return { data: [] };
+			},
+		};
+		const v1 = createV1Client(lookups as never, { defaultDirectory: "/runtime" });
+
+		await v1.app.agents({} as never);
+		await (v1 as unknown as { mcp: { status(): Promise<unknown> } }).mcp.status();
+
+		expect(calls).toContainEqual(["agent.list", { location: { directory: "/runtime" } }]);
+		expect(calls).toContainEqual(["mcp.list", { location: { directory: "/runtime" } }]);
+	});
+
+	it("lists a location's agents once its plugins have registered them", async () => {
+		vi.useFakeTimers();
+		try {
+			const base = fakeV2();
+			let pluginReads = 0;
+			const client = {
+				...(base.client as object),
+				plugin: {
+					list: async () => ({ data: ++pluginReads < 3 ? [] : [{ id: "opencode.agent" }] }),
+				},
+				agent: {
+					list: async () => ({
+						data:
+							pluginReads < 3
+								? [{ id: "code", name: "Code", mode: "primary", hidden: false }]
+								: [
+										{ id: "code", name: "Code", mode: "primary", hidden: false },
+										{ id: "plan", name: "Plan", mode: "primary", hidden: false },
+									],
+					}),
+				},
+			};
+			const v1 = createV1Client(client as never, { directory: "/p" });
+
+			const agents = v1.app.agents({} as never);
+			await vi.runAllTimersAsync();
+
+			expect((await agents).data).toEqual([
+				expect.objectContaining({ name: "code" }),
+				expect.objectContaining({ name: "plan" }),
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("lists a location's slash commands once its plugins have registered them", async () => {
+		vi.useFakeTimers();
+		try {
+			const base = fakeV2();
+			let pluginReads = 0;
+			const client = {
+				...(base.client as object),
+				plugin: {
+					list: async () => ({ data: ++pluginReads < 3 ? [] : [{ id: "opencode.command" }] }),
+				},
+				command: {
+					list: async () => ({ data: pluginReads < 3 ? [] : [{ name: "init", template: "" }] }),
+				},
+			};
+			const v1 = createV1Client(client as never, { directory: "/p" });
+
+			const commands = v1.command.list({} as never);
+			await vi.runAllTimersAsync();
+
+			expect((await commands).data).toEqual([expect.objectContaining({ name: "init" })]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("lists agents at once when the server has no plugin inventory", async () => {
+		const base = fakeV2();
+		const client = {
+			...(base.client as object),
+			plugin: {
+				list: async () => {
+					throw new Error("no inventory");
+				},
+			},
+			agent: {
+				list: async () => ({
+					data: [{ id: "code", name: "Code", mode: "primary", hidden: false }],
+				}),
+			},
+		};
+		const v1 = createV1Client(client as never, { directory: "/p" });
+
+		expect((await v1.app.agents({} as never)).data).toEqual([
+			expect.objectContaining({ name: "code" }),
 		]);
 	});
 

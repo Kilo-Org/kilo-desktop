@@ -11,9 +11,9 @@ import {
 	getLocatorByRole,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
-import { getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect, type Locator } from "@playwright/test";
 
+import { kiloServer } from "../../utils/kilo-server.js";
 import {
 	kiloServerConnection,
 	openNewSession,
@@ -233,18 +233,7 @@ export class WorktreesPage {
 	}
 
 	private async kiloSessions(connection: KiloServerConnection): Promise<KiloSession[]> {
-		return getPage().evaluate(async (current) => {
-			const authorization = `Basic ${btoa(`${current.username}:${current.password}`)}`;
-			const response = await fetch(
-				`${current.baseUrl}/experimental/session?roots=true&archived=true`,
-				{
-					headers: { Authorization: authorization },
-					cache: "no-store",
-				},
-			);
-			if (!response.ok) throw new Error(`Global session list failed with ${response.status}.`);
-			return (await response.json()) as KiloSession[];
-		}, connection);
+		return kiloServer.rootSessions(connection);
 	}
 
 	/** Git for Windows writes forward-slash paths; normalized to compare with OS-native ones. */

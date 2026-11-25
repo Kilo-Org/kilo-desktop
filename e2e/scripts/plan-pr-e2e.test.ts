@@ -29,6 +29,19 @@ describe("selectPrE2eGrep", () => {
 		assert.doesNotMatch(grep, /@smoke/);
 	});
 
+	it("runs a Kilo server line copy's areas as its v1 plugin's", () => {
+		for (const [copy, original] of [
+			["core-v2", "core"],
+			["chat-v2", "chat"],
+			["marketplace-v2", "marketplace"],
+		]) {
+			assert.equal(
+				select(`plugins/${copy}/src/main/index.ts`),
+				select(`plugins/${original}/src/main/index.ts`),
+			);
+		}
+	});
+
 	it("also runs a plugin's own e2e specs when it ships some", () => {
 		const changed = ["plugins/marketplace/src/main/entry.ts"];
 

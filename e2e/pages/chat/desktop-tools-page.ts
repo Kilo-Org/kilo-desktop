@@ -1,6 +1,8 @@
 import { getPage } from "@anaconda/playwright-utils/page-utils";
-import { expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
+import { packagedServerLine } from "../../utils/kilo-server-line.js";
+import { kiloServer } from "../../utils/kilo-server.js";
 import {
 	kiloServerConnection,
 	type KiloServerConnection as KiloConnection,
@@ -35,6 +37,14 @@ export class DesktopToolsPage {
 	 * the gateway → kilo.chat's tool without touching any state.
 	 */
 	async verifyDesktopToolCallReachesTheApp(): Promise<void> {
+		if (packagedServerLine() === "v2") {
+			// Kilo v2's API has no direct MCP tool call (v1's /experimental/mcp/call-tool).
+			test.info().annotations.push({
+				type: "skip-step",
+				description: "Kilo v2 has no API to call an MCP tool outside a chat",
+			});
+			return;
+		}
 		const connection = await this.connection();
 		await expect
 			.poll(
@@ -58,16 +68,7 @@ export class DesktopToolsPage {
 	}
 
 	private async desktopMcpStatus(connection: KiloConnection): Promise<string | undefined> {
-		return getPage().evaluate(async (currentConnection) => {
-			const authorization = `Basic ${btoa(`${currentConnection.username}:${currentConnection.password}`)}`;
-			const response = await fetch(`${currentConnection.baseUrl}/mcp`, {
-				headers: { Authorization: authorization },
-				cache: "no-store",
-			});
-			if (!response.ok) return undefined;
-			const statuses = (await response.json()) as Record<string, { status: string }>;
-			return statuses.desktop?.status;
-		}, connection);
+		return kiloServer.mcpStatus(connection, "desktop");
 	}
 
 	private async callDesktopTool(

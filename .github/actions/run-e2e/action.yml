@@ -35,6 +35,12 @@ inputs:
     description: Artifact name for the Playwright HTML report.
     required: false
     default: playwright-report
+  server-line:
+    description: >
+      The Kilo server line to package and test, passed as KILO_SERVER_LINE
+      (docs/adr/003-kilo-server-line.md): v1 (default) or v2.
+    required: false
+    default: v1
   upload-on:
     description: >
       When to upload the report artifact: failure, always, or results (the
@@ -62,12 +68,15 @@ runs:
 
     - name: Package desktop for e2e
       shell: bash
+      env:
+        KILO_SERVER_LINE: ${{ inputs.server-line }}
       run: pnpm --filter @kilo-desktop/desktop run package:e2e
 
     - name: Run e2e
       shell: bash
       env:
         SKIP_BUILD: "true"
+        KILO_SERVER_LINE: ${{ inputs.server-line }}
         E2E_GREP: ${{ inputs.grep }}
         E2E_SHARD: ${{ inputs.shard }}
         WORKERS: ${{ inputs.workers }}

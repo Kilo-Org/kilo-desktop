@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { logger } from "@anaconda/playwright-utils/custom-logger";
 
+import { packagedServerLine } from "./kilo-server-line.js";
 import { packagedExecutable, repoRoot } from "./paths.js";
 
 /** Set by global setup; the local Kilo Gateway stub every packaged launch talks to. */
@@ -26,9 +27,13 @@ export function profileXdgDirectories(userDataDir: string): {
 	};
 }
 
-/** Where the Kilo CLI of a profile writes its log files (`<XDG_DATA_HOME>/kilo/log`). */
+/**
+ * Where the Kilo CLI of a profile writes its log files: `<XDG_DATA_HOME>/kilo/log`
+ * on the v1 server line, `<XDG_DATA_HOME>/kilo2/log` on v2.
+ */
 export function profileKiloLogDirectory(userDataDir: string): string {
-	return path.join(profileXdgDirectories(userDataDir).data, "kilo", "log");
+	const dataFolder = packagedServerLine() === "v2" ? "kilo2" : "kilo";
+	return path.join(profileXdgDirectories(userDataDir).data, dataFolder, "log");
 }
 
 /**

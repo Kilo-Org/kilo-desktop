@@ -696,6 +696,9 @@ importers:
       '@anaconda/playwright-utils':
         specifier: 2.1.0
         version: 2.1.0(@playwright/test@1.65.1)(jiti@2.7.0)(supports-color@10.2.2)
+      '@kilocode/client':
+        specifier: 0.0.0-v2-239
+        version: 0.0.0-v2-239(effect@4.1.0)
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.65.1

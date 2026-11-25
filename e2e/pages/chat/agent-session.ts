@@ -6,6 +6,7 @@ import {
 } from "@anaconda/playwright-utils";
 
 import { callDomainObject } from "../../utils/kernel-bridge.js";
+import type { KiloServerConnection } from "../../utils/kilo-server.js";
 import { runFromCommandPalette } from "../shell/command-palette.js";
 import {
 	createAndActivateWorkspace,
@@ -13,6 +14,7 @@ import {
 } from "../work-sessions/new-work-session-page.js";
 
 export { createAndActivateWorkspace };
+export type { KiloServerConnection };
 
 /** The Agent pane kind kilo.chat contributes to kilo.work-sessions. */
 export const AGENT_PANE_KIND = "kilo.chat/agent";
@@ -117,14 +119,6 @@ export async function clearActiveWorkspace(): Promise<void> {
 		input: { id: null },
 		caller: WORK_SESSIONS_CALLER,
 	});
-}
-
-/** How to reach the Kilo server (Basic auth), for reading what the UI created. */
-export interface KiloServerConnection {
-	readonly baseUrl: string;
-	readonly username: string;
-	readonly password: string;
-	readonly globalDirectory: string;
 }
 
 export async function kiloServerConnection(): Promise<KiloServerConnection> {

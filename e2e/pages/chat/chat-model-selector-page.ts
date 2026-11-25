@@ -26,6 +26,7 @@ import {
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 import { KILO_GATEWAY_STUB_URL_ENV } from "../../utils/app-launcher.js";
+import { packagedServerLine } from "../../utils/kilo-server-line.js";
 import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
 
 const MODEL_OPTION_TEST_ID_PREFIX = "kilo-model-option-";
@@ -186,19 +187,8 @@ export class ChatModelSelectorPage {
 	 * publisher-prefix match is not always one the picker actually renders.
 	 */
 	async getPublisherModelId(publisherPrefix: string): Promise<string> {
-		const gatewayUrl = process.env[KILO_GATEWAY_STUB_URL_ENV];
-		if (!gatewayUrl) {
-			throw new Error("Kilo Gateway stub URL is unavailable in the e2e environment");
-		}
-		const response = await getRequest(`${gatewayUrl}${GATEWAY_MODEL_CATALOG_PATH}`);
-		expect(response.ok(), "Kilo Gateway catalog endpoint should respond with 2xx").toBeTruthy();
-		const payload = (await response.json()) as { data: ReadonlyArray<Record<string, unknown>> };
-		const model = payload.data.find(
-			(candidate) =>
-				typeof candidate.id === "string" &&
-				candidate.id.startsWith(publisherPrefix) &&
-				Array.isArray(candidate.supported_parameters) &&
-				candidate.supported_parameters.includes("tools"),
+		const model = (await this.pickableGatewayModels()).find((candidate) =>
+			candidate.id.startsWith(publisherPrefix),
 		);
 		if (!model || typeof model.id !== "string") {
 			throw new Error(
@@ -217,6 +207,64 @@ export class ChatModelSelectorPage {
 			throw new Error(`Expected a "${MODEL_OPTION_TEST_ID_PREFIX}<id>" test id, got "${testId}"`);
 		}
 		return testId.slice(MODEL_OPTION_TEST_ID_PREFIX.length);
+	}
+
+	/**
+	 * `count` publisher search terms whose models the signed-out picker lists.
+	 * The v1 line lists the whole Kilo Gateway catalog, so the terms are the
+	 * fixed publisher families above; Kilo v2 lists only free models to a
+	 * signed-out user, so its terms are the publishers of the free,
+	 * tool-calling models in the catalog the stub captured.
+	 */
+	async gatewaySearchTerms(
+		count: number,
+	): Promise<ReadonlyArray<{ readonly query: string; readonly publisherPrefix: string }>> {
+		if (packagedServerLine() === "v1") {
+			return chatModelSelectorData.gatewayInfoSearchTerms.slice(0, count);
+		}
+		const publishers = new Set(
+			(await this.pickableGatewayModels()).map((model) => model.id.split("/")[0]!),
+		);
+		const terms = [...publishers]
+			.slice(0, count)
+			.map((publisher) => ({ query: publisher, publisherPrefix: `${publisher}/` }));
+		if (terms.length < count) {
+			throw new Error(`The Kilo Gateway catalog has fewer than ${count} free model publishers`);
+		}
+		return terms;
+	}
+
+	/** One representative publisher search term, for the @smoke case. */
+	async gatewaySmokeSearchTerm(): Promise<{
+		readonly query: string;
+		readonly publisherPrefix: string;
+	}> {
+		if (packagedServerLine() === "v1") return chatModelSelectorData.gatewayInfoSmokeSearchTerm;
+		const [term] = await this.gatewaySearchTerms(1);
+		if (!term) throw new Error("The Kilo Gateway catalog has no free model publisher");
+		return term;
+	}
+
+	/**
+	 * The catalog models the picker can show signed out: tool-calling ones,
+	 * since the Kilo CLI drops the rest, and on Kilo v2 only free ones.
+	 */
+	private async pickableGatewayModels(): Promise<ReadonlyArray<{ readonly id: string }>> {
+		const gatewayUrl = process.env[KILO_GATEWAY_STUB_URL_ENV];
+		if (!gatewayUrl) {
+			throw new Error("Kilo Gateway stub URL is unavailable in the e2e environment");
+		}
+		const response = await getRequest(`${gatewayUrl}${GATEWAY_MODEL_CATALOG_PATH}`);
+		expect(response.ok(), "Kilo Gateway catalog endpoint should respond with 2xx").toBeTruthy();
+		const payload = (await response.json()) as { data: ReadonlyArray<Record<string, unknown>> };
+		const freeOnly = packagedServerLine() === "v2";
+		return payload.data.filter(
+			(candidate): candidate is Record<string, unknown> & { id: string } =>
+				typeof candidate.id === "string" &&
+				Array.isArray(candidate.supported_parameters) &&
+				candidate.supported_parameters.includes("tools") &&
+				(!freeOnly || candidate.isFree === true),
+		);
 	}
 
 	async getPublisherModelName(modelId: string): Promise<string> {

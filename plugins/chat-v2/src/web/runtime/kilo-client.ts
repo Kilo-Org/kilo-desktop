@@ -29,7 +29,11 @@ export function createKiloV2Wire(): KiloWire {
 	};
 	return {
 		client: (connection, directory) =>
-			createV1Client(v2For(connection), { directory }) as unknown as KiloClient,
+			createV1Client(v2For(connection), {
+				directory,
+				// kilo.core's v2 server keeps its global reads in its runtime directory.
+				defaultDirectory: connection.globalDirectory,
+			}) as unknown as KiloClient,
 		subscribe: (connection, options) => v2ClientEventSubscriber(v2For(connection))(options),
 	};
 }

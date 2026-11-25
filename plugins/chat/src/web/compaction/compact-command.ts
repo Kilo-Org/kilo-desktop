@@ -14,15 +14,16 @@ function failureMessage(error: unknown): string | undefined {
 
 /**
  * The `kilo.chat/compact` command, placed in the `/` menu as `/compact`:
- * asks Kilo to summarize the chat so far (`session.summarize`) with the
- * pane's model, freeing up its context window, as Kilo's other clients do
- * (the server doesn't run `compact` through `session.command`). It refuses,
- * with a toast, on a chat that hasn't started or is mid-turn: the server
- * would fold the compaction into the running turn and end it early. Once the
- * server accepts, its progress and errors show in the transcript.
+ * asks Kilo to summarize the chat so far (`session.compact`), freeing up its
+ * context window, as Kilo's other clients do (the server doesn't run
+ * `compact` through `session.command`). v2 compacts with the session's own
+ * model and takes none of its own, so the pane's choice isn't sent. It
+ * refuses, with a toast, on a chat that hasn't started or is mid-turn: the
+ * server would fold the compaction into the running turn and end it early.
+ * Once the server accepts, its progress and errors show in the transcript.
  */
 export function createCompactCommand(chat: ChatServices): CommandHandler {
-	return slashCommandHandler(async ({ chatId, directory, running, selection }) => {
+	return slashCommandHandler(async ({ chatId, running }) => {
 		if (!chatId) {
 			toast.info("Nothing to compact yet", { description: "Send a message first." });
 			return;
@@ -33,22 +34,9 @@ export function createCompactCommand(chat: ChatServices): CommandHandler {
 			});
 			return;
 		}
-		if (!selection.model) {
-			toast.info("Pick a model to compact with");
-			return;
-		}
 		try {
-			const connection = await chat.connection();
-			const folder = directory ?? connection.globalDirectory;
-			await chat.clients.directory(connection, folder).session.summarize(
-				{
-					sessionID: chatId,
-					directory: folder,
-					providerID: selection.model.providerID,
-					modelID: selection.model.modelID,
-				},
-				{ throwOnError: true },
-			);
+			const client = await chat.kiloClient();
+			await client.session.compact({ sessionID: chatId });
 		} catch (error) {
 			toast.error("Couldn't compact the chat", { description: failureMessage(error) });
 		}

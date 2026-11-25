@@ -1,12 +1,10 @@
 import type { ReactNode } from "react";
-import type {
-	OpenCodePermissionRequest,
-	OpenCodeQuestionRequest,
-} from "@kilo-desktop/react-opencode";
+import type { FormInfo, PermissionRequest } from "@kilo-desktop/react-opencode";
 
-import { isPlanFollowupRequest } from "../plan/plan-followup";
+import { isPlanFollowupForm } from "../plan/plan-followup";
 import { usePendingInteractions } from "./PendingInteractionsContext";
 import {
+	byCreation,
 	subagentOriginOf,
 	type PendingInteractions,
 	type SubagentOrigin,
@@ -15,19 +13,19 @@ import { OpenCodePermissionCard } from "./opencode-permission-card";
 import { OpenCodeQuestionQuestionnaire } from "./opencode-question-card";
 
 type PendingComposerInteraction =
-	| { kind: "permission"; request: OpenCodePermissionRequest; origin: SubagentOrigin | undefined }
-	| { kind: "question"; request: OpenCodeQuestionRequest; origin: SubagentOrigin | undefined };
+	| { kind: "permission"; request: PermissionRequest; origin: SubagentOrigin | undefined }
+	| { kind: "question"; request: FormInfo; origin: SubagentOrigin | undefined };
 
 function oldestPendingInteraction(
 	interactions: PendingInteractions,
 ): PendingComposerInteraction | null {
 	// The plan follow-up is answered by Approve (plan card, plan pane) or the composer's Refine.
-	const questions = interactions.questions.filter((question) => !isPlanFollowupRequest(question));
+	const questions = interactions.questions.filter((question) => !isPlanFollowupForm(question));
 	const pending: PendingComposerInteraction[] = [
 		...interactions.permissions.map((request) => ({
 			kind: "permission" as const,
 			request,
-			origin: subagentOriginOf(interactions, request.sessionId),
+			origin: subagentOriginOf(interactions, request.sessionID),
 		})),
 		...questions.map((request) => ({
 			kind: "question" as const,
@@ -35,7 +33,7 @@ function oldestPendingInteraction(
 			origin: subagentOriginOf(interactions, request.sessionID),
 		})),
 	];
-	return pending.toSorted((a, b) => a.request.askedAt - b.request.askedAt)[0] ?? null;
+	return pending.toSorted((a, b) => byCreation(a.request, b.request))[0] ?? null;
 }
 
 export const OpenCodeComposerInteraction = ({ fallback }: { fallback: ReactNode }) => (

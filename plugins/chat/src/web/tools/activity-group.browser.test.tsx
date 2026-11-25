@@ -4,8 +4,11 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { KernelProvider } from "@kilo-desktop/kernel/web";
+import type * as ReactOpenCode from "@kilo-desktop/react-opencode";
+import type { PermissionRequest } from "@kilo-desktop/react-opencode";
 
 import { renderInKernel } from "../../test/kernel-harness";
+import { permissionRequest } from "../../test/kilo2/fixtures";
 
 const runtime = vi.hoisted(() => ({
 	message: {
@@ -16,25 +19,23 @@ const runtime = vi.hoisted(() => ({
 	},
 	thread: { extras: undefined as unknown },
 	threadListItem: { id: "thread-1", remoteId: "session-1" },
-	permissions: [] as Array<{
-		tool?: { messageID?: string; callID?: string } | undefined;
-	}>,
+	permissions: [] as PermissionRequest[],
 }));
 vi.mock("@assistant-ui/react", () => ({
 	useAuiState: (selector: (state: typeof runtime) => unknown) => selector(runtime),
 	useScrollLock: () => () => undefined,
 }));
 
-vi.mock("@kilo-desktop/react-opencode", () => ({
+vi.mock("@kilo-desktop/react-opencode", async (importOriginal) => ({
+	...(await importOriginal<typeof ReactOpenCode>()),
 	useOpenCodeQuestions: () => [],
 	useOpenCodePermissions: () => ({ pending: runtime.permissions, reply: vi.fn() }),
-	projectOpenCodeThreadMessages: () => [],
 }));
 
 import { PendingInteractionsProvider } from "../interactions/PendingInteractionsContext";
 import { ActivityGroup, ActivitySubgroup, ManualDisclosureProvider } from "./activity-group";
-import { ApplyPatchDiff } from "./tool-ui-apply-patch";
-import { BashTerminal } from "./tool-ui-bash";
+import { PatchToolDiff } from "./tool-ui-patch";
+import { ShellTerminal } from "./tool-ui-shell";
 import { ToolCallFallback } from "./tool-ui-inline";
 import { ReadActivity } from "./tool-ui-read-search";
 import { SkillActivity } from "./tool-ui-skill";
@@ -75,8 +76,8 @@ const toolPart = (
 	respondToApproval: vi.fn(),
 });
 
-const readPart = (id: string, path: string) => toolPart(id, "read", { file_path: path });
-const skillPart = (id: string, name: string) => toolPart(id, "skill", { name });
+const readPart = (id: string, path: string) => toolPart(id, "read", { path });
+const skillPart = (id: string, skill: string) => toolPart(id, "skill", { id: skill });
 const renderActivity = (
 	kind: ActivityKind,
 	parts: ToolCallMessagePartProps[],
@@ -175,7 +176,7 @@ describe("Reading activity subgroup", () => {
 	it("keeps a single running tool collapsed after earlier completed tools", async () => {
 		const completedRead = readPart("call-1", "/src/mark.svg");
 		const runningCommand = {
-			...toolPart("call-2", "bash", { command: "gh run view --job 104579955735" }),
+			...toolPart("call-2", "shell", { command: "gh run view --job 104579955735" }),
 			status: { type: "running" as const },
 		};
 		runtime.message.parts = [completedRead, runningCommand];
@@ -247,8 +248,8 @@ describe("Editing activity subgroup", () => {
 *** End Patch`;
 		const { container, getByRole, queryByText } = await renderActivity(
 			"editing",
-			[toolPart("patch-1", "apply_patch", { patchText })],
-			ApplyPatchDiff,
+			[toolPart("patch-1", "patch", { patchText })],
+			PatchToolDiff,
 		);
 		fireEvent.click(getByRole("button", { name: "Edited 2 files" }));
 		const firstRow = getByRole("button", { name: "Edited first.txt" });
@@ -494,7 +495,7 @@ describe("Notebooks activity subgroup", () => {
 describe("Self-describing solo tool rows", () => {
 	it("preserves a manually expanded parent group when its activity subtree remounts", async () => {
 		const read = readPart("call-1", "/src/mark.svg");
-		const command = toolPart("call-2", "bash", { command: "pnpm test" });
+		const command = toolPart("call-2", "shell", { command: "pnpm test" });
 		runtime.message.parts = [read, command];
 		const view = (revision: string) => (
 			<ManualDisclosureProvider>
@@ -504,7 +505,7 @@ describe("Self-describing solo tool rows", () => {
 							<ReadActivity {...read} />
 						</ActivitySubgroup>
 						<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
-							<BashTerminal {...command} />
+							<ShellTerminal {...command} />
 						</ActivitySubgroup>
 					</ActivityGroup>
 				</div>
@@ -523,7 +524,7 @@ describe("Self-describing solo tool rows", () => {
 	it("keeps a manually expanded streaming parent open when a subgroup joins", async () => {
 		const read = readPart("call-1", "/src/mark.svg");
 		const command = {
-			...toolPart("call-2", "bash", { command: "pnpm test" }),
+			...toolPart("call-2", "shell", { command: "pnpm test" }),
 			status: { type: "running" as const },
 		};
 		const search = {
@@ -541,7 +542,7 @@ describe("Self-describing solo tool rows", () => {
 								<ReadActivity {...read} />
 							</ActivitySubgroup>
 							<ActivitySubgroup group={{ indices: [1] }} kind="terminal">
-								<BashTerminal {...command} />
+								<ShellTerminal {...command} />
 							</ActivitySubgroup>
 							{parts.length > 2 ? (
 								<ActivitySubgroup group={{ indices: [2] }} kind="web">
@@ -565,11 +566,11 @@ describe("Self-describing solo tool rows", () => {
 
 	it("keeps an expanded row from the first subgroup visible when activity advances", async () => {
 		const completedCommand = {
-			...toolPart("call-1", "bash", { command: "pnpm test" }),
-			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+			...toolPart("call-1", "shell", { command: "pnpm test" }),
+			result: "2 passed\n",
 		};
 		const runningCommand = {
-			...toolPart("call-2", "bash", { command: "pnpm lint" }),
+			...toolPart("call-2", "shell", { command: "pnpm lint" }),
 			status: { type: "running" as const },
 		};
 		const search = {
@@ -583,8 +584,8 @@ describe("Self-describing solo tool rows", () => {
 					<div key={parts.length}>
 						<ActivityGroup group={{ indices: parts.map((_, index) => index) }}>
 							<ActivitySubgroup group={{ indices: [0, 1] }} kind="terminal">
-								<BashTerminal {...completedCommand} />
-								<BashTerminal {...runningCommand} />
+								<ShellTerminal {...completedCommand} />
+								<ShellTerminal {...runningCommand} />
 							</ActivitySubgroup>
 							{parts.length > 2 ? (
 								<ActivitySubgroup group={{ indices: [2] }} kind="web">
@@ -613,11 +614,11 @@ describe("Self-describing solo tool rows", () => {
 		const completedRead = readPart("call-1", "/src/mark.svg");
 		const runningCommands = [
 			{
-				...toolPart("call-2", "bash", { command: "pnpm lint" }),
+				...toolPart("call-2", "shell", { command: "pnpm lint" }),
 				status: { type: "running" as const },
 			},
 			{
-				...toolPart("call-3", "bash", { command: "pnpm test" }),
+				...toolPart("call-3", "shell", { command: "pnpm test" }),
 				status: { type: "running" as const },
 			},
 		];
@@ -631,7 +632,7 @@ describe("Self-describing solo tool rows", () => {
 				</ActivitySubgroup>
 				<ActivitySubgroup group={{ indices: [1, 2] }} kind="terminal">
 					{runningCommands.map((part) => (
-						<BashTerminal key={part.toolCallId} {...part} />
+						<ShellTerminal key={part.toolCallId} {...part} />
 					))}
 				</ActivitySubgroup>
 			</ActivityGroup>,
@@ -674,8 +675,8 @@ describe("Self-describing solo tool rows", () => {
 		runtime.message.status = { type: "complete" };
 		const { baseElement, queryByRole } = await renderActivity(
 			"terminal",
-			[toolPart("call-1", "bash", { command: "pnpm lint" })],
-			BashTerminal,
+			[toolPart("call-1", "shell", { command: "pnpm lint" })],
+			ShellTerminal,
 		);
 
 		expect(baseElement.textContent?.trim()).toBe("Ran pnpm lint");
@@ -684,14 +685,14 @@ describe("Self-describing solo tool rows", () => {
 
 	it("keeps a solo command with output expandable", async () => {
 		const part = {
-			...toolPart("call-1", "bash", { command: "pnpm test" }),
-			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+			...toolPart("call-1", "shell", { command: "pnpm test" }),
+			result: "2 passed\n",
 		};
 		runtime.message.status = { type: "complete" };
 		const { getByRole, getByText, queryByText } = await renderActivity(
 			"terminal",
 			[part],
-			BashTerminal,
+			ShellTerminal,
 		);
 
 		expect(queryByText(/2 passed/)).toBeNull();
@@ -701,13 +702,18 @@ describe("Self-describing solo tool rows", () => {
 
 	it("expands the tool detail while its permission request is pending", async () => {
 		const command = {
-			...toolPart("call-1", "bash", { command: "pnpm test" }),
+			...toolPart("call-1", "shell", { command: "pnpm test" }),
 			status: { type: "running" as const },
 		};
 		runtime.message.status = { type: "running" };
-		runtime.permissions.push({ tool: { messageID: "message-1", callID: "call-1" } });
+		runtime.permissions.push(
+			permissionRequest("session-1", {
+				action: "shell",
+				source: { type: "tool", messageID: "message-1", id: "call-1" },
+			}),
+		);
 
-		const { getByRole, getByText } = await renderActivity("terminal", [command], BashTerminal);
+		const { getByRole, getByText } = await renderActivity("terminal", [command], ShellTerminal);
 
 		expect(getByRole("button", { name: "Running pnpm test" }).getAttribute("aria-expanded")).toBe(
 			"true",
@@ -717,18 +723,18 @@ describe("Self-describing solo tool rows", () => {
 
 	it("preserves an expanded command when its activity subtree remounts", async () => {
 		const command = {
-			...toolPart("call-1", "bash", { command: "pnpm test" }),
-			result: JSON.stringify({ stdout: "2 passed\n", exitCode: 0 }),
+			...toolPart("call-1", "shell", { command: "pnpm test" }),
+			result: "2 passed\n",
 		};
-		const otherCommand = toolPart("call-2", "bash", { command: "pnpm lint" });
+		const otherCommand = toolPart("call-2", "shell", { command: "pnpm lint" });
 		runtime.message.parts = [command, otherCommand];
 		const view = (revision: string) => (
 			<ManualDisclosureProvider>
 				<div key={revision}>
 					<ActivityGroup group={{ indices: [0, 1] }}>
 						<ActivitySubgroup group={{ indices: [0, 1] }} kind="terminal">
-							<BashTerminal {...command} />
-							<BashTerminal {...otherCommand} />
+							<ShellTerminal {...command} />
+							<ShellTerminal {...otherCommand} />
 						</ActivitySubgroup>
 					</ActivityGroup>
 				</div>
@@ -753,7 +759,7 @@ describe("Activity group settling", () => {
 		const completedRead = readPart("call-1", "/src/example.ts");
 		const runningEdit = {
 			...toolPart("call-2", "edit", {
-				file_path: "/src/example.ts",
+				path: "/src/example.ts",
 				oldString: "const before = true;\n",
 				newString: "const after = true;\nconst added = true;\n",
 			}),
@@ -799,7 +805,7 @@ describe("Activity group settling", () => {
 	it("holds a finished single tool's label briefly before collapsing to the summary", async () => {
 		const completedRead = readPart("call-1", "/src/mark.svg");
 		const runningCommand = {
-			...toolPart("call-2", "bash", { command: "pnpm test" }),
+			...toolPart("call-2", "shell", { command: "pnpm test" }),
 			status: { type: "running" as const },
 		};
 		const renderGroup = (parts: ToolCallMessagePartProps[]) => (

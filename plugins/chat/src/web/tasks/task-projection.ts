@@ -1,22 +1,9 @@
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode";
+import { toolInput, type OpenCodeThreadState } from "@kilo-desktop/react-opencode";
 
 import type { TaskItem, TaskStatus } from "./task-list";
 
-export type TaskThreadSource = {
-	runState?: { type: string } | undefined;
-	sessionStatus?: { type: string } | null | undefined;
-	messageOrder: readonly string[];
-	messagesById: Readonly<
-		Record<
-			string,
-			| {
-					info: { role: string } | undefined;
-					parts: readonly Part[];
-			  }
-			| undefined
-		>
-	>;
-};
+/** What the task projection reads of a thread: its transcript and whether it runs. */
+export type TaskThreadSource = Pick<OpenCodeThreadState, "messages" | "running" | "runState">;
 
 export type TaskThreadProjection = {
 	items: readonly TaskItem[];
@@ -31,9 +18,6 @@ const STATUS_MAP: Readonly<Record<string, TaskStatus | undefined>> = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
-
-const isTaskWrite = (part: Part): part is ToolPart =>
-	part.type === "tool" && part.tool.toLowerCase() === "todowrite";
 
 const parseTaskItems = (value: unknown): readonly TaskItem[] | undefined => {
 	if (!Array.isArray(value)) return undefined;
@@ -53,33 +37,35 @@ const parseTaskItems = (value: unknown): readonly TaskItem[] | undefined => {
 
 const taskThreadProjectionCache = new WeakMap<TaskThreadSource, TaskThreadProjection | undefined>();
 
-/** Projects replacement-style task writes into the latest complete working-list snapshot. */
+const isRunning = (source: TaskThreadSource): boolean =>
+	source.running ||
+	source.runState.type === "streaming" ||
+	source.runState.type === "cancelling" ||
+	source.runState.type === "reverting";
+
+/**
+ * The running turn's working list: its latest complete `todowrite` snapshot
+ * (each call replaces the list). Nothing once the session stops, or before
+ * the current turn (from its prompt) has written one.
+ */
 export function projectTaskThread(source: TaskThreadSource): TaskThreadProjection | undefined {
 	if (taskThreadProjectionCache.has(source)) return taskThreadProjectionCache.get(source);
-	const hasLifecycleState = source.runState !== undefined || source.sessionStatus !== undefined;
-	const active =
-		source.runState?.type === "streaming" ||
-		source.runState?.type === "cancelling" ||
-		source.runState?.type === "reverting" ||
-		source.sessionStatus?.type === "busy" ||
-		source.sessionStatus?.type === "retry";
-	if (hasLifecycleState && !active) {
+	if (!isRunning(source)) {
 		taskThreadProjectionCache.set(source, undefined);
 		return undefined;
 	}
 
 	let projection: TaskThreadProjection | undefined;
-	for (const messageId of source.messageOrder) {
-		const message = source.messagesById[messageId];
-		if (message?.info?.role !== "assistant") {
+	for (const message of source.messages) {
+		if (message.type === "user" || message.type === "idle") {
 			projection = undefined;
 			continue;
 		}
-		for (const part of message.parts) {
-			if (!isTaskWrite(part)) continue;
-			const items = isRecord(part.state.input) ? parseTaskItems(part.state.input.todos) : undefined;
-			if (!items) continue;
-			projection = { items };
+		if (message.type !== "assistant") continue;
+		for (const item of message.content) {
+			if (item.type !== "tool" || item.name !== "todowrite") continue;
+			const items = parseTaskItems(toolInput(item).todos);
+			if (items) projection = { items };
 		}
 	}
 

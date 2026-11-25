@@ -1,6 +1,13 @@
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode";
+import {
+	toolInput,
+	type OpenCodeThreadState,
+	type SessionMessageAssistant,
+	type SessionMessageAssistantTool,
+} from "@kilo-desktop/react-opencode";
 
 import { isPlanFilePath, normalizePlanPath, pathsMatch } from "./plan-paths";
+
+type Tool = SessionMessageAssistantTool;
 
 export type PlanStatus = "writing" | "ready" | "error";
 
@@ -13,28 +20,8 @@ export type PlanProjection = {
 	hiddenCallIds: ReadonlySet<string>;
 };
 
-export type PlanThreadSource = {
-	runState?: { type: string } | undefined;
-	sessionStatus?: { type: string } | null | undefined;
-	messageOrder: readonly string[];
-	messagesById: Readonly<
-		Record<
-			string,
-			| {
-					info:
-						| {
-								role: string;
-								agent?: string | undefined;
-								finish?: unknown;
-								error?: unknown;
-						  }
-						| undefined;
-					parts: readonly Part[];
-			  }
-			| undefined
-		>
-	>;
-};
+/** What the plan projection reads of a thread: its transcript and whether it runs. */
+export type PlanThreadSource = Pick<OpenCodeThreadState, "messages" | "running" | "runState">;
 
 export type PlanThreadProjection = {
 	byMessageId: ReadonlyMap<string, PlanProjection>;
@@ -42,45 +29,32 @@ export type PlanThreadProjection = {
 	newest: PlanProjection | undefined;
 };
 
-const getString = (
-	value: Record<string, unknown> | null | undefined,
-	keys: readonly string[],
-): string => {
-	if (!value) return "";
-	for (const key of keys) {
-		const candidate = value[key];
-		if (typeof candidate === "string" && candidate.length > 0) return candidate;
-	}
-	return "";
+const stringField = (value: Record<string, unknown> | undefined, key: string): string => {
+	const candidate = value?.[key];
+	return typeof candidate === "string" ? candidate : "";
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
 
-const getToolPath = (part: ToolPart): string => {
-	const input = part.state.input;
-	const directPath = getString(input, ["filePath", "filepath", "path", "file_path", "file"]);
-	if (directPath) return normalizePlanPath(directPath);
+const toolMetadata = (tool: Tool): Record<string, unknown> | undefined =>
+	"metadata" in tool.state ? asRecord(tool.state.metadata) : undefined;
 
-	const nested = getString(asRecord(input.metadata), ["plan", "path"]);
-	if (nested) return normalizePlanPath(nested);
+/** The file a write or edit touches (`input.path`), or the plan a `plan_exit` hands off (`metadata.plan`). */
+const getToolPath = (tool: Tool): string =>
+	normalizePlanPath(
+		tool.name === "plan_exit"
+			? stringField(toolMetadata(tool), "plan")
+			: stringField(toolInput(tool), "path"),
+	);
 
-	const stateMetadata = "metadata" in part.state ? part.state.metadata : undefined;
-	return normalizePlanPath(getString(stateMetadata, ["plan", "path"]));
-};
+const getWriteContent = (tool: Tool): string => stringField(toolInput(tool), "content");
 
-const getDirectPlanMarkdown = (part: ToolPart): string =>
-	getString(part.state.input, ["content", "contents", "text", "markdown"]);
+const getEditOldString = (tool: Tool): string => stringField(toolInput(tool), "oldString");
 
-const getEditOldString = (part: ToolPart): string =>
-	getString(part.state.input, ["oldString", "old_string", "oldText", "old_text"]);
-
-const getEditNewString = (part: ToolPart): string | undefined => {
-	for (const key of ["newString", "new_string", "newText", "new_text"] as const) {
-		const candidate = part.state.input[key];
-		if (typeof candidate === "string") return candidate;
-	}
-	return undefined;
+const getEditNewString = (tool: Tool): string | undefined => {
+	const candidate = toolInput(tool).newString;
+	return typeof candidate === "string" ? candidate : undefined;
 };
 
 const replaceFirst = (source: string, search: string, replacement: string): string => {
@@ -90,33 +64,27 @@ const replaceFirst = (source: string, search: string, replacement: string): stri
 	return `${source.slice(0, index)}${replacement}${source.slice(index + search.length)}`;
 };
 
-export function resolvePlanMarkdownFromWrites(
-	writes: readonly ToolPart[],
-	priorMarkdown = "",
-): string {
+export function resolvePlanMarkdownFromWrites(writes: readonly Tool[], priorMarkdown = ""): string {
 	let markdown = priorMarkdown;
-	for (const part of writes) {
-		const direct = getDirectPlanMarkdown(part);
-		if (direct) {
-			markdown = direct;
+	for (const tool of writes) {
+		if (tool.name === "write") {
+			const content = getWriteContent(tool);
+			if (content) markdown = content;
 			continue;
 		}
-		if (part.tool !== "edit") continue;
-		const oldString = getEditOldString(part);
+		const oldString = getEditOldString(tool);
 		if (!markdown || !oldString) continue;
-		const newString = getEditNewString(part);
+		const newString = getEditNewString(tool);
 		if (newString === undefined) continue;
 		markdown = replaceFirst(markdown, oldString, newString);
 	}
 	return markdown;
 }
 
-const getToolError = (part: ToolPart): string =>
-	part.state.status === "error" && part.state.error
-		? part.state.error
+const getToolError = (tool: Tool): string =>
+	tool.state.status === "error" && tool.state.error.message
+		? tool.state.error.message
 		: "Kilo could not complete the plan.";
-
-const isToolPart = (part: Part): part is ToolPart => part.type === "tool";
 
 type GetPlanProjectionOptions = {
 	priorMarkdown?: string;
@@ -128,23 +96,23 @@ type GetPlanProjectionOptions = {
 
 const isMarkdownPath = (path: string): boolean => /\.md$/i.test(path);
 
-const hasPlanExitPart = (parts: readonly Part[]): boolean =>
-	parts.some((part) => isToolPart(part) && part.tool === "plan_exit");
+const hasPlanExit = (tools: readonly Tool[]): boolean =>
+	tools.some((tool) => tool.name === "plan_exit");
 
-export function getPlanProjectionFromParts(
-	parts: readonly Part[],
+/** The plan a run of tool calls (one assistant turn's, in order) writes and hands off. */
+export function getPlanProjectionFromTools(
+	tools: readonly Tool[],
 	options?: GetPlanProjectionOptions,
 ): PlanProjection | undefined {
 	const treatWritesAsPlan = options?.treatWritesAsPlan === true;
-	const tools = parts.filter(isToolPart);
-	const exits = tools.filter((part) => part.tool === "plan_exit");
+	const exits = tools.filter((tool) => tool.name === "plan_exit");
 	// Like Kilo's own clients, the file named by plan_exit is the plan once it is known.
 	const handoffPath = exits.map(getToolPath).findLast(Boolean) ?? "";
-	const writes = tools.filter((part) => {
-		if (part.tool !== "write" && part.tool !== "edit") return false;
+	const writes = tools.filter((tool) => {
+		if (tool.name !== "write" && tool.name !== "edit") return false;
 		// A rejected or failed write never changed the file on disk.
-		if (part.state.status === "error") return false;
-		const path = getToolPath(part);
+		if (tool.state.status === "error") return false;
+		const path = getToolPath(tool);
 		if (handoffPath) return pathsMatch(path, handoffPath);
 		if (isPlanFilePath(path)) return true;
 		// Pathless covers a write whose arguments are still streaming.
@@ -154,8 +122,8 @@ export function getPlanProjectionFromParts(
 
 	const latestWrite = writes.at(-1);
 	const writePath = latestWrite ? getToolPath(latestWrite) : "";
-	const latestExit = exits.findLast((part) => {
-		const exitPath = getToolPath(part);
+	const latestExit = exits.findLast((tool) => {
+		const exitPath = getToolPath(tool);
 		return !writePath || !exitPath || pathsMatch(writePath, exitPath);
 	});
 	const anchor = latestWrite ?? latestExit;
@@ -164,7 +132,7 @@ export function getPlanProjectionFromParts(
 	const path = writePath || (latestExit ? getToolPath(latestExit) : "");
 	const markdown = resolvePlanMarkdownFromWrites(writes, options?.priorMarkdown ?? "");
 	const failedTool = [latestWrite, latestExit].find(
-		(part): part is ToolPart => part?.state.status === "error",
+		(tool): tool is Tool => tool?.state.status === "error",
 	);
 	const missingCompletedPayload = latestExit?.state.status === "completed" && !path && !markdown;
 
@@ -183,12 +151,12 @@ export function getPlanProjectionFromParts(
 		status = "ready";
 	}
 
-	const hiddenCallIds = new Set([...writes, ...exits].map((part) => part.callID));
+	const hiddenCallIds = new Set([...writes, ...exits].map((tool) => tool.id));
 	return {
 		status,
 		path,
 		markdown,
-		anchorCallId: anchor.callID,
+		anchorCallId: anchor.id,
 		hiddenCallIds,
 		...(error ? { error } : {}),
 	};
@@ -205,13 +173,9 @@ export function shouldExcludeToolCallFromActivityGroup(
 	options?: { hiddenPlanCallIds?: ReadonlySet<string> | undefined },
 ): boolean {
 	if (part.toolCallId && options?.hiddenPlanCallIds?.has(part.toolCallId)) return true;
-	const toolName = part.toolName?.toLowerCase();
-	if (toolName === "todowrite" || toolName === "todoread") return true;
-	if (part.toolName === "plan_exit") return true;
+	if (part.toolName === "todowrite" || part.toolName === "plan_exit") return true;
 	if (part.toolName !== "write" && part.toolName !== "edit") return false;
-	const args = asRecord(part.args);
-	if (!args) return false;
-	return isPlanFilePath(getString(args, ["filePath", "filepath", "path", "file_path", "file"]));
+	return isPlanFilePath(stringField(asRecord(part.args), "path"));
 }
 
 const findPriorMarkdown = (
@@ -229,22 +193,29 @@ const findPriorMarkdown = (
 const planThreadProjectionCache = new WeakMap<PlanThreadSource, PlanThreadProjection>();
 
 /**
- * Every OpenCode step is its own message and gets `time.completed`; `tool-calls`
- * and `unknown` finishes mean the loop may continue. Mirrors Kilo's clients.
+ * Every v2 model step is its own assistant message; `tool-calls` and
+ * `unknown` finishes mean the loop may continue. Mirrors Kilo's clients.
  */
-const endsAssistantRun = (info: { finish?: unknown; error?: unknown }): boolean =>
-	Boolean(info.error) ||
-	(typeof info.finish === "string" &&
-		info.finish.length > 0 &&
-		info.finish !== "tool-calls" &&
-		info.finish !== "unknown");
+const endsAssistantRun = (step: SessionMessageAssistant): boolean =>
+	Boolean(step.error) ||
+	(step.finish !== undefined && step.finish !== "tool-calls" && step.finish !== "unknown");
 
 const isPlanningAgent = (agent: string | undefined): boolean => {
 	const normalized = agent?.toLowerCase();
 	return normalized === "plan" || normalized === "architect";
 };
 
-/** Project canonical OpenCode messages once per immutable thread-state object. */
+const isRunning = (source: PlanThreadSource): boolean =>
+	source.running ||
+	source.runState.type === "streaming" ||
+	source.runState.type === "cancelling" ||
+	source.runState.type === "reverting";
+
+/**
+ * Projects a thread's plans once per immutable thread state. A plan belongs to
+ * one assistant turn (its consecutive steps, up to the next prompt or the
+ * `idle` message that ends it); edits chain onto the plan file's last version.
+ */
 export function projectPlanThread(source: PlanThreadSource): PlanThreadProjection {
 	const cached = planThreadProjectionCache.get(source);
 	if (cached) return cached;
@@ -256,7 +227,7 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 	let assistantRun:
 		| {
 				messageIds: string[];
-				parts: Part[];
+				tools: Tool[];
 				planningAgent: boolean;
 				settled: boolean;
 		  }
@@ -264,17 +235,13 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 
 	const projectAssistantRun = () => {
 		if (!assistantRun) return;
-		const { messageIds, parts, planningAgent, settled } = assistantRun;
-		const hasPlanExit = hasPlanExitPart(parts);
-		const options = {
-			treatWritesAsPlan: planningAgent || hasPlanExit,
-			settled,
-		};
-		const initial = getPlanProjectionFromParts(parts, options);
+		const { messageIds, tools, planningAgent, settled } = assistantRun;
+		const options = { treatWritesAsPlan: planningAgent || hasPlanExit(tools), settled };
+		const initial = getPlanProjectionFromTools(tools, options);
 		if (initial) {
 			const priorMarkdown = findPriorMarkdown(documents, initial.path);
 			const projection = priorMarkdown
-				? (getPlanProjectionFromParts(parts, { ...options, priorMarkdown }) ?? initial)
+				? (getPlanProjectionFromTools(tools, { ...options, priorMarkdown }) ?? initial)
 				: initial;
 			for (const messageId of messageIds) {
 				byMessageId.set(messageId, projection);
@@ -288,38 +255,30 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 		assistantRun = undefined;
 	};
 
-	for (const messageId of source.messageOrder) {
-		const message = source.messagesById[messageId];
-		if (!message || message.info?.role !== "assistant") {
+	for (const message of source.messages) {
+		if (message.type === "user" || message.type === "idle") {
 			if (assistantRun) assistantRun.settled = true;
 			projectAssistantRun();
 			continue;
 		}
+		// Kilo's own context (synthetic notes, selections) sits inside a turn.
+		if (message.type !== "assistant") continue;
+		const tools = message.content.filter((item): item is Tool => item.type === "tool");
 		if (assistantRun) {
-			assistantRun.messageIds.push(messageId);
-			assistantRun.parts.push(...message.parts);
-			assistantRun.planningAgent ||= isPlanningAgent(message.info.agent);
-			assistantRun.settled ||= endsAssistantRun(message.info);
+			assistantRun.messageIds.push(message.id);
+			assistantRun.tools.push(...tools);
+			assistantRun.planningAgent ||= isPlanningAgent(message.agent);
+			assistantRun.settled ||= endsAssistantRun(message);
 		} else {
 			assistantRun = {
-				messageIds: [messageId],
-				parts: [...message.parts],
-				planningAgent: isPlanningAgent(message.info.agent),
-				settled: endsAssistantRun(message.info),
+				messageIds: [message.id],
+				tools,
+				planningAgent: isPlanningAgent(message.agent),
+				settled: endsAssistantRun(message),
 			};
 		}
 	}
-	if (
-		assistantRun &&
-		(source.runState !== undefined || source.sessionStatus !== undefined) &&
-		source.runState?.type !== "streaming" &&
-		source.runState?.type !== "cancelling" &&
-		source.runState?.type !== "reverting" &&
-		source.sessionStatus?.type !== "busy" &&
-		source.sessionStatus?.type !== "retry"
-	) {
-		assistantRun.settled = true;
-	}
+	if (assistantRun && !isRunning(source)) assistantRun.settled = true;
 	projectAssistantRun();
 
 	const result = { byMessageId, byAnchorCallId, newest };

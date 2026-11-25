@@ -1,4 +1,4 @@
-import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode";
+import type { PermissionRequest } from "@kilo-desktop/react-opencode";
 import { useEffect, useState } from "react";
 
 import type { Contribution, DomainObjectState, PluginSdk } from "@kilo-desktop/kernel";
@@ -20,10 +20,8 @@ import { useOptionalExtensions } from "../optional-extensions";
 
 const NOTHING_HELD: readonly string[] = [];
 
-const sameRequests = (
-	a: readonly OpenCodePermissionRequest[],
-	b: readonly OpenCodePermissionRequest[],
-) => a.length === b.length && a.every((request, index) => request === b[index]);
+const sameRequests = (a: readonly PermissionRequest[], b: readonly PermissionRequest[]) =>
+	a.length === b.length && a.every((request, index) => request === b[index]);
 
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
 	if (a.length !== b.length) return false;
@@ -47,9 +45,9 @@ export function autoAnswers(request: AutoReplyCandidate, rules: AutoAnswerRules)
 }
 
 /** A transcript permission request as the auto-approver's rules read it. */
-const candidateOf = (request: OpenCodePermissionRequest): AutoReplyCandidate => ({
-	action: request.permission,
-	metadata: request.metadata,
+const candidateOf = (request: PermissionRequest): AutoReplyCandidate => ({
+	action: request.action,
+	metadata: request.metadata ?? {},
 });
 
 /**
@@ -69,24 +67,30 @@ export function implementPermissionAutoAnswer(sdk: PluginSdk): void {
 /**
  * The pending requests the cards keep hidden: those main is answering
  * (`holding`), and those it will answer but has not reported yet, for
- * `PERMISSION_AUTO_ANSWER_TIMEOUT_MS` after they were asked — unless main already held
- * and `released` them.
+ * `PERMISSION_AUTO_ANSWER_TIMEOUT_MS` after the window first saw them
+ * (`seenAt`; v2 requests carry no time, and one not seen yet counts as just
+ * asked) — unless main already held and `released` them.
  */
 export function hiddenPermissions(
-	pending: readonly OpenCodePermissionRequest[],
+	pending: readonly PermissionRequest[],
 	state: {
 		readonly holding: readonly string[];
 		readonly released: ReadonlySet<string>;
+		readonly seenAt: ReadonlyMap<string, number>;
 		readonly now: number;
 		readonly rules: AutoAnswerRules;
 	},
-): OpenCodePermissionRequest[] {
+): PermissionRequest[] {
 	const holding = new Set(state.holding);
+	const withinWindow = (request: PermissionRequest) => {
+		const seenAt = state.seenAt.get(request.id);
+		return seenAt === undefined || state.now - seenAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS;
+	};
 	return pending.filter(
 		(request) =>
 			holding.has(request.id) ||
 			(!state.released.has(request.id) &&
-				state.now - request.askedAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS &&
+				withinWindow(request) &&
 				autoAnswers(candidateOf(request), state.rules)),
 	);
 }
@@ -99,9 +103,9 @@ function signInToolNames(tools: readonly Contribution<typeof Tool>[]): ReadonlyS
 
 /** `pending` without the requests in `hiddenKey` (newline-joined ids), or `pending` itself. */
 function withoutHidden(
-	pending: readonly OpenCodePermissionRequest[],
+	pending: readonly PermissionRequest[],
 	hiddenKey: string,
-): readonly OpenCodePermissionRequest[] {
+): readonly PermissionRequest[] {
 	if (!hiddenKey) return pending;
 	const hiddenIds = new Set(hiddenKey.split("\n"));
 	return pending.filter((request) => !hiddenIds.has(request.id));
@@ -116,8 +120,8 @@ function withoutHidden(
  * `pending` itself when nothing is hidden.
  */
 export function useVisiblePermissionRequests(
-	pending: readonly OpenCodePermissionRequest[],
-): readonly OpenCodePermissionRequest[] {
+	pending: readonly PermissionRequest[],
+): readonly PermissionRequest[] {
 	const holding = useDomainObjectState(AutoApprove, selectHolding) ?? NOTHING_HELD;
 	const mode = useDomainObjectState(AutoApprove, selectMode);
 	const signedIn = useContextKey(SIGNED_IN_KEY);
@@ -125,6 +129,7 @@ export function useVisiblePermissionRequests(
 	const [held, setHeld] = useState(holding);
 	const [released, setReleased] = useState<ReadonlySet<string>>(() => new Set());
 	const [now, setNow] = useState(() => Date.now());
+	const [seenAt, setSeenAt] = useState<ReadonlyMap<string, number>>(() => new Map());
 	const holdingIds = new Set(holding);
 	if (!sameIds(held, holding)) {
 		setHeld(holding);
@@ -135,19 +140,42 @@ export function useVisiblePermissionRequests(
 	const hidden = hiddenPermissions(pending, {
 		holding,
 		released,
+		seenAt,
 		now,
 		rules: { mode, signedIn, signInTools: signInToolNames(tools) },
 	});
 	const unreported = hidden.filter((request) => !holdingIds.has(request.id));
-	const nextRevealAt = unreported.length
-		? Math.min(...unreported.map((request) => request.askedAt)) + PERMISSION_AUTO_ANSWER_TIMEOUT_MS
+	const unseenKey = pending
+		.filter((request) => !seenAt.has(request.id))
+		.map((request) => request.id)
+		.join("\n");
+	const seenTimes = unreported.flatMap((request) => {
+		const time = seenAt.get(request.id);
+		return time === undefined ? [] : [time];
+	});
+	const nextRevealAt = seenTimes.length
+		? Math.min(...seenTimes) + PERMISSION_AUTO_ANSWER_TIMEOUT_MS
 		: undefined;
 	const visible = withoutHidden(pending, hidden.map((request) => request.id).join("\n"));
+	// The clock is read in a timer, not in render: at once to start each new
+	// request's window from when this window first saw it, else when the next
+	// hidden request's window ends.
 	useEffect(() => {
-		if (nextRevealAt === undefined) return;
-		const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextRevealAt - Date.now()));
+		if (!unseenKey && nextRevealAt === undefined) return;
+		const delay = unseenKey ? 0 : Math.max(0, nextRevealAt! - Date.now());
+		const timer = setTimeout(() => {
+			const time = Date.now();
+			if (unseenKey) {
+				setSeenAt((current) => {
+					const next = new Map(current);
+					for (const id of unseenKey.split("\n")) if (!next.has(id)) next.set(id, time);
+					return next;
+				});
+			}
+			setNow(time);
+		}, delay);
 		return () => clearTimeout(timer);
-	}, [nextRevealAt]);
+	}, [unseenKey, nextRevealAt]);
 
 	// Kept while the same requests show, so a reveal timer firing changes nothing downstream.
 	return useStableValue(visible, sameRequests);

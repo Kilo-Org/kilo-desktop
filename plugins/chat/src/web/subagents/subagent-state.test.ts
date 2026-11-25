@@ -2,46 +2,50 @@ import { describe, expect, it } from "vitest";
 import { createOpenCodeThreadState } from "@kilo-desktop/react-opencode";
 
 import {
-	childSessionIdForToolCall,
-	childSessionIdFromTaskPart,
+	assistantMessage,
+	permissionRequest,
+	questionForm,
+	tool,
+	userMessage,
+} from "../../test/kilo2/fixtures";
+import {
 	delegationStatus,
 	selectSubagentTranscript,
+	subagentAgent,
+	subagentCallForChild,
 	subagentDisplayStatus,
+	subagentTaskTitle,
 } from "./subagent-state";
 
+const subagentCall = (childSessionId: string | undefined, input: Record<string, unknown>) => {
+	const call = tool("subagent", input, "done");
+	return childSessionId
+		? { ...call, state: { ...call.state, metadata: { sessionID: childSessionId } } }
+		: call;
+};
+
 describe("subagent state", () => {
-	it("reads child identity from both supported metadata locations", () => {
-		expect(
-			childSessionIdFromTaskPart({
-				type: "tool",
-				tool: "task",
-				state: { metadata: { sessionId: "child-1" } },
-			}),
-		).toBe("child-1");
-		expect(
-			childSessionIdFromTaskPart({
-				type: "tool",
-				tool: "task",
-				metadata: { sessionID: "child-2" },
-			}),
-		).toBe("child-2");
-		expect(childSessionIdFromTaskPart({ type: "tool", tool: "read" })).toBeUndefined();
+	it("reads a delegation's title and agent from the subagent call's input", () => {
+		const call = subagentCall("ses_child", {
+			agent: "code-reviewer",
+			description: "  Review   the diff ",
+			prompt: "Look at everything",
+		});
+		expect(subagentTaskTitle(call)).toBe("Review the diff");
+		expect(subagentAgent(call)).toBe("code-reviewer");
+		expect(subagentTaskTitle(subagentCall("ses_child", { prompt: "Only a prompt" }))).toBe(
+			"Only a prompt",
+		);
 	});
 
-	it("finds a child by tool call and builds stable pane identity", () => {
-		expect(
-			childSessionIdForToolCall(
-				[
-					{
-						type: "tool",
-						tool: "task",
-						callID: "call-1",
-						state: { metadata: { sessionId: "child-1" } },
-					},
-				],
-				"call-1",
-			),
-		).toBe("child-1");
+	it("finds the subagent call that runs a child session", () => {
+		const call = subagentCall("ses_child", { agent: "explore", description: "Explore" });
+		const messages = [
+			userMessage("go"),
+			assistantMessage([tool("read", { path: "a.ts" }), subagentCall(undefined, {}), call]),
+		];
+		expect(subagentCallForChild(messages, "ses_child")).toBe(call);
+		expect(subagentCallForChild(messages, "ses_other")).toBeUndefined();
 	});
 
 	it("distinguishes loading, unavailable, error, and ready transcripts", () => {
@@ -77,9 +81,9 @@ describe("subagent state", () => {
 
 	it("prefers live child lifecycle over the parent tool status", () => {
 		const child = createOpenCodeThreadState("child");
-		expect(
-			subagentDisplayStatus({ ...child, sessionStatus: { type: "busy" } }, { type: "complete" }),
-		).toBe("working");
+		expect(subagentDisplayStatus({ ...child, running: true }, { type: "complete" })).toBe(
+			"working",
+		);
 		expect(
 			subagentDisplayStatus(
 				{
@@ -88,26 +92,23 @@ describe("subagent state", () => {
 						...child.interactions,
 						permissions: {
 							...child.interactions.permissions,
-							pending: { permission: {} as never },
+							pending: { per_1: permissionRequest("child", { action: "shell" }) },
 						},
 					},
 				},
 				{ type: "complete" },
 			),
 		).toBe("waiting");
+		const form = questionForm("grandchild", [{ question: "Which?", header: "Pick", options: [] }]);
 		const grandchild = {
 			...createOpenCodeThreadState("grandchild"),
 			interactions: {
 				...child.interactions,
-				questions: { ...child.interactions.questions, pending: { question: {} as never } },
+				questions: { ...child.interactions.questions, pending: { [form.id]: form } },
 			},
 		};
 		expect(
-			subagentDisplayStatus({
-				...child,
-				sessionStatus: { type: "busy" },
-				childSessionsById: { grandchild },
-			}),
+			subagentDisplayStatus({ ...child, running: true, childSessionsById: { grandchild } }),
 		).toBe("waiting");
 		expect(subagentDisplayStatus(undefined, { type: "incomplete", reason: "cancelled" })).toBe(
 			"cancelled",
@@ -122,18 +123,18 @@ describe("subagent state", () => {
 });
 
 describe("delegationStatus", () => {
-	it("follows the live child while it runs, even after its task call returned", () => {
+	it("follows the live child while it runs, even after its subagent call returned", () => {
 		expect(delegationStatus("working", { type: "complete" })).toBe("working");
 		expect(delegationStatus("waiting", { type: "complete" })).toBe("waiting");
 	});
 
-	it("reports how the task call ended once the child settles", () => {
+	it("reports how the subagent call ended once the child settles", () => {
 		expect(delegationStatus("done", { type: "incomplete", reason: "cancelled" })).toBe("cancelled");
 		expect(delegationStatus("done", { type: "incomplete", reason: "error" })).toBe("failed");
 		expect(delegationStatus("done", { type: "complete" })).toBe("done");
 	});
 
-	it("falls back to the task call before the child session is known", () => {
+	it("falls back to the subagent call before the child session is known", () => {
 		expect(delegationStatus(undefined, { type: "running" })).toBe("working");
 		expect(delegationStatus(undefined, { type: "complete" })).toBe("done");
 	});

@@ -1,3 +1,6 @@
+import type { SessionMessageAssistantTool, SessionMessageInfo } from "@kilo-desktop/react-opencode";
+
+import { findOpenCodeTool } from "../tools/opencode-tool";
 import { getToolFilePath } from "../tools/tool-diff-stats";
 
 const IMAGE_MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
@@ -24,40 +27,26 @@ export function imageMimeForPath(path: string): string | null {
 
 export const fileName = (path: string): string => path.split(/[\\/]/u).at(-1) ?? path;
 
-const record = (value: unknown): Record<string, unknown> | null =>
-	value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-
 export interface ImageAttachment {
 	readonly url: string;
 	readonly filename?: string;
 }
 
 /**
- * The images a tool call returned (OpenCode `state.attachments`): a screenshot,
- * an image an MCP tool made, a picture the agent read.
+ * The images a tool call returned (its completed `file` content): a
+ * screenshot, an image an MCP tool made, a picture the agent read.
  */
-export function toolImageAttachments(parts: unknown, toolCallId: string): ImageAttachment[] {
-	if (!Array.isArray(parts)) return [];
-	for (const part of parts) {
-		const tool = record(part);
-		if (tool?.type !== "tool" || (tool.callID ?? tool.id) !== toolCallId) continue;
-		const attachments = record(tool.state)?.attachments;
-		if (!Array.isArray(attachments)) return [];
-		return attachments.flatMap((attachment) => {
-			const file = record(attachment);
-			if (!file || typeof file.url !== "string" || !file.url) return [];
-			if (typeof file.mime !== "string" || !file.mime.startsWith("image/")) return [];
-			return [
-				{
-					url: file.url,
-					...(typeof file.filename === "string" && file.filename
-						? { filename: file.filename }
-						: {}),
-				},
-			];
-		});
-	}
-	return [];
+export function toolImageAttachments(
+	messages: readonly SessionMessageInfo[],
+	toolCallId: string,
+): ImageAttachment[] {
+	const tool = findOpenCodeTool(messages, toolCallId);
+	if (tool?.state.status !== "completed") return [];
+	return tool.state.content.flatMap((item) =>
+		item.type === "file" && item.uri && item.mime.startsWith("image/")
+			? [{ url: item.uri, ...(item.name ? { filename: item.name } : {}) }]
+			: [],
+	);
 }
 
 export interface SavedImage {
@@ -66,42 +55,35 @@ export interface SavedImage {
 	readonly revision: string;
 }
 
+/** The files a completed file tool call wrote: `write`/`edit` by input path, `patch` by its file diffs. */
+function writtenFiles(tool: SessionMessageAssistantTool): string[] {
+	if (tool.state.status !== "completed") return [];
+	if (FILE_WRITING_TOOLS.has(tool.name)) return [getToolFilePath(tool.state.input)];
+	if (tool.name !== "patch") return [];
+	const files = (tool.state.metadata as { files?: unknown } | undefined)?.files;
+	if (!Array.isArray(files)) return [];
+	return files.flatMap((file: { file?: unknown; status?: unknown } | null) =>
+		typeof file?.file === "string" && file.status !== "deleted" ? [file.file] : [],
+	);
+}
+
 /**
- * The image files a turn wrote: those its steps' snapshots list as changed
- * (`patch` parts, which cover scripts and shell commands too) and those its
- * file tools wrote. A snapshot image counts only when a tool call's input
- * names it, so a checkout or pull that swaps fixture images in shows none.
+ * The image files a turn's file tools wrote (`write`, `edit`, `patch`).
  * Each path once, at its latest revision, in first-written order; at most
  * `SAVED_IMAGES_LIMIT`, with how many more there were.
  */
-export function savedImages(parts: unknown): { images: SavedImage[]; more: number } {
-	const list = Array.isArray(parts) ? parts : [];
-	// shortcut: a script that builds the file name at runtime isn't matched; parse its output paths if that matters.
-	const toolInputs = list
-		.map((part) => {
-			const entry = record(part);
-			return entry?.type === "tool" ? JSON.stringify(record(entry.state)?.input ?? "") : "";
-		})
-		.join("\n");
+export function savedImages(messages: readonly SessionMessageInfo[]): {
+	images: SavedImage[];
+	more: number;
+} {
 	const byPath = new Map<string, string>();
-	const note = (path: string, revision: string) => {
-		if (!path || !imageMimeForPath(path)) return;
-		byPath.set(path, revision);
-	};
-	for (const part of list) {
-		const entry = record(part);
-		if (!entry) continue;
-		if (entry.type === "patch" && Array.isArray(entry.files)) {
-			const revision = typeof entry.hash === "string" ? entry.hash : "";
-			for (const file of entry.files) {
-				if (typeof file === "string" && toolInputs.includes(fileName(file))) note(file, revision);
+	for (const message of messages) {
+		if (message.type !== "assistant") continue;
+		for (const item of message.content) {
+			if (item.type !== "tool") continue;
+			for (const path of writtenFiles(item)) {
+				if (path && imageMimeForPath(path)) byPath.set(path, item.id);
 			}
-		}
-		if (entry.type === "tool" && typeof entry.tool === "string") {
-			const state = record(entry.state);
-			if (!FILE_WRITING_TOOLS.has(entry.tool) || state?.status !== "completed") continue;
-			const revision = typeof entry.callID === "string" ? entry.callID : "";
-			note(getToolFilePath(record(state.input) ?? undefined), revision);
 		}
 	}
 	const images = [...byPath].map(([path, revision]) => ({ path, revision }));

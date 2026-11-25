@@ -1,73 +1,88 @@
 import { describe, expect, it } from "vitest";
+import type { FormInfo } from "@kilo-desktop/react-opencode";
 
+import { questionForm } from "../../test/kilo2/fixtures";
 import {
-	PLAN_FOLLOWUP_ANSWER_CONTINUE,
-	PLAN_FOLLOWUP_ANSWER_KEEP_REFINING,
-	PLAN_FOLLOWUP_QUESTION,
-	findPlanFollowupRequest,
-	isPlanFollowupRequest,
+	buildPlanImplementAnswers,
+	findPlanFollowupForm,
+	isPlanFollowupForm,
+	planFollowupAnswerLabel,
 } from "./plan-followup";
 
-const planFollowup = {
-	id: "q-plan",
-	questions: [
+/** Kilo's plan follow-up form (`metadata.kilocode.options` annotates each answer label). */
+const planFollowup = (labels: { newSession: string; continue: string; keepRefining: string }) => {
+	const form = questionForm("ses_1", [
 		{
-			question: PLAN_FOLLOWUP_QUESTION,
+			question: "Ready to implement?",
 			header: "Implement",
-			options: [
-				{ label: "Start new session" },
-				{ label: PLAN_FOLLOWUP_ANSWER_CONTINUE },
-				{ label: PLAN_FOLLOWUP_ANSWER_KEEP_REFINING },
-			],
+			options: [labels.newSession, labels.continue, labels.keepRefining],
 		},
-	],
-};
-
-const regularQuestion = {
-	id: "q-other",
-	questions: [
-		{
-			question: "Which database?",
-			header: "Database",
-			options: [{ label: "Postgres" }, { label: "SQLite" }],
-		},
-	],
-};
-
-describe("isPlanFollowupRequest", () => {
-	it("detects the canonical Ready to implement question", () => {
-		expect(isPlanFollowupRequest(planFollowup)).toBe(true);
-		expect(isPlanFollowupRequest(regularQuestion)).toBe(false);
-	});
-
-	it("detects via questionKey", () => {
-		expect(
-			isPlanFollowupRequest({
-				id: "q",
-				questions: [{ question: "x", questionKey: "plan.followup.question", options: [] }],
-			}),
-		).toBe(true);
-	});
-
-	it("does not treat a generic Implement header as a plan follow-up", () => {
-		expect(
-			isPlanFollowupRequest({
-				id: "q",
-				questions: [
-					{
-						question: "Which implementation should I use?",
-						header: "Implement",
-						options: [{ label: "Option A" }, { label: "Option B" }],
+	]);
+	return {
+		...form,
+		metadata: {
+			kind: "question",
+			kilocode: {
+				options: {
+					q0: {
+						[labels.newSession]: { labelKey: "plan.followup.answer.newSession" },
+						[labels.continue]: { labelKey: "plan.followup.answer.continue", mode: "code" },
+						[labels.keepRefining]: { labelKey: "plan.followup.answer.keepRefining", mode: "plan" },
 					},
-				],
+				},
+			},
+		},
+	} satisfies FormInfo;
+};
+
+const english = planFollowup({
+	newSession: "Start new session",
+	continue: "Continue here",
+	keepRefining: "Keep refining",
+});
+
+const regularQuestion = questionForm("ses_1", [
+	{ question: "Ready to implement?", header: "Implement", options: ["Continue here"] },
+]);
+
+describe("isPlanFollowupForm", () => {
+	it("detects the follow-up by its answers' label keys, not its wording", () => {
+		expect(isPlanFollowupForm(english)).toBe(true);
+		expect(isPlanFollowupForm(regularQuestion)).toBe(false);
+		expect(isPlanFollowupForm(undefined)).toBe(false);
+	});
+
+	it("does not treat another annotated question as the follow-up", () => {
+		expect(
+			isPlanFollowupForm({
+				metadata: {
+					kind: "question",
+					kilocode: { options: { q0: { Yes: { labelKey: "snapshot.slowRepo.answer.yes" } } } },
+				},
 			}),
 		).toBe(false);
 	});
 });
 
-describe("findPlanFollowupRequest", () => {
-	it("returns the plan follow-up among pending requests", () => {
-		expect(findPlanFollowupRequest([regularQuestion, planFollowup])).toEqual(planFollowup);
-		expect(findPlanFollowupRequest([regularQuestion])).toBeNull();
+describe("findPlanFollowupForm", () => {
+	it("returns the plan follow-up among pending forms", () => {
+		expect(findPlanFollowupForm([regularQuestion, english])).toBe(english);
+		expect(findPlanFollowupForm([regularQuestion])).toBeNull();
+	});
+});
+
+describe("plan follow-up answers", () => {
+	it("answers with the form's own label, in whatever language it was asked", () => {
+		const german = planFollowup({
+			newSession: "Neue Sitzung starten",
+			continue: "Hier fortfahren",
+			keepRefining: "Weiter verfeinern",
+		});
+		expect(buildPlanImplementAnswers(german)).toEqual([["Hier fortfahren"]]);
+		expect(planFollowupAnswerLabel(german, "keepRefining")).toBe("Weiter verfeinern");
+	});
+
+	it("falls back to Kilo's English labels when the form lacks label keys", () => {
+		expect(buildPlanImplementAnswers(regularQuestion)).toEqual([["Continue here"]]);
 	});
 });

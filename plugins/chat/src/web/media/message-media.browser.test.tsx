@@ -1,15 +1,23 @@
+import type {
+	SessionMessageAssistant,
+	SessionMessageAssistantTool,
+	SessionMessageInfo,
+} from "@kilocode/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { chatPaneObject, HTML_RENDER_TOOL_NAME, MEDIA_PANE_KIND } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
 import {
 	assistantMessage,
-	FakeKiloServer,
+	idleMessage,
+	session,
+	text,
+	tool,
 	userMessage,
-	type FakeMessage,
-} from "../../test/fake-kilo-server";
-import { expandAll, toolPart } from "../../test/transcript";
+} from "../../test/kilo2/fixtures";
+import { button, expandAll, expandUntil } from "../../test/transcript";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -28,12 +36,40 @@ function pngDataUrl(width: number, height: number): string {
 	return canvas.toDataURL("image/png");
 }
 
-async function showReply(parts: Record<string, unknown>[], server = new FakeKiloServer()) {
-	const messages: FakeMessage[] = [
-		userMessage("ses_a", "msg_1", "Make me a chart"),
-		assistantMessage("ses_a", "msg_2", "msg_1", parts),
+/** A completed call of `name` that returned the image `uri` as `filename`. */
+function imageTool(name: string, uri: string, filename: string): SessionMessageAssistantTool {
+	const call = tool(name, {});
+	return {
+		...call,
+		state: {
+			status: "completed",
+			input: {},
+			content: [{ type: "file", uri, mime: "image/png", name: filename }],
+			metadata: {},
+		},
+	};
+}
+
+/** A completed call of `name` that reports `metadata`. */
+function toolWith(
+	name: string,
+	input: Record<string, unknown>,
+	metadata: Record<string, unknown>,
+): SessionMessageAssistantTool {
+	const call = tool(name, input, "Done");
+	return { ...call, state: { ...call.state, metadata } as SessionMessageAssistantTool["state"] };
+}
+
+async function showReply(
+	content: SessionMessageAssistant["content"],
+	server = new FakeKilo2Server(),
+) {
+	const messages: SessionMessageInfo[] = [
+		userMessage("Make me a chart"),
+		assistantMessage(content, { finish: "stop", rawFinish: "stop" }),
+		idleMessage(),
 	];
-	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
+	server.addChat(session("ses_a", { title: "Chat" }), messages);
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -42,76 +78,40 @@ async function showReply(parts: Record<string, unknown>[], server = new FakeKilo
 	return { host, server };
 }
 
-const answer = (text: string) => ({ type: "text", text, time: { start: 1, end: 2 } });
 const viewer = () => page.getByTestId("chat-media-pane");
 
 describe("images in a reply", () => {
-	it("shows an image the assistant attached and opens it in the viewer", async () => {
-		await showReply([
-			{ type: "file", mime: "image/png", filename: "chart.png", url: pngDataUrl(40, 20) },
-			answer("Here is the chart."),
-		]);
-
-		await page.getByRole("button", { name: "Open chart.png in viewer" }).click();
-
-		await expect.element(viewer().getByRole("heading", { name: "chart.png" })).toBeVisible();
-	});
-
 	it("shows the images a tool returned under its row while the turn runs", async () => {
-		const server = new FakeKiloServer();
-		const reply = assistantMessage("ses_a", "msg_2", "msg_1", [
-			toolPart("screenshot", {
-				attachments: [
-					{ type: "file", mime: "image/png", url: pngDataUrl(10, 10), filename: "live.png" },
-				],
-			}),
-		]);
+		const server = new FakeKilo2Server();
+		const {
+			finish: _finish,
+			rawFinish: _rawFinish,
+			time: { completed: _completed, ...time },
+			...step
+		} = assistantMessage([imageTool("screenshot", pngDataUrl(10, 10), "live.png")]);
 		// Not finished: no completion time or finish reason yet.
-		const { finish: _finish, ...running } = reply.info;
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			messages: [
-				userMessage("ses_a", "msg_1", "Look"),
-				{ ...reply, info: { ...running, time: { created: Date.now() } } },
-			],
-		});
+		server.addChat(session("ses_a", { title: "Chat" }), [userMessage("Look"), { ...step, time }]);
+		server.startTurn("ses_a");
 		await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 
-		await expandAll();
-
-		await expect
-			.element(
+		await expandUntil([button(/Used 1 tool/)], () =>
+			expect(
 				page
 					.getByTestId("chat-tool-images")
-					.getByRole("button", { name: "Open live.png in viewer" }),
-			)
-			.toBeVisible();
+					.getByRole("button", { name: "Open live.png in viewer" })
+					.element(),
+			).toBeVisible(),
+		);
 	});
 
-	it("shows the images a tool returned below a settled turn's fold", async () => {
-		const shot = pngDataUrl(30, 30);
+	it("shows the images a tool returned below a settled turn's fold, and opens them in the viewer", async () => {
 		await showReply([
-			toolPart("screenshot", {
-				input: {},
-				attachments: [
-					{
-						id: "att_1",
-						sessionID: "ses_a",
-						messageID: "msg_2",
-						type: "file",
-						mime: "image/png",
-						filename: "screen.png",
-						url: shot,
-					},
-				],
-			}),
-			answer("That's the page."),
+			imageTool("screenshot", pngDataUrl(30, 30), "screen.png"),
+			text("That's the page."),
 		]);
 
 		const images = page.getByTestId("chat-tool-images");
@@ -122,25 +122,38 @@ describe("images in a reply", () => {
 		await expandAll();
 		await expect.element(page.getByText("screenshot", { exact: false })).toBeVisible();
 		expect(document.querySelectorAll('[data-qa-id="chat-tool-images"]')).toHaveLength(1);
+
+		await images.getByRole("button", { name: "Open screen.png in viewer" }).click();
+
+		await expect.element(viewer().getByRole("heading", { name: "screen.png" })).toBeVisible();
 	});
 
 	it("reads an image file the turn saved and opens it in the viewer", async () => {
-		const server = new FakeKiloServer();
-		server.files["out/plot.png"] = {
-			type: "text",
-			content: pngDataUrl(40, 20).split(",")[1]!,
-			encoding: "base64",
-			mimeType: "image/png",
-		};
+		const server = new FakeKilo2Server();
+		server.files["out/plot.png"] = Uint8Array.from(
+			atob(pngDataUrl(40, 20).split(",")[1]!),
+			(char) => char.charCodeAt(0),
+		);
 		await showReply(
 			[
-				toolPart("bash", { input: { command: "python plot.py -o out/plot.png && rm gone.png" } }),
-				{
-					type: "patch",
-					hash: "h1",
-					files: ["/projects/app/out/plot.png", "/projects/app/gone.png"],
-				},
-				answer("Saved the plot."),
+				tool("shell", { command: "python plot.py -o out/plot.png" }, "Saved"),
+				tool("write", { path: "/projects/app/out/plot.png", content: "" }),
+				toolWith(
+					"patch",
+					{ patchText: "*** Begin Patch\n*** Add File: gone.png\n*** End Patch" },
+					{
+						files: [
+							{
+								file: "/projects/app/gone.png",
+								patch: "",
+								additions: 0,
+								deletions: 0,
+								status: "added",
+							},
+						],
+					},
+				),
+				text("Saved the plot."),
 			],
 			server,
 		);
@@ -154,10 +167,10 @@ describe("images in a reply", () => {
 		expect(document.querySelector('[data-qa-id="chat-image-unavailable"]')).toBeNull();
 	});
 
-	it("says when an image it was given can't be shown", async () => {
+	it("says when an image a tool returned can't be shown", async () => {
 		await showReply([
-			{ type: "file", mime: "image/png", filename: "remote.png", url: "https://example.com/a.png" },
-			answer("Done."),
+			imageTool("screenshot", "https://example.com/a.png", "remote.png"),
+			text("Done."),
 		]);
 
 		await expect
@@ -169,11 +182,9 @@ describe("images in a reply", () => {
 describe("pages in the viewer", () => {
 	it("opens the agent's page in the Viewer pane, alongside the reply's images", async () => {
 		const { host } = await showReply([
-			toolPart(HTML_RENDER_TOOL_NAME, {
-				input: { title: "Sales chart", html: "<p>chart</p>" },
-			}),
-			{ type: "file", mime: "image/png", filename: "logo.png", url: pngDataUrl(20, 20) },
-			answer("Here it is."),
+			tool(HTML_RENDER_TOOL_NAME, { title: "Sales chart", html: "<p>chart</p>" }),
+			imageTool("screenshot", pngDataUrl(20, 20), "logo.png"),
+			text("Here it is."),
 		]);
 
 		await page.getByRole("button", { name: "Open Sales chart in viewer" }).click();

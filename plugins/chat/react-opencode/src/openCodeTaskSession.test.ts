@@ -1,43 +1,44 @@
 import { describe, expect, it } from "vitest";
-import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
 
-const taskPart = (overrides: Record<string, unknown>) =>
-	({
-		type: "tool",
-		tool: "task",
-		state: { status: "running" },
-		...overrides,
-	}) as never;
+import { getOpenCodeTaskSessionId, SUBAGENT_TOOL } from "./openCodeTaskSession";
+import { runningTool, subagentTool, tool } from "./testUtils";
 
 describe("getOpenCodeTaskSessionId", () => {
-	it.each([
-		[
-			"state metadata sessionId",
-			taskPart({ state: { status: "running", metadata: { sessionId: "a" } } }),
-			"a",
-		],
-		[
-			"state metadata sessionID",
-			taskPart({ state: { status: "running", metadata: { sessionID: "b" } } }),
-			"b",
-		],
-		["part metadata sessionId", taskPart({ metadata: { sessionId: "c" } }), "c"],
-		["part metadata sessionID", taskPart({ metadata: { sessionID: "d" } }), "d"],
-	])("reads %s", (_name, part, expected) => {
-		expect(getOpenCodeTaskSessionId(part)).toBe(expected);
+	it("reads a subagent call's child session from its state metadata", () => {
+		expect(SUBAGENT_TOOL).toBe("subagent");
+		expect(getOpenCodeTaskSessionId(subagentTool("call_1", "ses_child"))).toBe("ses_child");
+		expect(
+			getOpenCodeTaskSessionId(
+				tool("call_2", "subagent", {}, "Done", {
+					state: {
+						status: "completed",
+						input: {},
+						content: [{ type: "text", text: "Done" }],
+						metadata: { sessionID: "ses_done" },
+					},
+				}),
+			),
+		).toBe("ses_done");
 	});
 
-	it("ignores non-Task tools and invalid metadata", () => {
+	it("reads nothing from other tools or invalid metadata", () => {
 		expect(
-			getOpenCodeTaskSessionId(taskPart({ tool: "read", metadata: { sessionId: "child" } })),
+			getOpenCodeTaskSessionId(runningTool("call_1", "read", {}, { sessionID: "ses_child" })),
 		).toBeUndefined();
-		expect(getOpenCodeTaskSessionId(taskPart({ metadata: { sessionId: 42 } }))).toBeUndefined();
+		expect(
+			getOpenCodeTaskSessionId(runningTool("call_1", "subagent", {}, { sessionID: 42 })),
+		).toBeUndefined();
+		expect(
+			getOpenCodeTaskSessionId(runningTool("call_1", "subagent", {}, { sessionID: "" })),
+		).toBeUndefined();
 	});
 
-	it("reads a Task part whose state is absent", () => {
-		expect(getOpenCodeTaskSessionId(taskPart({ state: undefined }))).toBeUndefined();
+	it("reads nothing before the call starts (no metadata while its input streams)", () => {
 		expect(
-			getOpenCodeTaskSessionId(taskPart({ state: undefined, metadata: { sessionId: "child" } })),
-		).toBe("child");
+			getOpenCodeTaskSessionId({
+				name: "subagent",
+				state: { status: "streaming", input: '{"agent":' },
+			}),
+		).toBeUndefined();
 	});
 });

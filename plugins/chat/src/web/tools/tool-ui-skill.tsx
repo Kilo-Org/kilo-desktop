@@ -3,8 +3,8 @@ import { str, truncate } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
 export const SkillActivity: ToolCallComponent = ({ args, status }) => {
-	const name = str((args as Record<string, unknown> | undefined)?.name);
-	const skill = name ? truncate(name) : undefined;
+	const id = str((args as Record<string, unknown> | undefined)?.id);
+	const skill = id ? truncate(id) : undefined;
 
 	return (
 		<SoloAwareLabelRow

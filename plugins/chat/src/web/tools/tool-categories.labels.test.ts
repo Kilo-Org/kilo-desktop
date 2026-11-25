@@ -96,22 +96,25 @@ describe("group keys", () => {
 
 describe("soloRowHidesItself", () => {
 	it("hides a quiet successful command but not a failed or cancelled one", () => {
-		expect(soloRowHidesItself("terminal", call("bash", {}, { result: "" }))).toBe(true);
-		expect(soloRowHidesItself("terminal", call("bash", {}, { result: "out" }))).toBe(false);
+		expect(soloRowHidesItself("terminal", call("shell", {}, { result: "" }))).toBe(true);
+		expect(soloRowHidesItself("terminal", call("shell", {}, { result: "out" }))).toBe(false);
+		expect(soloRowHidesItself("terminal", call("shell", {}, { result: "Exit code: 1" }))).toBe(
+			false,
+		);
+		expect(soloRowHidesItself("terminal", call("shell", {}, { result: "", isError: true }))).toBe(
+			false,
+		);
 		expect(
 			soloRowHidesItself(
 				"terminal",
-				call("bash", {}, { status: { type: "incomplete", reason: "cancelled" } as never }),
+				call("shell", {}, { status: { type: "incomplete", reason: "cancelled" } as never }),
 			),
 		).toBe(false);
 		expect(soloRowHidesItself("terminal", undefined)).toBe(false);
 	});
 
-	it("hides a delegation without output", () => {
-		expect(soloRowHidesItself("subagent", call("task", {}, { result: "" }))).toBe(true);
-		expect(
-			soloRowHidesItself("subagent", call("task", {}, { result: "<task_result>ok</task_result>" })),
-		).toBe(false);
+	it("never hides other rows", () => {
+		expect(soloRowHidesItself("subagent", call("board_read", {}, { result: "" }))).toBe(false);
 		expect(soloRowHidesItself("reading", call("read"))).toBe(false);
 	});
 });

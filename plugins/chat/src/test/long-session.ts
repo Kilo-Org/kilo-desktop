@@ -1,8 +1,16 @@
 // A long, realistic session for performance benchmarks: every turn is a
 // prompt and a reply that reads, edits and runs things before answering in
 // markdown, the shape that makes long agent sessions heavy.
-import { assistantMessage, userMessage, type FakeMessage } from "./fake-kilo-server";
-import { toolPart } from "./transcript";
+import type { SessionMessageInfo } from "@kilocode/client";
+
+import {
+	assistantMessage,
+	idleMessage,
+	reasoning,
+	text,
+	tool,
+	userMessage,
+} from "./kilo2/fixtures";
 
 const PARAGRAPH =
 	"The `login` handler in src/auth/login.ts posts the credentials to the session endpoint, " +
@@ -25,61 +33,32 @@ const sourceFile = (turn: number, lines = 60) =>
 		(_, line) => `export const value${turn}_${line} = compute(${line}, "${"x".repeat(24)}");`,
 	).join("\n");
 
-/** The `turn`th prompt and its finished reply. */
-export function longSessionTurn(chatId: string, turn: number): FakeMessage[] {
-	const user = userMessage(chatId, `msg_${turn}_u`, `Question ${turn}: what does login do?`);
+/** The `turn`th prompt and its finished reply (one step that reads, edits and runs, then answers). */
+export function longSessionTurn(turn: number): SessionMessageInfo[] {
 	const before = sourceFile(turn);
 	const after = before.replace(/compute\(1/g, "computeFast(1");
-	const reply = assistantMessage(chatId, `msg_${turn}_a`, user.info.id, [
-		{ type: "step-start" },
-		{
-			type: "reasoning",
-			text: `Looking at the login flow for turn ${turn}.`,
-			time: { start: 1, end: 2 },
-		},
-		toolPart(
-			"read",
-			{
-				input: { filePath: `/projects/app/src/file${turn}.ts` },
-				output: before,
-				title: `file${turn}.ts`,
-			},
-			`call_${turn}_read`,
+	const path = `/projects/app/src/file${turn}.ts`;
+	return [
+		userMessage(`Question ${turn}: what does login do?`, { id: `msg_${turn}_u` }),
+		assistantMessage(
+			[
+				reasoning(`Looking at the login flow for turn ${turn}.`),
+				tool("read", { path }, before, { id: `call_${turn}_read` }),
+				tool("edit", { path, oldString: before, newString: after }, "Edit applied", {
+					id: `call_${turn}_edit`,
+				}),
+				tool("shell", { command: "pnpm test", description: "Run tests" }, "ok\n".repeat(40), {
+					id: `call_${turn}_shell`,
+				}),
+				text(answer(turn)),
+			],
+			{ id: `msg_${turn}_a`, finish: "stop", rawFinish: "stop" },
 		),
-		toolPart(
-			"edit",
-			{
-				input: {
-					filePath: `/projects/app/src/file${turn}.ts`,
-					oldString: before,
-					newString: after,
-				},
-				output: "Edit applied",
-				title: `file${turn}.ts`,
-			},
-			`call_${turn}_edit`,
-		),
-		toolPart(
-			"bash",
-			{
-				input: { command: "pnpm test", description: "Run tests" },
-				output: "ok\n".repeat(40),
-				title: "pnpm test",
-			},
-			`call_${turn}_bash`,
-		),
-		{ type: "text", text: answer(turn), time: { start: 3, end: 4 } },
-		{
-			type: "step-finish",
-			reason: "stop",
-			cost: 0,
-			tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-		},
-	]);
-	return [user, reply];
+		idleMessage(),
+	];
 }
 
 /** A session of `turns` finished turns. */
-export function longSession(chatId: string, turns: number): FakeMessage[] {
-	return Array.from({ length: turns }, (_, index) => longSessionTurn(chatId, index + 1)).flat();
+export function longSession(turns: number): SessionMessageInfo[] {
+	return Array.from({ length: turns }, (_, index) => longSessionTurn(index + 1)).flat();
 }

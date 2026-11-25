@@ -141,8 +141,6 @@ function ChatSessionStarter({
 		void workSession?.open();
 	};
 
-	const directoryOf = (id: string) => chats?.getState().chats[id]?.directory ?? null;
-
 	const getSystem = async (id: string) => {
 		const chat = chats?.getState().chats[id];
 		const config = await chats?.methods
@@ -179,7 +177,6 @@ function ChatSessionStarter({
 						paneId="new-session"
 						composer={composer}
 						createChat={createChat}
-						directoryOf={directoryOf}
 						getSystem={getSystem}
 						onChatId={() => undefined}
 						onPrompted={openStarted}

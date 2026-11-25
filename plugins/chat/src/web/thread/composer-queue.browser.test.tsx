@@ -3,28 +3,21 @@ import { page, userEvent } from "vitest/browser";
 
 import { chatPaneObject } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { FakeKiloServer, userMessage, type RecordedRequest } from "../../test/fake-kilo-server";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
+import { session, userMessage } from "../../test/kilo2/fixtures";
 import { renderChat } from "../../test/render-chat";
 
 const input = () => page.getByTestId("kilo-composer-input");
 const items = () => page.getByTestId("kilo-composer-queue-item");
 const itemText = (index: number) => items().nth(index).getByTestId("kilo-composer-queue-text");
 
-const textOf = (request: RecordedRequest) =>
-	(request.body as { parts: { type: string; text?: string }[] }).parts
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("");
+const promptTexts = (server: FakeKilo2Server) =>
+	server.promptsTo("ses_a").map((prompt) => prompt.text);
 
 /** A chat that is working, with `texts` queued behind its turn. */
 async function queueBehindTurn(texts: readonly string[]) {
-	const server = new FakeKiloServer();
-	server.addChat({
-		id: "ses_a",
-		directory: "/projects/app",
-		title: "Chat",
-		messages: [userMessage("ses_a", "msg_1", "Hello")],
-	});
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Chat" }), [userMessage("Hello")]);
 	await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -32,7 +25,7 @@ async function queueBehindTurn(texts: readonly string[]) {
 	});
 	await expect.element(page.getByText("Hello")).toBeVisible();
 	await vi.waitFor(() => expect(server.openStreams).toBe(1));
-	server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+	server.startTurn("ses_a");
 	await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 	for (const text of texts) {
 		await userEvent.fill(input(), text);
@@ -44,10 +37,7 @@ async function queueBehindTurn(texts: readonly string[]) {
 	return server;
 }
 
-const endTurn = (server: FakeKiloServer) => {
-	server.emit("session.status", { sessionID: "ses_a", status: { type: "idle" } });
-	server.emit("session.idle", { sessionID: "ses_a" });
-};
+const endTurn = (server: FakeKilo2Server) => server.turn("ses_a")?.succeed();
 
 describe("the composer's queue", () => {
 	it("collapses and expands its list", async () => {
@@ -70,11 +60,7 @@ describe("the composer's queue", () => {
 			.toHaveTextContent("1 queued");
 		endTurn(server);
 
-		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/prompt_async").map(textOf)).toEqual([
-				"Second",
-			]),
-		);
+		await vi.waitFor(() => expect(promptTexts(server)).toEqual(["Second"]));
 	});
 
 	it("holds what waits while paused and sends it once resumed", async () => {
@@ -84,15 +70,11 @@ describe("the composer's queue", () => {
 		await expect.element(page.getByTestId("kilo-composer-queue-paused")).toBeVisible();
 		endTurn(server);
 		await expect.element(page.getByTestId("kilo-composer-stop")).not.toBeInTheDocument();
-		expect(server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
+		expect(server.promptsTo("ses_a")).toEqual([]);
 
 		await page.getByRole("button", { name: "Resume queue" }).click();
 
-		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/prompt_async").map(textOf)).toEqual([
-				"First",
-			]),
-		);
+		await vi.waitFor(() => expect(promptTexts(server)).toEqual(["First"]));
 	});
 
 	it("edits a queued prompt in place, or leaves it as it was on cancel", async () => {
@@ -111,11 +93,7 @@ describe("the composer's queue", () => {
 		await expect.element(page.getByTestId("kilo-composer-queue-editing")).not.toBeInTheDocument();
 
 		endTurn(server);
-		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/prompt_async").map(textOf)[0]).toBe(
-				"First, edited",
-			),
-		);
+		await vi.waitFor(() => expect(promptTexts(server)[0]).toBe("First, edited"));
 	});
 
 	it("moves a queued prompt with the keyboard", async () => {
@@ -137,7 +115,7 @@ describe("the composer's queue", () => {
 		await items().first().getByTestId("kilo-composer-queue-send-now").click();
 
 		await vi.waitFor(() =>
-			expect(server.requestsTo("POST", "/session/ses_a/abort").length).toBeGreaterThan(0),
+			expect(server.requestsTo("POST", "/api/session/ses_a/interrupt").length).toBeGreaterThan(0),
 		);
 	});
 });

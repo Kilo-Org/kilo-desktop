@@ -1,10 +1,10 @@
 import type { RespondToToolApprovalOptions, ToolCallMessagePart } from "@assistant-ui/react";
-import type { OpenCodePermissionRequest, OpenCodePermissionResponse } from "./types";
+import type { OpenCodePermissionResponse, PermissionRequest } from "./types";
 
 type ToolCallApproval = NonNullable<ToolCallMessagePart["approval"]>;
 
 export const projectOpenCodePermissionApproval = (
-	request: OpenCodePermissionRequest,
+	request: PermissionRequest,
 ): ToolCallApproval => ({
 	id: request.id,
 	options: [
@@ -12,13 +12,13 @@ export const projectOpenCodePermissionApproval = (
 			id: "once",
 			kind: "allow-once",
 		},
-		...(request.always.length > 0
+		...(request.save && request.save.length > 0
 			? [
 					{
 						id: "always",
 						kind: "allow-always",
-						description: "Allow these patterns until OpenCode is restarted.",
-						grants: request.always,
+						description: "Allow these patterns from now on.",
+						grants: [...request.save],
 						confirm: true,
 					},
 				]
@@ -31,7 +31,7 @@ export const projectOpenCodePermissionApproval = (
 });
 
 export const projectResolvedOpenCodePermissionApproval = (entry: {
-	request: OpenCodePermissionRequest;
+	request: PermissionRequest;
 	reply: OpenCodePermissionResponse;
 }): ToolCallApproval => ({
 	id: entry.request.id,

@@ -1,23 +1,16 @@
-import type { OpenCodePermissionRequest } from "@kilo-desktop/react-opencode";
+import type { PermissionRequest } from "@kilo-desktop/react-opencode";
 import { describe, expect, it } from "vitest";
 
 import { PERMISSION_AUTO_ANSWER_TIMEOUT_MS } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { autoAnswers, hiddenPermissions, type AutoAnswerRules } from "./visible-permissions";
 
-const request = (
-	id: string,
-	patch: Partial<OpenCodePermissionRequest> = {},
-): OpenCodePermissionRequest => ({
+const request = (id: string, patch: Partial<PermissionRequest> = {}): PermissionRequest => ({
 	id,
-	sessionId: "ses_1",
-	permission: "bash",
-	patterns: [],
+	sessionID: "ses_1",
+	action: "shell",
+	resources: [],
 	metadata: {},
-	always: [],
-	toolName: "bash",
-	askedAt: 1_000,
-	raw: {} as OpenCodePermissionRequest["raw"],
 	...patch,
 });
 
@@ -46,7 +39,13 @@ describe("autoAnswers", () => {
 });
 
 describe("hiddenPermissions", () => {
-	const state = { holding: [], released: new Set<string>(), now: 1_500, rules: AUTO };
+	const state = {
+		holding: [],
+		released: new Set<string>(),
+		seenAt: new Map([["a", 1_000]]),
+		now: 1_500,
+		rules: AUTO,
+	};
 
 	it("hides what main is holding", () => {
 		const pending = [request("a"), request("b")];
@@ -61,6 +60,13 @@ describe("hiddenPermissions", () => {
 		expect(
 			hiddenPermissions(pending, { ...state, now: 1_000 + PERMISSION_AUTO_ANSWER_TIMEOUT_MS }),
 		).toEqual([]);
+	});
+
+	it("hides a request it has not seen yet as just asked", () => {
+		const pending = [request("unseen")];
+		expect(
+			hiddenPermissions(pending, { ...state, now: 1_000 + PERMISSION_AUTO_ANSWER_TIMEOUT_MS }),
+		).toEqual(pending);
 	});
 
 	it("shows what main held and let go", () => {

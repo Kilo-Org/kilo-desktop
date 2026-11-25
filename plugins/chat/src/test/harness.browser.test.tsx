@@ -77,11 +77,10 @@ describe("renderAgentPane", () => {
 			model: { aiProviderId: "acme", modelId: "deep-2", variant: "high" },
 		});
 
-		expect(
-			host.server.requestsTo("POST", `/session/${chat.id}/prompt_async`)[0]?.body,
-		).toMatchObject({
-			parts: [{ type: "text", text: "Hello" }],
-			model: { providerID: "acme", modelID: "deep-2" },
+		expect(host.server.promptsTo(chat.id)[0]).toMatchObject({ text: "Hello" });
+		expect(host.server.chat(chat.id)?.model).toEqual({
+			providerID: "acme",
+			id: "deep-2",
 			variant: "high",
 		});
 		expect(host.core.calls.create).toHaveBeenCalledWith(
@@ -93,7 +92,7 @@ describe("renderAgentPane", () => {
 		const host = await renderAgentPane({ chatWeb: probeWeb, chats: [chatSummary("ses_a")] });
 		const chats = host.host.renderer.kernelSdk.domainObjects.get(Chats)!;
 
-		host.server.askPermission("ses_a", { id: "per_1", permission: "bash" });
+		host.server.askPermission("ses_a", { id: "per_1", action: "shell" });
 		await vi.waitFor(() =>
 			expect(chats.getState().chats.ses_a?.activity.pendingPermissionIds).toEqual(["per_1"]),
 		);
@@ -111,7 +110,7 @@ describe("renderAgentPane on the Kilo v2 fake", () => {
 	it("creates chats, sends prompts and follows a turn through v2 calls and events", async () => {
 		const kilo2 = new FakeKilo2Server();
 		kilo2.replies.push([[{ type: "text", text: "Hi there" }]]);
-		const host = await renderAgentPane({ chatWeb: probeWeb, kilo2 });
+		const host = await renderAgentPane({ chatWeb: probeWeb, server: kilo2 });
 		const sdk = host.host.renderer.sdkFor("kilo.chat");
 		const workSessions = sdk.domainObjects.get(WorkSessions)!;
 		const chats = sdk.domainObjects.get(Chats)!;
@@ -142,7 +141,11 @@ describe("renderAgentPane on the Kilo v2 fake", () => {
 
 	it("follows v2 permissions and question forms on the chat", async () => {
 		const kilo2 = new FakeKilo2Server();
-		const host = await renderAgentPane({ chatWeb: probeWeb, kilo2, chats: [chatSummary("ses_a")] });
+		const host = await renderAgentPane({
+			chatWeb: probeWeb,
+			server: kilo2,
+			chats: [chatSummary("ses_a")],
+		});
 		const chats = host.host.renderer.sdkFor("kilo.chat").domainObjects.get(Chats)!;
 		const activity = () => chats.getState().chats.ses_a?.activity;
 

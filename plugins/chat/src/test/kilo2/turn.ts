@@ -14,7 +14,12 @@ import { idleMessage, nextId, nextTime } from "./fixtures";
 
 /** What a turn needs from the fake server. */
 export interface TurnHost {
-	publish(sessionID: string, type: string, data: Record<string, unknown>): void;
+	/** Publishes a chat's event, returning its frame (`id`, `created`). */
+	publish(
+		sessionID: string,
+		type: string,
+		data: Record<string, unknown>,
+	): { readonly id: string; readonly created?: number };
 	append(
 		sessionID: string,
 		message: SessionMessageAssistant | ReturnType<typeof idleMessage>,
@@ -260,10 +265,14 @@ export class Turn {
 		if (this.#done) return;
 		this.#done = true;
 		this.#step?.end();
-		const idle = idleMessage(outcome, error);
-		this.host.append(this.sessionID, idle);
 		this.host.settle(this.sessionID, outcome);
-		this.host.publish(this.sessionID, type, data);
+		const frame = this.host.publish(this.sessionID, type, data);
+		// kilo2 derives the idle marker's id and time from its event.
+		this.host.append(this.sessionID, {
+			...idleMessage(outcome, error),
+			id: frame.id.replace(/^evt_/, "msg_"),
+			time: { created: frame.created ?? Date.now() },
+		});
 	}
 }
 

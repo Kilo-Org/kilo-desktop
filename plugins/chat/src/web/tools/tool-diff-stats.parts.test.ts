@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { assistantMessage, tool, userMessage } from "../../test/kilo2/fixtures";
 import {
 	getEditNewString,
 	getEditOldString,
 	getToolFilePath,
-	getToolUnifiedDiffFromParts,
+	getToolFileDiffs,
+	getToolUnifiedDiff,
 	getWriteContent,
 	hasEditStringArgs,
 } from "./tool-diff-stats";
@@ -23,10 +25,10 @@ const DIFF = [
 describe("reading tool args", () => {
 	it("finds a file path, edit strings and written content by any of their names", () => {
 		expect(getToolFilePath(undefined)).toBe("");
+		expect(getToolFilePath({ path: "/a.ts" })).toBe("/a.ts");
 		expect(getToolFilePath({ file: "a.ts" })).toBe("a.ts");
 		expect(getToolFilePath({})).toBe("");
-		expect(getToolFilePath({ file_path: "/a.ts", filePath: "/b.ts" })).toBe("/a.ts");
-		expect(getToolFilePath({ path: "c.ts", file: "d.ts" })).toBe("c.ts");
+		expect(getToolFilePath({ path: "/a.ts", filePath: "/b.ts" })).toBe("/a.ts");
 		expect(getEditOldString({ old_string: "b" })).toBe("b");
 		expect(getEditNewString({ new_string: "d" })).toBe("d");
 		expect(getEditOldString({ old_text: "a" })).toBe("a");
@@ -38,24 +40,23 @@ describe("reading tool args", () => {
 		expect(getWriteContent({})).toBe("");
 	});
 
-	it("takes the server's unified diff for the call when there is one", () => {
-		const parts = [
-			null,
-			{ type: "text" },
-			{ type: "tool", callID: "other", state: { metadata: { diff: "x" } } },
-			{ type: "tool", id: "c0", state: null },
-			{ type: "tool", callID: "c2", state: { metadata: null } },
-			{ type: "tool", callID: "c1", state: { metadata: { diff: DIFF } } },
-		];
-		expect(getToolUnifiedDiffFromParts("nope", "c1")).toBeUndefined();
-		expect(getToolUnifiedDiffFromParts(parts, "c0")).toBeUndefined();
-		expect(getToolUnifiedDiffFromParts(parts, "c2")).toBeUndefined();
-		expect(getToolUnifiedDiffFromParts(parts, "c1")).toBe(DIFF);
-		expect(
-			getToolUnifiedDiffFromParts(
-				[{ type: "tool", callID: "c1", state: { metadata: { diff: "" } } }],
-				"c1",
-			),
-		).toBeUndefined();
+	it("takes the server's file diffs for the call when there are any", () => {
+		const fileDiff = { file: "a.ts", patch: DIFF, additions: 1, deletions: 1, status: "modified" };
+		const edited = tool("edit", { path: "a.ts" }, "Edited", {
+			state: {
+				status: "completed",
+				input: { path: "a.ts" },
+				content: [{ type: "text", text: "Edited" }],
+				metadata: { files: [fileDiff, { file: 3 }] } as never,
+			},
+		});
+		const read = tool("read", { path: "a.ts" }, "contents");
+		const messages = [userMessage("fix it"), assistantMessage([read]), assistantMessage([edited])];
+
+		expect(getToolFileDiffs(messages, edited.id)).toEqual([fileDiff]);
+		expect(getToolUnifiedDiff(messages, edited.id)).toBe(DIFF);
+		expect(getToolUnifiedDiff(messages, read.id)).toBeUndefined();
+		expect(getToolUnifiedDiff(messages, "missing")).toBeUndefined();
+		expect(getToolUnifiedDiff([], edited.id)).toBeUndefined();
 	});
 });

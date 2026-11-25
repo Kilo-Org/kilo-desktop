@@ -28,7 +28,7 @@ describe("toolNameOf", () => {
 	it("names a desktop tool's contribution key by its wire name, and Kilo's tools as they are", () => {
 		expect(toolNameOf("kilo.terminal/open_terminal")).toBe("desktop_terminal_open_terminal");
 		expect(toolNameOf("kilo.chat/html_render")).toBe("desktop_chat_html_render");
-		expect(toolNameOf("bash")).toBe("bash");
+		expect(toolNameOf("shell")).toBe("shell");
 	});
 });
 
@@ -39,12 +39,12 @@ describe("buildToolkit", () => {
 				tools: ["kilo.terminal/open_terminal"],
 				category: "terminal",
 			}),
-			renderer("kilo.chat/bash", { tools: ["bash"] }),
+			renderer("kilo.chat/bash", { tools: ["shell"] }),
 		]);
 
-		expect(Object.keys(toolkit).sort()).toEqual(["bash", "desktop_terminal_open_terminal"]);
+		expect(Object.keys(toolkit).sort()).toEqual(["desktop_terminal_open_terminal", "shell"]);
 		expect(categories.get("desktop_terminal_open_terminal")).toBe("terminal");
-		expect(categories.has("bash")).toBe(false);
+		expect(categories.has("shell")).toBe(false);
 	});
 
 	it("shows standalone tools outside activity groups, as their first renderer says", () => {

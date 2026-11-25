@@ -1,4 +1,4 @@
-import type { Agent } from "@kilocode/sdk/v2/client";
+import type { AgentInfo } from "@kilocode/client";
 import {
 	BotIcon,
 	BugIcon,
@@ -8,7 +8,7 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 
-/** Agent fields the switcher renders from `client.app.agents()`. */
+/** Agent fields the switcher renders from `client.agent.list()`. */
 export type KiloCatalogAgent = {
 	name: string;
 	displayName: string;
@@ -33,7 +33,7 @@ const SWITCHER_AGENTS = [
 ] as const satisfies readonly KiloCatalogAgent[];
 
 /**
- * Assumed switcher set while `app.agents` is still loading.
+ * Assumed switcher set while `agent.list` is still loading.
  * Used for the trigger and menu so selection works before the catalog arrives.
  */
 export const OPTIMISTIC_AGENT_CATALOG: KiloAgentCatalog = {
@@ -49,10 +49,8 @@ function canonicalizeAgentName(name: string): string {
 	return AGENT_ALIASES[name] ?? name;
 }
 
-function isSelectableAgent(agent: Pick<Agent, "mode" | "hidden" | "deprecated">): boolean {
-	if (agent.hidden || agent.deprecated) {
-		return false;
-	}
+function isSelectableAgent(agent: Pick<AgentInfo, "mode" | "hidden">): boolean {
+	if (agent.hidden) return false;
 	return agent.mode === "primary" || agent.mode === "all";
 }
 
@@ -78,20 +76,23 @@ function prettifyAgentId(id: string): string {
 }
 
 /**
- * Build the catalog from the server's agent list.
+ * Build the catalog from the server's agent list (an agent's `id` names it,
+ * its `name` is shown when it says more than the id).
  * Curated built-ins appear first in their fixed order, followed by any
  * additional selectable custom agents in server order.
  */
-export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
+export function buildAgentCatalog(agents: readonly AgentInfo[]): KiloAgentCatalog {
 	const selectable = agents.filter(isSelectableAgent);
 	const available = new Map(
-		selectable.map((agent) => [canonicalizeAgentName(agent.name), agent] as const),
+		selectable.map((agent) => [canonicalizeAgentName(agent.id), agent] as const),
 	);
 	const builtInNames: Set<string> = new Set(SWITCHER_AGENTS.map((entry) => entry.name));
 
-	const configuredDefaults = (agent: Agent) => ({
-		...(agent.model ? { model: agent.model } : {}),
-		...(agent.variant ? { variant: agent.variant } : {}),
+	const configuredDefaults = (agent: AgentInfo) => ({
+		...(agent.model
+			? { model: { providerID: agent.model.providerID, modelID: agent.model.id } }
+			: {}),
+		...(agent.model?.variant ? { variant: agent.model.variant } : {}),
 	});
 	const builtIns = SWITCHER_AGENTS.flatMap((entry) => {
 		const source = available.get(entry.name);
@@ -101,13 +102,13 @@ export function buildAgentCatalog(agents: readonly Agent[]): KiloAgentCatalog {
 	const seen: Set<string> = new Set(builtInNames);
 	const custom: KiloCatalogAgent[] = [];
 	for (const agent of selectable) {
-		const name = canonicalizeAgentName(agent.name);
+		const name = canonicalizeAgentName(agent.id);
 		if (seen.has(name)) continue;
 		seen.add(name);
 		const color = isCssColor(agent.color) ? agent.color : undefined;
 		custom.push({
 			name,
-			displayName: agent.displayName || prettifyAgentId(name),
+			displayName: agent.name && agent.name !== agent.id ? agent.name : prettifyAgentId(name),
 			icon: BotIcon,
 			...(color ? { color } : {}),
 			...configuredDefaults(agent),

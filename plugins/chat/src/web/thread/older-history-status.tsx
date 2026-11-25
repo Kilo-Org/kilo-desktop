@@ -27,17 +27,18 @@ export const OlderHistoryStatus: FC = () => {
 			role="status"
 			className="text-muted-foreground flex items-center justify-center gap-2 py-2 text-sm"
 		>
-			{status === "loading" ? (
-				<>
-					<Spinner className="size-3.5" />
-					Loading earlier messages…
-				</>
-			) : (
+			{status === "failed" ? (
 				<>
 					Couldn't load earlier messages.
 					<Button variant="link" size="sm" className="h-auto p-0" onClick={retry}>
 						Retry
 					</Button>
+				</>
+			) : (
+				// `available` and `loading` both mean the next older page is on its way.
+				<>
+					<Spinner className="size-3.5" />
+					Loading earlier messages…
 				</>
 			)}
 		</div>

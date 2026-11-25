@@ -4,7 +4,7 @@ import {
 	type OpenCodeEventSourceLike,
 	type OpenCodeEventSubscriber,
 } from "@kilo-desktop/react-opencode";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { OpenCodeClient } from "@kilocode/client";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/contracts";
@@ -12,41 +12,15 @@ import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/con
 import { ChatSelections } from "../selection/chat-selections";
 import { createDeferredKiloClient } from "./deferred-client";
 import { createEventBatcher } from "./event-batcher";
-import { HistoryPrefetch } from "./history-prefetch";
-import { KiloClients } from "./kilo-client";
-import { LiveParts } from "./live-parts";
-import { settledPromptEvent } from "./pending-prompts";
+import { HistoryPrefetch, withPrefetchedHistory } from "./history-prefetch";
+import { kiloClient } from "./kilo-client";
+import { LiveParts, withLiveParts } from "./live-parts";
 
 type ServerHandle = DomainObjectHandle<typeof KiloServer>;
 
-/** What the server sends first on every (re)connect, once it publishes to that subscription. */
-const SERVER_CONNECTED = "server.connected";
-const RESYNC_EVENT = { payload: { type: STREAM_RECONNECTED_EVENT_TYPE, properties: {} } };
-
-const eventType = (event: unknown): unknown => {
-	const outer = event as { type?: unknown; payload?: { type?: unknown } } | null;
-	return outer?.payload?.type ?? outer?.type;
-};
-
-/**
- * `stream` with a resync for every thread after each `server.connected`.
- * react-opencode resyncs threads (history, status, pending prompts) only on a
- * reconnect, and as soon as it asks for the stream rather than once the server
- * is publishing to it, so a thread that read its state while the stream was
- * connecting would keep anything it missed meanwhile, such as its turn ending.
- */
-export async function* resyncOnceConnected(
-	stream: AsyncIterable<unknown>,
-): AsyncGenerator<unknown> {
-	for await (const event of stream) {
-		yield event;
-		if (eventType(event) === SERVER_CONNECTED) yield RESYNC_EVENT;
-	}
-}
-
 /**
  * What every agent pane in a window shares: how to reach the Kilo server, its
- * clients, and one event stream.
+ * client, and one event stream.
  *
  * - The connection comes from `kilo.core/server.connect()`, which waits for
  *   the server. It is read once per server start (a restart may change the
@@ -56,8 +30,9 @@ export async function* resyncOnceConnected(
  *   own subscription to the server's global stream (decision 51). It is one
  *   per window however many panes are open, opened by the first pane that
  *   needs it and kept until the window goes; on a reconnect it resolves the
- *   connection again. kilo.core's stream stays the source of truth for chat
- *   status and activity.
+ *   connection again, and react-opencode's event source has every thread
+ *   read its state again after each `server.connected`. kilo.core's stream
+ *   stays the source of truth for chat status and activity.
  * - The stream outlives the panes because a pane is unmounted whenever the
  *   person switches session. A stream reopened per switch misses whatever the
  *   server publishes while it connects, and a thread that misses its turn's
@@ -66,7 +41,6 @@ export async function* resyncOnceConnected(
  *   reason (see `ChatSelections`).
  */
 export class ChatServices {
-	readonly clients = new KiloClients();
 	readonly selections = new ChatSelections();
 	readonly #server: () => ServerHandle | null;
 	#watched: ServerHandle | null = null;
@@ -94,9 +68,24 @@ export class ChatServices {
 		return this.#connection;
 	}
 
-	/** A global client (no directory) that follows the current connection. */
-	readonly globalClient: KiloClient = createDeferredKiloClient(async () =>
-		this.clients.global(await this.connection()),
+	/** The window's client for the running server, waiting for it to be ready. */
+	async kiloClient(): Promise<OpenCodeClient> {
+		return kiloClient(await this.connection());
+	}
+
+	/** A client usable at once that follows the current connection. */
+	readonly client: OpenCodeClient = createDeferredKiloClient(() => this.kiloClient());
+
+	/** Chat histories loaded ahead of opening (see history-prefetch.ts). */
+	readonly history = new HistoryPrefetch();
+
+	/** The text of parts streaming now, for history read mid-stream (see live-parts.ts). */
+	readonly liveParts = new LiveParts();
+
+	/** `client` for transcripts: history reads served from prefetches and filled with live text. */
+	readonly transcriptClient: OpenCodeClient = withLiveParts(
+		withPrefetchedHistory(this.client, this.history),
+		this.liveParts,
 	);
 
 	/**
@@ -120,33 +109,24 @@ export class ChatServices {
 	 * answered while no thread was listening would otherwise keep its card).
 	 */
 	settlePermission(permissionId: string, chatId: string): void {
-		this.#batcher.push(settledPromptEvent("permission", permissionId, chatId));
+		this.#batcher.push({
+			type: "permission.replied",
+			data: { sessionID: chatId, requestID: permissionId, reply: "once" },
+			sessionId: chatId,
+		});
 	}
-
-	/** Chat histories loaded ahead of opening (see history-prefetch.ts). */
-	readonly history = new HistoryPrefetch();
-
-	/** The text of parts streaming now, for history read mid-stream (see live-parts.ts). */
-	readonly liveParts = new LiveParts();
 
 	/**
 	 * Loads `chatId`'s history ahead, so opening it shows the transcript
 	 * without a round trip. Best effort: a failure is the opening thread's to
 	 * report when it loads.
 	 */
-	prefetchHistory(chatId: string, directory: string | null): void {
+	prefetchHistory(chatId: string): void {
 		// The stream must be open for an event about the chat to drop a stale prefetch.
 		this.events();
-		void (async () => {
-			const connection = await this.connection();
-			const where = directory ?? (await this.#directoryOf(chatId));
-			if (where) this.history.prefetch(chatId, this.clients.directory(connection, where));
-		})().catch(() => undefined);
-	}
-
-	async #directoryOf(chatId: string): Promise<string | null> {
-		const { data } = await this.globalClient.session.get({ sessionID: chatId });
-		return data?.directory ?? null;
+		void this.kiloClient()
+			.then((client) => this.history.prefetch(chatId, client))
+			.catch(() => undefined);
 	}
 
 	dispose(): void {
@@ -161,12 +141,11 @@ export class ChatServices {
 	}
 
 	#openEvents(): OpenCodeEventSource {
-		const subscribe: OpenCodeEventSubscriber = async (options) => {
-			const client = this.clients.global(await this.connection());
-			const subscription = await client.global.event(withSkipForkSync(options) as never);
-			return { stream: resyncOnceConnected(subscription.stream as AsyncIterable<unknown>) };
+		const subscribe: OpenCodeEventSubscriber = async ({ signal }) => {
+			const client = await this.kiloClient();
+			return { stream: client.event.subscribe({ signal }) };
 		};
-		const source = new OpenCodeEventSource(this.globalClient as never, subscribe);
+		const source = new OpenCodeEventSource(this.client, subscribe);
 		// The batcher is the source's one listener, which also keeps it connected.
 		// Anything about a chat (or a reconnect) makes its prefetched history stale.
 		const batcher = this.#batcher;
@@ -190,14 +169,4 @@ export class ChatServices {
 			if (state.status !== "ready") this.#connection = undefined;
 		});
 	}
-}
-
-/**
- * A fork replays its whole copied transcript twice on `/global/event`: as the
- * usual events and as durable `sync` copies, which no thread reads. VS Code
- * and JetBrains send the same header.
- */
-function withSkipForkSync(options: unknown): Record<string, unknown> {
-	const given = (options ?? {}) as { headers?: Record<string, string> };
-	return { ...given, headers: { ...given.headers, "x-kilo-sse-skip-fork-sync": "1" } };
 }

@@ -7,12 +7,14 @@ import type { OpenCodeServerEvent } from "@kilo-desktop/react-opencode";
  * projection and a store notification. Here a frame's run of deltas to the
  * same part is joined into one delta, so the reducer runs once.
  *
- * - Only `message.part.delta` waits. Every other event (connects, resyncs,
+ * - Only the streamed deltas (`session.text.delta`, `session.reasoning.delta`,
+ *   `session.tool.input.delta`, `session.compaction.delta`) wait. Every other event (connects, resyncs,
  *   status, whole parts) first delivers what's queued, then itself, at once:
  *   their timing against history loads is what react-opencode relies on (a
  *   resync arriving after a thread's first load would load it again).
  * - Order is kept: a delta joins only the event queued just before it, and
- *   only when that is a delta to the same message, part and field.
+ *   only when that is a delta of the same type to the same session and
+ *   assistant message (and part ordinal, or tool call for tool input).
  * - The flush is a timer, not an animation frame: a hidden window gets no
  *   frames, and its queue would grow without bound.
  * - Each listener gets exactly the events it would have got one by one: the
@@ -27,44 +29,35 @@ type Listener = (event: OpenCodeServerEvent) => void;
 
 export const EVENT_BATCH_INTERVAL_MS = 16;
 
-const DELTA = "message.part.delta";
+/** The streamed deltas, each with the field its text is in. */
+const DELTA_TEXT: ReadonlyMap<string, "delta" | "text"> = new Map([
+	["session.text.delta", "delta"],
+	["session.reasoning.delta", "delta"],
+	["session.tool.input.delta", "delta"],
+	["session.compaction.delta", "text"],
+]);
 
-interface DeltaProperties {
-	messageID: string;
-	partID: string;
-	field: string;
-	delta: string;
-}
+/** What a delta streams into: deltas with the same target join. */
+const targetOf = (event: OpenCodeServerEvent): string =>
+	[
+		event.type,
+		event.sessionId,
+		event.data.assistantMessageID,
+		event.data.ordinal,
+		event.type === "session.tool.input.delta" ? event.data.id : undefined,
+	].join("\n");
 
-const deltaOf = (event: OpenCodeServerEvent): DeltaProperties | null => {
-	if (event.type !== DELTA) return null;
-	const { messageID, partID, field, delta } = event.properties;
-	return typeof messageID === "string" &&
-		typeof partID === "string" &&
-		typeof field === "string" &&
-		typeof delta === "string"
-		? { messageID, partID, field, delta }
-		: null;
-};
-
-/** `next` joined onto `previous` when both are deltas to the same part's field, else null. */
+/** `next` joined onto `previous` when both are deltas streaming into the same target, else null. */
 function joinDeltas(
 	previous: OpenCodeServerEvent,
 	next: OpenCodeServerEvent,
 ): OpenCodeServerEvent | null {
-	const before = deltaOf(previous);
-	const after = deltaOf(next);
-	if (
-		!before ||
-		!after ||
-		previous.sessionId !== next.sessionId ||
-		before.messageID !== after.messageID ||
-		before.partID !== after.partID ||
-		before.field !== after.field
-	) {
-		return null;
-	}
-	return { ...previous, properties: { ...previous.properties, delta: before.delta + after.delta } };
+	const field = DELTA_TEXT.get(next.type);
+	if (!field || previous.type !== next.type || targetOf(previous) !== targetOf(next)) return null;
+	const before = previous.data[field];
+	const after = next.data[field];
+	if (typeof before !== "string" || typeof after !== "string") return null;
+	return { ...previous, data: { ...previous.data, [field]: before + after } };
 }
 
 export interface EventBatcher {
@@ -99,7 +92,7 @@ export function createEventBatcher(intervalMs = EVENT_BATCH_INTERVAL_MS): EventB
 
 	return {
 		push(event) {
-			if (event.type !== DELTA) {
+			if (!DELTA_TEXT.has(event.type)) {
 				queue.push(event);
 				flush();
 				return;

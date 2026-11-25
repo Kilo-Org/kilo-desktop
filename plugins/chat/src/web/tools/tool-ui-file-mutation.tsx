@@ -4,9 +4,10 @@ import { FileDiff } from "@pierre/diffs/react";
 
 import { parseChatPatchFiles, usePierreDiffOptions, withChatDiffCacheKey } from "./pierre-diff";
 import { usePrimePierreDiffs } from "./use-prime-pierre-diffs";
+import { openCodeMessagesOf } from "./opencode-tool";
 import type { ActivitySubgroupContextValue } from "./activity-group";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
-import { getToolFilePath, getToolUnifiedDiffFromParts, sumFileDiffStats } from "./tool-diff-stats";
+import { getToolFilePath, getToolUnifiedDiff, sumFileDiffStats } from "./tool-diff-stats";
 import { basename, DiffCounts } from "./tool-ui-shared";
 import type { ToolCallComponent, ToolCallView } from "./tool-call";
 
@@ -80,10 +81,9 @@ function FileMutationDiff({
 	status,
 	toolCallId,
 }: ToolCallView & { config: FileMutationDiffConfig }) {
-	const unifiedDiff = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return getToolUnifiedDiffFromParts(custom?.opencode?.parts, toolCallId);
-	});
+	const unifiedDiff = useAuiState((s) =>
+		getToolUnifiedDiff(openCodeMessagesOf(s.message.metadata), toolCallId),
+	);
 	const record = args as Record<string, unknown> | undefined;
 	const path = getToolFilePath(record);
 	const fileName = path ? basename(path) : "";

@@ -8,6 +8,7 @@ import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-e
 import {
 	messageToComposerPrompt,
 	restoreToComposer,
+	userMessageToComposerPrompt,
 	useHasOpenCodeExtras,
 	useRevertRangeHasFileChanges,
 } from "./checkpoint-revert";
@@ -44,13 +45,15 @@ export const RevertToHereButton: FC = () => {
 				// RevertPendingProvider will never fire — clear manually.
 				setPendingId(null);
 			}
-			// The projected ThreadMessage (not messagesById) is the source here.
-			// User-message projections are immutable once created, so the
-			// click-time snapshot is safe.  The projected path is deliberate: it
-			// retains shadowParts-derived content for retry-emptied messages (whose
-			// server-side `parts` were cleared by retryFailedTurn), which the
-			// server-side serverMessageToComposerPrompt cannot recover.
-			await restoreToComposer(aui, messageToComposerPrompt(message));
+			// The v2 user message is the prompt as sent; the click-time projection
+			// stands in for one the transcript does not hold.
+			const sent = extras.state.messages.find((candidate) => candidate.id === message.id);
+			await restoreToComposer(
+				aui,
+				sent?.type === "user"
+					? userMessageToComposerPrompt(sent)
+					: messageToComposerPrompt(message),
+			);
 		} catch {
 			// Clears on revert failure AND on post-revert composer-restore failure.
 			// In the latter case the revert already landed; RevertPendingProvider

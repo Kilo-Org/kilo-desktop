@@ -12,7 +12,7 @@ import { useOptionalChatAgentSelection } from "../selection/ChatAgentSelectionCo
 import {
 	PLAN_IMPLEMENT_FALLBACK_PROMPT,
 	buildPlanImplementAnswers,
-	findPlanFollowupRequest,
+	findPlanFollowupForm,
 } from "./plan-followup";
 
 /** The agent a plan is implemented with. */
@@ -72,7 +72,7 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const planFollowup = findPlanFollowupRequest(pendingQuestions);
+	const planFollowup = findPlanFollowupForm(pendingQuestions);
 	const key = resolvePlanApprovalKey(planFollowup?.id, options?.fallbackApprovalScope);
 	const fallbackKey = resolvePlanApprovalKey(undefined, options?.fallbackApprovalScope);
 	const approved = usePlanApprovalUiStore((state) =>
@@ -89,7 +89,7 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 		void (async () => {
 			try {
 				if (planFollowup && replyToQuestion) {
-					await replyToQuestion(planFollowup.id, buildPlanImplementAnswers());
+					await replyToQuestion(planFollowup.id, buildPlanImplementAnswers(planFollowup));
 				} else {
 					aui.thread().append(PLAN_IMPLEMENT_FALLBACK_PROMPT);
 				}

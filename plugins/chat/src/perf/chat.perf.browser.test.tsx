@@ -1,6 +1,6 @@
 // Chat performance benchmarks (run with `pnpm --filter @kilo-desktop/plugin-chat perf`):
 // opening a long session, streaming a reply into it and scrolling through
-// it, in a real kernel with kilo.chat's real entries over a FakeKiloServer.
+// it, in a real kernel with kilo.chat's real entries over a FakeKilo2Server.
 // Each scenario logs one `PERF {…}` line; compare them before and after a
 // change. Numbers are wall-clock in headless Chromium, so compare runs on the
 // same machine and look at the trend across sizes, not single digits.
@@ -9,7 +9,8 @@ import { cdp, page } from "vitest/browser";
 
 import { chatPaneObject } from "../contracts";
 import { agentPane, chatSummary } from "../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../test/fake-kilo-server";
+import { FakeKilo2Server } from "../test/kilo2/fake-kilo2-server";
+import { session } from "../test/kilo2/fixtures";
 import { longSession } from "../test/long-session";
 import { renderChat } from "../test/render-chat";
 
@@ -104,13 +105,8 @@ function report(scenario: string, values: Record<string, number | string>) {
 }
 
 async function openLongSession(turns: number) {
-	const server = new FakeKiloServer();
-	server.addChat({
-		id: "ses_a",
-		directory: "/projects/app",
-		title: "Long chat",
-		messages: longSession("ses_a", turns),
-	});
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Long chat" }), longSession(turns));
 	const tasks = observeLongTasks();
 	const started = performance.now();
 	const host = await renderChat({
@@ -152,29 +148,27 @@ async function openLongSession(turns: number) {
 	return { host, server };
 }
 
-async function streamReply(server: FakeKiloServer, turns: number) {
+/** The live step's id, which every delta addresses. */
+let liveStep = "";
+
+async function streamReply(server: FakeKilo2Server, turns: number) {
 	const replyStarted = performance.now();
-	server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-	// Stamped on the fixtures' clock, so the reply sorts after the session's last turn.
-	const user = userMessage("ses_a", "msg_live_u", "Go on");
-	const reply = assistantMessage("ses_a", "msg_live_a", user.info.id, []);
-	const { completed: _completed, ...replyTime } = reply.info.time as {
-		created: number;
-		completed?: number;
-	};
-	server.emit("message.updated", { info: user.info });
-	for (const part of user.parts) server.emit("message.part.updated", { part });
-	server.emit("message.updated", { info: { ...reply.info, time: replyTime, finish: undefined } });
-	server.emit("message.part.updated", {
-		part: {
-			id: "part_live",
-			sessionID: "ses_a",
-			messageID: "msg_live_a",
-			type: "text",
-			text: "Streaming",
-			time: { start: replyTime.created },
-		},
-	});
+	// A prompt admitted, then a turn whose one step streams a text part token by token.
+	const inboxID = "msg_live_u";
+	server.emit(
+		"session.inbox.enqueued",
+		{ inboxID, item: { type: "user", payload: { text: "Go on" }, delivery: "steer" } },
+		"ses_a",
+	);
+	const turn = server.startTurn("ses_a");
+	server.emit("session.inbox.delivered", { inboxID }, "ses_a");
+	liveStep = turn.step().message.id;
+	server.emit("session.text.started", { assistantMessageID: liveStep, ordinal: 0 }, "ses_a");
+	server.emit(
+		"session.text.delta",
+		{ assistantMessageID: liveStep, ordinal: 0, delta: "Streaming" },
+		"ses_a",
+	);
 	await expect
 		.poll(() => document.body.textContent?.includes("Streaming"), { timeout: 30_000, interval: 1 })
 		.toBe(true);
@@ -208,22 +202,24 @@ async function streamReply(server: FakeKiloServer, turns: number) {
 		longTasks: tasks.count(),
 	});
 	await streamBursts(server, turns);
-	server.emit("session.idle", { sessionID: "ses_a" });
+	turn.succeed();
 }
 
-const emitDelta = (server: FakeKiloServer, index: number, last: string) =>
-	server.emit("message.part.delta", {
-		sessionID: "ses_a",
-		messageID: "msg_live_a",
-		partID: "part_live",
-		field: "text",
-		delta:
-			index === DELTAS - 1
-				? ` ${last}`
-				: index % 40 === 39
-					? "\n\nNext paragraph"
-					: ` word${index}`,
-	});
+const emitDelta = (server: FakeKilo2Server, index: number, last: string) =>
+	server.emit(
+		"session.text.delta",
+		{
+			assistantMessageID: liveStep,
+			ordinal: 0,
+			delta:
+				index === DELTAS - 1
+					? ` ${last}`
+					: index % 40 === 39
+						? "\n\nNext paragraph"
+						: ` word${index}`,
+		},
+		"ses_a",
+	);
 
 /** Tokens arriving in bursts, several to a network read, as a fast model sends them. */
 const BURST = 20;
@@ -238,7 +234,7 @@ async function mainThreadMs(): Promise<number> {
 	return (metrics.find((metric) => metric.name === "TaskDuration")?.value ?? 0) * 1000;
 }
 
-async function streamBursts(server: FakeKiloServer, turns: number) {
+async function streamBursts(server: FakeKilo2Server, turns: number) {
 	const busyBefore = await mainThreadMs();
 	const tasks = observeLongTasks();
 	const started = performance.now();

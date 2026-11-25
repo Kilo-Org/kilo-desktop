@@ -26,6 +26,7 @@ const WithExtras = ({ children }: { children: ReactNode }) => {
 };
 
 import { openCodeExtras } from "./openCodeExtras";
+import { permissionRequest, questionForm, session as fixtureSession } from "./testUtils";
 import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState";
 import {
 	useOpenCodePermissions,
@@ -77,8 +78,8 @@ afterEach(() => {
 
 describe("react-opencode hooks", () => {
 	it("reads session and thread state from the runtime extras", () => {
-		const session = { id: "s1" };
-		const state = { ...EMPTY_OPENCODE_THREAD_STATE, sessionId: "s1" };
+		const session = fixtureSession("s1");
+		const state = { ...EMPTY_OPENCODE_THREAD_STATE, sessionId: "s1", session };
 		extrasRef.current = provideExtras({ session, state });
 
 		expect(renderHookValue(() => useOpenCodeSession())).toBe(session);
@@ -96,8 +97,8 @@ describe("react-opencode hooks", () => {
 	});
 
 	it("projects pending permissions and questions to arrays", () => {
-		const permission = { id: "p1" };
-		const question = { id: "q1" };
+		const permission = permissionRequest("p1");
+		const question = questionForm("q1");
 		extrasRef.current = provideExtras({
 			permissions: { p1: permission },
 			questions: { q1: question },

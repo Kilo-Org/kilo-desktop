@@ -336,8 +336,42 @@ Since step 8 the runtime is Desktop's own source package
 `@kilo-desktop/react-opencode` (`plugins/chat/react-opencode`): upstream
 `@assistant-ui/react-opencode@0.2.17` (assistant-ui `c67168ee`) with the old
 pnpm patch applied as source. The patch, the `@opencode-ai/sdk` override and the
-`opencode-sdk-compat` shim are gone; it still uses `@kilocode/sdk` (v1) until
-steps 9–12 rewrite it on `@kilocode/client`.
+`opencode-sdk-compat` shim are gone. Since steps 9–12 it runs only on
+`@kilocode/client`; `@kilocode/sdk` is gone from the repository.
+
+### The fork on v2 (steps 9–12)
+
+- `kiloTranscript.ts` folds v2 events into `SessionMessageInfo[]` as kilo2's
+  own client does; replaying the recorded golden turn gives exactly what
+  `message.list` serves (`golden-transcript.test.ts`).
+- Thread state holds the session, `messages` (transcript order), `running`
+  (from `session.active` on attach/reconnect/load and `session.execution.*`;
+  a reply older than a newer execution event is ignored), the permission
+  requests and question forms it waits on (read again with `permission.list`
+  / `session.form.list` on load and reconnect, since the stream replays
+  nothing), pending prompts (sent with their pending id, so the server message
+  replaces them) and child sessions of `subagent` calls
+  (`state.metadata.sessionID`).
+- Projection: one assistant ThreadMessage per run of steps, each step opened
+  by `opencode-step-start` and closed by `opencode-step-finish { reason, cost,
+  tokens }`; only user and assistant messages show. `custom.opencode.messages`
+  carries the v2 messages behind a projected message. Every other data part
+  (snapshots, patches, retries, subtasks, snapshot progress) is gone.
+- One `OpenCodeClient` per connection (`kilo-client.ts`); calls by session id,
+  location-scoped calls (`agent.list`, `command.list`, `file.read`, `mcp.list`)
+  take `{ location: { directory } }`. One `event.subscribe` stream per window;
+  the fork emits `stream.reconnected` after every `server.connected`.
+- Prompts: kilo.chat's `sendPrompt` switches agent and model only when they
+  differ from the session's (each switch is a transcript message), then
+  `session.prompt({ id, text, files, metadata })` or `session.command` for a
+  known `/name`. The chat's system text rides on
+  `metadata["kilo-desktop"].system` (commands carry none) until step 14.
+- Live text (`live-parts.ts`): kilo2 stores text only when a part ends, so a
+  history read mid-stream is filled in from streamed deltas, keyed by session,
+  step, kind and ordinal.
+- Tool names: `shell`, `patch`, `subagent`, `skill { id }`, paths in `path`;
+  diffs from completed `metadata.files[].patch`; tool images are `file`
+  content items.
 
 - Two patch behaviours existed only in the shipped `dist`, not the patch's
   `src` diff, and were ported by hand: synthetic text shows only while its step
@@ -351,10 +385,9 @@ steps 9–12 rewrite it on `@kilocode/client`.
 
 ### Patch behaviours: requirements for the v2 rewrite
 
-What Desktop's former patch added to upstream, as requirements rather than code
-to port. Steps 9–12 keep each one on v2 or record a decision to drop it; tick
-each off as its step lands. "Where" is the fork's file today, "Guarded by" the
-tests that pin it (port them to v2 with the behaviour).
+What Desktop's former patch added to upstream, as requirements. Steps 9–12 kept
+each on v2 (tests in `plugins/chat/react-opencode/src`) except where marked
+dropped.
 
 | #   | Requirement                                                                                                                        | Where (fork)                                              | Guarded by                                                            | v2 step / note                                                                  |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -363,13 +396,13 @@ tests that pin it (port them to v2 with the behaviour).
 | R3  | Status sync on load and reconnect, ignoring a reply older than a newer one                                                         | `OpenCodeThreadController`                                | `OpenCodeThreadController.test.ts` (reconnect cases)                  | 10: `session.active` + execution events; no `session.status`                    |
 | R4  | A running thread stays attached when hidden; a hidden idle thread marks itself stale and reloads when shown                        | `OpenCodeThreadController`, `useOpenCodeRuntime`          | `kiloReattach.test.ts`, `useOpenCodeControllerState.browser.test.tsx` | 10                                                                              |
 | R5  | Revert and unrevert applied from the REST response; reverted messages hidden by id order                                           | `openCodeThreadState`, projection                         | `kiloRevert.test.ts`                                                  | 10: `session.revert.stage/commit/clear`, `session.revert.staged` events         |
-| R6  | Human permission approvals reply as interactive                                                                                    | `OpenCodeThreadController.replyToPermission`              | `kiloPermissionInteractive.test.ts`                                   | 11: v2 reply is `{ decision, message }`; likely drop the flag (record it)       |
-| R7  | MCP App registry: local apps and `mcpApp` metadata stamp `mcp.app` on tool calls                                                   | `openCodeMessageProjection` (`setLocalMcpApps`)           | kilo.chat `mcp-apps/*` tests                                          | 12: hidden until v2 has MCP resource routes (decision)                          |
+| R6  | Human permission approvals reply as interactive                                                                                    | –                                                         | –                                                                     | **Dropped (11):** v2's reply is `{ decision, message }`, with no such flag      |
+| R7  | MCP App registry: local apps and `mcpApp` metadata stamp `mcp.app` on tool calls                                                   | `openCodeMessageProjection` (`setLocalMcpApps`)           | `openCodeMessageProjection.test.ts`                                   | **Kept, apps hidden (12):** no v2 resource-read/tool-call route; host is null   |
 | R8  | A stopped, unfinished or halted-between-steps turn projects as `incomplete/cancelled` ("You stopped")                              | projection (`endsBetweenSteps`)                           | `kiloStopStatus.test.ts`                                              | 9: from `idle { outcome: "interrupted" }` and `session.execution.interrupted`   |
 | R9  | Stable step grouping (tool calls and reasoning under their step)                                                                   | projection (`parentId`)                                   | `openCodeMessageProjection.test.ts`                                   | 9: one assistant message per step                                               |
-| R10 | Hidden background and synthetic messages; synthetic text shows only while its step runs; synthetic text in user messages is hidden | projection                                                | `kiloSnapshotProgress.test.ts`, `openCodeMessageProjection.test.ts`   | 9: v2 `synthetic` messages are their own type                                   |
+| R10 | Hidden background and synthetic messages; synthetic text shows only while its step runs; synthetic text in user messages is hidden | projection                                                | `openCodeMessageProjection.test.ts`                                   | 9: v2 `synthetic` messages are their own type                                   |
 | R11 | Projection cache: a streamed token re-projects only the message it touched                                                         | `createOpenCodeProjectionCache`                           | `kiloProjectionCache.test.ts`                                         | 9                                                                               |
-| R12 | Snapshot progress shown as an `opencode-snapshot-progress` data part                                                               | projection                                                | `kiloSnapshotProgress.test.ts`                                        | 9: v2 publishes no snapshot progress note; likely drop (record it)              |
+| R12 | Snapshot progress shown as an `opencode-snapshot-progress` data part                                                               | –                                                         | –                                                                     | **Dropped (9):** v2 publishes no snapshot progress note                         |
 | R13 | Client-side message queue (pause, reorder, edit, steer), replaceable by the host                                                   | `openCodeMessageQueue`, `messageQueue.create`             | kilo.chat `prompt-queues.test.ts`, `composer-extras.browser.test.tsx` | 10: Desktop's main-process queue stays (decision); fork's built-in queue can go |
 | R14 | One runtime that switches from the optimistic new thread to the live one without remounting                                        | `useOpenCodeRuntime`                                      | kilo.chat `agent-pane.browser.test.tsx` (first send)                  | 10                                                                              |
 | R15 | Session titles mirrored into the thread list, without echoing them back                                                            | `useOpenCodeRuntime`, `openCodeThreadListAdapter`         | kilo.chat chat-pane tests                                             | 10: follow `session.renamed`                                                    |

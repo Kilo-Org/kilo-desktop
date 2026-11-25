@@ -1,19 +1,11 @@
 import type { PartState } from "@assistant-ui/react";
-import { useAuiState } from "@assistant-ui/react";
 
 import { HtmlRenderPart } from "../html-render/HtmlRenderToolUI";
 import { isFoldHoistedPart, showsHoistedPage } from "../tools/activity-grouping";
+import { useOpenCodeMessages } from "../tools/opencode-tool";
 import { useIsInTurnWorkFold } from "../tools/turn-work-fold-context";
 import { ChatImage } from "./ChatImage";
 import { fileName, savedImages, toolImageAttachments } from "./message-images";
-
-/** The message's raw OpenCode parts, which carry what assistant-ui's parts leave out. */
-function useOpenCodeParts(): unknown {
-	return useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
-}
 
 /**
  * An image the assistant attached to its reply. Inside a settled turn's fold
@@ -39,9 +31,9 @@ export function AssistantImagePart({
  * they render nothing: the message shows them below the fold.
  */
 export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: string }) {
-	const parts = useOpenCodeParts();
+	const messages = useOpenCodeMessages();
 	const folded = useIsInTurnWorkFold();
-	const attachments = toolImageAttachments(parts, toolCallId);
+	const attachments = toolImageAttachments(messages, toolCallId);
 	if (folded || attachments.length === 0) return null;
 	return (
 		<div className="my-2 flex flex-wrap gap-2" data-qa-id="chat-tool-images">
@@ -64,8 +56,8 @@ export function ToolImageAttachments({ toolCallId }: { readonly toolCallId: stri
  * wrote), read from the workspace and shown at the end of the message.
  */
 export function TurnSavedImages() {
-	const parts = useOpenCodeParts();
-	const { images, more } = savedImages(parts);
+	const messages = useOpenCodeMessages();
+	const { images, more } = savedImages(messages);
 	if (images.length === 0) return null;
 	return (
 		<div

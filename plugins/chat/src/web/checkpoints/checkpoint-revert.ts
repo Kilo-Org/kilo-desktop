@@ -1,7 +1,10 @@
 import { type useAui, useAuiState, type ThreadMessage } from "@assistant-ui/react";
-import type { OpenCodeServerMessage } from "@kilo-desktop/react-opencode";
+import type {
+	SessionInfo,
+	SessionMessageInfo,
+	SessionMessageUser,
+} from "@kilo-desktop/react-opencode";
 import type { CreateAttachment } from "@assistant-ui/core";
-import type { SnapshotFileDiff } from "@kilocode/sdk/v2/client";
 
 import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { userPromptText } from "./retry-failed-prompt";
@@ -29,59 +32,109 @@ export const useRevertWorkspace = ():
 	| undefined =>
 	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.revert?.workspace);
 
-/**
- * Raw `session.summary.diffs` array by reference — safe for `Object.is` because
- * the forked runtime replaces `state.session` only on `session.updated` /
- * `history.loaded`, never on streaming deltas. Callers filter/sum during
- * render; deriving here would re-render on every store update.
- */
-export const useRevertDiffs = (): SnapshotFileDiff[] | undefined =>
-	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.summary?.diffs);
+type FileDiff = NonNullable<NonNullable<SessionInfo["revert"]>["files"]>[number];
 
 /**
- * Whether any user turn at or after this message recorded file changes
- * (`info.summary.diffs`). Gates RevertToHereButton so ranges without recorded
- * workspace changes keep the button hidden. Boolean primitive — safe for
- * `Object.is`; short-circuits on the first hit.
+ * The staged revert's file changes (`session.revert.files`), by reference —
+ * safe for `Object.is` because the runtime replaces `session.revert` only on
+ * revert events, never on streaming deltas. Callers sum during render.
+ */
+export const useRevertDiffs = (): readonly FileDiff[] | undefined =>
+	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.revert?.files);
+
+/**
+ * Whether any user turn at or after this message changed files. Gates
+ * RevertToHereButton so ranges without workspace changes keep the button
+ * hidden. Boolean primitive — safe for `Object.is`.
  */
 export const useRevertRangeHasFileChanges = (): boolean =>
 	useAuiState((s) => {
 		const extras = selectOpenCodeExtras(s.thread.extras);
 		if (!extras) return false;
-		const { indexById, lastChangedUserIndex } = fileChangeIndex(extras.state);
+		const { indexById, lastChangedUserIndex } = fileChangeIndex(extras.state.messages);
 		const messageIndex = indexById.get(s.message.id);
 		return messageIndex !== undefined && messageIndex <= lastChangedUserIndex;
 	});
 
-type ThreadState = NonNullable<ReturnType<typeof selectOpenCodeExtras>>["state"];
+/** What a user turn changed on disk, summed over its edits' diffs. */
+export interface TurnFileChanges {
+	readonly changed: boolean;
+	readonly additions: number;
+	readonly deletions: number;
+}
+
+const NO_CHANGES: TurnFileChanges = { changed: false, additions: 0, deletions: 0 };
+
+const FILE_WRITING_TOOLS = new Set(["edit", "write", "patch"]);
+
+const isFileDiff = (value: unknown): value is FileDiff =>
+	typeof value === "object" &&
+	value !== null &&
+	typeof (value as FileDiff).additions === "number" &&
+	typeof (value as FileDiff).deletions === "number";
+
+/**
+ * v2 keeps no per-prompt diff summary (v1's `summary.diffs`), so a turn's
+ * changes are read from its steps: the completed `edit`/`write`/`patch`
+ * calls, whose `metadata.files` (FileDiffInfo) carry the line counts. A
+ * `write` reports no diff, so it marks the turn changed without adding lines.
+ */
+function turnFileChanges(
+	messages: readonly SessionMessageInfo[],
+	userIndex: number,
+): TurnFileChanges {
+	let changed = false;
+	let additions = 0;
+	let deletions = 0;
+	for (let index = userIndex + 1; index < messages.length; index++) {
+		const message = messages[index]!;
+		if (message.type === "user") break;
+		if (message.type !== "assistant") continue;
+		for (const item of message.content) {
+			if (item.type !== "tool" || item.state.status !== "completed") continue;
+			if (!FILE_WRITING_TOOLS.has(item.name)) continue;
+			changed = true;
+			const files = item.state.metadata?.["files"];
+			if (!Array.isArray(files)) continue;
+			for (const diff of files) {
+				if (!isFileDiff(diff)) continue;
+				additions += diff.additions;
+				deletions += diff.deletions;
+			}
+		}
+	}
+	return changed ? { changed, additions, deletions } : NO_CHANGES;
+}
 
 interface FileChangeIndex {
 	readonly indexById: ReadonlyMap<string, number>;
-	/** The last user message that recorded file changes; -1 when none did. */
+	/** The last user message whose turn changed files; -1 when none did. */
 	readonly lastChangedUserIndex: number;
+	readonly changesByUserId: ReadonlyMap<string, TurnFileChanges>;
 }
 
 /*
  * Every user message asks this on every store update, so it is computed once
- * per thread state: scanning the rest of the thread per message made each
+ * per transcript: scanning the rest of the thread per message made each
  * streamed token cost O(messages²).
  */
-const fileChangeIndexes = new WeakMap<ThreadState, FileChangeIndex>();
+const fileChangeIndexes = new WeakMap<readonly SessionMessageInfo[], FileChangeIndex>();
 
-function fileChangeIndex(state: ThreadState): FileChangeIndex {
-	const cached = fileChangeIndexes.get(state);
+function fileChangeIndex(messages: readonly SessionMessageInfo[]): FileChangeIndex {
+	const cached = fileChangeIndexes.get(messages);
 	if (cached) return cached;
 	const indexById = new Map<string, number>();
+	const changesByUserId = new Map<string, TurnFileChanges>();
 	let lastChangedUserIndex = -1;
-	state.messageOrder.forEach((messageId, index) => {
-		indexById.set(messageId, index);
-		const info = state.messagesById[messageId]?.info;
-		if (info?.role === "user" && (info.summary?.diffs?.length ?? 0) > 0) {
-			lastChangedUserIndex = index;
-		}
+	messages.forEach((message, index) => {
+		indexById.set(message.id, index);
+		if (message.type !== "user") return;
+		const changes = turnFileChanges(messages, index);
+		changesByUserId.set(message.id, changes);
+		if (changes.changed) lastChangedUserIndex = index;
 	});
-	const index = { indexById, lastChangedUserIndex };
-	fileChangeIndexes.set(state, index);
+	const index = { indexById, lastChangedUserIndex, changesByUserId };
+	fileChangeIndexes.set(messages, index);
 	return index;
 }
 
@@ -140,21 +193,15 @@ export async function restoreThroughUserMessage(aui: AuiClient, targetId: string
 	const extras = selectOpenCodeExtras(aui.thread.getState().extras);
 	const boundaryId = extras?.session?.revert?.messageID;
 	if (!extras || !boundaryId) return;
-	const targetIndex = extras.state.messageOrder.indexOf(targetId);
+	const { messages } = extras.state;
+	const targetIndex = messages.findIndex((message) => message.id === targetId);
 	if (targetIndex === -1) return;
-	let next: OpenCodeServerMessage | undefined;
-	for (let i = targetIndex + 1; i < extras.state.messageOrder.length; i++) {
-		const msgId = extras.state.messageOrder[i];
-		if (msgId === undefined) continue;
-		const message = extras.state.messagesById[msgId];
-		if (message?.info?.role === "user") {
-			next = message;
-			break;
-		}
-	}
+	const next = messages
+		.slice(targetIndex + 1)
+		.find((message): message is SessionMessageUser => message.type === "user");
 	if (next) {
 		await extras.revert(next.id);
-		await restoreToComposer(aui, serverMessageToComposerPrompt(next));
+		await restoreToComposer(aui, userMessageToComposerPrompt(next));
 	} else {
 		await extras.unrevert();
 		// Full undo clears text only — attachments added by an earlier restore
@@ -165,58 +212,47 @@ export async function restoreThroughUserMessage(aui: AuiClient, targetId: string
 	}
 }
 
-// Mirrors the projection's convertFilePart so restored attachments match how
-// the original message rendered them.
-export const attachmentFromServerFilePart = (
-	part: Extract<OpenCodeServerMessage["parts"][number], { type: "file" }>,
-): CreateAttachment => {
-	const mimeType = part.mime ?? "application/octet-stream";
-	if (mimeType.startsWith("image/")) {
+type PromptFile = NonNullable<SessionMessageUser["files"]>[number];
+
+/** A stored prompt file as the projection shows it: a data URL (inline files) or its URI. */
+const promptFileUrl = (file: PromptFile): string =>
+	file.source.type === "uri"
+		? file.source.uri
+		: file.data.startsWith("data:")
+			? file.data
+			: `data:${file.mime};base64,${file.data}`;
+
+// Mirrors the projection's user attachments so restored ones match how the
+// original message rendered them.
+export const attachmentFromPromptFile = (file: PromptFile, id: string): CreateAttachment => {
+	const url = promptFileUrl(file);
+	const name = file.name ?? "file";
+	if (file.mime.startsWith("image/")) {
 		return {
-			id: part.id,
+			id,
 			type: "image",
-			name: part.filename ?? "file",
-			contentType: mimeType,
-			content: [{ type: "image", image: part.url ?? "" }],
+			name,
+			contentType: file.mime,
+			content: [{ type: "image", image: url }],
 		};
 	}
 	return {
-		id: part.id,
+		id,
 		type: "file",
-		name: part.filename ?? "file",
-		contentType: mimeType,
-		content: [{ type: "file", data: part.url ?? "", mimeType }],
+		name,
+		contentType: file.mime,
+		content: [{ type: "file", data: url, mimeType: file.mime }],
 	};
 };
 
-/**
- * Known limitation: messages whose `parts` were emptied by `retryFailedTurn`
- * (`promptAsync({ messageID, parts: [] })`) restore as empty text because
- * `shadowParts` — a client-side projection fallback — are not visible here.
- * Accepted: this path targets the *next* user message during a Restore step,
- * not the clicked boundary message; the primary revert-to-here flow goes
- * through `messageToComposerPrompt`, which reads the projected ThreadMessage
- * and retains shadowParts-derived content.
- */
-export function serverMessageToComposerPrompt(message: OpenCodeServerMessage): ComposerPrompt {
-	const attachments: CreateAttachment[] = [];
-	for (const part of message.parts) {
-		if (part.type === "file") {
-			attachments.push(attachmentFromServerFilePart(part));
-		}
-	}
-	return { text: serverMessageText(message), attachments };
-}
-
-/** Joined text parts of a server message — the text half of the composer prompt. */
-export function serverMessageText(message: OpenCodeServerMessage): string {
-	const texts: string[] = [];
-	for (const part of message.parts) {
-		if (part.type === "text") {
-			texts.push(part.text ?? "");
-		}
-	}
-	return texts.join("\n").trim();
+/** A v2 user message's prompt (`text` and `files`) for the composer. */
+export function userMessageToComposerPrompt(message: SessionMessageUser): ComposerPrompt {
+	return {
+		text: message.text.trim(),
+		attachments: (message.files ?? []).map((file, index) =>
+			attachmentFromPromptFile(file, `${message.id}:${index}`),
+		),
+	};
 }
 
 export type RevertedUserRow = {
@@ -227,65 +263,53 @@ export type RevertedUserRow = {
 	hasDiffs: boolean;
 };
 
+/** One row per user message at or after the revert boundary, by transcript position. */
 export function deriveRevertedUserRows(
 	boundaryId: string | undefined,
-	messageOrder: readonly string[] | undefined,
-	messagesById: Record<string, OpenCodeServerMessage> | undefined,
+	messages: readonly SessionMessageInfo[] | undefined,
 ): RevertedUserRow[] {
-	if (boundaryId === undefined) return [];
-	const order = messageOrder ?? [];
-	const boundaryIndex = order.indexOf(boundaryId);
+	if (boundaryId === undefined || !messages) return [];
+	const boundaryIndex = messages.findIndex((message) => message.id === boundaryId);
 	if (boundaryIndex === -1) return [];
+	const { changesByUserId } = fileChangeIndex(messages);
 	const rows: RevertedUserRow[] = [];
-	for (let i = boundaryIndex; i < order.length; i++) {
-		const id = order[i];
-		if (id === undefined) continue;
-		const message = messagesById?.[id];
-		if (message?.info?.role !== "user") continue;
-		const diffs = message.info.summary?.diffs ?? [];
+	for (const message of messages.slice(boundaryIndex)) {
+		if (message.type !== "user") continue;
+		const changes = changesByUserId.get(message.id) ?? NO_CHANGES;
 		rows.push({
-			id,
-			text: serverMessageText(message),
-			additions: diffs.reduce((total: number, diff) => total + diff.additions, 0),
-			deletions: diffs.reduce((total: number, diff) => total + diff.deletions, 0),
-			hasDiffs: diffs.length > 0,
+			id: message.id,
+			text: message.text.trim(),
+			additions: changes.additions,
+			deletions: changes.deletions,
+			hasDiffs: changes.changed,
 		});
 	}
 	return rows;
 }
 
 /**
- * Row model for the pending revert's expanded message list: one row per
- * reverted user message at or after the boundary, determined by position in
- * `messageOrder` (not by string comparison). The three `useAuiState` calls
- * subscribe only to stable references (primitive boundary id, the
- * `messageOrder` array and `messagesById` object — both replaced only on
- * session/history updates, never on streaming deltas); the row model itself
- * is memoized on them so `Object.is` comparisons hold.
+ * Row model for the pending revert's expanded message list. Subscribes to the
+ * primitive boundary id and the transcript array (replaced only when a message
+ * changes); the rows are derived during render.
  */
 export const useRevertedUserRows = (): RevertedUserRow[] => {
 	const boundaryId = useRevertBoundaryId();
-	const messageOrder = useAuiState(
-		(s) => selectOpenCodeExtras(s.thread.extras)?.state.messageOrder,
-	);
-	const messagesById = useAuiState(
-		(s) => selectOpenCodeExtras(s.thread.extras)?.state.messagesById,
-	);
-	return deriveRevertedUserRows(boundaryId, messageOrder, messagesById);
+	const messages = useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.state.messages);
+	return deriveRevertedUserRows(boundaryId, messages);
 };
 
 /**
- * Whether this message is strictly after the pending revert boundary in
- * `messageOrder`. Uses index comparison instead of string comparison so it
- * works correctly with non-monotonic ids (e.g. random nanoids from
- * `useLocalRuntime`). Returns false when there is no pending revert.
+ * Whether this message is strictly after the pending revert boundary in the
+ * transcript. Uses position, not id comparison, so it holds for any id
+ * scheme. Returns false when there is no pending revert.
  */
 export const useIsAfterPendingBoundary = (pendingId: string | null): boolean =>
 	useAuiState((s) => {
 		if (pendingId === null) return false;
-		const order = selectOpenCodeExtras(s.thread.extras)?.state.messageOrder;
-		if (!order) return false;
-		const pendingIndex = order.indexOf(pendingId);
-		const messageIndex = order.indexOf(s.message.id);
-		return pendingIndex !== -1 && messageIndex > pendingIndex;
+		const messages = selectOpenCodeExtras(s.thread.extras)?.state.messages;
+		if (!messages) return false;
+		const { indexById } = fileChangeIndex(messages);
+		const pendingIndex = indexById.get(pendingId);
+		const messageIndex = indexById.get(s.message.id);
+		return pendingIndex !== undefined && messageIndex !== undefined && messageIndex > pendingIndex;
 	});

@@ -1,7 +1,10 @@
+import { useAuiState } from "@assistant-ui/react";
 import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 
 import { parseChatPatchFiles, usePierreDiffOptions } from "./pierre-diff";
 import { usePrimePierreDiffs } from "./use-prime-pierre-diffs";
+import { openCodeMessagesOf } from "./opencode-tool";
+import { getToolUnifiedDiff, sumFileDiffStats } from "./tool-diff-stats";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
 import { basename, DiffCounts, getPatchInfo, str } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
@@ -103,18 +106,25 @@ function claudeBlockToUnifiedDiff(block: PatchBlock): string {
 	return `${gitHeader}\n${fileHeader}\n${hunkHeader}\n${diffLines.join("\n")}`;
 }
 
-/** The patch as a unified diff, and its file diffs once it has finished, primed for highlighting. */
+/**
+ * The patch as a unified diff (the backend's file diffs once settled, else
+ * the patch text converted), and its file diffs once it has finished, primed
+ * for highlighting.
+ */
 function usePatchDiffs(patchText: string, isRunning: boolean, toolCallId: string) {
-	const unifiedPatch = patchText
-		? parseClaudePatchBlocks(patchText).map(claudeBlockToUnifiedDiff).join("\n")
-		: "";
+	const backendDiff = useAuiState((s) =>
+		getToolUnifiedDiff(openCodeMessagesOf(s.message.metadata), toolCallId),
+	);
+	const unifiedPatch =
+		backendDiff ??
+		(patchText ? parseClaudePatchBlocks(patchText).map(claudeBlockToUnifiedDiff).join("\n") : "");
 	const hasDiff = unifiedPatch.length > 0 && !isRunning;
 	const fileDiffs = hasDiff ? parseChatPatchFiles(unifiedPatch, toolCallId) : [];
 	usePrimePierreDiffs(fileDiffs);
 	return { unifiedPatch, hasDiff, fileDiffs };
 }
 
-export const ApplyPatchDiff: ToolCallComponent = ({ args, status, toolCallId }) => {
+export const PatchToolDiff: ToolCallComponent = ({ args, status, toolCallId }) => {
 	const options = usePierreDiffOptions();
 	const isRunning = status?.type === "running";
 	const { unifiedPatch, hasDiff, fileDiffs } = usePatchDiffs(
@@ -131,9 +141,11 @@ export const ApplyPatchDiff: ToolCallComponent = ({ args, status, toolCallId }) 
 				? patchInfo.files[0]
 				: `${patchInfo.files.length} files`;
 
-	const trailing = !isRunning ? (
-		<DiffCounts added={patchInfo.added} removed={patchInfo.removed} />
-	) : null;
+	const counts = sumFileDiffStats(fileDiffs) ?? {
+		added: patchInfo.added,
+		removed: patchInfo.removed,
+	};
+	const trailing = !isRunning ? <DiffCounts {...counts} /> : null;
 
 	if (fileDiffs.length > 1) {
 		return (
@@ -188,4 +200,4 @@ export const ApplyPatchDiff: ToolCallComponent = ({ args, status, toolCallId }) 
 		/>
 	);
 };
-ApplyPatchDiff.displayName = "ApplyPatchDiff";
+PatchToolDiff.displayName = "PatchToolDiff";

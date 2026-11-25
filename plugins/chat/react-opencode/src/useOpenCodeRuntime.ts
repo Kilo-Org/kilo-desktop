@@ -15,7 +15,6 @@ import type {
 	ThreadMessage,
 	ThreadMessageLike,
 } from "@assistant-ui/react";
-import { createKiloClient as createOpencodeClient } from "@kilocode/sdk/v2/client";
 import { useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
 	OpenCodeRuntimeBackend,
@@ -24,7 +23,6 @@ import type {
 	OpenCodeThreadState,
 	QuestionAnswer,
 } from "./types";
-import { OpenCodeEventSource } from "./OpenCodeEventSource";
 import { toOpenCodePermissionResponse } from "./openCodePermissionApproval";
 import { OpenCodeThreadController } from "./OpenCodeThreadController";
 import {
@@ -34,7 +32,6 @@ import {
 import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState";
 import { openCodeExtras } from "./openCodeExtras";
 import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter";
-import { OPEN_CODE_REQUEST_OPTIONS } from "./openCodeRequestOptions";
 import {
 	createOpenCodeMessageQueue,
 	type OpenCodeMessageQueueController,
@@ -135,9 +132,10 @@ const getController = (
 	if (existing) return existing;
 
 	const controller = new OpenCodeThreadController(
-		backend.getSessionClient({ id: sessionId }),
+		backend.client,
 		registry.getEventSource,
 		sessionId,
+		backend.sendPrompt,
 	);
 	registry.controllers.set(sessionId, controller);
 	return controller;
@@ -161,11 +159,10 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
 };
 
 const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+	state.running ||
 	state.runState.type === "streaming" ||
 	state.runState.type === "cancelling" ||
-	state.runState.type === "reverting" ||
-	state.sessionStatus?.type === "busy" ||
-	state.sessionStatus?.type === "retry";
+	state.runState.type === "reverting";
 
 const sendMessage = async (
 	controller: OpenCodeThreadControllerLike,
@@ -211,9 +208,7 @@ const getOptimisticMessagesByThreadId = (registry: OpenCodeControllerRegistry) =
 
 const liveThreadHasUserMessage = (state: OpenCodeThreadState): boolean => {
 	if (Object.keys(state.pendingUserMessages).length > 0) return true;
-	return state.messageOrder.some(
-		(messageId) => state.messagesById[messageId]?.info?.role === "user",
-	);
+	return state.messages.some((message) => message.type === "user");
 };
 
 const useOpenCodeThreadStore = (
@@ -510,31 +505,8 @@ const useRuntimeHook = (
 	return useExternalStoreRuntime<ThreadMessage>(storeWithQueue);
 };
 
-export const useOpenCodeRuntime = (options: OpenCodeRuntimeOptions = {}): AssistantRuntime => {
-	const baseUrl = options.baseUrl ?? "http://localhost:4096";
-	const client = useMemo(
-		() => options.backend?.globalClient ?? options.client ?? createOpencodeClient({ baseUrl }),
-		[baseUrl, options.backend, options.client],
-	);
-	const backend = useMemo<OpenCodeRuntimeBackend>(
-		() =>
-			options.backend ?? {
-				globalClient: client,
-				getSessionClient: () => client,
-				initializeSession: async () => {
-					const response = await client.session.create({}, OPEN_CODE_REQUEST_OPTIONS);
-					if (!response.data?.id) {
-						throw new Error("Failed to create OpenCode session");
-					}
-					return {
-						id: response.data.id,
-						directory: response.data.directory,
-					};
-				},
-				createEventSource: () => new OpenCodeEventSource(client),
-			},
-		[client, options.backend],
-	);
+export const useOpenCodeRuntime = (options: OpenCodeRuntimeOptions): AssistantRuntime => {
+	const { backend } = options;
 	const registry = useMemo(() => createRegistry(backend), [backend]);
 
 	useEffect(() => {

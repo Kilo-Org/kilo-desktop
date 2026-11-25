@@ -1,539 +1,261 @@
+import type { AppendMessage, ThreadUserMessagePart } from "@assistant-ui/react";
+import type { SessionInfo, SessionMessagesResponse } from "@kilocode/client";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+
+import {
+	OPEN_CODE_HISTORY_PAGE_SIZE,
+	OpenCodeThreadController,
+	toFormAnswer,
+	toPromptInput,
+} from "./OpenCodeThreadController";
 import type * as TaskSessionModule from "./openCodeTaskSession";
-import { describe, it, expect, onTestFinished, vi } from "vitest";
-import { OpenCodeThreadController } from "./OpenCodeThreadController";
-import { STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource";
-import { rejectWhenThrowing } from "./testUtils";
-import type { OpenCodeServerEvent } from "./types";
+import {
+	assistant,
+	createDeferred,
+	createFakeClient,
+	createFakeEventSource,
+	MODEL,
+	permissionRequest,
+	questionForm,
+	runningTool,
+	serverEvent,
+	session,
+	SESSION_ID,
+	settleMicrotasks,
+	streamReconnected,
+	subagentTool,
+	text,
+	user,
+	type FakeClient,
+	type FakeEventSource,
+} from "./testUtils";
+import type { OpenCodeThreadState, Transcript } from "./types";
 
 const getOpenCodeTaskSessionIdSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("./openCodeTaskSession", async (importOriginal) => {
 	const original = await importOriginal<typeof TaskSessionModule>();
-
 	return {
 		...original,
-		getOpenCodeTaskSessionId: (part: Parameters<typeof original.getOpenCodeTaskSessionId>[0]) => {
-			getOpenCodeTaskSessionIdSpy(part);
-			return original.getOpenCodeTaskSessionId(part);
+		getOpenCodeTaskSessionId: (tool: Parameters<typeof original.getOpenCodeTaskSessionId>[0]) => {
+			getOpenCodeTaskSessionIdSpy(tool);
+			return original.getOpenCodeTaskSessionId(tool);
 		},
 	};
 });
 
-const createDeferred = <T>() => {
-	let resolve!: (value: T) => void;
-	let reject!: (error: unknown) => void;
+const appendMessage = (
+	content: readonly ThreadUserMessagePart[],
+	attachments: readonly Record<string, unknown>[] = [],
+): AppendMessage =>
+	({
+		role: "user",
+		parentId: null,
+		sourceId: null,
+		content,
+		attachments,
+		metadata: { custom: {} },
+		runConfig: {},
+		createdAt: new Date(),
+	}) as unknown as AppendMessage;
 
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
+const hello = () => appendMessage([{ type: "text", text: "hello" }]);
+
+function setup(sessionId = SESSION_ID) {
+	const fake = createFakeClient();
+	const events = createFakeEventSource();
+	const controller = new OpenCodeThreadController(fake.client, () => events, sessionId);
+	return { fake, events, controller };
+}
+
+const ids = (state: OpenCodeThreadState) => state.messages.map((message) => message.id);
+
+const messageIds = (count: number) =>
+	Array.from({ length: count }, (_, index) => user(`msg_${String(index).padStart(4, "0")}`));
+
+const stepStarted = (assistantMessageID: string, sessionID = SESSION_ID) =>
+	serverEvent("session.step.started", {
+		sessionID,
+		assistantMessageID,
+		agent: "code",
+		model: MODEL,
+		started: 1,
 	});
 
-	return { promise, resolve, reject };
-};
+/** A step with one subagent call per child session. */
+const withSubagents = (messageId: string, children: readonly string[]) =>
+	assistant(
+		messageId,
+		children.map((child, index) => subagentTool(`${messageId}_call_${index}`, child)),
+	);
 
-const createEventSource = () => {
-	const listeners = new Set<(event: OpenCodeServerEvent) => void>();
-	const unsubscribe = vi.fn();
+describe("toPromptInput", () => {
+	it.each([
+		[
+			"wraps a bare base64 file",
+			{ type: "file", data: "JVBERi0xLjQ=", mimeType: "application/pdf" },
+			"data:application/pdf;base64,JVBERi0xLjQ=",
+		],
+		[
+			"forwards a data URL",
+			{ type: "file", data: "data:application/pdf;base64,JVBE", mimeType: "application/pdf" },
+			"data:application/pdf;base64,JVBE",
+		],
+		[
+			"forwards an http source",
+			{ type: "file", data: "https://cdn.example.com/a.pdf", mimeType: "application/pdf" },
+			"https://cdn.example.com/a.pdf",
+		],
+		[
+			"re-envelopes a payload so the declared type wins",
+			{
+				type: "file",
+				data: "data:application/octet-stream;base64,QUJD",
+				mimeType: "application/pdf",
+			},
+			"data:application/pdf;base64,QUJD",
+		],
+		[
+			"falls back to the envelope for an empty file type",
+			{ type: "file", data: "data:application/pdf;base64,QUJD", mimeType: "" },
+			"data:application/pdf;base64,QUJD",
+		],
+		[
+			"floors an empty file type",
+			{ type: "file", data: "QUJD", mimeType: "" },
+			"data:application/octet-stream;base64,QUJD",
+		],
+		[
+			"leaves an id reference unwrapped",
+			{ type: "file", data: "file-abc123", mimeType: "application/pdf", sourceType: "id" },
+			"file-abc123",
+		],
+		[
+			"keeps a data URL image's declared type",
+			{ type: "image", image: "data:image/jpeg;base64,QUJD" },
+			"data:image/jpeg;base64,QUJD",
+		],
+		[
+			"wraps a bare base64 image with the fallback type",
+			{ type: "image", image: "QUJD" },
+			"data:image/png;base64,QUJD",
+		],
+		[
+			"forwards an http image",
+			{ type: "image", image: "https://cdn.example.com/a.png" },
+			"https://cdn.example.com/a.png",
+		],
+		[
+			"sniffs a bare base64 jpeg",
+			{ type: "image", image: "/9j/4AAQSkZJRg==" },
+			"data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+		],
+		[
+			"sniffs a bare base64 gif",
+			{ type: "image", image: "R0lGODlhAQABAA==" },
+			"data:image/gif;base64,R0lGODlhAQABAA==",
+		],
+		[
+			"sniffs a bare base64 webp",
+			{ type: "image", image: "UklGRiIAAABXRUJQVlA4" },
+			"data:image/webp;base64,UklGRiIAAABXRUJQVlA4",
+		],
+		[
+			"keeps a non-base64 data URL image",
+			{ type: "image", image: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E" },
+			"data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+		],
+		[
+			"sniffs through a generic data URL envelope",
+			{ type: "image", image: "data:application/octet-stream;base64,/9j/4AAQSkZJRg==" },
+			"data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+		],
+		[
+			"ignores a non-image envelope on an image",
+			{ type: "image", image: "data:application/octet-stream;base64,QUJD", contentType: "" },
+			"data:image/png;base64,QUJD",
+		],
+	])("%s", (_label, part, uri) => {
+		const { files } = toPromptInput([part as ThreadUserMessagePart]);
 
-	return {
-		emit(event: OpenCodeServerEvent) {
-			for (const listener of listeners) listener(event);
-		},
-		subscribe: vi.fn((nextListener: (event: OpenCodeServerEvent) => void) => {
-			listeners.add(nextListener);
-			return () => {
-				listeners.delete(nextListener);
-				unsubscribe();
-			};
-		}),
-		unsubscribe,
-	};
-};
+		expect(files).toEqual([{ uri }]);
+		if (!uri.startsWith("file-")) expect(() => new URL(uri)).not.toThrow();
+	});
 
-const createTaskMessage = (sessionID: string, messageID: string, children: readonly string[]) => ({
-	info: {
-		id: messageID,
-		role: "assistant",
-		sessionID,
-		parentID: `${messageID}-parent`,
-		modelID: "model",
-		providerID: "provider",
-		mode: "primary",
-		path: { cwd: "/", root: "/" },
-		cost: 0,
-		tokens: {
-			input: 0,
-			output: 0,
-			reasoning: 0,
-			cache: { read: 0, write: 0 },
-		},
-		time: { created: 1 },
-		finish: "stop",
-	},
-	parts: children.map((childSessionID, index) => ({
-		id: `${messageID}-task-${index}`,
-		callID: `${messageID}-call-${index}`,
-		sessionID,
-		messageID,
-		type: "tool",
-		tool: "task",
-		state: {
-			status: "completed",
-			input: { description: `Task ${index}` },
-			output: "Done",
-			title: `Task ${index}`,
-			metadata: { sessionId: childSessionID },
-			time: { start: 1, end: 2 },
-		},
-	})),
+	it("joins text parts and names files by their filename", () => {
+		expect(
+			toPromptInput([
+				{ type: "text", text: "one" },
+				{ type: "file", data: "QUJD", mimeType: "text/plain", filename: "a.txt" },
+				{ type: "text", text: "two" },
+			]),
+		).toEqual({
+			text: "one\n\ntwo",
+			files: [{ uri: "data:text/plain;base64,QUJD", name: "a.txt" }],
+		});
+	});
 });
 
-const streamReconnected: OpenCodeServerEvent = {
-	type: STREAM_RECONNECTED_EVENT_TYPE,
-	sessionId: undefined,
-	raw: undefined,
-	properties: {},
-};
+describe("toFormAnswer", () => {
+	it("answers each question by its field key: a multiselect with its labels, others with one string", () => {
+		const form = questionForm("frm_1", [
+			{ header: "One", question: "?", options: ["A", "B"] },
+			{ header: "Many", question: "?", options: ["X", "Y"], multiple: true },
+			{ header: "Skipped", question: "?", options: ["Z"] },
+		]);
 
-const createReconnectClient = ({
-	status = vi.fn().mockResolvedValue({ data: {} }),
-	permissions = vi.fn().mockResolvedValue({ data: [] }),
-	questions = vi.fn().mockResolvedValue({ data: [] }),
-} = {}) => ({
-	session: {
-		get: vi.fn().mockResolvedValue({ data: { id: "ses_1", title: "t", time: {} } }),
-		messages: vi.fn().mockResolvedValue({ data: [] }),
-		status,
-	},
-	permission: { list: permissions },
-	question: { list: questions },
+		expect(toFormAnswer(form, [["A", "custom"], ["X", "Y"], []])).toEqual({
+			q0: "A, custom",
+			q1: ["X", "Y"],
+		});
+	});
 });
 
-/** Lets every promise chain already settled run to its end (no timers involved). */
-const settleMicrotasks = async () => {
-	for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
-};
+describe("OpenCodeThreadController: prompts", () => {
+	it("switches the chat's agent and model, then prompts with the pending message's id", async () => {
+		const { fake, controller } = setup();
 
-describe("OpenCodeThreadController", () => {
-	it.each([
-		{
-			label: "wraps a bare base64 file payload",
-			data: "JVBERi0xLjQ=",
-			url: "data:application/pdf;base64,JVBERi0xLjQ=",
-		},
-		{
-			label: "forwards a data url untouched",
-			data: "data:application/pdf;base64,JVBERi0xLjQ=",
-			url: "data:application/pdf;base64,JVBERi0xLjQ=",
-		},
-		{
-			label: "forwards an http source untouched",
-			data: "https://cdn.example.com/a.pdf",
-			url: "https://cdn.example.com/a.pdf",
-		},
-	])("$label into a parsable file part url", async ({ data, url }) => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [
-					{
-						type: "file",
-						data,
-						mimeType: "application/pdf",
-						filename: "a.pdf",
-					},
-				],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		const filePart = sent.parts.find((part) => part["type"] === "file");
-		expect(filePart).toMatchObject({ mime: "application/pdf", url });
-		expect(() => new URL(String(filePart!["url"]))).not.toThrow();
-	});
-
-	it.each([
-		{
-			label: "data url image keeps its declared type",
-			image: "data:image/jpeg;base64,QUJD",
-			mime: "image/jpeg",
-			url: "data:image/jpeg;base64,QUJD",
-		},
-		{
-			label: "bare base64 image is wrapped with the fallback type",
-			image: "QUJD",
-			mime: "image/png",
-			url: "data:image/png;base64,QUJD",
-		},
-		{
-			label: "http image source is forwarded",
-			image: "https://cdn.example.com/a.png",
-			mime: "image/png",
-			url: "https://cdn.example.com/a.png",
-		},
-	])("sends an image part as a file part: $label", async ({ image, mime, url }) => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "image", image }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		const imagePart = sent.parts.find((part) => part["type"] === "file");
-		expect(imagePart).toMatchObject({ type: "file", mime, url });
-		expect(sent.parts.some((part) => part["type"] === "image")).toBe(false);
-		expect(() => new URL(String(imagePart!["url"]))).not.toThrow();
-	});
-
-	it.each([
-		{ label: "jpeg", image: "/9j/4AAQSkZJRg==", mime: "image/jpeg" },
-		{ label: "png", image: "iVBORw0KGgoAAAANSUhEUg==", mime: "image/png" },
-		{ label: "gif", image: "R0lGODlhAQABAA==", mime: "image/gif" },
-		{ label: "webp", image: "UklGRiIAAABXRUJQVlA4", mime: "image/webp" },
-	])("sniffs a bare base64 $label image", async ({ image, mime }) => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "image", image }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime,
-			url: `data:${mime};base64,${image}`,
+		await controller.sendMessage(hello(), {
+			agent: "plan",
+			model: { providerID: "acme", modelID: "fast-1" },
 		});
-	});
 
-	it("reads the declared type of a non-base64 data url image", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "image", image: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E" }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "image/svg+xml",
-			url: "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+		const [clientId] = Object.keys(controller.getState().pendingUserMessages);
+		expect(fake.session.switchAgent).toHaveBeenCalledWith({ sessionID: SESSION_ID, agent: "plan" });
+		expect(fake.session.switchModel).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			model: { providerID: "acme", id: "fast-1" },
 		});
-	});
-
-	it("sniffs through a generic data url envelope", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [
-					{
-						type: "image",
-						image: "data:application/octet-stream;base64,/9j/4AAQSkZJRg==",
-					},
-				],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "image/jpeg",
-			url: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+		expect(fake.session.prompt).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			id: clientId,
+			text: "hello",
 		});
+		expect(clientId).toMatch(/^msg_/);
+		const [agentCall] = fake.session.switchAgent.mock.invocationCallOrder;
+		const [modelCall] = fake.session.switchModel.mock.invocationCallOrder;
+		const [promptCall] = fake.session.prompt.mock.invocationCallOrder;
+		expect(agentCall!).toBeLessThan(modelCall!);
+		expect(modelCall!).toBeLessThan(promptCall!);
 	});
 
-	it("ignores a non-image data url envelope when typing an image part", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
+	it("only prompts when no agent or model is chosen", async () => {
+		const { fake, controller } = setup();
 
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [],
-				attachments: [
-					{
-						id: "a-1",
-						type: "image",
-						name: "photo",
-						contentType: "",
-						status: { type: "complete" },
-						content: [
-							{
-								type: "image",
-								image: "data:application/octet-stream;base64,QUJD",
-							},
-						],
-					},
-				],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
+		await controller.sendMessage(hello());
 
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		// the envelope must agree with `mime`: downstream the data URL type wins.
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "image/png",
-			url: "data:image/png;base64,QUJD",
-		});
+		expect(fake.session.switchAgent).not.toHaveBeenCalled();
+		expect(fake.session.switchModel).not.toHaveBeenCalled();
+		expect(fake.session.prompt).toHaveBeenCalledOnce();
 	});
 
-	it("falls back to the envelope before the floor for an empty file mime type", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
+	it("sends an attachment with the name and content type its parts don't carry", async () => {
+		const { fake, controller } = setup();
 
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [
-					{
-						type: "file",
-						data: "data:application/pdf;base64,QUJD",
-						mimeType: "",
-					},
-				],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "application/pdf",
-			url: "data:application/pdf;base64,QUJD",
-		});
-	});
-
-	it("floors an empty file mime type", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "file", data: "QUJD", mimeType: "" }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "application/octet-stream",
-			url: "data:application/octet-stream;base64,QUJD",
-		});
-	});
-
-	it("re-envelopes a file payload so the declared mime wins", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [
-					{
-						type: "file",
-						data: "data:application/octet-stream;base64,QUJD",
-						mimeType: "application/pdf",
-					},
-				],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "application/pdf",
-			url: "data:application/pdf;base64,QUJD",
-		});
-	});
-
-	it("names the pending message from the attachment rather than its payload", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [],
-				attachments: [
+		await controller.sendMessage(
+			appendMessage(
+				[],
+				[
 					{
 						id: "a-1",
 						type: "image",
@@ -543,1394 +265,862 @@ describe("OpenCodeThreadController", () => {
 						content: [{ type: "image", image: "QUJD" }],
 					},
 				],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
+			),
 		);
 
-		const pending = Object.values(controller.getState().pendingUserMessages)[0]!;
-		expect(pending.contentText).toBe("photo.webp");
-	});
-
-	it("uses the attachment name and content type its parts do not carry", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [],
-				attachments: [
-					{
-						id: "a-1",
-						type: "image",
-						name: "photo.webp",
-						contentType: "image/webp",
-						status: { type: "complete" },
-						content: [{ type: "image", image: "QUJD" }],
-					},
-				],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			mime: "image/webp",
-			filename: "photo.webp",
-			url: "data:image/webp;base64,QUJD",
+		expect(fake.session.prompt.mock.calls[0]?.[0]).toMatchObject({
+			files: [{ uri: "data:image/webp;base64,QUJD", name: "photo.webp" }],
 		});
 	});
 
-	it("leaves an id reference unwrapped rather than shipping it as base64", async () => {
-		const client = {
-			session: { promptAsync: vi.fn().mockResolvedValue({}) },
-		};
+	it("sends through the host's prompt sender when it has one", async () => {
+		const fake = createFakeClient();
+		const sendPrompt = vi.fn(async () => undefined);
 		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
+			fake.client,
+			() => createFakeEventSource(),
+			SESSION_ID,
+			sendPrompt,
 		);
 
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [
-					{
-						type: "file",
-						data: "file-abc123",
-						mimeType: "application/pdf",
-						sourceType: "id",
-					},
-				],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			} as never,
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
+		await controller.sendMessage(hello(), { agent: "code" });
 
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0]!;
-		await controller.sendStagedMessage(`local:${pendingId}`);
-
-		const sent = client.session.promptAsync.mock.calls[0]![0] as {
-			parts: Array<Record<string, unknown>>;
-		};
-		expect(sent.parts.find((part) => part["type"] === "file")).toMatchObject({
-			url: "file-abc123",
+		const [clientId] = Object.keys(controller.getState().pendingUserMessages);
+		expect(sendPrompt).toHaveBeenCalledWith({
+			sessionId: SESSION_ID,
+			messageId: clientId,
+			parts: [{ type: "text", text: "hello" }],
+			options: { agent: "code" },
 		});
+		expect(fake.session.prompt).not.toHaveBeenCalled();
 	});
 
-	it("stages a message locally and sends it later", async () => {
-		const client = {
-			session: {
-				promptAsync: vi.fn().mockResolvedValue({}),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
+	it("shows the prompt as pending and running until the server admits it", async () => {
+		const { events, controller } = setup();
+		controller.subscribe(() => undefined);
+
+		await controller.sendMessage(hello());
+		const [clientId] = Object.keys(controller.getState().pendingUserMessages);
+		expect(controller.getState().runState).toEqual({ type: "streaming" });
+
+		events.emit(
+			serverEvent("session.inbox.enqueued", {
+				inboxID: clientId,
+				item: { type: "user", payload: { text: "hello" }, delivery: "queue" },
+			}),
 		);
 
-		await controller.stageMessage(
-			{
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "text", text: "hello" }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			},
-			{ model: { providerID: "anthropic", modelID: "claude" } },
-		);
+		expect(controller.getState().pendingUserMessages).toEqual({});
+		expect(ids(controller.getState())).toEqual([clientId]);
+	});
 
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0];
-		expect(pendingId).toBeDefined();
-		expect(client.session.promptAsync).not.toHaveBeenCalled();
+	it("stages a message locally and sends it later, once", async () => {
+		const { fake, controller } = setup();
 
-		await expect(controller.sendStagedMessage(`local:${pendingId}`)).resolves.toBe(true);
+		await controller.stageMessage(hello(), { agent: "plan" });
+		const [clientId] = Object.keys(controller.getState().pendingUserMessages);
+		expect(fake.session.prompt).not.toHaveBeenCalled();
 
-		expect(client.session.promptAsync).toHaveBeenCalledWith(
-			{
-				sessionID: "ses_1",
-				parts: [{ type: "text", text: "hello" }],
-				model: { providerID: "anthropic", modelID: "claude" },
-			},
-			{ throwOnError: true },
-		);
-		await expect(controller.sendStagedMessage(`local:${pendingId}`)).resolves.toBe(false);
+		await expect(controller.sendStagedMessage(`local:${clientId}`)).resolves.toBe(true);
+		expect(fake.session.switchAgent).toHaveBeenCalledWith({ sessionID: SESSION_ID, agent: "plan" });
+		expect(fake.session.prompt).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			id: clientId,
+			text: "hello",
+		});
+		await expect(controller.sendStagedMessage(`local:${clientId}`)).resolves.toBe(false);
 	});
 
 	it("resets a failed staged message when retrying", async () => {
-		const retry = createDeferred<unknown>();
-		const client = {
-			session: {
-				promptAsync: vi
-					.fn()
-					.mockRejectedValueOnce(new Error("boom"))
-					.mockReturnValueOnce(retry.promise),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
+		const { fake, controller } = setup();
+		const retry = createDeferred<never>();
+		fake.session.prompt.mockRejectedValueOnce(new Error("boom")).mockReturnValueOnce(retry.promise);
 
-		await controller.stageMessage({
-			role: "user",
-			parentId: null,
-			sourceId: null,
-			content: [{ type: "text", text: "hello" }],
-			attachments: [],
-			metadata: { custom: {} },
-			runConfig: {},
-			createdAt: new Date(),
-		});
-
-		const pendingId = Object.keys(controller.getState().pendingUserMessages)[0];
-		await expect(controller.sendStagedMessage(`local:${pendingId}`)).rejects.toThrow("boom");
-		expect(controller.getState().pendingUserMessages[pendingId!]).toMatchObject({
+		await controller.stageMessage(hello());
+		const [clientId] = Object.keys(controller.getState().pendingUserMessages);
+		await expect(controller.sendStagedMessage(`local:${clientId}`)).rejects.toThrow("boom");
+		expect(controller.getState().pendingUserMessages[clientId!]).toMatchObject({
 			status: "failed",
 			error: expect.any(Error),
 		});
 
-		const retryRequest = controller.sendStagedMessage(`local:${pendingId}`);
-		expect(controller.getState().pendingUserMessages[pendingId!]).toMatchObject({
+		const retrying = controller.sendStagedMessage(`local:${clientId}`);
+		expect(controller.getState().pendingUserMessages[clientId!]).toMatchObject({
 			status: "pending",
 		});
-		expect(controller.getState().pendingUserMessages[pendingId!]?.error).toBeUndefined();
+		expect(controller.getState().pendingUserMessages[clientId!]?.error).toBeUndefined();
 
-		retry.resolve({});
-		await expect(retryRequest).resolves.toBe(true);
+		retry.resolve(undefined as never);
+		await expect(retrying).resolves.toBe(true);
 	});
 
-	it("marks a message failed when the OpenCode SDK returns an error", async () => {
+	it("marks a message failed when the server rejects the prompt", async () => {
+		const { fake, controller } = setup();
 		const error = new Error("Unauthorized");
-		const promptAsync = rejectWhenThrowing(error);
-		const controller = new OpenCodeThreadController(
-			{ session: { promptAsync } } as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
+		fake.session.prompt.mockRejectedValueOnce(error);
+
+		await expect(controller.sendMessage(hello())).rejects.toBe(error);
+
+		expect(Object.values(controller.getState().pendingUserMessages)[0]).toMatchObject({
+			status: "failed",
+			error,
+		});
+		expect(controller.getState().runState).toEqual({ type: "error", error });
+	});
+
+	it("refuses to send anything but a user message", async () => {
+		const { controller } = setup();
 
 		await expect(
-			controller.sendMessage({
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "text", text: "hello" }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			}),
-		).rejects.toBe(error);
-
-		expect(Object.values(controller.getState().pendingUserMessages)[0]).toEqual(
-			expect.objectContaining({ status: "failed", error }),
-		);
-		expect(promptAsync).toHaveBeenCalledWith(
-			{
-				sessionID: "ses_1",
-				parts: [{ type: "text", text: "hello" }],
-			},
-			{ throwOnError: true },
-		);
+			controller.sendMessage({ ...hello(), role: "assistant" } as AppendMessage),
+		).rejects.toThrow();
 	});
 
 	it("isolates subscriber errors while sending messages", async () => {
-		const promptAsync = vi.fn().mockResolvedValue({});
-		const controller = new OpenCodeThreadController(
-			{ session: { promptAsync } } as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
+		const { fake, controller } = setup();
 		const listenerError = new Error("listener failed");
 		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 		onTestFinished(() => consoleError.mockRestore());
 		const laterListener = vi.fn();
-
 		controller.subscribe(() => {
 			throw listenerError;
 		});
 		controller.subscribe(laterListener);
 
-		await expect(
-			controller.sendMessage({
-				role: "user",
-				parentId: null,
-				sourceId: null,
-				content: [{ type: "text", text: "hello" }],
-				attachments: [],
-				metadata: { custom: {} },
-				runConfig: {},
-				createdAt: new Date(),
-			}),
-		).resolves.toBeUndefined();
+		await expect(controller.sendMessage(hello())).resolves.toBeUndefined();
 
-		expect(promptAsync).toHaveBeenCalledOnce();
+		expect(fake.session.prompt).toHaveBeenCalledOnce();
 		expect(laterListener).toHaveBeenCalled();
 		expect(consoleError).toHaveBeenCalledWith(
 			"[react-opencode] Listener threw an error",
 			listenerError,
 		);
 	});
+});
 
-	it("re-subscribes through the provider after dispose", () => {
-		let eventSource = createEventSource();
-		const getEventSource = vi.fn(() => eventSource);
-		const controller = new OpenCodeThreadController({} as never, getEventSource, "ses_1");
+describe("OpenCodeThreadController: event subscription", () => {
+	it("re-subscribes through the provider after dispose", async () => {
+		const fake = createFakeClient();
+		let events = createFakeEventSource();
+		const getEventSource = vi.fn(() => events);
+		const controller = new OpenCodeThreadController(fake.client, getEventSource, SESSION_ID);
+		await controller.load();
 
-		const firstListener = vi.fn();
-		controller.subscribe(firstListener);
-
-		expect(getEventSource).toHaveBeenCalledTimes(1);
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(1);
+		controller.subscribe(vi.fn());
+		expect(events.subscribe).toHaveBeenCalledOnce();
 
 		controller.dispose();
+		expect(events.unsubscribe).toHaveBeenCalledOnce();
 
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(1);
-
-		eventSource = createEventSource();
-		const secondListener = vi.fn();
-		controller.subscribe(secondListener);
-
-		eventSource.emit({
-			type: "session.updated",
-			sessionId: "ses_1",
-			properties: {
-				info: {
-					id: "ses_1",
-					title: "Recovered session",
-					time: {},
-				},
-			},
-			raw: {},
-		});
+		events = createFakeEventSource();
+		const listener = vi.fn();
+		controller.subscribe(listener);
+		events.emit(serverEvent("session.renamed", { title: "Recovered session" }));
 
 		expect(getEventSource).toHaveBeenCalledTimes(2);
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(1);
-		expect(secondListener).toHaveBeenCalledTimes(1);
-		expect(controller.getState().session).toMatchObject({
-			id: "ses_1",
-			title: "Recovered session",
-		});
+		expect(events.subscribe).toHaveBeenCalledOnce();
+		expect(listener).toHaveBeenCalled();
+		expect(controller.getState().session?.title).toBe("Recovered session");
 	});
 
-	it("normalizes permission requests missing the always list", () => {
-		const eventSource = createEventSource();
-		const controller = new OpenCodeThreadController({} as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
+	it("detaches from events when the last state listener unsubscribes", async () => {
+		const { events, controller } = setup();
+		await controller.load();
+		const unsubscribeFirst = controller.subscribe(vi.fn());
+		const second = vi.fn();
+		const unsubscribeSecond = controller.subscribe(second);
+		expect(events.subscribe).toHaveBeenCalledOnce();
 
-		eventSource.emit({
-			type: "permission.asked",
-			sessionId: "ses_1",
-			properties: {
-				id: "permission_1",
-				sessionID: "ses_1",
-				permission: "bash",
-				patterns: [],
-				metadata: {},
-				tool: { messageID: "assistant-1", callID: "call-1" },
-			},
-			raw: {},
-		});
+		unsubscribeFirst();
+		expect(controller.isAttachedToEvents()).toBe(true);
+		events.emit(serverEvent("session.renamed", { title: "Still attached" }));
+		expect(second).toHaveBeenCalled();
 
-		expect(controller.getState().interactions.permissions.pending["permission_1"]).toMatchObject({
-			id: "permission_1",
-			always: [],
-		});
-	});
-
-	it("detaches from OpenCode events when the last state listener unsubscribes", () => {
-		const eventSource = createEventSource();
-		const controller = new OpenCodeThreadController({} as never, () => eventSource, "ses_1");
-
-		const unsubscribeFirstState = controller.subscribe(vi.fn());
-		const secondListener = vi.fn();
-		const unsubscribeSecondState = controller.subscribe(secondListener);
-
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(1);
-
-		unsubscribeFirstState();
-
-		expect(eventSource.unsubscribe).not.toHaveBeenCalled();
-
-		eventSource.emit({
-			type: "session.updated",
-			sessionId: "ses_1",
-			properties: {
-				info: {
-					id: "ses_1",
-					title: "Still attached",
-					time: {},
-				},
-			},
-			raw: {},
-		});
-
-		expect(secondListener).toHaveBeenCalledTimes(1);
-
-		unsubscribeSecondState();
-
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(1);
+		unsubscribeSecond();
+		expect(controller.isAttachedToEvents()).toBe(false);
+		expect(events.unsubscribe).toHaveBeenCalledOnce();
 	});
 
 	it("supports detached subscribe and getState references", () => {
-		const eventSource = createEventSource();
-		const controller = new OpenCodeThreadController({} as never, () => eventSource, "ses_1");
-
+		const { events, controller } = setup();
 		const { subscribe, getState } = controller;
-		const unsubscribe = subscribe(vi.fn());
 
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(1);
-		expect(getState().sessionId).toBe("ses_1");
+		const unsubscribe = subscribe(vi.fn());
+		expect(events.subscribe).toHaveBeenCalledOnce();
+		expect(getState().sessionId).toBe(SESSION_ID);
 
 		unsubscribe();
-
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(1);
+		expect(events.unsubscribe).toHaveBeenCalledOnce();
 	});
 
-	it("inspects only the updated part during live child-session sync", async () => {
-		getOpenCodeTaskSessionIdSpy.mockClear();
-		const eventSource = createEventSource();
-		const message = {
-			...createTaskMessage("ses_parent", "parent-assistant", []),
-			parts: Array.from({ length: 50 }, (_, index) => ({
-				id: `parent-text-${index}`,
-				sessionID: "ses_parent",
-				messageID: "parent-assistant",
-				type: "text",
-				text: `Part ${index}`,
-			})),
-		};
-		const client = {
-			session: {
-				get: vi.fn().mockResolvedValue({
-					data: { id: "ses_parent", title: "Parent", time: {} },
-				}),
-				messages: vi.fn().mockResolvedValue({ data: [message] }),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
-		const unsubscribe = controller.subscribe(vi.fn());
+	it("ignores other sessions' events", async () => {
+		const { events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		const before = controller.getState();
+
+		events.emit(serverEvent("session.renamed", { sessionID: "ses_other", title: "Other" }));
+
+		expect(controller.getState()).toBe(before);
+	});
+});
+
+describe("OpenCodeThreadController: history", () => {
+	it("opens with the newest page and loads older pages in the background", async () => {
+		const { fake, controller } = setup();
+		const transcript = messageIds(300);
+		fake.transcripts.set(SESSION_ID, transcript);
 
 		await controller.load();
-		const inspectionsAfterLoad = getOpenCodeTaskSessionIdSpy.mock.calls.length;
 
-		eventSource.emit({
-			type: "message.part.updated",
-			sessionId: "ses_parent",
-			properties: {
-				part: {
-					...message.parts[0],
-					text: "Updated",
-				},
-			},
-			raw: {},
+		expect(fake.message.list).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			limit: OPEN_CODE_HISTORY_PAGE_SIZE,
+		});
+		expect(ids(controller.getState())).toEqual(transcript.slice(-50).map((message) => message.id));
+		expect(controller.getState().olderHistory).toEqual({ type: "available", cursor: "250" });
+
+		await vi.waitFor(() =>
+			expect(controller.getState().olderHistory).toEqual({ type: "complete" }),
+		);
+		expect(ids(controller.getState())).toEqual(transcript.map((message) => message.id));
+		expect(fake.message.list.mock.calls.slice(1).map(([input]) => input)).toEqual([
+			{ sessionID: SESSION_ID, cursor: "250", limit: 200 },
+			{ sessionID: SESSION_ID, cursor: "50", limit: 200 },
+		]);
+	});
+
+	it("is complete when the newest page holds the whole session", async () => {
+		const { fake, controller } = setup();
+		fake.transcripts.set(SESSION_ID, messageIds(12));
+
+		await controller.load();
+
+		expect(controller.getState().olderHistory).toEqual({ type: "complete" });
+		expect(controller.getState().messages).toHaveLength(12);
+		expect(fake.message.list).toHaveBeenCalledOnce();
+	});
+
+	it("loads everything first when a staged revert's boundary lies beyond the newest page", async () => {
+		const { fake, controller } = setup();
+		const transcript = messageIds(300);
+		fake.transcripts.set(SESSION_ID, transcript);
+		fake.sessions.set(
+			SESSION_ID,
+			session(SESSION_ID, { revert: { messageID: transcript[10]!.id } }),
+		);
+		const loadedSizes: number[] = [];
+		controller.subscribe(() => {
+			const state = controller.getState();
+			if (state.loadState.type === "ready") loadedSizes.push(state.messages.length);
 		});
 
-		expect(getOpenCodeTaskSessionIdSpy).toHaveBeenCalledTimes(inspectionsAfterLoad + 1);
+		await controller.load();
 
-		unsubscribe();
+		expect(loadedSizes[0]).toBe(300);
+		expect(controller.getState().olderHistory).toEqual({ type: "complete" });
+		expect(fake.message.list).toHaveBeenCalledTimes(3);
+	});
+
+	it("opens with the newest page when a staged revert's boundary lies inside it", async () => {
+		const { fake, controller } = setup();
+		const transcript = messageIds(300);
+		fake.transcripts.set(SESSION_ID, transcript);
+		fake.sessions.set(
+			SESSION_ID,
+			session(SESSION_ID, { revert: { messageID: transcript[290]!.id } }),
+		);
+
+		await controller.load();
+
+		expect(controller.getState().messages).toHaveLength(50);
+		expect(fake.message.list).toHaveBeenCalledOnce();
+	});
+
+	it("records a failed older page, keeping the newest one", async () => {
+		const { fake, controller } = setup();
+		fake.transcripts.set(SESSION_ID, messageIds(80));
+		const error = new Error("offline");
+		await controller.load();
+		fake.message.list.mockRejectedValueOnce(error);
+
+		await vi.waitFor(() =>
+			expect(controller.getState().olderHistory).toEqual({ type: "failed", cursor: "30", error }),
+		);
+		expect(controller.getState().messages).toHaveLength(50);
+	});
+
+	it("records a failed load and rejects", async () => {
+		const { fake, controller } = setup();
+		const error = new Error("Session not found");
+		fake.session.get.mockRejectedValueOnce(error);
+
+		await expect(controller.load()).rejects.toBe(error);
+		expect(controller.getState().loadState).toEqual({ type: "error", error });
+	});
+
+	it("keeps forced reloads authoritative while earlier loads finish", async () => {
+		const { fake, controller } = setup();
+		const firstSession = createDeferred<SessionInfo>();
+		const firstPage = createDeferred<SessionMessagesResponse>();
+		const secondSession = createDeferred<SessionInfo>();
+		const secondPage = createDeferred<SessionMessagesResponse>();
+		fake.session.get
+			.mockReturnValueOnce(firstSession.promise)
+			.mockReturnValueOnce(secondSession.promise);
+		fake.message.list
+			.mockReturnValueOnce(firstPage.promise)
+			.mockReturnValueOnce(secondPage.promise);
+
+		const firstLoad = controller.load();
+		const secondLoad = controller.load(true);
+		firstSession.resolve(session(SESSION_ID, { title: "stale" }));
+		firstPage.resolve({ data: [user("msg_stale")], cursor: {} });
+		await firstLoad;
+		expect(controller.getState().loadState.type).toBe("loading");
+
+		const thirdLoad = controller.load();
+		expect(fake.session.get).toHaveBeenCalledTimes(2);
+
+		secondSession.resolve(session(SESSION_ID, { title: "fresh" }));
+		secondPage.resolve({ data: [user("msg_fresh")], cursor: {} });
+		await Promise.all([secondLoad, thirdLoad]);
+
+		expect(controller.getState().loadState.type).toBe("ready");
+		expect(controller.getState().session?.title).toBe("fresh");
+		expect(ids(controller.getState())).toEqual(["msg_fresh"]);
+	});
+
+	it("reloads, rather than guessing, when an event arrives for a step it doesn't hold", async () => {
+		const { fake, events, controller } = setup();
+		fake.transcripts.set(SESSION_ID, [user("msg_1")]);
+		await controller.load();
+		controller.subscribe(vi.fn());
+		fake.message.list.mockClear();
+
+		events.emit(
+			serverEvent("session.text.delta", {
+				assistantMessageID: "msg_missed",
+				ordinal: 0,
+				delta: "x",
+			}),
+		);
+
+		expect(ids(controller.getState())).toEqual(["msg_1"]);
+		await vi.waitFor(() => expect(fake.message.list).toHaveBeenCalledOnce());
+	});
+
+	it("reloads once a compaction ends", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		fake.message.list.mockClear();
+
+		events.emit(serverEvent("session.compaction.ended", { reason: "manual", text: "Summary" }));
+
+		await vi.waitFor(() => expect(fake.message.list).toHaveBeenCalledOnce());
+	});
+});
+
+describe("OpenCodeThreadController: running", () => {
+	it("reads whether the session runs from session.active when it attaches", async () => {
+		const { fake, controller } = setup();
+		fake.session.active.mockResolvedValue({ [SESSION_ID]: { type: "running" } });
+
+		controller.subscribe(vi.fn());
+
+		await vi.waitFor(() =>
+			expect(controller.getState()).toMatchObject({
+				running: true,
+				runState: { type: "streaming" },
+			}),
+		);
+	});
+
+	it("loads whether the session runs with its history", async () => {
+		const { fake, controller } = setup();
+		fake.session.active.mockResolvedValue({ [SESSION_ID]: { type: "running" } });
+
+		await controller.load();
+
+		expect(controller.getState().running).toBe(true);
+	});
+
+	it("follows the session's execution events", async () => {
+		const { events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+
+		events.emit(serverEvent("session.execution.started"));
+		expect(controller.getState().running).toBe(true);
+
+		events.emit(serverEvent("session.execution.succeeded"));
+		expect(controller.getState()).toMatchObject({ running: false, runState: { type: "idle" } });
+		expect(controller.getState().messages.at(-1)).toMatchObject({
+			type: "idle",
+			outcome: "succeeded",
+		});
+	});
+
+	it("ignores a session.active reply older than a newer execution event", async () => {
+		const { fake, events, controller } = setup();
+		const reply = createDeferred<Awaited<ReturnType<FakeClient["client"]["session"]["active"]>>>();
+		fake.session.active.mockReturnValueOnce(reply.promise);
+		controller.subscribe(vi.fn());
+		await vi.waitFor(() => expect(fake.session.active).toHaveBeenCalledOnce());
+
+		events.emit(serverEvent("session.execution.started"));
+		reply.resolve({});
+		await settleMicrotasks();
+
+		expect(controller.getState().running).toBe(true);
+	});
+
+	it("ignores a reload's session.active reply older than a newer execution event", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		await settleMicrotasks();
+		const reply = createDeferred<Awaited<ReturnType<FakeClient["client"]["session"]["active"]>>>();
+		fake.session.active.mockReturnValueOnce(reply.promise);
+
+		const reload = controller.refresh();
+		events.emit(serverEvent("session.execution.started"));
+		reply.resolve({});
+		await reload;
+
+		expect(controller.getState().running).toBe(true);
+	});
+
+	it("reads whether the session runs again after a reconnect", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		events.emit(serverEvent("session.execution.started"));
+		fake.session.active.mockResolvedValue({});
+
+		events.emit(streamReconnected);
+
+		await vi.waitFor(() =>
+			expect(controller.getState()).toMatchObject({ running: false, runState: { type: "idle" } }),
+		);
+	});
+
+	it("keeps a run the server still reports after a reconnect", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		fake.session.active.mockResolvedValue({ [SESSION_ID]: { type: "running" } });
+
+		events.emit(streamReconnected);
+
+		await vi.waitFor(() =>
+			expect(controller.getState()).toMatchObject({
+				running: true,
+				runState: { type: "streaming" },
+			}),
+		);
+	});
+
+	it("keeps the current state when session.active fails", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		events.emit(serverEvent("session.execution.started"));
+		fake.session.active.mockRejectedValue(new Error("404"));
+
+		events.emit(streamReconnected);
+		await vi.waitFor(() => expect(fake.session.get).toHaveBeenCalledTimes(2));
+		await settleMicrotasks();
+
+		expect(controller.getState().running).toBe(true);
+	});
+});
+
+describe("OpenCodeThreadController: reconnect", () => {
+	it("reloads history and reads interactions again when the stream reconnects", async () => {
+		const { fake, events, controller } = setup();
+		controller.subscribe(vi.fn());
+
+		events.emit(streamReconnected);
+
+		await vi.waitFor(() => {
+			expect(fake.session.get).toHaveBeenCalledOnce();
+			expect(fake.message.list).toHaveBeenCalledOnce();
+			expect(fake.permission.list).toHaveBeenCalledWith({ sessionID: SESSION_ID });
+			expect(fake.session.form.list).toHaveBeenCalledWith({ sessionID: SESSION_ID });
+		});
+	});
+
+	it("re-surfaces pending permissions and question forms after a reconnect", async () => {
+		const { fake, events, controller } = setup();
+		controller.subscribe(vi.fn());
+		fake.permission.list.mockResolvedValue([permissionRequest("per_1")]);
+		fake.session.form.list.mockResolvedValue([
+			questionForm("frm_1"),
+			{ ...questionForm("frm_other"), metadata: { kind: "mcp" } },
+		]);
+
+		events.emit(streamReconnected);
+
+		await vi.waitFor(() => {
+			expect(Object.keys(controller.getState().interactions.permissions.pending)).toEqual([
+				"per_1",
+			]);
+			expect(Object.keys(controller.getState().interactions.questions.pending)).toEqual(["frm_1"]);
+		});
+	});
+});
+
+describe("OpenCodeThreadController: interactions", () => {
+	async function withQuestion(events: FakeEventSource, controller: OpenCodeThreadController) {
+		await controller.load();
+		controller.subscribe(vi.fn());
+		events.emit(serverEvent("form.created", { form: questionForm("frm_1") }));
+	}
+
+	it("replies to a permission and records the decision", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		events.emit(serverEvent("permission.asked", { ...permissionRequest("per_1") }));
+
+		await controller.replyToPermission("per_1", "always");
+
+		expect(fake.permission.reply).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			requestID: "per_1",
+			decision: "always",
+		});
+		expect(controller.getState().interactions.permissions.resolved.per_1?.reply).toBe("always");
+	});
+
+	it("replies to a question form with its answers by field and records them", async () => {
+		const { fake, events, controller } = setup();
+		await withQuestion(events, controller);
+
+		await controller.replyToQuestion("frm_1", [["Yes"]]);
+
+		expect(fake.session.form.reply).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			formID: "frm_1",
+			answer: { q0: "Yes" },
+		});
+		expect(fake.session.form.get).not.toHaveBeenCalled();
+		expect(controller.getState().interactions.questions.answered.frm_1?.answers).toEqual([["Yes"]]);
+		expect(controller.getState().interactions.questions.pending).toEqual({});
+	});
+
+	it("reads a form it doesn't hold before replying to it", async () => {
+		const { fake, controller } = setup();
+		fake.session.form.get.mockResolvedValue({
+			...questionForm("frm_9"),
+			state: { status: "pending" } as never,
+		});
+
+		await controller.replyToQuestion("frm_9", [["No"]]);
+
+		expect(fake.session.form.get).toHaveBeenCalledWith({ sessionID: SESSION_ID, formID: "frm_9" });
+		expect(fake.session.form.reply).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			formID: "frm_9",
+			answer: { q0: "No" },
+		});
+	});
+
+	it("rejects a question form by cancelling it", async () => {
+		const { fake, events, controller } = setup();
+		await withQuestion(events, controller);
+
+		await controller.rejectQuestion("frm_1");
+
+		expect(fake.session.form.cancel).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			formID: "frm_1",
+		});
+		expect(controller.getState().interactions.questions.rejected.frm_1).toBeDefined();
+		expect(controller.getState().interactions.questions.pending).toEqual({});
+	});
+
+	it("forks before a message and returns the fork's id", async () => {
+		const { fake, controller } = setup();
+
+		await expect(controller.fork("msg_3")).resolves.toBe(`${SESSION_ID}_fork`);
+		expect(fake.session.fork).toHaveBeenCalledWith({ sessionID: SESSION_ID, before: "msg_3" });
+	});
+});
+
+describe("OpenCodeThreadController: cancel", () => {
+	it("is cancelling until the server reports the run interrupted", async () => {
+		const { fake, events, controller } = setup();
+		await controller.load();
+		controller.subscribe(vi.fn());
+		events.emit(serverEvent("session.execution.started"));
+
+		await controller.cancel();
+		expect(fake.session.interrupt).toHaveBeenCalledWith({ sessionID: SESSION_ID });
+		expect(controller.getState().runState).toEqual({ type: "cancelling" });
+
+		events.emit(serverEvent("session.execution.interrupted", { reason: "user" }));
+		expect(controller.getState()).toMatchObject({ running: false, runState: { type: "idle" } });
+	});
+
+	it("goes idle when there was nothing to interrupt", async () => {
+		const { fake, controller } = setup();
+		fake.session.interrupt.mockResolvedValueOnce({ interrupted: false });
+
+		await controller.cancel();
+
+		expect(controller.getState()).toMatchObject({ running: false, runState: { type: "idle" } });
+	});
+
+	it("moves to the error state and rethrows when the interrupt fails", async () => {
+		const { fake, controller } = setup();
+		fake.session.interrupt.mockRejectedValueOnce(new Error("offline"));
+
+		await expect(controller.cancel()).rejects.toThrow("offline");
+		expect(controller.getState().runState.type).toBe("error");
+	});
+});
+
+describe("OpenCodeThreadController: subagent sessions", () => {
+	const transcriptsOf = (fake: FakeClient, transcripts: Record<string, Transcript>) => {
+		for (const [sessionId, transcript] of Object.entries(transcripts))
+			fake.transcripts.set(sessionId, transcript);
+	};
+
+	it("inspects only the changed message's tools when syncing child sessions", async () => {
+		const { fake, events, controller } = setup();
+		transcriptsOf(fake, {
+			[SESSION_ID]: Array.from({ length: 40 }, (_, index) =>
+				assistant(`msg_${index}`, [runningTool(`call_${index}`, "read")]),
+			),
+		});
+		controller.subscribe(vi.fn());
+		await controller.load();
+		getOpenCodeTaskSessionIdSpy.mockClear();
+
+		events.emit(
+			serverEvent("session.tool.progress", {
+				assistantMessageID: "msg_7",
+				id: "call_7",
+				metadata: { lines: 1 },
+			}),
+		);
+
+		expect(getOpenCodeTaskSessionIdSpy).toHaveBeenCalledOnce();
 	});
 
 	it("defers child-session work until the parent has a listener", async () => {
-		const eventSource = createEventSource();
-		const messages = vi.fn(({ sessionID }: { sessionID: string }) =>
-			Promise.resolve({
-				data:
-					sessionID === "ses_parent"
-						? [createTaskMessage("ses_parent", "parent-assistant", ["ses_child"])]
-						: [],
-			}),
-		);
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages,
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
+		const { fake, events, controller } = setup("ses_parent");
+		transcriptsOf(fake, { ses_parent: [withSubagents("msg_p", ["ses_child"])] });
 
 		await controller.load();
-
-		expect(messages).toHaveBeenCalledTimes(1);
-		expect(eventSource.subscribe).not.toHaveBeenCalled();
+		expect(fake.message.list).toHaveBeenCalledOnce();
+		expect(events.subscribe).not.toHaveBeenCalled();
 		expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("idle");
 
 		const unsubscribe = controller.subscribe(vi.fn());
-
-		await vi.waitFor(() => {
-			expect(messages).toHaveBeenCalledTimes(2);
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(2);
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
+		expect(fake.message.list).toHaveBeenCalledTimes(2);
+		expect(events.subscribe).toHaveBeenCalledTimes(2);
 
 		unsubscribe();
-
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(2);
+		expect(events.unsubscribe).toHaveBeenCalledTimes(2);
 	});
 
-	it("keeps the global reconnect probes on the root session", async () => {
-		const eventSource = createEventSource();
-		const status = vi.fn().mockResolvedValue({ data: {} });
-		const permissions = vi.fn().mockResolvedValue({ data: [] });
-		const questions = vi.fn().mockResolvedValue({ data: [] });
-		const sessionMessages = vi.fn(({ sessionID }: { sessionID: string }) =>
-			Promise.resolve({
-				data:
-					sessionID === "ses_parent"
-						? [createTaskMessage("ses_parent", "parent-assistant", ["ses_child"])]
-						: [],
-			}),
-		);
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages: sessionMessages,
-				status,
-			},
-			permission: { list: permissions },
-			question: { list: questions },
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
+	it("reads permissions and forms again for the root session only", async () => {
+		const { fake, events, controller } = setup("ses_parent");
+		transcriptsOf(fake, { ses_parent: [withSubagents("msg_p", ["ses_child"])] });
 		controller.subscribe(vi.fn());
-
 		await controller.load();
-		await vi.waitFor(() => {
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
-		const callsBeforeReconnect = sessionMessages.mock.calls.length;
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
+		const listsBefore = fake.message.list.mock.calls.length;
 
-		eventSource.emit(streamReconnected);
+		events.emit(streamReconnected);
 
-		await vi.waitFor(() => {
-			expect(sessionMessages.mock.calls.length).toBeGreaterThan(callsBeforeReconnect + 1);
-		});
-
-		// Desktop's fork also reads status when each controller (parent, child)
-		// first subscribes, and on reconnect for children too; permissions and
-		// questions stay root-only.
-		expect(status.mock.calls.length).toBeGreaterThanOrEqual(3);
-		expect(permissions).toHaveBeenCalledTimes(1);
-		expect(questions).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() =>
+			expect(fake.message.list.mock.calls.length).toBeGreaterThan(listsBefore + 1),
+		);
+		const sessionsAsked = (calls: readonly (readonly [{ sessionID: string }, ...unknown[]])[]) =>
+			new Set(calls.map(([input]) => input.sessionID));
+		expect(sessionsAsked(fake.permission.list.mock.calls)).toEqual(new Set(["ses_parent"]));
+		expect(sessionsAsked(fake.session.form.list.mock.calls)).toEqual(new Set(["ses_parent"]));
+		expect(fake.session.active.mock.calls.length).toBeGreaterThanOrEqual(3);
 	});
 
-	it("does not refetch a loaded child when the parent re-attaches", async () => {
-		const eventSource = createEventSource();
-		const messages = vi.fn(({ sessionID }: { sessionID: string }) =>
-			Promise.resolve({
-				data:
-					sessionID === "ses_parent"
-						? [createTaskMessage("ses_parent", "parent-assistant", ["ses_child"])]
-						: [],
-			}),
-		);
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages,
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
-
+	it("does not reload a loaded child when the parent re-attaches", async () => {
+		const { fake, controller } = setup("ses_parent");
+		transcriptsOf(fake, { ses_parent: [withSubagents("msg_p", ["ses_child"])] });
 		await controller.load();
 		const unsubscribe = controller.subscribe(vi.fn());
-		await vi.waitFor(() => {
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
-
-		const callsAfterFirstAttach = messages.mock.calls.length;
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
+		const listsAfterAttach = fake.message.list.mock.calls.length;
 
 		unsubscribe();
-		const resubscribe = controller.subscribe(vi.fn());
+		controller.subscribe(vi.fn());
 
-		expect(messages.mock.calls.length).toBe(callsAfterFirstAttach);
+		expect(fake.message.list).toHaveBeenCalledTimes(listsAfterAttach);
 		expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-
-		resubscribe();
 	});
 
 	it("reports a child discovered on a live thread as loading before its history resolves", async () => {
-		const eventSource = createEventSource();
-		let resolveChildMessages: ((value: unknown) => void) | undefined;
-		const messages = vi.fn(({ sessionID }: { sessionID: string }) => {
-			if (sessionID === "ses_parent") return Promise.resolve({ data: [] });
-			return new Promise((resolve) => {
-				resolveChildMessages = resolve;
-			});
-		});
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages,
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
+		const { fake, events, controller } = setup("ses_parent");
+		const childPage = createDeferred<SessionMessagesResponse>();
+		fake.message.list.mockImplementation(async ({ sessionID }) =>
+			sessionID === "ses_child" ? childPage.promise : { data: [], cursor: {} },
 		);
-		const unsubscribe = controller.subscribe(vi.fn());
-
+		controller.subscribe(vi.fn());
 		await controller.load();
 
-		eventSource.emit({
-			type: "message.updated",
-			sessionId: "ses_parent",
-			properties: {
-				info: {
-					id: "parent-assistant",
-					role: "assistant",
-					sessionID: "ses_parent",
-					parentID: "parent-user",
-					modelID: "model",
-					providerID: "provider",
-					mode: "primary",
-					path: { cwd: "/", root: "/" },
-					cost: 0,
-					tokens: {
-						input: 0,
-						output: 0,
-						reasoning: 0,
-						cache: { read: 0, write: 0 },
-					},
-					time: { created: 1 },
-				},
-			},
-			raw: {},
-		});
-		eventSource.emit({
-			type: "message.part.updated",
-			sessionId: "ses_parent",
-			properties: {
-				part: {
-					id: "parent-task",
-					callID: "parent-call",
-					sessionID: "ses_parent",
-					messageID: "parent-assistant",
-					type: "tool",
-					tool: "task",
-					state: {
-						status: "running",
-						input: { description: "Inspect" },
-						metadata: { sessionId: "ses_child" },
-						time: { start: 1 },
-					},
-				},
-			},
-			raw: {},
-		});
+		const onStep = (type: string, data: Record<string, unknown>) =>
+			serverEvent(type, { sessionID: "ses_parent", assistantMessageID: "msg_p", ...data });
+		events.emit(stepStarted("msg_p", "ses_parent"));
+		events.emit(onStep("session.tool.input.started", { id: "call_1", name: "subagent" }));
+		events.emit(onStep("session.tool.called", { id: "call_1", input: { agent: "explore" } }));
+		events.emit(
+			onStep("session.tool.progress", { id: "call_1", metadata: { sessionID: "ses_child" } }),
+		);
 
 		expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("loading");
 
-		resolveChildMessages?.({ data: [] });
-
-		await vi.waitFor(() => {
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
-
-		unsubscribe();
+		childPage.resolve({ data: [], cursor: {} });
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
 	});
 
-	it("loads parallel and recursive Task child sessions without following ancestor cycles", async () => {
-		const eventSource = createEventSource();
-		const messagesBySessionId: Record<string, unknown[]> = {
-			ses_parent: [
-				createTaskMessage("ses_parent", "parent-assistant", ["ses_child_a", "ses_child_b"]),
-			],
-			ses_child_a: [createTaskMessage("ses_child_a", "child-a-assistant", ["ses_grandchild"])],
-			ses_child_b: [],
-			ses_grandchild: [createTaskMessage("ses_grandchild", "grandchild-assistant", ["ses_parent"])],
-		};
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({ data: messagesBySessionId[sessionID] ?? [] }),
-				),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
+	it("loads parallel and nested child sessions without following ancestor cycles", async () => {
+		const { fake, events, controller } = setup("ses_parent");
+		transcriptsOf(fake, {
+			ses_parent: [withSubagents("msg_p", ["ses_child_a", "ses_child_b"])],
+			ses_child_a: [withSubagents("msg_a", ["ses_grandchild"])],
+			ses_grandchild: [withSubagents("msg_g", ["ses_parent"])],
+		});
 		const unsubscribe = controller.subscribe(vi.fn());
 
 		await controller.load();
 
-		await vi.waitFor(() => {
-			expect(client.session.messages).toHaveBeenCalledTimes(4);
+		await vi.waitFor(() =>
 			expect(
 				controller.getState().childSessionsById.ses_child_a?.childSessionsById.ses_grandchild
 					?.loadState.type,
-			).toBe("ready");
-		});
+			).toBe("ready"),
+		);
 		expect(Object.keys(controller.getState().childSessionsById).sort()).toEqual([
 			"ses_child_a",
 			"ses_child_b",
 		]);
-		expect(client.session.messages.mock.calls.map(([request]) => request.sessionID)).toEqual(
-			expect.arrayContaining(["ses_parent", "ses_child_a", "ses_child_b", "ses_grandchild"]),
+		expect(new Set(fake.message.list.mock.calls.map(([input]) => input.sessionID))).toEqual(
+			new Set(["ses_parent", "ses_child_a", "ses_child_b", "ses_grandchild"]),
 		);
+		expect(fake.message.list).toHaveBeenCalledTimes(4);
 		expect(
 			controller.getState().childSessionsById.ses_child_a?.childSessionsById.ses_grandchild
 				?.childSessionsById,
 		).toEqual({});
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(4);
+		expect(events.subscribe).toHaveBeenCalledTimes(4);
 
 		unsubscribe();
-
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(4);
+		expect(events.unsubscribe).toHaveBeenCalledTimes(4);
 	});
 
-	it("routes live child-session events into the nested state", async () => {
-		const eventSource = createEventSource();
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data:
-							sessionID === "ses_parent"
-								? [
-										{
-											info: {
-												id: "parent-assistant",
-												role: "assistant",
-												sessionID: "ses_parent",
-												parentID: "parent-user",
-												modelID: "model",
-												providerID: "provider",
-												mode: "primary",
-												path: { cwd: "/", root: "/" },
-												cost: 0,
-												tokens: {
-													input: 0,
-													output: 0,
-													reasoning: 0,
-													cache: { read: 0, write: 0 },
-												},
-												time: { created: 1 },
-											},
-											parts: [
-												{
-													id: "parent-task",
-													callID: "parent-call",
-													sessionID: "ses_parent",
-													messageID: "parent-assistant",
-													type: "tool",
-													tool: "task",
-													state: {
-														status: "running",
-														input: { description: "Inspect" },
-														metadata: { sessionId: "ses_child" },
-														time: { start: 1 },
-													},
-												},
-											],
-										},
-									]
-								: [],
-					}),
-				),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
+	it("routes a child session's live events into its nested state", async () => {
+		const { fake, events, controller } = setup("ses_parent");
+		transcriptsOf(fake, { ses_parent: [withSubagents("msg_p", ["ses_child"])] });
 		const listener = vi.fn();
-		const unsubscribe = controller.subscribe(listener);
-
+		controller.subscribe(listener);
 		await controller.load();
-		await vi.waitFor(() => {
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
+		listener.mockClear();
 
-		eventSource.emit({
-			type: "message.updated",
-			sessionId: "ses_child",
-			properties: {
-				info: {
-					id: "child-assistant",
-					role: "assistant",
-					sessionID: "ses_child",
-					parentID: "child-user",
-					modelID: "model",
-					providerID: "provider",
-					mode: "subagent",
-					path: { cwd: "/", root: "/" },
-					cost: 0,
-					tokens: {
-						input: 0,
-						output: 0,
-						reasoning: 0,
-						cache: { read: 0, write: 0 },
-					},
-					time: { created: 2 },
-				},
-			},
-			raw: {},
-		});
-		eventSource.emit({
-			type: "message.part.updated",
-			sessionId: "ses_child",
-			properties: {
-				part: {
-					id: "child-text",
-					sessionID: "ses_child",
-					messageID: "child-assistant",
-					type: "text",
-					text: "Live child output",
-				},
-			},
-			raw: {},
-		});
+		events.emit(stepStarted("msg_child", "ses_child"));
+		events.emit(
+			serverEvent("session.text.started", {
+				sessionID: "ses_child",
+				assistantMessageID: "msg_child",
+				ordinal: 0,
+			}),
+		);
+		events.emit(
+			serverEvent("session.text.delta", {
+				sessionID: "ses_child",
+				assistantMessageID: "msg_child",
+				ordinal: 0,
+				delta: "Live child output",
+			}),
+		);
 
-		expect(
-			controller.getState().childSessionsById.ses_child?.messagesById["child-assistant"]?.parts,
-		).toMatchObject([{ type: "text", text: "Live child output" }]);
+		const child = controller.getState().childSessionsById.ses_child;
+		expect(child?.messages.at(-1)).toMatchObject({
+			id: "msg_child",
+			content: [text("Live child output")],
+		});
 		expect(listener).toHaveBeenCalled();
-
-		unsubscribe();
 	});
 
-	it("removes a child controller when its Task part is removed", async () => {
-		const eventSource = createEventSource();
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data:
-							sessionID === "ses_parent"
-								? [
-										{
-											info: {
-												id: "parent-assistant",
-												role: "assistant",
-												sessionID: "ses_parent",
-												parentID: "parent-user",
-												modelID: "model",
-												providerID: "provider",
-												mode: "primary",
-												path: { cwd: "/", root: "/" },
-												cost: 0,
-												tokens: {
-													input: 0,
-													output: 0,
-													reasoning: 0,
-													cache: { read: 0, write: 0 },
-												},
-												time: { created: 1 },
-											},
-											parts: [
-												{
-													id: "parent-task",
-													callID: "parent-call",
-													sessionID: "ses_parent",
-													messageID: "parent-assistant",
-													type: "tool",
-													tool: "task",
-													state: {
-														status: "running",
-														input: { description: "Inspect" },
-														metadata: { sessionId: "ses_child" },
-														time: { start: 1 },
-													},
-												},
-											],
-										},
-									]
-								: [],
-					}),
-				),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
-		const unsubscribe = controller.subscribe(vi.fn());
-
+	it("lets go of a child session once its subagent call leaves the transcript", async () => {
+		const { fake, events, controller } = setup("ses_parent");
+		transcriptsOf(fake, { ses_parent: [user("msg_u"), withSubagents("msg_p", ["ses_child"])] });
+		controller.subscribe(vi.fn());
 		await controller.load();
-		await vi.waitFor(() => {
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
+		expect(events.listeners.size).toBe(2);
 
-		eventSource.emit({
-			type: "message.part.removed",
-			sessionId: "ses_parent",
-			properties: {
-				messageID: "parent-assistant",
-				partID: "parent-task",
-			},
-			raw: {},
-		});
+		events.emit(serverEvent("session.revert.committed", { sessionID: "ses_parent", to: "msg_p" }));
 
 		expect(controller.getState().childSessionsById).toEqual({});
-		// The removed child lets go of its events and of the staleness watch it
-		// opened on detaching (Desktop's fork).
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(2);
-
-		unsubscribe();
-
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(3);
+		expect(events.listeners.size).toBe(1);
 	});
 
-	it("keeps a child controller while another Task part references it", async () => {
-		const eventSource = createEventSource();
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data:
-							sessionID === "ses_parent"
-								? [createTaskMessage("ses_parent", "parent-assistant", ["ses_child", "ses_child"])]
-								: [],
-					}),
-				),
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
-		const unsubscribe = controller.subscribe(vi.fn());
-
+	it("keeps a child session while another subagent call still runs in it", async () => {
+		const { fake, events, controller } = setup("ses_parent");
+		transcriptsOf(fake, {
+			ses_parent: [withSubagents("msg_p1", ["ses_child"]), withSubagents("msg_p2", ["ses_child"])],
+		});
+		controller.subscribe(vi.fn());
 		await controller.load();
-		await vi.waitFor(() => {
-			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready");
-		});
+		await vi.waitFor(() =>
+			expect(controller.getState().childSessionsById.ses_child?.loadState.type).toBe("ready"),
+		);
 
-		eventSource.emit({
-			type: "message.part.removed",
-			sessionId: "ses_parent",
-			properties: {
-				messageID: "parent-assistant",
-				partID: "parent-assistant-task-0",
-			},
-			raw: {},
-		});
-
+		events.emit(serverEvent("session.revert.committed", { sessionID: "ses_parent", to: "msg_p2" }));
 		expect(controller.getState().childSessionsById.ses_child).toBeDefined();
-		expect(eventSource.unsubscribe).not.toHaveBeenCalled();
+		expect(events.listeners.size).toBe(2);
 
-		eventSource.emit({
-			type: "message.part.removed",
-			sessionId: "ses_parent",
-			properties: {
-				messageID: "parent-assistant",
-				partID: "parent-assistant-task-1",
-			},
-			raw: {},
-		});
-
+		events.emit(serverEvent("session.revert.committed", { sessionID: "ses_parent", to: "msg_p1" }));
 		expect(controller.getState().childSessionsById).toEqual({});
-		// Its events and its staleness watch (Desktop's fork).
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(2);
-
-		unsubscribe();
+		expect(events.listeners.size).toBe(1);
 	});
 
-	it("does not attach descendants from a removed Task's in-flight history", async () => {
-		const eventSource = createEventSource();
-		const childMessages = createDeferred<{ data: unknown[] }>();
-		const messages = vi.fn(({ sessionID }: { sessionID: string }) => {
-			if (sessionID === "ses_parent") {
-				return Promise.resolve({
-					data: [createTaskMessage("ses_parent", "parent-assistant", ["ses_child"])],
-				});
-			}
-			if (sessionID === "ses_child") return childMessages.promise;
-			return Promise.resolve({ data: [] });
+	it("does not attach descendants from a removed child's history still on its way", async () => {
+		const { fake, events, controller } = setup("ses_parent");
+		const childPage = createDeferred<SessionMessagesResponse>();
+		fake.message.list.mockImplementation(async ({ sessionID }) => {
+			if (sessionID === "ses_parent")
+				return { data: [withSubagents("msg_p", ["ses_child"])], cursor: {} };
+			if (sessionID === "ses_child") return childPage.promise;
+			return { data: [], cursor: {} };
 		});
-		const client = {
-			session: {
-				get: vi.fn(({ sessionID }: { sessionID: string }) =>
-					Promise.resolve({
-						data: { id: sessionID, title: sessionID, time: {} },
-					}),
-				),
-				messages,
-			},
-		};
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => eventSource,
-			"ses_parent",
-		);
-		const unsubscribe = controller.subscribe(vi.fn());
-
+		controller.subscribe(vi.fn());
 		await controller.load();
-		await vi.waitFor(() => {
-			expect(messages).toHaveBeenCalledTimes(2);
-			expect(eventSource.subscribe).toHaveBeenCalledTimes(2);
-		});
+		await vi.waitFor(() => expect(fake.message.list).toHaveBeenCalledTimes(2));
 
-		eventSource.emit({
-			type: "message.part.removed",
-			sessionId: "ses_parent",
-			properties: {
-				messageID: "parent-assistant",
-				partID: "parent-assistant-task-0",
-			},
-			raw: {},
-		});
-
-		childMessages.resolve({
-			data: [createTaskMessage("ses_child", "child-assistant", ["ses_grandchild"])],
-		});
+		events.emit(serverEvent("session.revert.committed", { sessionID: "ses_parent", to: "msg_p" }));
+		childPage.resolve({ data: [withSubagents("msg_c", ["ses_grandchild"])], cursor: {} });
 		await settleMicrotasks();
 
-		expect(messages).toHaveBeenCalledTimes(2);
-		// The removed child's staleness watch (Desktop's fork) comes and goes.
-		expect(eventSource.subscribe).toHaveBeenCalledTimes(3);
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(2);
-
-		unsubscribe();
-
-		expect(eventSource.unsubscribe).toHaveBeenCalledTimes(3);
-	});
-
-	it("re-syncs history and status when the stream reconnects", async () => {
-		const eventSource = createEventSource();
-		const client = createReconnectClient();
-		const controller = new OpenCodeThreadController(client as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
-
-		eventSource.emit({
-			type: "session.status",
-			sessionId: "ses_1",
-			properties: { status: { type: "busy" } },
-			raw: {},
-		});
-
-		expect(controller.getState().sessionStatus).toMatchObject({
-			type: "busy",
-		});
-
-		eventSource.emit(streamReconnected);
-
-		await vi.waitFor(() => {
-			expect(controller.getState().sessionStatus).toMatchObject({
-				type: "idle",
-			});
-		});
-		expect(controller.getState().runState).toMatchObject({ type: "idle" });
-		// Once on first subscribe (Desktop's fork), once on reconnect.
-		expect(client.session.status).toHaveBeenCalledTimes(2);
-		expect(client.session.get).toHaveBeenCalledTimes(1);
-		expect(client.session.messages).toHaveBeenCalledTimes(1);
-	});
-
-	it("keeps a busy status the server still reports after reconnect", async () => {
-		const eventSource = createEventSource();
-		const client = createReconnectClient({
-			status: vi.fn().mockResolvedValue({ data: { ses_1: { type: "busy" } } }),
-		});
-		const controller = new OpenCodeThreadController(client as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
-
-		eventSource.emit(streamReconnected);
-
-		await vi.waitFor(() => {
-			expect(controller.getState().sessionStatus).toMatchObject({
-				type: "busy",
-			});
-		});
-		expect(controller.getState().runState).toMatchObject({
-			type: "streaming",
-		});
-	});
-
-	it("keeps current state when the status endpoint is unavailable", async () => {
-		const eventSource = createEventSource();
-		const client = createReconnectClient({
-			status: vi.fn().mockRejectedValue(new Error("404")),
-		});
-		const controller = new OpenCodeThreadController(client as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
-
-		eventSource.emit({
-			type: "session.status",
-			sessionId: "ses_1",
-			properties: { status: { type: "busy" } },
-			raw: {},
-		});
-
-		eventSource.emit(streamReconnected);
-
-		await vi.waitFor(() => {
-			expect(client.session.get).toHaveBeenCalledTimes(1);
-			// Once on first subscribe (Desktop's fork), once on reconnect.
-			expect(client.session.status).toHaveBeenCalledTimes(2);
-		});
-		await settleMicrotasks();
-
-		expect(controller.getState().sessionStatus).toMatchObject({
-			type: "busy",
-		});
-	});
-
-	it("keeps current state when reconnect probes fail via throwOnError", async () => {
-		const eventSource = createEventSource();
-		const status = rejectWhenThrowing(new Error("boom"));
-		const permissions = rejectWhenThrowing(new Error("boom"));
-		const questions = rejectWhenThrowing(new Error("boom"));
-		const client = createReconnectClient({ status, permissions, questions });
-		const controller = new OpenCodeThreadController(client as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
-
-		eventSource.emit({
-			type: "session.status",
-			sessionId: "ses_1",
-			properties: { status: { type: "busy" } },
-			raw: {},
-		});
-
-		eventSource.emit(streamReconnected);
-
-		await vi.waitFor(() => {
-			expect(status).toHaveBeenCalledWith(undefined, { throwOnError: true });
-			expect(permissions).toHaveBeenCalledWith(undefined, {
-				throwOnError: true,
-			});
-			expect(questions).toHaveBeenCalledWith(undefined, {
-				throwOnError: true,
-			});
-		});
-		await settleMicrotasks();
-
-		expect(controller.getState().sessionStatus).toMatchObject({
-			type: "busy",
-		});
-	});
-
-	it("re-surfaces pending permissions and questions after reconnect", async () => {
-		const eventSource = createEventSource();
-		const client = createReconnectClient({
-			permissions: vi.fn().mockResolvedValue({
-				data: [
-					{
-						id: "perm_1",
-						sessionID: "ses_1",
-						permission: "fs.write",
-						metadata: {},
-					},
-					{
-						id: "perm_2",
-						sessionID: "ses_other",
-						permission: "fs.write",
-						metadata: {},
-					},
-				],
-			}),
-			questions: vi.fn().mockResolvedValue({
-				data: [
-					{ id: "q_1", sessionID: "ses_1", questions: [] },
-					{ id: "q_2", sessionID: "ses_other", questions: [] },
-				],
-			}),
-		});
-		const controller = new OpenCodeThreadController(client as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
-
-		eventSource.emit(streamReconnected);
-
-		await vi.waitFor(() => {
-			expect(Object.keys(controller.getState().interactions.permissions.pending)).toEqual([
-				"perm_1",
-			]);
-			expect(Object.keys(controller.getState().interactions.questions.pending)).toEqual(["q_1"]);
-		});
-	});
-
-	it("ignores stale status responses from a superseded reconnect", async () => {
-		const eventSource = createEventSource();
-		const firstStatus = createDeferred<{ data: Record<string, unknown> }>();
-		const secondStatus = createDeferred<{ data: Record<string, unknown> }>();
-		const client = createReconnectClient({
-			status: vi
-				.fn()
-				.mockImplementationOnce(() => firstStatus.promise)
-				.mockImplementationOnce(() => secondStatus.promise),
-		});
-		const controller = new OpenCodeThreadController(client as never, () => eventSource, "ses_1");
-		controller.subscribe(vi.fn());
-
-		eventSource.emit(streamReconnected);
-		eventSource.emit(streamReconnected);
-
-		secondStatus.resolve({ data: {} });
-
-		await vi.waitFor(() => {
-			expect(controller.getState().sessionStatus).toMatchObject({
-				type: "idle",
-			});
-		});
-
-		firstStatus.resolve({ data: { ses_1: { type: "busy" } } });
-		await settleMicrotasks();
-
-		expect(controller.getState().sessionStatus).toMatchObject({
-			type: "idle",
-		});
-	});
-
-	it("keeps forced reloads authoritative while earlier loads finish", async () => {
-		const firstSession = createDeferred<{ data: unknown }>();
-		const firstMessages = createDeferred<{ data: unknown[] }>();
-		const secondSession = createDeferred<{ data: unknown }>();
-		const secondMessages = createDeferred<{ data: unknown[] }>();
-
-		const client = {
-			session: {
-				get: vi
-					.fn()
-					.mockReturnValueOnce(firstSession.promise)
-					.mockReturnValueOnce(secondSession.promise),
-				messages: vi
-					.fn()
-					.mockReturnValueOnce(firstMessages.promise)
-					.mockReturnValueOnce(secondMessages.promise),
-			},
-		};
-
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		const firstLoad = controller.load();
-		const secondLoad = controller.load(true);
-
-		firstSession.resolve({
-			data: {
-				id: "stale_session",
-				time: {},
-			},
-		});
-		firstMessages.resolve({
-			data: [
-				{
-					info: {
-						id: "stale_message",
-						role: "user",
-						sessionID: "ses_1",
-						time: { created: 1 },
-					},
-					parts: [],
-				},
-			],
-		});
-
-		await firstLoad;
-
-		expect(controller.getState().loadState.type).toBe("loading");
-
-		const thirdLoad = controller.load();
-		expect(client.session.get).toHaveBeenCalledTimes(2);
-		expect(client.session.messages).toHaveBeenCalledTimes(2);
-
-		secondSession.resolve({
-			data: {
-				id: "fresh_session",
-				time: {},
-			},
-		});
-		secondMessages.resolve({
-			data: [
-				{
-					info: {
-						id: "fresh_message",
-						role: "user",
-						sessionID: "ses_1",
-						time: { created: 2 },
-					},
-					parts: [],
-				},
-			],
-		});
-
-		await Promise.all([secondLoad, thirdLoad]);
-
-		expect(controller.getState().loadState.type).toBe("ready");
-		expect(controller.getState().session).toMatchObject({
-			id: "fresh_session",
-		});
-		expect(controller.getState().messageOrder).toEqual(["fresh_message"]);
-	});
-
-	it("replies to questions and stores answered state", async () => {
-		const client = {
-			session: {
-				get: vi.fn(),
-				messages: vi.fn(),
-			},
-			question: {
-				reply: vi.fn().mockResolvedValue({}),
-				reject: vi.fn().mockResolvedValue({}),
-			},
-		};
-
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		(controller as unknown as { dispatch: (event: unknown) => void }).dispatch({
-			type: "question.asked",
-			request: {
-				id: "question_1",
-				sessionID: "ses_1",
-				questions: [],
-				askedAt: 1000,
-				tool: {
-					messageID: "msg_1",
-					callID: "call_1",
-				},
-			},
-		});
-
-		await controller.replyToQuestion("question_1", [["Yes"]]);
-
-		expect(client.question.reply).toHaveBeenCalledWith(
-			{
-				requestID: "question_1",
-				answers: [["Yes"]],
-			},
-			{ throwOnError: true },
-		);
-		expect(controller.getState().interactions.questions.answered.question_1).toMatchObject({
-			answers: [["Yes"]],
-		});
-		expect(controller.getState().interactions.questions.pending.question_1).toBeUndefined();
-	});
-
-	it("rejects questions and stores rejected state", async () => {
-		const client = {
-			session: {
-				get: vi.fn(),
-				messages: vi.fn(),
-			},
-			question: {
-				reply: vi.fn().mockResolvedValue({}),
-				reject: vi.fn().mockResolvedValue({}),
-			},
-		};
-
-		const controller = new OpenCodeThreadController(
-			client as never,
-			() => ({ subscribe: () => () => {} }),
-			"ses_1",
-		);
-
-		(controller as unknown as { dispatch: (event: unknown) => void }).dispatch({
-			type: "question.asked",
-			request: {
-				id: "question_1",
-				sessionID: "ses_1",
-				questions: [],
-				askedAt: 1000,
-				tool: {
-					messageID: "msg_1",
-					callID: "call_1",
-				},
-			},
-		});
-
-		await controller.rejectQuestion("question_1");
-
-		expect(client.question.reject).toHaveBeenCalledWith(
-			{
-				requestID: "question_1",
-			},
-			{ throwOnError: true },
-		);
-		expect(controller.getState().interactions.questions.rejected.question_1).toBeDefined();
-		expect(controller.getState().interactions.questions.pending.question_1).toBeUndefined();
+		expect(fake.message.list).toHaveBeenCalledTimes(2);
+		expect(events.listeners.size).toBe(1);
 	});
 });

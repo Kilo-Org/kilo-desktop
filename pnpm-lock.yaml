@@ -1357,9 +1357,6 @@ importers:
       '@kilocode/schema':
         specifier: 'catalog:'
         version: 0.0.0-v2-239
-      '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
       '@lexical/history':
         specifier: ^0.53.0
         version: 0.53.0(typescript@7.0.2)
@@ -1469,9 +1466,9 @@ importers:
       '@assistant-ui/store':
         specifier: 0.3.23
         version: 0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.3.1))(@types/react@19.2.17)(react@19.3.1)
-      '@kilocode/sdk':
-        specifier: 7.8.27
-        version: 7.8.27
+      '@kilocode/client':
+        specifier: 'catalog:'
+        version: 0.0.0-v2-239(effect@4.1.0)
     devDependencies:
       '@assistant-ui/react':
         specifier: 0.15.35
@@ -3563,9 +3560,6 @@ packages:
 
   '@kilocode/schema@0.0.0-v2-239':
     resolution: {integrity: sha512-Uac7EpqclPn3t30C5J7K456S0xxByK3XfK2BCeVrahM46z9hwuDjoxiJdfVwj2nE523M12n5pAsMsooN07HQUg==}
-
-  '@kilocode/sdk@7.8.27':
-    resolution: {integrity: sha512-P5LD034HM8pDARw3KwrMZWSp1KM8jLqMpSzMkRHHLaK2Ra/+FgTLWV0WbfBD4XylZqo4+9J9djnP+msPvlZD/A==}
 
   '@koromix/koffi-android-arm64@3.3.8':
     resolution: {integrity: sha512-Y0lt2JexRGXlg1PxFuegfi5p6bIcLMj7Mig0WapZRKEM3Yv2L9J3Ej4XHPYMsB0TRNttBRHiliaJOH6EedEIXg==}
@@ -12294,10 +12288,6 @@ snapshots:
     dependencies:
       '@standard-schema/spec': 1.1.0
       effect: 4.1.0
-
-  '@kilocode/sdk@7.8.27':
-    dependencies:
-      cross-spawn: 7.0.6
 
   '@koromix/koffi-android-arm64@3.3.8':
     optional: true

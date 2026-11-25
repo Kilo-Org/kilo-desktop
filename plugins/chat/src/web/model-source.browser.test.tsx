@@ -108,13 +108,11 @@ describe("the model-source point", () => {
 		await send("Hello local");
 
 		await vi.waitFor(() => expect(prepare).toHaveBeenCalledWith("qwen"), { timeout: 10_000 });
-		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(0);
+		expect(host.server.promptsTo("ses_new_1")).toHaveLength(0);
 		loading.resolve();
-		await vi.waitFor(
-			() =>
-				expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
-			{ timeout: 10_000 },
-		);
+		await vi.waitFor(() => expect(host.server.promptsTo("ses_new_1")).toHaveLength(1), {
+			timeout: 10_000,
+		});
 	});
 
 	it("sends prompts for other providers without loading anything", async () => {
@@ -127,15 +125,13 @@ describe("the model-source point", () => {
 		await page.getByRole("option", { name: /Deep Two/ }).click();
 		await send("Hello acme");
 
-		await vi.waitFor(
-			() =>
-				expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
-			{ timeout: 10_000 },
-		);
-		const [prompt] = host.server.requestsTo("POST", "/session/ses_new_1/prompt_async");
-		expect((prompt!.body as { model: unknown }).model).toEqual({
+		await vi.waitFor(() => expect(host.server.promptsTo("ses_new_1")).toHaveLength(1), {
+			timeout: 10_000,
+		});
+		// v2 keeps the model on the chat: it is switched before the prompt.
+		expect(host.server.chat("ses_new_1")?.model).toMatchObject({
 			providerID: "acme",
-			modelID: "deep-2",
+			id: "deep-2",
 		});
 		expect(prepare).not.toHaveBeenCalled();
 	});

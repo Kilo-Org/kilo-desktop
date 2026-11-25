@@ -1,4 +1,5 @@
-import { ReadonlyThreadProvider, useAuiState } from "@assistant-ui/react";
+import { ReadonlyThreadProvider, useAuiState, type ThreadMessage } from "@assistant-ui/react";
+import type { OpenCodeMessageSource } from "@kilo-desktop/react-opencode";
 import { BotIcon, CircleAlertIcon } from "lucide-react";
 import type { FC, ReactNode } from "react";
 
@@ -19,9 +20,26 @@ import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
 import { ReadonlyThread } from "../thread/thread";
 import { TranscriptProviders } from "../thread/transcript-scope";
-import { childSessionIdForToolCall, selectSubagentTranscript } from "./subagent-state";
+import { selectSubagentTranscript, subagentCallForChild } from "./subagent-state";
 
 const EMPTY_MESSAGES: readonly never[] = [];
+
+/** The child transcript the projection attached to the `subagent` call running `childSessionId`. */
+function childTranscriptOf(
+	message: ThreadMessage,
+	childSessionId: string,
+): readonly ThreadMessage[] | undefined {
+	const source = (message.metadata?.custom as { opencode?: OpenCodeMessageSource } | undefined)
+		?.opencode;
+	const call = source ? subagentCallForChild(source.messages, childSessionId) : undefined;
+	if (!call) return undefined;
+	for (const part of message.content) {
+		if (part.type === "tool-call" && part.toolCallId === call.id) {
+			return part.messages ?? EMPTY_MESSAGES;
+		}
+	}
+	return EMPTY_MESSAGES;
+}
 
 export const SubagentIcon: FC<{ className?: string }> = ({ className }) => (
 	<BotIcon className={className} />
@@ -104,16 +122,8 @@ function SubagentTranscript({ childSessionId }: { childSessionId: string | undef
 	const messages = useAuiState((state) => {
 		if (!childSessionId) return EMPTY_MESSAGES;
 		for (const message of state.thread.messages) {
-			const rawParts = (message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined)
-				?.opencode?.parts;
-			for (const part of message.content) {
-				if (
-					part.type === "tool-call" &&
-					childSessionIdForToolCall(rawParts, part.toolCallId) === childSessionId
-				) {
-					return part.messages ?? EMPTY_MESSAGES;
-				}
-			}
+			const transcript = childTranscriptOf(message, childSessionId);
+			if (transcript) return transcript;
 		}
 		return EMPTY_MESSAGES;
 	});

@@ -1,15 +1,18 @@
-import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import { parseDiffFromFile, type FileDiffMetadata } from "@pierre/diffs";
 
+import type { FileDiffInfo, SessionMessageInfo } from "@kilocode/client";
+
+import { findOpenCodeTool, openCodeToolMetadata } from "./opencode-tool";
 import type { ActivityPart } from "./tool-categories";
 import { getPatchInfo, str } from "./tool-ui-shared";
 
 /**
  * Pure diff-stat extraction for file-mutation tool calls (edit, write,
- * apply_patch). Kept free of React and activity-row imports so activity-group
+ * patch). Kept free of React and activity-row imports so activity-group
  * can aggregate counts on the group trigger without an import cycle.
  */
 
-const FILE_PATH_KEYS = ["file_path", "filePath", "path", "file"] as const;
+const FILE_PATH_KEYS = ["path", "filePath", "file_path", "file"] as const;
 
 export const getToolFilePath = (args: Record<string, unknown> | undefined): string => {
 	if (!args) return "";
@@ -20,26 +23,30 @@ export const getToolFilePath = (args: Record<string, unknown> | undefined): stri
 	return "";
 };
 
-/** Prefer the backend unified diff when present on the OpenCode tool part. */
-export const getToolUnifiedDiffFromParts = (
-	parts: unknown,
+const isFileDiffInfo = (value: unknown): value is FileDiffInfo =>
+	!!value &&
+	typeof value === "object" &&
+	typeof (value as FileDiffInfo).file === "string" &&
+	typeof (value as FileDiffInfo).patch === "string";
+
+/** The file diffs a settled edit or patch call reports (`metadata.files`). */
+export const getToolFileDiffs = (
+	messages: readonly SessionMessageInfo[],
+	toolCallId: string,
+): readonly FileDiffInfo[] => {
+	const files = openCodeToolMetadata(findOpenCodeTool(messages, toolCallId))?.files;
+	return Array.isArray(files) ? files.filter(isFileDiffInfo) : [];
+};
+
+/** The backend's unified diff for a tool call: its file patches joined. */
+export const getToolUnifiedDiff = (
+	messages: readonly SessionMessageInfo[],
 	toolCallId: string,
 ): string | undefined => {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		if (!part || typeof part !== "object") continue;
-		const record = part as Record<string, unknown>;
-		if (record.type !== "tool") continue;
-		const callId = record.callID ?? record.id;
-		if (callId !== toolCallId) continue;
-		const state = record.state;
-		if (!state || typeof state !== "object") continue;
-		const metadata = (state as Record<string, unknown>).metadata;
-		if (!metadata || typeof metadata !== "object") continue;
-		const diff = (metadata as Record<string, unknown>).diff;
-		return typeof diff === "string" && diff.length > 0 ? diff : undefined;
-	}
-	return undefined;
+	const patches = getToolFileDiffs(messages, toolCallId)
+		.map((file) => file.patch)
+		.filter((patch) => patch.length > 0);
+	return patches.length > 0 ? patches.join("\n") : undefined;
 };
 
 export type FileDiffStats = { added: number; removed: number };
@@ -93,45 +100,40 @@ export const getWriteContent = (args: Record<string, unknown> | undefined): stri
 	return "";
 };
 
-const statsFromUnifiedDiff = (unifiedDiff: string): FileDiffStats | null => {
-	try {
-		return sumFileDiffStats(parsePatchFiles(unifiedDiff).flatMap((patch) => patch.files));
-	} catch {
-		return null;
-	}
-};
-
 /**
  * Line-change stats for a single tool part; null for non-mutation tools.
- * Mirrors the row components: the backend unified diff wins when present,
- * apply_patch counts its patch text directly, and in-flight calls are skipped
+ * Mirrors the row components: the backend's file diffs win when present,
+ * a patch counts its patch text otherwise, and in-flight calls are skipped
  * because streaming args would make the counts jitter.
  */
 export const getPartDiffStats = (
 	part: ActivityPart,
-	opencodeParts: unknown,
+	opencodeMessages: readonly SessionMessageInfo[],
 ): FileDiffStats | null => {
 	if (part.type !== "tool-call" || !part.toolName) return null;
 	if (part.status?.type === "running") return null;
 	const toolName = part.toolName.toLowerCase();
+	const isPatch = toolName === "patch";
+	const isEdit = toolName === "edit" || toolName === "notebook_edit";
+	const isWrite = toolName === "write";
+	if (!isPatch && !isEdit && !isWrite) return null;
 	const args = (part.args ?? undefined) as Record<string, unknown> | undefined;
 
-	if (toolName === "apply_patch") {
+	const toolCallId = typeof part.toolCallId === "string" ? part.toolCallId : "";
+	const files = toolCallId ? getToolFileDiffs(opencodeMessages, toolCallId) : [];
+	if (files.length > 0) {
+		return {
+			added: files.reduce((sum, file) => sum + file.additions, 0),
+			removed: files.reduce((sum, file) => sum + file.deletions, 0),
+		};
+	}
+
+	if (isPatch) {
 		const patchText = str(args?.patchText);
 		if (!patchText) return null;
 		const { added, removed } = getPatchInfo(patchText);
 		return added > 0 || removed > 0 ? { added, removed } : null;
 	}
-
-	const isEdit = toolName === "edit" || toolName === "notebook_edit";
-	const isWrite = toolName === "write";
-	if (!isEdit && !isWrite) return null;
-
-	const toolCallId = typeof part.toolCallId === "string" ? part.toolCallId : "";
-	const unifiedDiff = toolCallId
-		? getToolUnifiedDiffFromParts(opencodeParts, toolCallId)
-		: undefined;
-	if (unifiedDiff) return statsFromUnifiedDiff(unifiedDiff);
 
 	if (isWrite) {
 		const content = getWriteContent(args);
@@ -154,7 +156,7 @@ export const getPartDiffStats = (
 export const getGroupDiffStats = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
-	opencodeParts: unknown,
+	opencodeMessages: readonly SessionMessageInfo[],
 ): FileDiffStats | null => {
 	let added = 0;
 	let removed = 0;
@@ -162,7 +164,7 @@ export const getGroupDiffStats = (
 	for (const index of indices) {
 		const part = parts[index];
 		if (!part) continue;
-		const stats = getPartDiffStats(part, opencodeParts);
+		const stats = getPartDiffStats(part, opencodeMessages);
 		if (!stats) continue;
 		found = true;
 		added += stats.added;

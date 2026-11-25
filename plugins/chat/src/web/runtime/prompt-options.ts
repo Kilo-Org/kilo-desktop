@@ -1,21 +1,21 @@
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { ThreadUserMessagePart } from "@assistant-ui/react";
+import {
+	toPromptInput,
+	type ModelRef,
+	type OpenCodePromptSender,
+	type SessionInfo,
+} from "@kilo-desktop/react-opencode";
+import type { OpenCodeClient } from "@kilocode/client";
 
 import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command";
-
-/**
- * Sent on every prompt and command so a slow Kilo snapshot waits silently
- * instead of raising the blocking "Snapshot is slow — disable snapshots?"
- * question. Desktop runs many chats against one `kilo serve`; they queue on a
- * per-worktree snapshot lock, so the 10s threshold trips on lock wait, not
- * repository size. Matches the VS Code Agent Manager policy.
- */
-export const SNAPSHOT_INITIALIZATION = "wait" as const;
+import { warmMcp } from "./with-mcp-warmup";
 
 export interface PromptModelRef {
 	readonly providerID: string;
 	readonly modelID: string;
 }
 
+/** A prompt part as mentions resolve them: `{ type: "text", text }` or `{ type: "file", mime, url, filename? }`. */
 export type PromptPart = Readonly<Record<string, unknown>>;
 
 /** What every prompt carries, read when it is sent. */
@@ -23,7 +23,7 @@ export interface PromptOptions {
 	readonly getAgent?: () => string | undefined;
 	readonly getModel?: () => PromptModelRef | undefined;
 	readonly getVariant?: () => string | undefined;
-	/** The system prompt for the chat being prompted; prepended to any the prompt has. */
+	/** The system prompt for the chat being prompted. */
 	readonly getSystem?: (chatId: string) => Promise<string | undefined> | string | undefined;
 	/** Kilo's slash commands for the chat's folder: `/name args` prompts run them instead. */
 	readonly getKnownCommandNames?: () => readonly string[];
@@ -37,137 +37,135 @@ export interface PromptOptions {
 	readonly onPromptFailed?: (chatId: string) => void;
 }
 
-function isModelRef(value: unknown): value is PromptModelRef {
-	return (
-		!!value &&
-		typeof value === "object" &&
-		typeof (value as PromptModelRef).providerID === "string" &&
-		typeof (value as PromptModelRef).modelID === "string"
-	);
-}
+/**
+ * Where a prompt's system prompt rides: v2 prompts take no system prompt, so
+ * the chat's goes on the prompt message's metadata under Desktop's key.
+ */
+export const PROMPT_METADATA_KEY = "kilo-desktop";
 
-/** `session.command` takes `provider/model`; prompts take `{ providerID, modelID }`. */
-function commandModel(model: unknown): string | undefined {
-	if (typeof model === "string" && model.length > 0) return model;
-	return isModelRef(model) ? `${model.providerID}/${model.modelID}` : undefined;
-}
+const normalVariant = (variant: string | undefined) =>
+	variant && variant !== "default" ? variant : undefined;
 
-async function withOptions(
-	args: Record<string, unknown>,
-	options: PromptOptions,
-): Promise<Record<string, unknown>> {
-	let next: Record<string, unknown> = { ...args, snapshotInitialization: SNAPSHOT_INITIALIZATION };
-	const variant = options.getVariant?.();
-	if (variant !== undefined && next.variant === undefined) next = { ...next, variant };
-	const agent = options.getAgent?.();
-	if (agent !== undefined) next = { ...next, agent };
-	const model = options.getModel?.();
-	if (model !== undefined) next = { ...next, model };
-	const chatId = typeof next.sessionID === "string" ? next.sessionID : undefined;
-	const system = chatId ? await options.getSystem?.(chatId) : undefined;
-	if (system) {
-		const explicit = typeof next.system === "string" ? next.system : undefined;
-		next = { ...next, system: explicit ? `${system}\n\n${explicit}` : system };
-	}
-	if (options.resolveParts && Array.isArray(next.parts)) {
-		next = { ...next, parts: [...(await options.resolveParts(next.parts as PromptPart[]))] };
-	}
-	if (options.prepareModel && isModelRef(next.model)) await options.prepareModel(next.model);
-	return next;
-}
-
-function commandArgs(
-	args: Record<string, unknown>,
-	draft: { command: string; arguments: string },
-): Record<string, unknown> {
-	const model = commandModel(args.model);
+/** The v2 model reference for a selection, with its variant. */
+export function toModelRef(model: PromptModelRef, variant?: string): ModelRef {
+	const chosen = normalVariant(variant);
 	return {
-		sessionID: args.sessionID,
-		command: draft.command,
-		arguments: draft.arguments,
-		...(args.agent !== undefined ? { agent: args.agent } : {}),
-		...(model !== undefined ? { model } : {}),
-		...(args.variant !== undefined ? { variant: args.variant } : {}),
-		snapshotInitialization: SNAPSHOT_INITIALIZATION,
+		providerID: model.providerID,
+		id: model.modelID,
+		...(chosen ? { variant: chosen } : {}),
 	};
 }
 
+const sameModel = (current: ModelRef | undefined, next: ModelRef) =>
+	current?.providerID === next.providerID &&
+	current.id === next.id &&
+	normalVariant(current.variant) === normalVariant(next.variant);
+
 /**
- * Runs a prompt or command for `args.sessionID`, saying it failed when any
- * of it rejects: preparing it (system prompt, mentions, model) or sending it.
- * The New Session page waits for the outcome of a draft's first send.
+ * Switches `session`'s agent and model to the chosen ones, only where they
+ * differ: each switch is a message in the session's transcript.
  */
-async function reportingFailure<T>(
-	args: Record<string, unknown>,
-	options: PromptOptions,
-	run: () => Promise<T>,
-): Promise<T> {
-	try {
-		return await run();
-	} catch (error) {
-		if (typeof args.sessionID === "string") options.onPromptFailed?.(args.sessionID);
-		throw error;
+export async function applySelection(
+	client: Pick<OpenCodeClient, "session">,
+	session: SessionInfo,
+	selection: { readonly agent?: string | undefined; readonly model?: ModelRef | undefined },
+): Promise<void> {
+	if (selection.agent && selection.agent !== session.agent) {
+		await client.session.switchAgent({ sessionID: session.id, agent: selection.agent });
+	}
+	if (selection.model && !sameModel(session.model, selection.model)) {
+		await client.session.switchModel({ sessionID: session.id, model: selection.model });
 	}
 }
 
+/** The text parts as mentions resolve them, back as message parts, the rest after them. */
+async function resolvedParts(
+	parts: readonly ThreadUserMessagePart[],
+	resolveParts: PromptOptions["resolveParts"],
+): Promise<ThreadUserMessagePart[]> {
+	if (!resolveParts) return [...parts];
+	const texts: PromptPart[] = parts.flatMap((part) =>
+		part.type === "text" ? [{ type: "text", text: part.text }] : [],
+	);
+	const resolved = await resolveParts(texts);
+	return [...resolved.flatMap(toMessagePart), ...parts.filter((part) => part.type !== "text")];
+}
+
+function toMessagePart(part: PromptPart): ThreadUserMessagePart[] {
+	if (part.type === "text" && typeof part.text === "string") {
+		return [{ type: "text", text: part.text }];
+	}
+	if (part.type === "file" && typeof part.url === "string" && typeof part.mime === "string") {
+		return [
+			{
+				type: "file",
+				data: part.url,
+				mimeType: part.mime,
+				...(typeof part.filename === "string" ? { filename: part.filename } : {}),
+			},
+		];
+	}
+	return [];
+}
+
 /**
- * Wraps a Kilo client so `session.prompt` / `promptAsync` / `command` receive
- * the options read at send time, plus the desktop snapshot policy. Agent and
- * model always win (the runtime may hold stale defaults); a variant only
- * fills in. A known `/command args` prompt runs `session.command` (so a
- * draft's first send still creates the chat first); `promptAsync` detaches
- * from the command's blocking call so the send can finish.
+ * The runtime's prompt sender over `client`, with the options read at send
+ * time (the runtime may hold stale defaults):
+ *
+ * - the chosen model is prepared, and the session's agent and model switched
+ *   to the chosen ones (with its variant) where they differ;
+ * - mention chips become their context and files (`resolveParts`);
+ * - a known `/name args` prompt runs `session.command`, anything else is
+ *   `session.prompt` with the runtime's message id and the chat's system
+ *   prompt on its metadata (`PROMPT_METADATA_KEY`); a command carries none;
+ * - the location's MCP servers are warmed first (`warmMcp`);
+ * - `onPrompted` once the server accepted it, `onPromptFailed` when any of it
+ *   rejects (the New Session page waits for a draft's first send).
  */
-export function withPromptOptions(client: KiloClient, options: PromptOptions): KiloClient {
-	return new Proxy(client as object, {
-		get(target, prop, receiver) {
-			const value = Reflect.get(target, prop, receiver);
-			if (prop !== "session" || value === null || typeof value !== "object") return value;
-			return new Proxy(value as object, {
-				get(session, sessionProp, sessionReceiver) {
-					const method = Reflect.get(session, sessionProp, sessionReceiver);
-					if (typeof method !== "function") return method;
-					if (sessionProp === "command") {
-						return (args: Record<string, unknown>, ...rest: unknown[]) =>
-							reportingFailure(args, options, async () => {
-								const next = await withOptions(args, options);
-								const model = commandModel(next.model);
-								const { model: _model, ...withoutModel } = next;
-								return Reflect.apply(method, session, [
-									model === undefined ? withoutModel : { ...withoutModel, model },
-									...rest,
-								]);
-							});
-					}
-					if (sessionProp !== "prompt" && sessionProp !== "promptAsync") return method;
-					return (args: Record<string, unknown>, ...rest: unknown[]) =>
-						reportingFailure(args, options, async () => {
-							const next = await withOptions(args, options);
-							const prompted = () => {
-								if (typeof next.sessionID === "string") options.onPrompted?.(next.sessionID);
-							};
-							const draft = slashCommandFromPromptArgs(
-								next,
-								options.getKnownCommandNames?.() ?? [],
-							);
-							const command = Reflect.get(session, "command", sessionReceiver);
-							if (draft && typeof command === "function") {
-								const result = Reflect.apply(command, session, [commandArgs(next, draft), ...rest]);
-								if (sessionProp === "promptAsync") {
-									void Promise.resolve(result).catch(() => undefined);
-									prompted();
-									return;
-								}
-								const value: unknown = await result;
-								prompted();
-								return value;
-							}
-							const value: unknown = await Reflect.apply(method, session, [next, ...rest]);
-							prompted();
-							return value;
-						});
-				},
+export function createPromptSender(
+	client: OpenCodeClient,
+	options: PromptOptions,
+): OpenCodePromptSender {
+	return async ({ sessionId, messageId, parts, options: defaults }) => {
+		try {
+			const agent = options.getAgent?.() ?? defaults.agent;
+			const model = options.getModel?.() ?? defaults.model;
+			if (model) await options.prepareModel?.(model);
+			const [session, message, system] = await Promise.all([
+				client.session.get({ sessionID: sessionId }),
+				resolvedParts(parts, options.resolveParts).then(toPromptInput),
+				options.getSystem?.(sessionId),
+			]);
+			await applySelection(client, session, {
+				agent,
+				...(model ? { model: toModelRef(model, options.getVariant?.()) } : {}),
 			});
-		},
-	}) as KiloClient;
+			warmMcp(client, session.location.directory);
+			const files = message.files.length > 0 ? { files: message.files } : {};
+			const command = slashCommandFromPromptArgs(
+				{ text: message.text },
+				options.getKnownCommandNames?.() ?? [],
+			);
+			if (command) {
+				await client.session.command({
+					sessionID: sessionId,
+					name: command.command,
+					text: command.arguments,
+					...files,
+				});
+			} else {
+				await client.session.prompt({
+					sessionID: sessionId,
+					id: messageId,
+					text: message.text,
+					...files,
+					...(system ? { metadata: { [PROMPT_METADATA_KEY]: { system } } } : {}),
+				});
+			}
+		} catch (error) {
+			options.onPromptFailed?.(sessionId);
+			throw error;
+		}
+		options.onPrompted?.(sessionId);
+	};
 }

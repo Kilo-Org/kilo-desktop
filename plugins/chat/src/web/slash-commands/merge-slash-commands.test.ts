@@ -23,7 +23,6 @@ const server = (
 ): KiloCommandCatalogEntry => ({
 	name,
 	source,
-	hints: [],
 	...(description ? { description } : {}),
 });
 

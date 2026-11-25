@@ -23,7 +23,8 @@ import {
 	type ComposerContext,
 } from "../../contracts";
 import { agentPane, chatSummary, workSession } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import { FakeKilo2Server, type PromptBody } from "../../test/kilo2/fake-kilo2-server";
+import { assistantMessage, session, text, userMessage } from "../../test/kilo2/fixtures";
 import { renderChat } from "../../test/render-chat";
 
 // The shell the test host renders sits over the pane (its sidebar rail over
@@ -63,10 +64,11 @@ function contributor(extensions: Record<string, unknown[]>, web: PluginEntry) {
 	};
 }
 
-function promptBody(host: Awaited<ReturnType<typeof renderChat>>, chatId: string) {
-	return host.server.requestsTo("POST", `/session/${chatId}/prompt_async`).at(-1)?.body as
-		| Record<string, unknown>
-		| undefined;
+function promptBody(
+	host: Awaited<ReturnType<typeof renderChat>>,
+	chatId: string,
+): PromptBody | undefined {
+	return host.server.promptsTo(chatId).at(-1);
 }
 
 describe("the composer's pickers", () => {
@@ -88,12 +90,12 @@ describe("the composer's pickers", () => {
 		await userEvent.fill(input(), "Plan the work");
 		await sendButton().click();
 
-		await expect
-			.poll(() => promptBody(host, "ses_new_1"))
-			.toMatchObject({
-				agent: "plan",
-				model: { providerID: "acme", modelID: "deep-2" },
-			});
+		await expect.poll(() => promptBody(host, "ses_new_1")?.text).toBe("Plan the work");
+		// v2 keeps the agent and model on the chat: both are switched before the prompt.
+		expect(host.server.chat("ses_new_1")).toMatchObject({
+			agent: "plan",
+			model: { providerID: "acme", id: "deep-2" },
+		});
 		await expect
 			.poll(() => host.core.models().state.preferences.byAgent.plan)
 			.toEqual({ aiProviderId: "acme", modelId: "deep-2" });
@@ -110,8 +112,8 @@ describe("the composer's pickers", () => {
 	});
 
 	it("shows the agent Kilo recorded for a chat the pane opens", async () => {
-		const server = new FakeKiloServer();
-		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", agent: "plan" });
+		const server = new FakeKilo2Server();
+		server.addChat(session("ses_a", { title: "Chat", agent: "plan" }));
 		await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -181,44 +183,19 @@ describe("slash commands", () => {
 		await sendButton().click();
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_new_1/command").at(-1)?.body)
-			.toMatchObject({ command: "review", arguments: "the diff", agent: "code" });
-		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toEqual([]);
-	});
-
-	it("groups the / menu by source once there are skills too, and searches all of them", async () => {
-		const server = new FakeKiloServer();
-		server.commands = [
-			...server.commands,
-			{ name: "tidy", description: "Tidy imports", source: "skill", template: "", hints: [] },
-		];
-		await renderChat({ server });
-		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
-
-		await input().click();
-		await userEvent.keyboard("/");
-		await page.getByText("Skills").click();
-		await expect.element(page.getByText("Tidy imports")).toBeVisible();
-
-		await userEvent.keyboard("ti");
-		await expect.element(page.getByText("Tidy imports")).toBeVisible();
+			.poll(() => host.server.requestsTo("POST", "/api/session/ses_new_1/command").at(-1)?.body)
+			.toMatchObject({ name: "review", text: "the diff" });
+		expect(host.server.promptsTo("ses_new_1")).toEqual([]);
 	});
 });
 
 describe("client slash commands", () => {
 	/** A pane on an existing chat in /projects/app, its model loaded. */
-	async function renderOnChat(server = new FakeKiloServer()) {
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			messages: [
-				userMessage("ses_a", "msg_u1", "Hello"),
-				assistantMessage("ses_a", "msg_a1", "msg_u1", [
-					{ type: "text", text: "Done.", time: { start: 1, end: 2 } },
-				]),
-			],
-		});
+	async function renderOnChat(server = new FakeKilo2Server()) {
+		server.addChat(session("ses_a", { title: "Chat" }), [
+			userMessage("Hello"),
+			assistantMessage([text("Done.")]),
+		]);
 		const host = await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -232,23 +209,19 @@ describe("client slash commands", () => {
 	}
 
 	const summarizeCalls = (host: Awaited<ReturnType<typeof renderChat>>) =>
-		host.server.requestsTo("POST", "/session/ses_a/summarize");
+		host.server.requestsTo("POST", "/api/session/ses_a/compact");
 
 	async function expectOneCompaction(host: Awaited<ReturnType<typeof renderChat>>) {
 		await expect.poll(() => summarizeCalls(host).length).toBe(1);
-		expect(summarizeCalls(host)[0]).toMatchObject({
-			directory: "/projects/app",
-			body: { providerID: "acme", modelID: "fast-1" },
-		});
-		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
-		expect(host.server.requestsTo("POST", "/session/ses_a/command")).toEqual([]);
+		expect(host.server.promptsTo("ses_a")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/command")).toEqual([]);
 		await expect.element(input()).toHaveTextContent("");
 		expect(summarizeCalls(host)).toHaveLength(1);
 	}
 
 	it("lists Actions while the server's commands are still loading", async () => {
-		const server = new FakeKiloServer();
-		server.commandsGate = new Promise(() => undefined);
+		const server = new FakeKilo2Server();
+		server.hold("GET /api/command");
 		await renderChat({ server });
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
 
@@ -291,7 +264,7 @@ describe("client slash commands", () => {
 		await userEvent.fill(input(), "/compact");
 		await sendButton().click();
 		await expect.poll(() => summarizeCalls(host).length).toBe(2);
-		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
+		expect(host.server.promptsTo("ses_a")).toEqual([]);
 	});
 
 	it("explains instead of compacting a chat that hasn't started", async () => {
@@ -301,14 +274,14 @@ describe("client slash commands", () => {
 		await userEvent.keyboard("/compact");
 		await userEvent.keyboard("{Enter}");
 		await expect.element(page.getByText("Nothing to compact yet")).toBeVisible();
-		expect(host.server.requests.some((request) => request.path.endsWith("/summarize"))).toBe(false);
+		expect(host.server.requests.some((request) => request.path.endsWith("/compact"))).toBe(false);
 	});
 
 	it("explains instead of compacting a chat mid-turn", async () => {
-		const server = new FakeKiloServer();
+		const server = new FakeKilo2Server();
 		const onChat = await renderOnChat(server);
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
-		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.startTurn("ses_a");
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		await input().click();
 		await userEvent.keyboard("/compact");
@@ -318,12 +291,10 @@ describe("client slash commands", () => {
 	});
 
 	it("reports a compaction the server refuses", async () => {
-		const server = new FakeKiloServer();
-		server.summarize = () =>
-			new Response(JSON.stringify({ message: "The model is overloaded" }), {
-				status: 500,
-				headers: { "content-type": "application/json" },
-			});
+		const server = new FakeKilo2Server();
+		server.failingWith.set("POST /api/session/ses_a/compact", {
+			message: "The model is overloaded",
+		});
 		await renderOnChat(server);
 		await input().click();
 		await userEvent.keyboard("/compact");
@@ -338,8 +309,8 @@ describe("client slash commands", () => {
 	 * as `/wave`; `implement` binds the command, or leaves it unimplemented.
 	 */
 	async function renderWithWave(implement?: CommandHandler) {
-		const server = new FakeKiloServer();
-		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
+		const server = new FakeKilo2Server();
+		server.addChat(session("ses_a", { title: "Chat" }));
 		const host = await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -392,7 +363,7 @@ describe("client slash commands", () => {
 			running: false,
 		});
 		await expect.element(input()).toHaveTextContent("");
-		expect(host.server.requestsTo("POST", "/session/ses_a/command")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/api/session/ses_a/command")).toEqual([]);
 	});
 
 	it("leaves out a placement whose command isn't available, sending /name as a prompt", async () => {
@@ -405,7 +376,7 @@ describe("client slash commands", () => {
 		await userEvent.keyboard(" hello");
 		await userEvent.keyboard("{Enter}");
 		await expect.poll(() => promptBody(host, "ses_a")).toBeDefined();
-		expect(JSON.stringify(promptBody(host, "ses_a"))).toContain("/wave hello");
+		expect(promptBody(host, "ses_a")?.text).toContain("/wave hello");
 	});
 
 	it("reports a placed command that fails", async () => {
@@ -455,12 +426,10 @@ describe("the composer-mention point", () => {
 		await page.getByText("Release notes").click();
 		await sendButton().click();
 
-		await expect
-			.poll(() => promptBody(host, "ses_new_1")?.parts)
-			.toEqual([
-				expect.objectContaining({ type: "text", text: expect.stringContaining("See [note n1]") }),
-				{ type: "file", url: "file:///notes/n1.md", mime: "text/markdown", filename: "n1.md" },
-			]);
+		await expect.poll(() => promptBody(host, "ses_new_1")?.text).toContain("See [note n1]");
+		expect(promptBody(host, "ses_new_1")?.files).toEqual([
+			{ uri: "file:///notes/n1.md", name: "n1.md" },
+		]);
 		expect(search.mock.calls[0]![1]).toMatchObject({ directory: "/projects/app" });
 	});
 });
@@ -471,8 +440,8 @@ describe("the composer-action point", () => {
 		const select = vi.fn();
 		const command = vi.fn();
 		const seen: ComposerContext[] = [];
-		const server = new FakeKiloServer();
-		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
+		const server = new FakeKilo2Server();
+		server.addChat(session("ses_a", { title: "Chat" }));
 		await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),

@@ -11,7 +11,6 @@ import {
 	type ReactNode,
 } from "react";
 
-import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import {
@@ -81,8 +80,6 @@ interface ChatContext {
 	readonly workspaceId: string | null;
 	readonly directory: string | null;
 	readonly folders: readonly PromptFolder[];
-	readonly workSessionDirectory: string | null;
-	readonly workSessionChatIds: readonly string[];
 }
 
 /** Says why a draft's first send failed; the message goes back to the composer. */
@@ -113,11 +110,6 @@ function AgentPane({
 	directory,
 	services,
 }: PaneProps & { services: AgentPaneServices }) {
-	const workSession = useDomainObjectState(
-		WorkSessions,
-		(state: DomainObjectState<typeof WorkSessions>) =>
-			state.workSessions.find((candidate) => candidate.id === workSessionId),
-	);
 	const workspace = useDomainObjectState(Workspaces, (state: WorkspacesState) =>
 		state.workspaces.find((candidate) => candidate.id === workspaceId),
 	);
@@ -136,8 +128,6 @@ function AgentPane({
 			(workspace?.folders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
 			directory,
 		),
-		workSessionDirectory: workSession?.directory ?? null,
-		workSessionChatIds: workSession?.chatIds ?? [],
 	};
 	const latest = useLatestRef(context);
 	const { mounted, thread } = useMountedChat(chatId);
@@ -171,13 +161,6 @@ function AgentPane({
 			})
 			.catch(() => undefined);
 		return { id: chat.id, directory: chat.directory };
-	};
-
-	const directoryOf = (id: string) => {
-		const known = chats?.getState().chats[id]?.directory;
-		if (known) return known;
-		const current = latest.current;
-		return current.workSessionChatIds.includes(id) ? current.workSessionDirectory : null;
 	};
 
 	const getSystem = async (id: string) => {
@@ -249,7 +232,6 @@ function AgentPane({
 							paneId={pane.id}
 							composer={composer}
 							createChat={createChat}
-							directoryOf={directoryOf}
 							getSystem={getSystem}
 							onChatId={(id) => {
 								if (id) thread.show(id);
@@ -364,7 +346,6 @@ export interface ChatThreadProps {
 	readonly paneId: string;
 	readonly composer: ComposerContext;
 	readonly createChat: () => Promise<CreatedChat>;
-	readonly directoryOf: (chatId: string) => string | null;
 	readonly getSystem: (chatId: string) => Promise<string | undefined>;
 	readonly onChatId: (chatId: string | undefined) => void;
 	readonly onPrompted?: (chatId: string) => void;

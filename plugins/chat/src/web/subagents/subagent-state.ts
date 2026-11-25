@@ -1,29 +1,52 @@
 import type { ThreadMessage } from "@assistant-ui/react";
-import type { OpenCodeThreadState } from "@kilo-desktop/react-opencode";
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
-
-const sessionIdFromMetadata = (metadata: unknown): string | undefined => {
-	const record = asRecord(metadata);
-	const sessionId = record?.sessionId ?? record?.sessionID;
-	return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : undefined;
-};
-
-export function childSessionIdFromTaskPart(part: unknown): string | undefined {
-	const record = asRecord(part);
-	if (record?.type !== "tool" || record.tool !== "task") return undefined;
-	const state = asRecord(record.state);
-	return sessionIdFromMetadata(state?.metadata) ?? sessionIdFromMetadata(record.metadata);
-}
+import {
+	getOpenCodeTaskSessionId,
+	toolInput,
+	type OpenCodeThreadState,
+	type SessionMessageAssistantTool,
+	type SessionMessageInfo,
+} from "@kilo-desktop/react-opencode";
 
 const normalizedText = (value: unknown) =>
 	typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
 
-/** The delegation's description (or prompt) as the parent's `task` call phrased it. */
-export function subagentTaskTitle(part: unknown): string | undefined {
-	const input = asRecord(asRecord(asRecord(part)?.state)?.input);
-	return normalizedText(input?.description) || normalizedText(input?.prompt) || undefined;
+/** The delegation's description (or prompt) as the parent's `subagent` call phrased it. */
+export function subagentTaskTitle(tool: SessionMessageAssistantTool): string | undefined {
+	const input = toolInput(tool);
+	return normalizedText(input.description) || normalizedText(input.prompt) || undefined;
+}
+
+/** The agent a `subagent` call delegated to (`input.agent`). */
+export function subagentAgent(tool: SessionMessageAssistantTool): string {
+	return normalizedText(toolInput(tool).agent);
+}
+
+export type SubagentCall = {
+	readonly tool: SessionMessageAssistantTool;
+	readonly childSessionId: string;
+};
+
+/** The `subagent` calls among `messages` that started a child session, in transcript order. */
+export function* subagentCalls(messages: readonly SessionMessageInfo[]): Generator<SubagentCall> {
+	for (const message of messages) {
+		if (message.type !== "assistant") continue;
+		for (const item of message.content) {
+			if (item.type !== "tool") continue;
+			const childSessionId = getOpenCodeTaskSessionId(item);
+			if (childSessionId) yield { tool: item, childSessionId };
+		}
+	}
+}
+
+/** The `subagent` call among `messages` that runs `childSessionId`. */
+export function subagentCallForChild(
+	messages: readonly SessionMessageInfo[],
+	childSessionId: string,
+): SessionMessageAssistantTool | undefined {
+	for (const call of subagentCalls(messages)) {
+		if (call.childSessionId === childSessionId) return call.tool;
+	}
+	return undefined;
 }
 
 export type SessionTreeEntry = {
@@ -59,16 +82,6 @@ export function sessionTreeHasPendingInteractions(root: OpenCodeThreadState): bo
 	return false;
 }
 
-export function childSessionIdForToolCall(parts: unknown, toolCallId: string): string | undefined {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		const record = asRecord(part);
-		if ((record?.callID ?? record?.id) !== toolCallId) continue;
-		return childSessionIdFromTaskPart(part);
-	}
-	return undefined;
-}
-
 export type SubagentTranscript =
 	| { type: "loading" }
 	| { type: "unavailable" }
@@ -101,11 +114,9 @@ export function subagentDisplayStatus(
 	child: OpenCodeThreadState | undefined,
 	fallback?: { type: string; reason?: string },
 ): SubagentDisplayStatus {
-	// A session parked on a prompt still reports `busy`, so the prompt check goes first.
+	// A session parked on a prompt still runs, so the prompt check goes first.
 	if (child && sessionTreeHasPendingInteractions(child)) return "waiting";
-	if (child?.sessionStatus?.type === "busy" || child?.sessionStatus?.type === "retry") {
-		return "working";
-	}
+	if (child?.running) return "working";
 	if (
 		child?.runState.type === "error" ||
 		(fallback?.type === "incomplete" && fallback.reason === "error")
@@ -129,7 +140,7 @@ export const isActiveSubagentStatus = (status: SubagentDisplayStatus): boolean =
 
 /**
  * A delegation row's status. The child session's live state wins while it
- * runs (a background `task` call completes immediately, long before its
+ * runs (a background `subagent` call completes immediately, long before its
  * child); afterwards the call's own outcome distinguishes stopped and failed
  * runs from an aborted child that merely went idle.
  */

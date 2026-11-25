@@ -36,7 +36,7 @@ export default defineConfig({
 						"@assistant-ui/core/internal",
 						"@assistant-ui/core/react",
 						"@assistant-ui/react",
-						"@kilocode/sdk/v2/client",
+						"@kilocode/client",
 					],
 				},
 				test: {

@@ -1,303 +1,175 @@
+import type { SessionRevert } from "@kilocode/client";
+import { describe, expect, it } from "vitest";
+
+import { projectOpenCodeThreadMessages, visibleMessages } from "./openCodeMessageProjection";
+import { OpenCodeThreadController } from "./OpenCodeThreadController";
 import {
-	createOpenCodeThreadState,
-	OpenCodeThreadController,
-	projectOpenCodeThreadMessages,
-	type OpencodeClient,
-	type OpenCodeServerMessage,
-	type OpenCodeThreadState,
-} from "./index";
-import { describe, expect, it, vi } from "vitest";
-
-const serverMessage = (
-	id: string,
-	role: "user" | "assistant",
-	parts: Array<Record<string, unknown>> = [],
-): OpenCodeServerMessage => ({
-	id,
-	info: {
-		id,
-		role,
-		sessionID: "ses_1",
-		modelID: "model",
-		providerID: "provider",
-		mode: "primary",
-		path: { cwd: "/", root: "/" },
-		cost: 0,
-		tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-		time: { created: Number(id.split("-")[1] ?? 1) },
-		...(role === "assistant" ? { finish: "stop" } : {}),
-	} as never,
-	parts: parts as never,
-	shadowParts: undefined,
-});
-
-const textPart = (id: string, text: string) => ({
-	id,
-	sessionID: "ses_1",
-	messageID: id.split("_")[0],
-	type: "text",
+	assistant,
+	createDeferred,
+	createFakeClient,
+	createFakeEventSource,
+	serverEvent,
+	session,
+	SESSION_ID,
 	text,
-});
-
-const stateWithMessages = (
-	messages: readonly OpenCodeServerMessage[],
-	session: Record<string, unknown> | null,
-): OpenCodeThreadState => ({
-	...createOpenCodeThreadState("ses_1"),
-	session: session as never,
-	messageOrder: messages.map((message) => message.id),
-	messagesById: Object.fromEntries(messages.map((message) => [message.id, message])),
-});
+	threadState,
+	user,
+} from "./testUtils";
 
 /*
- * `applyRevertVisibility` in Desktop's fork (requirement in docs/kilo-v2.md) filters reverted messages with
- * `message.id < revert.messageID` — plain string comparison.  This is safe
- * because the OpenCode server generates message IDs via
- * `Identifier.ascending("message")`: `msg_` + 12-char big-endian timestamp hex
- * + 14-char base62, fixed length and lexicographically monotonic
- * (`packages/opencode/src/id/id.ts`).  The TUI (`x.id < revert`,
- * `tui/src/routes/session/index.tsx:710`) and the VSCode webview
- * (`id < revert.messageID`, `context/session-queue.ts:62`) use the same
- * convention — this is deliberate ecosystem parity.
- *
- * The desktop renderer's own index-based `deriveRevertedUserRows` /
- * `useIsAfterPendingBoundary` diverge intentionally: they also serve
- * local/test runtimes with non-monotonic IDs.  A pending revert requires a
- * real OpenCode session, so non-monotonic IDs never reach the fork's filter.
+ * Revert (requirement R5 in docs/kilo-v2.md): a staged revert
+ * (`session.revert.stage`) hides its boundary message and everything after
+ * it until it is cleared (`session.revert.clear`) or committed by the next
+ * prompt; the controller applies the staged revert from the reply.
  */
+
+const transcript = [
+	user("msg_1", "first"),
+	assistant("msg_2", [text("answer one")]),
+	user("msg_3", "second"),
+	assistant("msg_4", [text("answer two")]),
+];
+
+const projectedIds = (revert?: SessionRevert) =>
+	projectOpenCodeThreadMessages(
+		threadState(transcript, { session: session(SESSION_ID, revert ? { revert } : {}) }),
+	).map((message) => message.id);
+
 describe("projectOpenCodeThreadMessages revert filtering", () => {
-	it("hides the boundary message and everything after it while a revert is pending", () => {
-		const state = stateWithMessages(
-			[
-				serverMessage("msg-1", "user", [textPart("msg-1_1", "first")]),
-				serverMessage("msg-2", "assistant", [textPart("msg-2_1", "answer one")]),
-				serverMessage("msg-3", "user", [textPart("msg-3_1", "second")]),
-				serverMessage("msg-4", "assistant", [textPart("msg-4_1", "answer two")]),
-			],
-			{ id: "ses_1", revert: { messageID: "msg-3" } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
+	it("hides the boundary message and everything after it while a revert is staged", () => {
+		expect(projectedIds({ messageID: "msg_3" })).toEqual(["msg_1", "msg_2"]);
 	});
 
-	it("keeps the boundary message with only the parts before the boundary part", () => {
-		const state = stateWithMessages(
-			[
-				serverMessage("msg-1", "user", [textPart("msg-1_1", "first")]),
-				serverMessage("msg-2", "assistant", [
-					textPart("msg-2_1", "kept"),
-					textPart("msg-2_2", "dropped"),
-				]),
-				serverMessage("msg-3", "user", [textPart("msg-3_1", "second")]),
-			],
-			{ id: "ses_1", revert: { messageID: "msg-2", partID: "msg-2_2" } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected.map((message) => message.id)).toEqual(["msg-1", "msg-2"]);
-		expect(projected[1]?.content).toEqual([{ type: "text", text: "kept" }]);
-	});
-
-	it("projects every message when no revert is pending", () => {
-		const messages = [
-			serverMessage("msg-1", "user", [textPart("msg-1_1", "first")]),
-			serverMessage("msg-2", "assistant", [textPart("msg-2_1", "answer one")]),
-			serverMessage("msg-3", "user", [textPart("msg-3_1", "second")]),
-		];
-
+	it("projects every message when no revert is staged", () => {
+		expect(projectedIds()).toEqual(["msg_1", "msg_2", "msg_3", "msg_4"]);
 		expect(
-			projectOpenCodeThreadMessages(stateWithMessages(messages, null)).map((message) => message.id),
-		).toEqual(["msg-1", "msg-2", "msg-3"]);
-		expect(
-			projectOpenCodeThreadMessages(stateWithMessages(messages, { id: "ses_1" })).map(
+			projectOpenCodeThreadMessages(threadState(transcript, { session: null })).map(
 				(message) => message.id,
 			),
-		).toEqual(["msg-1", "msg-2", "msg-3"]);
+		).toEqual(["msg_1", "msg_2", "msg_3", "msg_4"]);
 	});
 
-	it("keeps pre-boundary messages and hides boundary and after with realistic monotonic ids", () => {
-		// Realistic IDs: fixed-length, ascending 12-char hex prefix so
-		// lexicographic order matches chronological order.
-		const id1 = "msg_000000000001Aaaaaaaaaaaaa";
-		const id2 = "msg_000000000002Baaaaaaaaaaaa";
-		const id3 = "msg_000000000003Caaaaaaaaaaaa";
-		const id4 = "msg_000000000004Daaaaaaaaaaaa";
-		// `serverMessage` derives time.created via id.split("-")[1]; msg_ IDs
-		// contain no "-", so all get the fallback 1 — createdAt ties are fine
-		// because ordering comes from messageOrder.
-		const state = stateWithMessages(
-			[
-				serverMessage(id1, "user", [textPart(`${id1}_1`, "first")]),
-				serverMessage(id2, "assistant", [textPart(`${id2}_1`, "answer one")]),
-				serverMessage(id3, "user", [textPart(`${id3}_1`, "second")]),
-				serverMessage(id4, "assistant", [textPart(`${id4}_1`, "answer two")]),
-			],
-			{ id: "ses_1", revert: { messageID: id3 } },
-		);
+	it("cuts by transcript position, not by id order", () => {
+		const state = threadState([user("msg_z"), user("msg_a"), user("msg_m")], {
+			session: session(SESSION_ID, { revert: { messageID: "msg_a" } }),
+		});
 
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected.map((message) => message.id)).toEqual([id1, id2]);
+		expect(visibleMessages(state).map((message) => message.id)).toEqual(["msg_z"]);
 	});
 
-	it("documents reliance on lexicographically sortable ids (TUI/VSCode parity)", () => {
-		// Intentional limitation: applyRevertVisibility uses string comparison,
-		// so non-monotonic IDs yield wrong results.  With messageOrder
-		// ["zzz-1", "aaa-2"] and boundary "aaa-2", the filter drops both:
-		// "zzz-1" is not < "aaa-2" (false — "z" > "a"), and the boundary
-		// itself with no partID returns [].  This mirrors — with the opposite
-		// outcome — the index-based counterpart in checkpoint-revert.unit.test.ts
-		// ("returns rows for ids at and after the boundary using messageOrder
-		// index, not lexicographic comparison"), which returns only "aaa-2".
-		// Ecosystem parity decision: keep lexicographic comparison to match kilo
-		// TUI and VSCode webview.  If the fork is ever changed to index-based
-		// filtering this test fails and forces a conscious decision.
-		const state = stateWithMessages(
-			[
-				serverMessage("zzz-1", "user", [textPart("zzz-1_1", "first")]),
-				serverMessage("aaa-2", "user", [textPart("aaa-2_1", "second")]),
-			],
-			{ id: "ses_1", revert: { messageID: "aaa-2" } },
-		);
-
-		const projected = projectOpenCodeThreadMessages(state);
-
-		expect(projected).toHaveLength(0);
+	it("hides nothing for a boundary the transcript doesn't hold (the loader loads up to it)", () => {
+		expect(projectedIds({ messageID: "msg_missing" })).toEqual([
+			"msg_1",
+			"msg_2",
+			"msg_3",
+			"msg_4",
+		]);
 	});
 
-	it("does not leak post-boundary assistant parts into earlier merged messages", () => {
-		const state = stateWithMessages(
-			[
-				serverMessage("msg-1", "assistant", [textPart("msg-1_1", "answer one")]),
-				serverMessage("msg-2", "user", [textPart("msg-2_1", "second")]),
-				serverMessage("msg-3", "assistant", [textPart("msg-3_1", "answer two")]),
-			],
-			{ id: "ses_1", revert: { messageID: "msg-2" } },
+	it("does not leak post-boundary steps into the turn before it", () => {
+		const state = threadState(
+			[assistant("msg_1", [text("answer one")]), assistant("msg_2", [text("hidden")])],
+			{ session: session(SESSION_ID, { revert: { messageID: "msg_2" } }) },
 		);
 
 		const projected = projectOpenCodeThreadMessages(state);
 
 		expect(projected).toHaveLength(1);
-		expect(projected[0]?.id).toBe("msg-1");
-		expect(projected[0]?.content).toEqual([{ type: "text", text: "answer one" }]);
+		const content = projected[0]?.content;
+		expect(
+			Array.isArray(content) ? content.filter((part) => part.type === "text") : content,
+		).toEqual([{ type: "text", text: "answer one" }]);
 	});
 });
 
-const createDeferred = <T>() => {
-	let resolve!: (value: T) => void;
-	let reject!: (error: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-};
+async function loadedController() {
+	const fake = createFakeClient();
+	fake.transcripts.set(SESSION_ID, transcript);
+	const events = createFakeEventSource();
+	const controller = new OpenCodeThreadController(fake.client, () => events, SESSION_ID);
+	await controller.load();
+	return { fake, events, controller };
+}
 
-const createController = (
-	revert: ReturnType<typeof vi.fn>,
-	unrevert: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-) =>
-	new OpenCodeThreadController(
-		{ session: { revert, unrevert } } as never as OpencodeClient,
-		() => ({
-			subscribe: () => () => {},
-		}),
-		"ses_1",
-	);
+const shownIds = (controller: OpenCodeThreadController) =>
+	projectOpenCodeThreadMessages(controller.getState()).map((message) => message.id);
 
-describe("OpenCodeThreadController.revert run state", () => {
-	it("returns to idle after the server accepts the revert", async () => {
-		const sessionData = { id: "ses_1", revert: { messageID: "user-2" } };
-		const deferred = createDeferred<{ data: typeof sessionData }>();
-		const controller = createController(vi.fn(() => deferred.promise));
+describe("OpenCodeThreadController.revert", () => {
+	it("is reverting while the stage request is in flight, then applies the staged revert", async () => {
+		const { fake, controller } = await loadedController();
+		const reply = createDeferred<SessionRevert>();
+		fake.session.revert.stage.mockReturnValueOnce(reply.promise);
 
-		const revertPromise = controller.revert("user-2");
+		const reverting = controller.revert("msg_3");
 		expect(controller.getState().runState.type).toBe("reverting");
 
-		deferred.resolve({ data: sessionData });
-		await revertPromise;
+		reply.resolve({ messageID: "msg_3", files: [] });
+		await reverting;
 
-		const state = controller.getState();
-		expect(state.runState.type).toBe("idle");
-		expect(state.sessionStatus?.type).toBe("idle");
-	});
-
-	it("applies the REST response session when data is present", async () => {
-		const sessionData = { id: "ses_1", revert: { messageID: "user-2" } };
-		const controller = createController(vi.fn().mockResolvedValue({ data: sessionData }));
-
-		await controller.revert("user-2");
-
-		expect((controller.getState().session as Record<string, unknown>)?.revert).toEqual({
-			messageID: "user-2",
+		expect(fake.session.revert.stage).toHaveBeenCalledWith({
+			sessionID: SESSION_ID,
+			messageID: "msg_3",
 		});
-		expect(controller.getState().runState.type).toBe("idle");
+		expect(controller.getState().session?.revert).toEqual({ messageID: "msg_3", files: [] });
+		expect(controller.getState()).toMatchObject({ running: false, runState: { type: "idle" } });
+		expect(shownIds(controller)).toEqual(["msg_1", "msg_2"]);
 	});
 
-	it("rejects with 'Revert returned no session' and moves to error state when response has no data", async () => {
-		const controller = createController(vi.fn().mockResolvedValue({ data: undefined }));
+	it("moves to the error state and rethrows when staging fails", async () => {
+		const { fake, controller } = await loadedController();
+		fake.session.revert.stage.mockRejectedValueOnce(new Error("revert rejected"));
 
-		await expect(controller.revert("user-2")).rejects.toThrow("Revert returned no session");
+		await expect(controller.revert("msg_3")).rejects.toThrow("revert rejected");
 		expect(controller.getState().runState.type).toBe("error");
+		expect(controller.getState().session).not.toHaveProperty("revert");
 	});
 
-	it("moves to the error state when the revert request fails", async () => {
-		const controller = createController(vi.fn().mockRejectedValue(new Error("revert rejected")));
+	it("follows a revert staged elsewhere", async () => {
+		const { events, controller } = await loadedController();
+		controller.subscribe(() => undefined);
 
-		await expect(controller.revert("user-2")).rejects.toThrow("revert rejected");
-		expect(controller.getState().runState.type).toBe("error");
+		events.emit(serverEvent("session.revert.staged", { revert: { messageID: "msg_3" } }));
+
+		expect(shownIds(controller)).toEqual(["msg_1", "msg_2"]);
 	});
 });
 
-describe("OpenCodeThreadController.unrevert run state", () => {
-	it("is reverting while the HTTP call is stalled", async () => {
-		const deferred = createDeferred<{ data: unknown }>();
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-			vi.fn(() => deferred.promise),
-		);
+describe("OpenCodeThreadController.unrevert", () => {
+	it("is reverting while the clear request is in flight, then shows everything again", async () => {
+		const { fake, controller } = await loadedController();
+		await controller.revert("msg_3");
+		const reply = createDeferred<void>();
+		fake.session.revert.clear.mockReturnValueOnce(reply.promise);
 
-		const unrevertPromise = controller.unrevert();
+		const clearing = controller.unrevert();
 		expect(controller.getState().runState.type).toBe("reverting");
 
-		deferred.resolve({ data: { id: "ses_1" } });
-		await unrevertPromise;
-	});
+		reply.resolve();
+		await clearing;
 
-	it("applies the REST response session and returns to idle on success", async () => {
-		const sessionData = { id: "ses_1" }; // revert cleared
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: undefined }),
-			vi.fn().mockResolvedValue({ data: sessionData }),
-		);
-
-		await controller.unrevert();
-
-		expect(controller.getState().session).toEqual(sessionData);
+		expect(fake.session.revert.clear).toHaveBeenCalledWith({ sessionID: SESSION_ID });
+		expect(controller.getState().session).not.toHaveProperty("revert");
 		expect(controller.getState().runState.type).toBe("idle");
-		expect(controller.getState().sessionStatus?.type).toBe("idle");
+		expect(shownIds(controller)).toEqual(["msg_1", "msg_2", "msg_3", "msg_4"]);
 	});
 
-	it("rejects with 'Redo returned no session' and moves to error state when response has no data", async () => {
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-			vi.fn().mockResolvedValue({ data: undefined }),
-		);
-
-		await expect(controller.unrevert()).rejects.toThrow("Redo returned no session");
-		expect(controller.getState().runState.type).toBe("error");
-	});
-
-	it("moves to the error state and rethrows when the unrevert request fails", async () => {
-		const controller = createController(
-			vi.fn().mockResolvedValue({ data: undefined }),
-			vi.fn().mockRejectedValue(new Error("unrevert rejected")),
-		);
+	it("moves to the error state and rethrows when clearing fails", async () => {
+		const { fake, controller } = await loadedController();
+		await controller.revert("msg_3");
+		fake.session.revert.clear.mockRejectedValueOnce(new Error("unrevert rejected"));
 
 		await expect(controller.unrevert()).rejects.toThrow("unrevert rejected");
 		expect(controller.getState().runState.type).toBe("error");
+		expect(controller.getState().session?.revert).toEqual({ messageID: "msg_3" });
+	});
+
+	it("follows a revert cleared elsewhere", async () => {
+		const { events, controller } = await loadedController();
+		await controller.revert("msg_3");
+		controller.subscribe(() => undefined);
+
+		events.emit(serverEvent("session.revert.cleared"));
+
+		expect(shownIds(controller)).toEqual(["msg_1", "msg_2", "msg_3", "msg_4"]);
 	});
 });

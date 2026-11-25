@@ -1,93 +1,124 @@
-import { OpenCodeThreadController, type OpenCodeServerEvent } from "./index";
-import type { KiloClient as OpencodeClient } from "@kilocode/sdk/v2/client";
 import { describe, expect, it, vi } from "vitest";
 
+import { OpenCodeThreadController } from "./OpenCodeThreadController";
+import {
+	createFakeClient,
+	createFakeEventSource,
+	MODEL,
+	serverEvent,
+	SESSION_ID,
+	settleMicrotasks,
+	streamReconnected,
+	user,
+} from "./testUtils";
+
 /*
- * Reattaching in Desktop's fork (requirement in docs/kilo-v2.md): a thread whose listeners all
- * left (a hidden Activity, a tab switched away) only watches whether anything
- * for it arrived. Coming back refreshes its history only if something did,
- * so showing a kept chat again doesn't fetch and rebuild its whole history.
+ * Reattaching (requirement R4 in docs/kilo-v2.md): a thread whose listeners
+ * all left (a hidden Activity, a tab switched away) only watches whether
+ * anything for it arrived; coming back reloads its history only if
+ * something did. A running thread instead stays attached until its run
+ * ends: streamed text exists only as deltas, so a reload mid-run loses it.
  */
 
-type Listener = (event: OpenCodeServerEvent) => void;
-
-function setup() {
-	const listeners = new Set<Listener>();
-	const messages = vi.fn().mockResolvedValue({ data: [] });
-	const client = {
-		session: {
-			get: vi.fn().mockResolvedValue({ data: { id: "ses_1" } }),
-			messages,
-			status: vi.fn().mockResolvedValue({ data: {} }),
-		},
-	} as never as OpencodeClient;
-	const controller = new OpenCodeThreadController(
-		client,
-		() => ({
-			subscribe: (listener: Listener) => {
-				listeners.add(listener);
-				return () => listeners.delete(listener);
-			},
-		}),
-		"ses_1",
-	);
-	const emit = (event: Partial<OpenCodeServerEvent>) => {
-		for (const listener of [...listeners]) listener(event as OpenCodeServerEvent);
-	};
-	return { controller, messages, emit, listeners };
-}
-
 async function loadedAndDetached() {
-	const context = setup();
-	const unsubscribe = context.controller.subscribe(() => undefined);
-	await context.controller.load();
+	const fake = createFakeClient();
+	fake.transcripts.set(SESSION_ID, [user("msg_1")]);
+	const events = createFakeEventSource();
+	const controller = new OpenCodeThreadController(fake.client, () => events, SESSION_ID);
+	const unsubscribe = controller.subscribe(() => undefined);
+	await controller.load();
 	unsubscribe();
-	context.messages.mockClear();
-	return context;
+	await settleMicrotasks();
+	fake.message.list.mockClear();
+	return { fake, events, controller };
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+const stepStarted = (assistantMessageID: string) =>
+	serverEvent("session.step.started", {
+		assistantMessageID,
+		agent: "code",
+		model: MODEL,
+		started: 1,
+	});
 
 describe("OpenCodeThreadController reattaching", () => {
 	it("doesn't fetch the history again when nothing arrived while no one listened", async () => {
-		const { controller, messages } = await loadedAndDetached();
+		const { fake, controller } = await loadedAndDetached();
 
 		controller.subscribe(() => undefined);
-		await settle();
+		await settleMicrotasks();
 
-		expect(messages).not.toHaveBeenCalled();
+		expect(fake.message.list).not.toHaveBeenCalled();
 		expect(controller.getState().loadState.type).toBe("ready");
 	});
 
-	it("refreshes the history when an event for the thread arrived while no one listened", async () => {
-		const { controller, messages, emit } = await loadedAndDetached();
+	it("reloads the history when an event for the thread arrived while no one listened", async () => {
+		const { fake, events, controller } = await loadedAndDetached();
 
-		emit({ type: "message.part.updated", sessionId: "ses_1", properties: {} } as never);
+		events.emit(serverEvent("session.renamed", { title: "Elsewhere" }));
 		controller.subscribe(() => undefined);
-		await settle();
 
-		expect(messages).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(fake.message.list).toHaveBeenCalledOnce());
 	});
 
-	it("refreshes after a stream reconnect, which may have dropped events", async () => {
-		const { controller, messages, emit } = await loadedAndDetached();
+	it("reloads after a stream reconnect, which may have dropped events", async () => {
+		const { fake, events, controller } = await loadedAndDetached();
 
-		emit({ type: "stream.reconnected" } as never);
+		events.emit(streamReconnected);
 		controller.subscribe(() => undefined);
-		await settle();
 
-		expect(messages).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(fake.message.list).toHaveBeenCalledOnce());
 	});
 
 	it("ignores other threads' events, and stops watching once it knows", async () => {
-		const { controller, emit, listeners } = await loadedAndDetached();
+		const { events, controller } = await loadedAndDetached();
 
-		emit({ type: "message.part.updated", sessionId: "ses_other", properties: {} } as never);
-		expect(listeners.size).toBe(1);
-		emit({ type: "message.part.updated", sessionId: "ses_1", properties: {} } as never);
-		expect(listeners.size).toBe(0);
+		events.emit(serverEvent("session.renamed", { sessionID: "ses_other", title: "x" }));
+		expect(events.listeners.size).toBe(1);
+		events.emit(serverEvent("session.renamed", { title: "y" }));
+		expect(events.listeners.size).toBe(0);
 
 		controller.dispose();
-		expect(listeners.size).toBe(0);
+		expect(events.listeners.size).toBe(0);
+	});
+
+	it("keeps applying a running thread's events after its last listener leaves", async () => {
+		const { events, controller } = await loadedAndDetached();
+		const unsubscribe = controller.subscribe(() => undefined);
+		events.emit(serverEvent("session.execution.started"));
+
+		unsubscribe();
+		expect(controller.isAttachedToEvents()).toBe(true);
+
+		events.emit(stepStarted("msg_2"));
+		expect(controller.getState().messages.map((message) => message.id)).toEqual(["msg_1", "msg_2"]);
+	});
+
+	it("lets go once the hidden run ends, without counting its last event as missed", async () => {
+		const { fake, events, controller } = await loadedAndDetached();
+		const unsubscribe = controller.subscribe(() => undefined);
+		events.emit(serverEvent("session.execution.started"));
+		unsubscribe();
+
+		events.emit(serverEvent("session.execution.succeeded"));
+		expect(controller.isAttachedToEvents()).toBe(false);
+		expect(controller.getState().running).toBe(false);
+
+		controller.subscribe(() => undefined);
+		await settleMicrotasks();
+		expect(fake.message.list).not.toHaveBeenCalled();
+	});
+
+	it("keeps a disposed running thread attached until its run ends, then lets go entirely", async () => {
+		const { events, controller } = await loadedAndDetached();
+		controller.subscribe(() => undefined);
+		events.emit(serverEvent("session.execution.started"));
+
+		controller.dispose();
+		expect(controller.isAttachedToEvents()).toBe(true);
+
+		events.emit(serverEvent("session.execution.succeeded"));
+		expect(controller.isAttachedToEvents()).toBe(false);
+		expect(events.listeners.size).toBe(0);
 	});
 });

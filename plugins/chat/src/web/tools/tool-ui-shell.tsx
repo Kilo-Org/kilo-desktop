@@ -1,35 +1,29 @@
-import { useAuiState } from "@assistant-ui/react";
 import { CheckIcon, CircleXIcon } from "lucide-react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { useOpenCodeTool } from "./opencode-tool";
+import { readShellResult } from "./shell-result";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
 import {
 	getCommandSummary,
-	getToolBashMetadataOutput,
 	isCancelledToolStatus,
 	normalizeBashOutput,
-	parseBashResult,
 	ToolOutputBlock,
 } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
 
-export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCallId }) => {
+export const ShellTerminal: ToolCallComponent = ({ args, result, status, toolCallId }) => {
 	const command = typeof args?.command === "string" ? args.command : "";
 	const isRunning = status?.type === "running";
 	const isCancelled = isCancelledToolStatus(status);
-	const liveOutput = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return getToolBashMetadataOutput(custom?.opencode?.parts, toolCallId);
-	});
+	const shell = readShellResult(useOpenCodeTool(toolCallId), result);
 
-	const parsed = parseBashResult(result);
-	const stdoutRaw = parsed.stdout ?? liveOutput;
-	const stdout = stdoutRaw ? normalizeBashOutput(stdoutRaw) : undefined;
-	const stderr = parsed.stderr ? normalizeBashOutput(parsed.stderr) : undefined;
-	const exitCode = parsed.exitCode ?? 0;
-	const hasOutput = Boolean(stdout || stderr);
-	const isError = !isRunning && exitCode !== 0;
+	const output = shell.output ? normalizeBashOutput(shell.output) : undefined;
+	// A backgrounded command's notice tells the model to wait; the output already says it moved.
+	const notice = shell.notice && !shell.background ? normalizeBashOutput(shell.notice) : undefined;
+	const hasOutput = Boolean(output || notice);
+	const isError = !isRunning && (shell.failed || status?.type === "incomplete") && !isCancelled;
 
 	const summaryText = getCommandSummary(args);
 
@@ -53,17 +47,18 @@ export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCall
 			detail={
 				<ToolOutputBlock>
 					{command ? <div className="text-muted-foreground mb-2">$ {command}</div> : null}
-					{stdout ? (
-						<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{stdout}</pre>
+					{output ? (
+						<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{output}</pre>
 					) : null}
-					{stderr ? (
+					{notice ? (
 						<pre
 							className={cn(
-								"text-destructive wrap-break-word whitespace-pre-wrap",
-								stdout && "mt-2",
+								"wrap-break-word whitespace-pre-wrap",
+								isError ? "text-destructive" : "text-muted-foreground",
+								output && "mt-2",
 							)}
 						>
-							{stderr}
+							{notice}
 						</pre>
 					) : null}
 				</ToolOutputBlock>
@@ -71,4 +66,4 @@ export const BashTerminal: ToolCallComponent = ({ args, result, status, toolCall
 		/>
 	);
 };
-BashTerminal.displayName = "BashTerminal";
+ShellTerminal.displayName = "ShellTerminal";

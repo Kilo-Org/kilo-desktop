@@ -4,7 +4,6 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RespondToToolApprovalOptions } from "@assistant-ui/react";
-import type { createKiloClient as createOpencodeClient } from "@kilocode/sdk/v2/client";
 
 const mocks = vi.hoisted(() => ({
 	adapters: [] as unknown[],
@@ -52,13 +51,18 @@ vi.mock("./OpenCodeThreadController", async (importOriginal) => {
 });
 
 import { createOpenCodeThreadState } from "./openCodeThreadState";
+import type { OpenCodeClient, OpenCodeRuntimeBackend } from "./types";
 import { useOpenCodeRuntime } from "./useOpenCodeRuntime";
 
 type ApprovalAdapter = {
 	onRespondToToolApproval?: (response: RespondToToolApprovalOptions) => Promise<void> | void;
 };
 
-const stubClient = {} as ReturnType<typeof createOpencodeClient>;
+const backend: OpenCodeRuntimeBackend = {
+	client: {} as OpenCodeClient,
+	initializeSession: async () => ({ id: "session-1" }),
+	createEventSource: () => ({ subscribe: () => () => {}, dispose: () => {} }),
+};
 
 let root: Root | undefined;
 
@@ -74,7 +78,7 @@ describe("useOpenCodeRuntime tool approvals", () => {
 		mocks.state = createOpenCodeThreadState("session-1");
 
 		const App = () => {
-			useOpenCodeRuntime({ client: stubClient });
+			useOpenCodeRuntime({ backend });
 			return null;
 		};
 

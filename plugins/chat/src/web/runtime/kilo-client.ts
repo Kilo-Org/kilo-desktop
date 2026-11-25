@@ -1,4 +1,4 @@
-import { createKiloClient, type KiloClient } from "@kilocode/sdk/v2/client";
+import { OpenCode, type OpenCodeClient } from "@kilocode/client";
 
 import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
@@ -6,49 +6,39 @@ import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 export const connectionKey = (connection: ServerConnection) =>
 	`${connection.baseUrl}\n${connection.username}\n${connection.password}`;
 
-function connectionOptions(connection: ServerConnection) {
-	const authorization = globalThis.btoa(`${connection.username}:${connection.password}`);
-	return { baseUrl: connection.baseUrl, headers: { Authorization: `Basic ${authorization}` } };
+/** A Kilo v2 client for the running server, authenticated with its per-launch credentials. */
+export function createKiloClient(connection: ServerConnection): OpenCodeClient {
+	const credentials = globalThis.btoa(`${connection.username}:${connection.password}`);
+	return OpenCode.make({
+		baseUrl: connection.baseUrl,
+		headers: { authorization: `Basic ${credentials}` },
+		// Looked up per request, so a fetch installed later (a test's fake server) is used.
+		fetch: (input, init) => globalThis.fetch(input, init),
+	});
 }
 
 /**
- * The window's Kilo clients, one per server connection: the global client
- * (no directory, so lookups and the event stream span every project) and one
- * per chat directory, where a chat's writes must go.
+ * The window's Kilo client, one per server connection. v2 calls name their
+ * session (the server resolves its location) or take a `location`, so no
+ * client is kept per directory.
  */
 export class KiloClients {
 	#key: string | undefined;
-	#global: KiloClient | undefined;
-	readonly #byDirectory = new Map<string, KiloClient>();
+	#client: OpenCodeClient | undefined;
 
-	global(connection: ServerConnection): KiloClient {
-		this.#follow(connection);
-		this.#global ??= createKiloClient(connectionOptions(connection));
-		return this.#global;
-	}
-
-	directory(connection: ServerConnection, directory: string): KiloClient {
-		this.#follow(connection);
-		let client = this.#byDirectory.get(directory);
-		if (!client) {
-			client = createKiloClient({ ...connectionOptions(connection), directory });
-			this.#byDirectory.set(directory, client);
-		}
-		return client;
-	}
-
-	#follow(connection: ServerConnection): void {
+	for(connection: ServerConnection): OpenCodeClient {
 		const key = connectionKey(connection);
-		if (key === this.#key) return;
-		this.#key = key;
-		this.#global = undefined;
-		this.#byDirectory.clear();
+		if (key !== this.#key || !this.#client) {
+			this.#key = key;
+			this.#client = createKiloClient(connection);
+		}
+		return this.#client;
 	}
 }
 
 const shared = new KiloClients();
 
-/** A client for `directory` on the given server, shared by the window. */
-export function directoryClient(connection: ServerConnection, directory: string): KiloClient {
-	return shared.directory(connection, directory);
+/** The window's client for the given server. */
+export function kiloClient(connection: ServerConnection): OpenCodeClient {
+	return shared.for(connection);
 }

@@ -1,3 +1,4 @@
+import type { SessionMessageAssistant, SessionMessageInfo } from "@kilocode/client";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -7,21 +8,25 @@ import { chatPaneObject, MEDIA_PANE_KIND, mediaPaneId } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
 import { renderChat } from "../../test/render-chat";
 import { SIGNED_OUT } from "../../test/kernel-harness";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
 import {
 	assistantMessage,
-	FakeKiloServer,
+	idleMessage,
+	reasoning,
+	session,
+	text,
+	tool,
 	userMessage,
-	type FakeMessage,
-} from "../../test/fake-kilo-server";
+} from "../../test/kilo2/fixtures";
 import { button, expandUntil, turnWork } from "../../test/transcript";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-async function showChat(messages: FakeMessage[], options: { identity?: AccountState } = {}) {
-	const server = new FakeKiloServer();
-	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
+async function showChat(messages: SessionMessageInfo[], options: { identity?: AccountState } = {}) {
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Chat" }), messages);
 	return renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -37,24 +42,33 @@ function pngDataUrl(width: number, height: number): string {
 	return canvas.toDataURL("image/png");
 }
 
-const tool = (name: string, state: Record<string, unknown>) => ({
-	type: "tool",
-	tool: name,
-	callID: `call_${name}`,
-	state: { input: {}, time: { start: 1 }, ...state },
-});
+/** A finished turn answering with `content`. */
+const answer = (
+	content: SessionMessageAssistant["content"],
+	patch: Partial<SessionMessageAssistant> = {},
+): SessionMessageInfo[] => [
+	assistantMessage(content, { finish: "stop", rawFinish: "stop", ...patch }),
+	idleMessage(),
+];
+
+/** A prompt carrying an inline PNG named shot.png. */
+const promptWithImage = (prompt: string, dataUrl: string) =>
+	userMessage(prompt, {
+		files: [
+			{
+				data: dataUrl.slice(dataUrl.indexOf(",") + 1),
+				mime: "image/png",
+				source: { type: "inline" },
+				name: "shot.png",
+			},
+		],
+	});
 
 describe("the transcript", () => {
 	it("renders code blocks with a copy button", async () => {
 		const host = await showChat([
-			userMessage("ses_a", "msg_1", "Show me"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "Run `pnpm test`:\n\n```sh\npnpm test\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
+			userMessage("Show me"),
+			...answer([text("Run `pnpm test`:\n\n```sh\npnpm test\n```\n")]),
 		]);
 
 		await expect.element(page.getByText("sh", { exact: true })).toBeVisible();
@@ -65,14 +79,8 @@ describe("the transcript", () => {
 
 	it("renders a Mermaid fence as a diagram card with its source", async () => {
 		const host = await showChat([
-			userMessage("ses_a", "msg_1", "Draw it"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "```mermaid\nflowchart TD\n  A --> B\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
+			userMessage("Draw it"),
+			...answer([text("```mermaid\nflowchart TD\n  A --> B\n```\n")]),
 		]);
 
 		await expect
@@ -88,11 +96,8 @@ describe("the transcript", () => {
 
 	it("folds reasoning under a disclosure", async () => {
 		await showChat([
-			userMessage("ses_a", "msg_1", "Think"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "reasoning", text: "Weighing the options", time: { start: 1, end: 2 } },
-				{ type: "text", text: "Done.", time: { start: 2, end: 3 } },
-			]),
+			userMessage("Think"),
+			...answer([reasoning("Weighing the options"), text("Done.")]),
 		]);
 
 		await expect.element(page.getByText("Done.")).toBeVisible();
@@ -105,21 +110,10 @@ describe("the transcript", () => {
 
 	it("shows each tool call's state", async () => {
 		await showChat([
-			userMessage("ses_a", "msg_1", "Go"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				tool("bash", {
-					status: "error",
-					input: { command: "make" },
-					error: "exit 2",
-					time: { start: 1, end: 2 },
-				}),
-				tool("github_list_issues", {
-					status: "completed",
-					output: "[]",
-					title: "",
-					metadata: {},
-					time: { start: 1, end: 2 },
-				}),
+			userMessage("Go"),
+			...answer([
+				tool("shell", { command: "make" }, { error: { type: "tool", message: "exit 2" } }),
+				tool("github_list_issues", {}, "[]"),
 			]),
 		]);
 
@@ -130,12 +124,7 @@ describe("the transcript", () => {
 	});
 
 	it("copies a reply", async () => {
-		const host = await showChat([
-			userMessage("ses_a", "msg_1", "Summarize"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "text", text: "A short summary.", time: { start: 1, end: 2 } },
-			]),
-		]);
+		const host = await showChat([userMessage("Summarize"), ...answer([text("A short summary.")])]);
 		await expect.element(page.getByText("A short summary.")).toBeVisible();
 
 		const copy = document.querySelector<HTMLButtonElement>(
@@ -147,21 +136,15 @@ describe("the transcript", () => {
 	});
 
 	it("explains a reply that ended in an error", async () => {
-		const prompt = userMessage("ses_a", "msg_1", "Go");
-		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
+		const error = {
+			type: "APIError",
+			message: 'Gateway said {"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}',
+		};
 		await showChat(
 			[
-				prompt,
-				{
-					...failed,
-					info: {
-						...failed.info,
-						error: {
-							name: "APIError",
-							data: { message: 'Gateway said {"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}' },
-						},
-					},
-				},
+				userMessage("Go"),
+				assistantMessage([], { finish: "error", error }),
+				idleMessage("failed", error),
 			],
 			{ identity: SIGNED_OUT },
 		);
@@ -172,19 +155,14 @@ describe("the transcript", () => {
 	});
 
 	it("notes a reply the person stopped", async () => {
-		const stopped = assistantMessage("ses_a", "msg_2", "msg_1", [
-			{ type: "text", text: "Partial", time: { start: 1, end: 2 } },
-		]);
 		await showChat([
-			userMessage("ses_a", "msg_1", "Go", 1_000),
-			{
-				...stopped,
-				info: {
-					...stopped.info,
-					time: { created: 1_500, completed: 4_000 },
-					error: { name: "MessageAbortedError", data: { message: "Aborted" } },
-				},
-			},
+			userMessage("Go", { time: { created: 1_000 } }),
+			assistantMessage([text("Partial")], {
+				finish: "stop",
+				rawFinish: "stop",
+				time: { created: 1_500, completed: 4_000 },
+			}),
+			idleMessage("interrupted"),
 		]);
 
 		await expect
@@ -193,92 +171,32 @@ describe("the transcript", () => {
 	});
 
 	it("shows a running turn's live reasoning and tools", async () => {
-		const host = await showChat([userMessage("ses_a", "msg_1", "Go")]);
+		const host = await showChat([userMessage("Go")]);
 		await expect.element(page.getByText("Go")).toBeVisible();
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
-		const reply = assistantMessage("ses_a", "msg_2", "msg_1", []);
 
-		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		host.server.emit("message.updated", {
-			info: { ...reply.info, time: { created: Date.now() }, finish: undefined },
-		});
-		host.server.emit("message.part.updated", {
-			part: {
-				id: "part_r",
-				sessionID: "ses_a",
-				messageID: "msg_2",
-				type: "reasoning",
-				text: "Thinking it through",
-				time: { start: Date.now() },
-			},
-		});
-		host.server.emit("message.part.updated", {
-			part: {
-				id: "part_t",
-				sessionID: "ses_a",
-				messageID: "msg_2",
-				type: "tool",
-				tool: "grep",
-				callID: "call_grep",
-				state: { status: "running", input: { pattern: "login" }, time: { start: Date.now() } },
-			},
-		});
+		const turn = host.server.startTurn("ses_a");
+		const step = turn.step().reasoning("Thinking it through");
+		const grep = step.call("grep", { pattern: "login" });
 
 		await expect
 			.element(page.getByRole("button", { name: "Searching the codebase" }))
 			.toBeVisible();
-		host.server.emit("session.idle", { sessionID: "ses_a" });
+		grep.succeed("Found 2 matches");
+		turn.succeed();
 		await expect.element(page.getByTestId("kilo-turn-work-toggle")).toBeVisible();
 	});
 
 	it("shows a sent image", async () => {
-		const sent = userMessage("ses_a", "msg_1", "Look");
-		await showChat([
-			{
-				...sent,
-				parts: [
-					...sent.parts,
-					{
-						id: "msg_1_f",
-						sessionID: "ses_a",
-						messageID: "msg_1",
-						type: "file",
-						mime: "image/png",
-						filename: "shot.png",
-						url: "data:image/png;base64,iVBORw0KGgo=",
-					},
-				],
-			},
-		]);
+		await showChat([promptWithImage("Look", "data:image/png;base64,iVBORw0KGgo=")]);
 
 		await expect.element(page.getByRole("button", { name: "Image attachment" })).toBeVisible();
 	});
 
 	it("opens a sent image and the reply's diagram in one viewer", async () => {
-		const sent = userMessage("ses_a", "msg_1", "Draw this");
 		const host = await showChat([
-			{
-				...sent,
-				parts: [
-					...sent.parts,
-					{
-						id: "msg_1_f",
-						sessionID: "ses_a",
-						messageID: "msg_1",
-						type: "file",
-						mime: "image/png",
-						filename: "shot.png",
-						url: pngDataUrl(40, 20),
-					},
-				],
-			},
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "```mermaid\nflowchart TD\n  A --> B\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
+			promptWithImage("Draw this", pngDataUrl(40, 20)),
+			...answer([text("```mermaid\nflowchart TD\n  A --> B\n```\n")]),
 		]);
 		await expect.element(page.getByTestId("chat-mermaid-expand")).toBeVisible();
 
@@ -387,27 +305,22 @@ describe("the transcript", () => {
 });
 
 describe("the conversation map", () => {
-	const reply = (id: string, parentId: string, text: string) =>
-		assistantMessage("ses_a", id, parentId, [{ type: "text", text, time: { start: 1, end: 2 } }]);
 	const twoTurns = () => [
-		userMessage("ses_a", "msg_1", "First prompt"),
-		reply("msg_2", "msg_1", "First answer"),
-		userMessage("ses_a", "msg_3", "Second prompt"),
-		reply("msg_4", "msg_3", "Second answer"),
+		userMessage("First prompt", { id: "msg_1" }),
+		...answer([text("First answer")]),
+		userMessage("Second prompt", { id: "msg_3" }),
+		...answer([text("Second answer")]),
 	];
 	const rail = () => document.querySelector<HTMLElement>('[data-slot="conversation-map-rail"]');
 
-	async function showWideChat(messages: FakeMessage[]) {
+	async function showWideChat(messages: SessionMessageInfo[]) {
 		await page.viewport(1200, 800);
 		onTestFinished(() => page.viewport(414, 896));
 		return showChat(messages);
 	}
 
 	it("stays hidden for one user turn", async () => {
-		await showWideChat([
-			userMessage("ses_a", "msg_1", "First prompt"),
-			reply("msg_2", "msg_1", "First answer"),
-		]);
+		await showWideChat([userMessage("First prompt"), ...answer([text("First answer")])]);
 		await expect.element(page.getByText("First answer")).toBeVisible();
 
 		expect(rail()).toBeNull();
@@ -437,10 +350,10 @@ describe("the conversation map", () => {
 	it("scrolls the viewport to the clicked turn", async () => {
 		const long = "A long answer line.\n\n".repeat(80);
 		await showWideChat([
-			userMessage("ses_a", "msg_1", "First prompt"),
-			reply("msg_2", "msg_1", long),
-			userMessage("ses_a", "msg_3", "Second prompt"),
-			reply("msg_4", "msg_3", long),
+			userMessage("First prompt", { id: "msg_1" }),
+			...answer([text(long)]),
+			userMessage("Second prompt", { id: "msg_3" }),
+			...answer([text(long)]),
 		]);
 		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
 		const first = () => viewport.querySelector<HTMLElement>('[data-message-id="msg_1"]')!;

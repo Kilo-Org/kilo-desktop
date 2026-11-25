@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import type { OpenCodeQuestionRequest, QuestionAnswer } from "@kilo-desktop/react-opencode";
+import { questionsOfForm, type FormInfo, type QuestionPrompt } from "@kilo-desktop/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
@@ -27,18 +27,18 @@ import type { SubagentOrigin } from "./pending-interactions";
 
 const questionName = (index: number) => `question-${index}`;
 
-const buildQuestionnaireItems = (request: OpenCodeQuestionRequest) =>
-	request.questions.map((question, index) => ({
+const buildQuestionnaireItems = (questions: readonly QuestionPrompt[]) =>
+	questions.map((question, index) => ({
 		name: questionName(index),
 		required: true as const,
 		choices: question.options.map((option) => ({ value: option.label })),
 	}));
 
 export const encodeAnswersFromFormData = (
-	request: OpenCodeQuestionRequest,
+	questions: readonly QuestionPrompt[],
 	formData: FormData,
-): QuestionAnswer[] =>
-	request.questions.map((question, index) => {
+): string[][] =>
+	questions.map((question, index) => {
 		const name = questionName(index);
 		const rawValues = question.multiple ? formData.getAll(name) : [formData.get(name)];
 
@@ -52,12 +52,12 @@ export const encodeAnswersFromFormData = (
 
 const NO_CHATS = "Kilo isn't available right now.";
 
-/** An agent question, answered or dismissed through kilo.core's chats. */
+/** An agent question (the question tool's form), answered or dismissed through kilo.core's chats. */
 export const OpenCodeQuestionQuestionnaire = ({
 	request,
 	origin,
 }: {
-	request: OpenCodeQuestionRequest;
+	request: FormInfo;
 	/** Set when a subagent, not the chat's own session, asked the question. */
 	origin?: SubagentOrigin | undefined;
 }) => {
@@ -66,13 +66,14 @@ export const OpenCodeQuestionQuestionnaire = ({
 	const [error, setError] = useState<string | null>(null);
 
 	const renderers = usePermissionRenderers();
-	const items = buildQuestionnaireItems(request);
+	const questions = questionsOfForm(request);
+	const items = buildQuestionnaireItems(questions);
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
 		if (submissionState !== null) return;
 
-		const answers = encodeAnswersFromFormData(request, new FormData(event.currentTarget));
+		const answers = encodeAnswersFromFormData(questions, new FormData(event.currentTarget));
 		if (answers.some((answer) => answer.length === 0)) return;
 
 		if (!chats) {
@@ -128,18 +129,13 @@ export const OpenCodeQuestionQuestionnaire = ({
 				aria-label="Agent questions"
 			>
 				<QuestionnaireProgress />
-				{request.questions.map((question, index) => {
+				{questions.map((question, index) => {
 					const name = questionName(index);
-					const customAllowed = question.custom !== false;
+					const customAllowed = question.custom;
 					const hasChoices = question.options.length > 0;
 
 					return (
-						<QuestionnaireItem
-							key={name}
-							name={name}
-							required
-							multiple={question.multiple === true}
-						>
+						<QuestionnaireItem key={name} name={name} required multiple={question.multiple}>
 							<QuestionnaireTitle>{question.question}</QuestionnaireTitle>
 							{hasChoices || customAllowed ? (
 								<QuestionnaireChoices>

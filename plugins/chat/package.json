@@ -33,7 +33,6 @@
 		"@kilo-desktop/ui": "workspace:*",
 		"@kilocode/client": "catalog:",
 		"@kilocode/schema": "catalog:",
-		"@kilocode/sdk": "7.8.27",
 		"@lexical/history": "^0.53.0",
 		"@lexical/plain-text": "^0.53.0",
 		"@lexical/react": "^0.53.0",

@@ -3,26 +3,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createEventBatcher, EVENT_BATCH_INTERVAL_MS } from "./event-batcher";
 
-const delta = (text: string, partID = "part_1", sessionId = "ses_1"): OpenCodeServerEvent => ({
-	type: "message.part.delta",
+const delta = (text: string, ordinal = 0, sessionId = "ses_1"): OpenCodeServerEvent => ({
+	type: "session.text.delta",
 	sessionId,
-	raw: undefined,
-	properties: { sessionID: sessionId, messageID: "msg_1", partID, field: "text", delta: text },
+	data: { sessionID: sessionId, assistantMessageID: "msg_1", ordinal, delta: text },
 });
 
-const event = (type: string): OpenCodeServerEvent => ({
-	type,
+const toolInput = (text: string, id: string): OpenCodeServerEvent => ({
+	type: "session.tool.input.delta",
 	sessionId: "ses_1",
-	raw: undefined,
-	properties: {},
+	data: { sessionID: "ses_1", assistantMessageID: "msg_1", id, delta: text },
 });
+
+const compaction = (text: string): OpenCodeServerEvent => ({
+	type: "session.compaction.delta",
+	sessionId: "ses_1",
+	data: { sessionID: "ses_1", text },
+});
+
+const event = (type: string): OpenCodeServerEvent => ({ type, sessionId: "ses_1", data: {} });
 
 const summary = (events: readonly OpenCodeServerEvent[]) =>
-	events.map((received) =>
-		received.type === "message.part.delta"
-			? `${received.properties.partID}:${received.properties.delta}`
-			: received.type,
-	);
+	events.map((received) => {
+		if (received.type === "session.text.delta") {
+			return `${String(received.data.ordinal)}:${String(received.data.delta)}`;
+		}
+		if (received.type === "session.tool.input.delta") {
+			return `${String(received.data.id)}:${String(received.data.delta)}`;
+		}
+		if (received.type === "session.compaction.delta")
+			return `compaction:${String(received.data.text)}`;
+		return received.type;
+	});
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -39,11 +51,11 @@ describe("createEventBatcher", () => {
 		batcher.subscribe((next) => received.push(next));
 
 		batcher.push(delta("a"));
-		batcher.push(delta("b", "part_2"));
+		batcher.push(delta("b", 1));
 		expect(received).toEqual([]);
 
 		vi.advanceTimersByTime(EVENT_BATCH_INTERVAL_MS);
-		expect(summary(received)).toEqual(["part_1:a", "part_2:b"]);
+		expect(summary(received)).toEqual(["0:a", "1:b"]);
 	});
 
 	it("delivers any other event at once, after the deltas queued before it", () => {
@@ -54,7 +66,7 @@ describe("createEventBatcher", () => {
 		batcher.push(delta("a"));
 		batcher.push(event("stream.reconnected"));
 
-		expect(summary(received)).toEqual(["part_1:a", "stream.reconnected"]);
+		expect(summary(received)).toEqual(["0:a", "stream.reconnected"]);
 	});
 
 	it("joins a run of deltas to the same part into one", () => {
@@ -65,7 +77,7 @@ describe("createEventBatcher", () => {
 		for (const word of ["Hel", "lo", " wor", "ld"]) batcher.push(delta(word));
 		batcher.flush();
 
-		expect(summary(received)).toEqual(["part_1:Hello world"]);
+		expect(summary(received)).toEqual(["0:Hello world"]);
 	});
 
 	it("keeps the order of everything else, joining only adjacent deltas to one part", () => {
@@ -75,19 +87,29 @@ describe("createEventBatcher", () => {
 
 		batcher.push(delta("a"));
 		batcher.push(delta("b"));
-		batcher.push(delta("x", "part_2"));
-		batcher.push(event("message.part.updated"));
+		batcher.push(delta("x", 1));
+		batcher.push(event("session.text.ended"));
 		batcher.push(delta("c"));
-		batcher.push(delta("z", "part_1", "ses_2"));
+		batcher.push(delta("z", 0, "ses_2"));
 		batcher.flush();
 
-		expect(summary(received)).toEqual([
-			"part_1:ab",
-			"part_2:x",
-			"message.part.updated",
-			"part_1:c",
-			"part_1:z",
-		]);
+		expect(summary(received)).toEqual(["0:ab", "1:x", "session.text.ended", "0:c", "0:z"]);
+	});
+
+	it("joins tool input per call and compaction text, never across kinds", () => {
+		const batcher = createEventBatcher();
+		const received: OpenCodeServerEvent[] = [];
+		batcher.subscribe((next) => received.push(next));
+
+		batcher.push(toolInput('{"a"', "call_1"));
+		batcher.push(toolInput(":1}", "call_1"));
+		batcher.push(toolInput("{}", "call_2"));
+		batcher.push(compaction("Sum"));
+		batcher.push(compaction("mary"));
+		batcher.push(delta("x"));
+		batcher.flush();
+
+		expect(summary(received)).toEqual(['call_1:{"a":1}', "call_2:{}", "compaction:Summary", "0:x"]);
 	});
 
 	it("gives a listener only the events after it subscribed, and those queued before it left", () => {
@@ -103,8 +125,8 @@ describe("createEventBatcher", () => {
 		batcher.push(delta("c"));
 		batcher.flush();
 
-		expect(summary(early)).toEqual(["part_1:a", "part_1:b"]);
-		expect(summary(late)).toEqual(["part_1:b", "part_1:c"]);
+		expect(summary(early)).toEqual(["0:a", "0:b"]);
+		expect(summary(late)).toEqual(["0:b", "0:c"]);
 	});
 
 	it("still delivers to every listener when one throws", () => {

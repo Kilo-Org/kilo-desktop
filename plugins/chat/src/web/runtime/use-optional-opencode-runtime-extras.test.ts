@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { useOptionalOpenCodeRuntimeExtras } from "./use-optional-opencode-runtime-extras";
+import {
+	useOlderHistoryStatus,
+	useOptionalOpenCodeRuntimeExtras,
+} from "./use-optional-opencode-runtime-extras";
 
 const useAuiState = vi.hoisted(() => vi.fn());
 
@@ -17,22 +20,41 @@ describe("useOptionalOpenCodeRuntimeExtras", () => {
 	});
 
 	it("returns extras when reply helpers are present", () => {
-		const extras = {
-			replyToQuestion: vi.fn(),
-			rejectQuestion: vi.fn(),
-			replyToPermission: vi.fn(),
-			session: null,
-			state: {},
-			permissions: {},
-			questions: {},
-			fork: vi.fn(),
-			revert: vi.fn(),
-			unrevert: vi.fn(),
-			cancel: vi.fn(),
-			refresh: vi.fn(),
-		};
+		const extras = extrasWith({});
 		useAuiState.mockImplementation((selector) => selector({ thread: { extras } }));
 
 		expect(useOptionalOpenCodeRuntimeExtras()).toBe(extras);
 	});
 });
+
+describe("useOlderHistoryStatus", () => {
+	it.each([
+		[undefined, "complete"],
+		[{ type: "complete" }, "complete"],
+		[{ type: "available", cursor: "c" }, "loading"],
+		[{ type: "loading", cursor: "c" }, "loading"],
+		[{ type: "failed", cursor: "c", error: new Error("x") }, "failed"],
+	])("reports %o as %s", (olderHistory, status) => {
+		const extras = extrasWith({ olderHistory });
+		useAuiState.mockImplementation((selector) => selector({ thread: { extras } }));
+
+		expect(useOlderHistoryStatus()).toBe(status);
+	});
+});
+
+function extrasWith(state: object) {
+	return {
+		replyToQuestion: vi.fn(),
+		rejectQuestion: vi.fn(),
+		replyToPermission: vi.fn(),
+		session: null,
+		state,
+		permissions: {},
+		questions: {},
+		fork: vi.fn(),
+		revert: vi.fn(),
+		unrevert: vi.fn(),
+		cancel: vi.fn(),
+		refresh: vi.fn(),
+	};
+}

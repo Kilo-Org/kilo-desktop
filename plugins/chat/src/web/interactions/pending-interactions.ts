@@ -1,11 +1,11 @@
 import type {
-	OpenCodePermissionRequest,
-	OpenCodeQuestionRequest,
+	FormInfo,
 	OpenCodeThreadState,
+	PermissionRequest,
 } from "@kilo-desktop/react-opencode";
 
 import {
-	childSessionIdFromTaskPart,
+	subagentCallForChild,
 	subagentTaskTitle,
 	walkSessionTree,
 } from "../subagents/subagent-state";
@@ -13,15 +13,15 @@ import {
 /**
  * Prompts (permissions + questions) waiting on the user across a chat's
  * session family: the chat's own session plus every subagent below it.
- * OpenCode raises a subagent's prompt on the child session, and the runtime
+ * Kilo raises a subagent's prompt on the child session, and the runtime
  * only exposes the root session's prompts, so without this walk a subagent
- * blocks silently.
+ * blocks silently. Questions are the question tool's forms.
  */
 export type PendingInteractions = {
 	/** The chat's own session; prompts from any other session came from a subagent. */
 	rootSessionId: string | undefined;
-	permissions: readonly OpenCodePermissionRequest[];
-	questions: readonly OpenCodeQuestionRequest[];
+	permissions: readonly PermissionRequest[];
+	questions: readonly FormInfo[];
 	/** Display titles for subagent sessions that currently hold a prompt. */
 	subagentTitles: ReadonlyMap<string, string>;
 };
@@ -34,8 +34,8 @@ export const EMPTY_PENDING_INTERACTIONS: PendingInteractions = {
 };
 
 type OwnPendingInteractions = {
-	permissions: readonly OpenCodePermissionRequest[];
-	questions: readonly OpenCodeQuestionRequest[];
+	permissions: readonly PermissionRequest[];
+	questions: readonly FormInfo[];
 };
 
 const sameItems = <T>(left: readonly T[], right: readonly T[]) =>
@@ -56,18 +56,26 @@ export function samePendingInteractions(
 	);
 }
 
-const byAskedAt = (a: { askedAt: number }, b: { askedAt: number }) => a.askedAt - b.askedAt;
+/*
+ * v2 prompts carry no time, but Kilo's ids (`per_…`, `frm_…`) ascend in
+ * creation order after their prefix, so comparing that part orders prompts
+ * oldest-first across sessions and across permissions and questions.
+ */
+const creationKey = (id: string) => id.slice(id.indexOf("_") + 1);
+
+/** Orders prompts oldest-first by their ids. */
+export function byCreation(a: { id: string }, b: { id: string }): number {
+	const left = creationKey(a.id);
+	const right = creationKey(b.id);
+	return left < right ? -1 : left > right ? 1 : 0;
+}
 
 function taskTitleForChild(
 	parent: OpenCodeThreadState,
 	childSessionId: string,
 ): string | undefined {
-	for (const messageId of parent.messageOrder) {
-		for (const part of parent.messagesById[messageId]?.parts ?? []) {
-			if (childSessionIdFromTaskPart(part) === childSessionId) return subagentTaskTitle(part);
-		}
-	}
-	return undefined;
+	const call = subagentCallForChild(parent.messages, childSessionId);
+	return call ? subagentTaskTitle(call) : undefined;
 }
 
 /**
@@ -87,8 +95,8 @@ export function collectPendingInteractions({
 	scopeSessionId?: string | undefined;
 	own?: OwnPendingInteractions | undefined;
 }): PendingInteractions {
-	const permissions: OpenCodePermissionRequest[] = [];
-	const questions: OpenCodeQuestionRequest[] = [];
+	const permissions: PermissionRequest[] = [];
+	const questions: FormInfo[] = [];
 	const subagentTitles = new Map<string, string>();
 
 	if (!scopeSessionId && own) {
@@ -126,8 +134,8 @@ export function collectPendingInteractions({
 	}
 	return {
 		rootSessionId: state?.sessionId,
-		permissions: permissions.toSorted(byAskedAt),
-		questions: questions.toSorted(byAskedAt),
+		permissions: permissions.toSorted(byCreation),
+		questions: questions.toSorted(byCreation),
 		subagentTitles,
 	};
 }

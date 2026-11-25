@@ -60,7 +60,7 @@ const rendersNothing = (part: PartState): boolean =>
 
 /**
  * Subagent delegations get their own group, sealed off from activity groups:
- * one per run of consecutive `task` calls, where parts that render nothing do
+ * one per run of consecutive `subagent` calls, where parts that render nothing do
  * not break a run. Keys depend only on part order, never on live subagent
  * status, so group boundaries stay put as subagents finish.
  */

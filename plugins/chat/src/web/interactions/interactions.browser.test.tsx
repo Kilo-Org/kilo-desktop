@@ -12,14 +12,22 @@ import {
 	PermissionRenderer,
 	type PermissionDetailProps,
 } from "../../contracts";
+import type {
+	FormInfo,
+	SessionMessageAssistant,
+	SessionMessageInfo,
+} from "@kilo-desktop/react-opencode";
+
 import { agentPane, chatSummary } from "../../test/chat-host";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
 import {
 	assistantMessage,
-	FakeKiloServer,
+	questionForm,
+	session,
+	text,
+	tool,
 	userMessage,
-	type FakeMessage,
-} from "../../test/fake-kilo-server";
-import { toolPart } from "../../test/transcript";
+} from "../../test/kilo2/fixtures";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -29,21 +37,22 @@ afterEach(() => {
 const QUESTION = "What does login do?";
 const INSTALL_TOOL = "acme.tools/install";
 
-const reply = (text: string) => ({ type: "text", text, time: { start: 3, end: 4 } });
-
-function chatWith(parts: Record<string, unknown>[]): FakeMessage[] {
-	return [
-		userMessage("ses_a", "msg_1", QUESTION),
-		assistantMessage("ses_a", "msg_2", "msg_1", parts),
-	];
+function chatWith(content: SessionMessageAssistant["content"]): SessionMessageInfo[] {
+	return [userMessage(QUESTION, { id: "msg_1" }), assistantMessage(content, { id: "msg_2" })];
 }
 
+const permissionReplies = (server: FakeKilo2Server, id: string) =>
+	server.requestsTo("POST", `/api/session/ses_a/permission/${id}/reply`).map(({ body }) => body);
+
+const formReplies = (server: FakeKilo2Server, id: string) =>
+	server.requestsTo("POST", `/api/session/ses_a/form/${id}/reply`).map(({ body }) => body);
+
 async function showChat(
-	messages: FakeMessage[],
+	messages: SessionMessageInfo[],
 	options: Omit<Parameters<typeof renderChat>[0] & object, "server"> = {},
 ) {
-	const server = new FakeKiloServer();
-	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Chat" }), messages);
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -76,7 +85,7 @@ function contributor(
 }
 
 async function liveChat() {
-	const host = await showChat(chatWith([reply("Ready.")]));
+	const host = await showChat(chatWith([text("Ready.")]));
 	await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
 	return host;
 }
@@ -85,11 +94,10 @@ describe("permission requests", () => {
 	it("replace the composer with a permission card until the person answers", async () => {
 		const host = await liveChat();
 
-		host.server.askPermission("ses_a", {
-			id: "per_1",
-			permission: "bash",
-			patterns: ["rm -rf build", "*"],
-			always: ["rm *"],
+		const request = host.server.askPermission("ses_a", {
+			action: "shell",
+			resources: ["rm -rf build", "*"],
+			save: ["rm *"],
 			metadata: { description: "Clean the build" },
 		});
 
@@ -100,32 +108,22 @@ describe("permission requests", () => {
 		await page.getByTestId("kilo-permission-always").click();
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/permission/per_1/reply")[0]?.body)
-			.toMatchObject({ reply: "always" });
+			.poll(() => permissionReplies(host.server, request.id)[0])
+			.toMatchObject({ decision: "always" });
 		expect(host.agent.calls.replyPermission).toHaveBeenCalledWith({
 			chatId: "ses_a",
-			permissionId: "per_1",
+			permissionId: request.id,
 			decision: "always",
 		});
 		// The server announces the reply on the stream, which the transcript follows.
-		host.server.emit("permission.replied", {
-			sessionID: "ses_a",
-			requestID: "per_1",
-			reply: "always",
-		});
 		await expect.element(page.getByTestId("kilo-permission-card")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("kilo-composer-input")).toBeInTheDocument();
 	});
 
 	describe("asked while the chat wasn't open", () => {
-		async function openAfter(ask: (server: FakeKiloServer) => void) {
-			const server = new FakeKiloServer();
-			server.addChat({
-				id: "ses_a",
-				directory: "/projects/app",
-				title: "Chat",
-				messages: chatWith([reply("Ready.")]),
-			});
+		async function openAfter(ask: (server: FakeKilo2Server) => void) {
+			const server = new FakeKilo2Server();
+			server.addChat(session("ses_a", { title: "Chat" }), chatWith([text("Ready.")]));
 			ask(server);
 			return renderChat({
 				server,
@@ -139,10 +137,9 @@ describe("permission requests", () => {
 				server.permissions.push({
 					id: "per_away",
 					sessionID: "ses_a",
-					permission: "bash",
-					patterns: ["git grep maxBytes"],
+					action: "shell",
+					resources: ["git grep maxBytes"],
 					metadata: {},
-					always: [],
 				}),
 			);
 
@@ -150,23 +147,21 @@ describe("permission requests", () => {
 			await expect.element(page.getByText("git grep maxBytes")).toBeVisible();
 			await page.getByTestId("kilo-permission-once").click();
 			await expect
-				.poll(() => host.server.requestsTo("POST", "/permission/per_away/reply")[0]?.body)
-				.toMatchObject({ reply: "once" });
+				.poll(() => permissionReplies(host.server, "per_away")[0])
+				.toMatchObject({ decision: "once" });
 		});
 
 		it("shows the waiting question once the chat opens", async () => {
 			await openAfter((server) =>
-				server.questions.push({
-					id: "que_away",
-					sessionID: "ses_a",
-					questions: [
+				server.forms.push(
+					questionForm("ses_a", [
 						{
 							question: "Which branch should I review?",
 							header: "Branch",
 							options: [{ label: "main", description: "The default branch" }],
 						},
-					],
-				}),
+					]),
+				),
 			);
 
 			await expect.element(page.getByText("Which branch should I review?")).toBeVisible();
@@ -177,10 +172,9 @@ describe("permission requests", () => {
 				server.permissions.push({
 					id: "per_other",
 					sessionID: "ses_other",
-					permission: "bash",
-					patterns: ["ls"],
+					action: "shell",
+					resources: ["ls"],
 					metadata: {},
-					always: [],
 				}),
 			);
 
@@ -191,17 +185,19 @@ describe("permission requests", () => {
 
 	it("accepts once on Enter, and says why a reply failed", async () => {
 		const host = await liveChat();
-		host.server.failingReplies.add("per_3");
+		host.server.failing.add("POST /api/session/ses_a/permission/per_3/reply");
 
-		host.server.askPermission("ses_a", { id: "per_3", permission: "bash", patterns: ["ls"] });
+		host.server.askPermission("ses_a", { id: "per_3", action: "shell", resources: ["ls"] });
 		await expect.element(page.getByTestId("kilo-permission-card")).toBeVisible();
 		(document.activeElement as HTMLElement | null)?.blur();
 		document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/permission/per_3/reply")[0]?.body)
-			.toMatchObject({ reply: "once" });
-		await expect.element(page.getByText("The operation failed.").first()).toBeVisible();
+			.poll(() => permissionReplies(host.server, "per_3")[0])
+			.toMatchObject({ decision: "once" });
+		await expect
+			.element(page.getByText(/Could not answer the permission request/).first())
+			.toBeVisible();
 		await expect.element(page.getByTestId("kilo-permission-card")).toBeVisible();
 	});
 
@@ -212,21 +208,16 @@ describe("permission requests", () => {
 			.domainObjects.get(AutoApprove)!
 			.methods.setMode({ mode: "auto" });
 
-		host.server.askPermission("ses_a", { id: "per_auto", permission: "bash", patterns: ["ls"] });
+		host.server.askPermission("ses_a", { id: "per_auto", action: "shell", resources: ["ls"] });
 		await expect
 			.poll(() => host.agent.calls.replyPermission.mock.calls.map(([input]) => input))
 			.toContainEqual(expect.objectContaining({ permissionId: "per_auto", decision: "once" }));
-		host.server.emit("permission.replied", {
-			sessionID: "ses_a",
-			requestID: "per_auto",
-			reply: "once",
-		});
 		await expect.element(page.getByTestId("kilo-permission-card")).not.toBeInTheDocument();
 
 		host.server.askPermission("ses_a", {
 			id: "per_escalate",
-			permission: "bash",
-			patterns: ["sudo ls"],
+			action: "shell",
+			resources: ["sudo ls"],
 			metadata: { sandboxEscalation: true },
 		});
 		await expect.element(page.getByText("sudo ls")).toBeVisible();
@@ -258,14 +249,14 @@ describe("permission requests", () => {
 	it("offers only Allow once when Kilo has nothing to remember", async () => {
 		const host = await liveChat();
 
-		host.server.askPermission("ses_a", { id: "per_2", permission: "edit" });
+		host.server.askPermission("ses_a", { id: "per_2", action: "edit" });
 
 		await expect.element(page.getByTestId("kilo-permission-once")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-permission-always")).not.toBeInTheDocument();
 		await page.getByTestId("kilo-permission-reject").click();
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/permission/per_2/reply")[0]?.body)
-			.toMatchObject({ reply: "reject" });
+			.poll(() => permissionReplies(host.server, "per_2")[0])
+			.toMatchObject({ decision: "reject" });
 	});
 
 	it("show what permission renderers for the requesting tool add, matched on its contribution key", async () => {
@@ -278,7 +269,10 @@ describe("permission requests", () => {
 		const wireName = toolWireName(INSTALL_TOOL);
 		const host = await showChat(
 			chatWith([
-				toolPart(wireName, { status: "running", input: { packages: ["numpy"] } }, "call_install"),
+				{
+					...tool(wireName, {}, "", { id: "call_install" }),
+					state: { status: "running", input: { packages: ["numpy"] }, metadata: {} },
+				},
 			]),
 			{
 				plugins: [
@@ -325,11 +319,11 @@ describe("permission requests", () => {
 
 		host.server.askPermission("ses_a", {
 			id: "per_install",
-			permission: wireName,
-			patterns: ["*"],
-			always: ["*"],
+			action: wireName,
+			resources: ["*"],
+			save: ["*"],
 			metadata: { channel: "conda-forge" },
-			tool: { messageID: "msg_2", callID: "call_install" },
+			source: { type: "tool", messageID: "msg_2", id: "call_install" },
 		});
 
 		const card = page.getByTestId("kilo-permission-card");
@@ -356,7 +350,7 @@ describe("permission requests", () => {
 	});
 
 	it("show what permission renderers for a Kilo action add, matched on its name, not the card's label", async () => {
-		const host = await showChat(chatWith([reply("Ready.")]), {
+		const host = await showChat(chatWith([text("Ready.")]), {
 			plugins: [
 				contributor(
 					{ "kilo.chat/permission-renderer": [{ id: "run", actions: ["acme_execute"] }] },
@@ -378,9 +372,9 @@ describe("permission requests", () => {
 
 		host.server.askPermission("ses_a", {
 			id: "per_run",
-			permission: "acme_execute",
-			patterns: ["notebook-1"],
-			metadata: { toolName: "Run code", title: "Run code?" },
+			action: "acme_execute",
+			resources: ["notebook-1"],
+			metadata: { toolName: "Run code" },
 		});
 
 		const card = page.getByTestId("kilo-permission-card");
@@ -389,7 +383,7 @@ describe("permission requests", () => {
 	});
 
 	it("hide the request's resources when a renderer summarizes its metadata instead", async () => {
-		const host = await showChat(chatWith([reply("Ready.")]), {
+		const host = await showChat(chatWith([text("Ready.")]), {
 			plugins: [
 				contributor(
 					{ "kilo.chat/permission-renderer": [{ id: "run", actions: ["acme_execute"] }] },
@@ -412,10 +406,10 @@ describe("permission requests", () => {
 
 		host.server.askPermission("ses_a", {
 			id: "per_run",
-			permission: "acme_execute",
-			patterns: ["notebook-1"],
-			always: ["notebook-1"],
-			metadata: { toolName: "Run code", title: "Run code?", notebook: "analysis.ipynb" },
+			action: "acme_execute",
+			resources: ["notebook-1"],
+			save: ["notebook-1"],
+			metadata: { toolName: "Run code", notebook: "analysis.ipynb" },
 		});
 
 		const card = page.getByTestId("kilo-permission-card");
@@ -425,9 +419,15 @@ describe("permission requests", () => {
 	});
 });
 
+/** A question form whose questions take only the offered answers. */
+const withoutCustomAnswers = (form: FormInfo): FormInfo => ({
+	...form,
+	fields: form.fields.map((field) => ({ ...field, custom: false })) as FormInfo["fields"],
+});
+
 describe("agent questions", () => {
 	it("warn under a question's answers that a renderer flags", async () => {
-		const host = await showChat(chatWith([reply("Ready.")]), {
+		const host = await showChat(chatWith([text("Ready.")]), {
 			plugins: [
 				contributor(
 					{ "kilo.chat/permission-renderer": [{ id: "guard" }] },
@@ -446,20 +446,20 @@ describe("agent questions", () => {
 		});
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
 
-		host.server.askQuestion("ses_a", {
-			id: "que_guard",
-			questions: [
-				{
-					question: "How should I install it?",
-					header: "Install",
-					options: [
-						{ label: "From a channel", description: "conda-forge" },
-						{ label: "From disk", description: "Install the local file" },
-					],
-					custom: false,
-				},
-			],
-		});
+		host.server.createForm(
+			withoutCustomAnswers(
+				questionForm("ses_a", [
+					{
+						question: "How should I install it?",
+						header: "Install",
+						options: [
+							{ label: "From a channel", description: "conda-forge" },
+							{ label: "From disk", description: "Install the local file" },
+						],
+					},
+				]),
+			),
+		);
 
 		await expect.element(page.getByText("How should I install it?")).toBeVisible();
 		await expect.element(page.getByText("Risky.")).toBeVisible();
@@ -469,81 +469,64 @@ describe("agent questions", () => {
 	it("are asked in place of the composer and answered through kilo.core", async () => {
 		const host = await liveChat();
 
-		host.server.askQuestion("ses_a", {
-			id: "que_1",
-			questions: [
-				{
-					question: "Which environment?",
-					header: "Environment",
-					options: [{ label: "Development", description: "Local services" }, { label: "Staging" }],
-					custom: false,
-				},
-			],
-		});
+		const form = host.server.createForm(
+			withoutCustomAnswers(
+				questionForm("ses_a", [
+					{
+						question: "Which environment?",
+						header: "Environment",
+						options: [{ label: "Development", description: "Local services" }, "Staging"],
+					},
+				]),
+			),
+		);
 
 		await expect.element(page.getByText("Which environment?")).toBeVisible();
 		document.querySelector<HTMLInputElement>('input[value="Development"]')!.click();
 		await page.getByRole("button", { name: "Submit" }).click();
 
-		await expect
-			.poll(() => host.server.requestsTo("POST", "/question/que_1/reply")[0]?.body)
-			.toEqual({ answers: [["Development"]] });
+		await expect.poll(() => formReplies(host.server, form.id)[0]).toBeDefined();
 		expect(host.agent.calls.replyQuestion).toHaveBeenCalledWith({
 			chatId: "ses_a",
-			questionId: "que_1",
+			questionId: form.id,
 			answers: [["Development"]],
 		});
 		// The server announces the answer on the stream, which the transcript follows.
-		host.server.emit("question.replied", {
-			sessionID: "ses_a",
-			requestID: "que_1",
-			answers: [["Development"]],
-		});
 		await expect.element(page.getByTestId("kilo-composer-input")).toBeInTheDocument();
 	});
 
 	it("take a typed answer when the question allows one", async () => {
 		const host = await liveChat();
 
-		host.server.askQuestion("ses_a", {
-			id: "que_3",
-			questions: [
-				{
-					question: "Which branch?",
-					header: "Branch",
-					options: [{ label: "main" }],
-					custom: true,
-				},
-			],
-		});
+		const form = host.server.createForm(
+			questionForm("ses_a", [{ question: "Which branch?", header: "Branch", options: ["main"] }]),
+		);
 
 		await expect.element(page.getByText("Which branch?")).toBeVisible();
 		const custom = page.getByRole("textbox").last();
 		await custom.fill("release");
 		await page.getByRole("button", { name: "Submit" }).click();
-		await expect
-			.poll(() => host.server.requestsTo("POST", "/question/que_3/reply")[0]?.body)
-			.toEqual({ answers: [["release"]] });
+		await expect.poll(() => formReplies(host.server, form.id)[0]).toBeDefined();
+		expect(host.agent.calls.replyQuestion).toHaveBeenCalledWith(
+			expect.objectContaining({ questionId: form.id, answers: [["release"]] }),
+		);
 	});
 
 	it("can be dismissed, and say why a reply failed", async () => {
 		const host = await liveChat();
-		host.server.failingReplies.add("que_2");
-
-		host.server.askQuestion("ses_a", {
-			id: "que_2",
-			questions: [{ question: "Go on?", header: "Go", options: [{ label: "Yes" }] }],
-		});
+		const form = questionForm("ses_a", [{ question: "Go on?", header: "Go", options: ["Yes"] }]);
+		host.server.failing.add(`DELETE /api/session/ses_a/form/${form.id}`);
+		host.server.createForm(form);
 
 		await page.getByRole("button", { name: "Dismiss" }).click();
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/question/que_2/reject").length)
+			.poll(() => host.server.requestsTo("DELETE", `/api/session/ses_a/form/${form.id}`).length)
 			.toBe(1);
 		expect(host.agent.calls.rejectQuestion).toHaveBeenCalledWith({
 			chatId: "ses_a",
-			questionId: "que_2",
+			questionId: form.id,
 		});
-		await expect.element(page.getByText("The operation failed.").first()).toBeVisible();
+		await expect.element(page.getByText(/Could not dismiss the question/).first()).toBeVisible();
 		await expect.element(page.getByText("Go on?")).toBeVisible();
 	});
 });

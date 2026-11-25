@@ -1,7 +1,7 @@
-import type { CostLine } from "./cost-meter";
+import type { OpenCodeThreadState, SessionMessageAssistant } from "@kilo-desktop/react-opencode";
+
 import type { KiloCatalogModel } from "../selection/model-catalog";
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
-import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
+import type { CostLine } from "./cost-meter";
 
 export type SessionModelUsageTokens = {
 	input: number;
@@ -265,38 +265,88 @@ export function resolveServerSessionId(input: {
 	return undefined;
 }
 
-export function parseSessionModelUsage(value: unknown): SessionModelUsage | undefined {
-	const record = asRecord(value);
-	if (!record) return undefined;
-	const totals = parseTotals(record.totals);
-	if (!totals) return undefined;
-	const sessionIDs = Array.isArray(record.sessionIDs)
-		? record.sessionIDs.filter((id): id is string => typeof id === "string" && id.length > 0)
-		: [];
-	const models = Array.isArray(record.models)
-		? record.models.flatMap((model) => {
-				const parsed = parseModel(model);
-				return parsed ? [parsed] : [];
-			})
-		: [];
-	return { sessionIDs, totals, models };
+const usageByTranscript = new WeakMap<object, readonly SessionModelUsageModel[]>();
+
+/** One session's steps summed per model, kept per transcript array (a new one per change). */
+function transcriptUsage(
+	messages: OpenCodeThreadState["messages"],
+): readonly SessionModelUsageModel[] {
+	const cached = usageByTranscript.get(messages);
+	if (cached) return cached;
+	const byModel = new Map<string, SessionModelUsageModel>();
+	for (const message of messages) {
+		if (message.type !== "assistant") continue;
+		const key = `${message.model.providerID}\n${message.model.id}`;
+		const current = byModel.get(key) ?? {
+			providerID: message.model.providerID,
+			modelID: message.model.id,
+			steps: 0,
+			cost: 0,
+			tokens: EMPTY_TOKENS,
+		};
+		byModel.set(key, addStep(current, message));
+	}
+	const models = [...byModel.values()];
+	usageByTranscript.set(messages, models);
+	return models;
 }
 
-export async function fetchSessionModelUsage(input: {
-	connection: KiloGlobalConnection;
-	directory: string;
-	sessionID: string;
-}): Promise<SessionModelUsage | undefined> {
-	try {
-		const client = createKiloDirectoryClient(input.connection, input.directory);
-		const { data } = await client.kilocode.sessionModelUsage(
-			{ sessionID: input.sessionID },
-			{ throwOnError: true },
+function addStep(
+	model: SessionModelUsageModel,
+	step: SessionMessageAssistant,
+): SessionModelUsageModel {
+	return {
+		...model,
+		steps: model.steps + 1,
+		cost: model.cost + asNonNegative(step.cost),
+		tokens: step.tokens ? addTokens(model.tokens, parseTokens(step.tokens)) : model.tokens,
+	};
+}
+
+function collectUsage(
+	state: OpenCodeThreadState,
+	sessionIDs: string[],
+	byModel: Map<string, SessionModelUsageModel>,
+): void {
+	sessionIDs.push(state.sessionId);
+	for (const model of transcriptUsage(state.messages)) {
+		const key = `${model.providerID}\n${model.modelID}`;
+		const current = byModel.get(key);
+		byModel.set(
+			key,
+			current
+				? {
+						...current,
+						steps: current.steps + model.steps,
+						cost: current.cost + model.cost,
+						tokens: addTokens(current.tokens, model.tokens),
+					}
+				: model,
 		);
-		return parseSessionModelUsage(data);
-	} catch {
-		return undefined;
 	}
+	for (const child of Object.values(state.childSessionsById))
+		collectUsage(child, sessionIDs, byModel);
+}
+
+/**
+ * What a session and its subagents' sessions spent, per model, from the
+ * steps (assistant messages) their loaded transcripts hold: v2 has no
+ * session model-usage call, and a step carries its model, cost and tokens.
+ */
+export function sessionModelUsageOf(state: OpenCodeThreadState): SessionModelUsage {
+	const sessionIDs: string[] = [];
+	const byModel = new Map<string, SessionModelUsageModel>();
+	collectUsage(state, sessionIDs, byModel);
+	const models = [...byModel.values()];
+	const totals = models.reduce<SessionModelUsageTotals>(
+		(sum, model) => ({
+			steps: sum.steps + model.steps,
+			cost: sum.cost + model.cost,
+			tokens: addTokens(sum.tokens, model.tokens),
+		}),
+		{ steps: 0, cost: 0, tokens: EMPTY_TOKENS },
+	);
+	return { sessionIDs, totals, models };
 }
 
 function messageParts(message: ThreadUsageMessage): ReadonlyArray<ThreadUsagePart> {
@@ -360,10 +410,7 @@ function tokensFromStepFinishParts(
 
 function tokensFromCustom(message: ThreadUsageMessage): SessionModelUsageTokens | undefined {
 	const custom = message.metadata?.custom;
-	return (
-		tokensFromUnknown(custom?.tokens) ??
-		tokensFromUnknown(asRecord(asRecord(custom?.opencode)?.originalMessage)?.tokens)
-	);
+	return tokensFromUnknown(custom?.tokens);
 }
 
 function tokensFromUnknown(value: unknown): SessionModelUsageTokens | undefined {
@@ -418,30 +465,5 @@ function parseTokens(value: unknown): SessionModelUsageTokens {
 			read: asNonNegative(cache?.read),
 			write: asNonNegative(cache?.write),
 		},
-	};
-}
-
-function parseTotals(value: unknown): SessionModelUsageTotals | undefined {
-	const record = asRecord(value);
-	if (!record) return undefined;
-	return {
-		steps: asNonNegative(record.steps),
-		cost: asNonNegative(record.cost),
-		tokens: parseTokens(record.tokens),
-	};
-}
-
-function parseModel(value: unknown): SessionModelUsageModel | undefined {
-	const record = asRecord(value);
-	if (!record) return undefined;
-	const providerID = typeof record.providerID === "string" ? record.providerID : undefined;
-	const modelID = typeof record.modelID === "string" ? record.modelID : undefined;
-	if (!providerID || !modelID) return undefined;
-	return {
-		providerID,
-		modelID,
-		steps: asNonNegative(record.steps),
-		cost: asNonNegative(record.cost),
-		tokens: parseTokens(record.tokens),
 	};
 }

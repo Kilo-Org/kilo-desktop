@@ -1,26 +1,48 @@
-import type {
-	AssistantMessage,
-	Message,
-	OpenCodeProjectedThreadMessage,
-	OpenCodeServerMessage,
-	OpenCodeThreadState,
-	Part,
-	PendingUserMessage,
-	ThreadUserMessagePart,
-} from "./types";
+// Projects a Kilo v2 thread state into assistant-ui ThreadMessages.
+//
+// - A user message is a user ThreadMessage (text and file attachments).
+//   Synthetic notes, system instructions, selections and location switches
+//   are Kilo's own context and are not shown.
+// - Consecutive assistant messages (one per model step) form one assistant
+//   ThreadMessage, so a turn reads as one reply. Each step opens with an
+//   `opencode-step-start` data part and closes with `opencode-step-finish`
+//   (its finish, cost and tokens); its reasoning, text and tool calls carry
+//   the step's id as `parentId`.
+// - A turn's status comes from its last step and the `idle` message that
+//   ends it: running while the session runs, cancelled when interrupted or
+//   stopped between steps, an error when the step or turn failed, and
+//   requires-action while a tool call waits on a permission or question.
+// - A staged revert hides its boundary message and everything after it.
+// - `metadata.custom.opencode.messages` carries the v2 messages behind each
+//   projected message for renderers that need more than the parts.
 import {
 	ExportedMessageRepository,
 	type MessageTiming,
 	type ThreadMessage,
 } from "@assistant-ui/react";
 import { resolveFileMediaType, resolveImageMediaType } from "@assistant-ui/core/internal";
+import type {
+	SessionMessageAssistant,
+	SessionMessageAssistantTool,
+	SessionMessageInfo,
+	SessionMessageUser,
+} from "@kilocode/client";
+
 import {
 	projectOpenCodePermissionApproval,
 	projectResolvedOpenCodePermissionApproval,
 } from "./openCodePermissionApproval";
 import { getOpenCodeTaskSessionId } from "./openCodeTaskSession";
+import type {
+	OpenCodeProjectedThreadMessage,
+	OpenCodeThreadState,
+	PendingUserMessage,
+	ThreadUserMessagePart,
+} from "./types";
 
 type ProjectedContentPart = Exclude<OpenCodeProjectedThreadMessage["content"], string>[number];
+type Assistant = SessionMessageAssistant;
+type Tool = SessionMessageAssistantTool;
 
 export interface LocalMcpApp {
 	resourceUri: string;
@@ -38,105 +60,77 @@ export function setLocalMcpApps(registry: Record<string, LocalMcpApp>): void {
 	_localMcpApps = registry;
 }
 
-const isAssistantMessage = (message: Message | undefined): message is AssistantMessage => {
-	return message?.role === "assistant";
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-	return typeof value === "object" && value !== null;
-};
+const createdAtOf = (message: OpenCodeProjectedThreadMessage) =>
+	message.createdAt instanceof Date ? message.createdAt.getTime() : Date.now();
 
-const getProjectedCreatedAt = (message: OpenCodeProjectedThreadMessage) => {
-	return message.createdAt instanceof Date ? message.createdAt.getTime() : Date.now();
-};
-
-const compareProjectedMessages = (
-	left: OpenCodeProjectedThreadMessage,
-	right: OpenCodeProjectedThreadMessage,
-) => {
-	const leftTime = getProjectedCreatedAt(left);
-	const rightTime = getProjectedCreatedAt(right);
-	if (leftTime !== rightTime) return leftTime - rightTime;
-	return left.id?.localeCompare(right.id ?? "") ?? 0;
-};
-
+/** Server messages in their order, pending prompts placed by time. */
 const mergeProjectedMessages = (
 	serverMessages: readonly OpenCodeProjectedThreadMessage[],
 	pendingMessages: readonly OpenCodeProjectedThreadMessage[],
 ) => {
+	if (pendingMessages.length === 0) return [...serverMessages];
 	const merged: OpenCodeProjectedThreadMessage[] = [];
-	let serverIndex = 0;
 	let pendingIndex = 0;
-
-	while (serverIndex < serverMessages.length && pendingIndex < pendingMessages.length) {
-		const serverMessage = serverMessages[serverIndex]!;
-		const pendingMessage = pendingMessages[pendingIndex]!;
-
-		if (compareProjectedMessages(serverMessage, pendingMessage) <= 0) {
-			merged.push(serverMessage);
-			serverIndex += 1;
-		} else {
-			merged.push(pendingMessage);
+	for (const message of serverMessages) {
+		while (
+			pendingIndex < pendingMessages.length &&
+			createdAtOf(pendingMessages[pendingIndex]!) < createdAtOf(message)
+		) {
+			merged.push(pendingMessages[pendingIndex]!);
 			pendingIndex += 1;
 		}
+		merged.push(message);
 	}
-
-	return [...merged, ...serverMessages.slice(serverIndex), ...pendingMessages.slice(pendingIndex)];
+	return [...merged, ...pendingMessages.slice(pendingIndex)];
 };
 
-const mapToolState = (
-	state:
-		| {
-				status?: string;
-				input?: unknown;
-				output?: unknown;
-				error?: unknown;
-		  }
-		| null
-		| undefined,
-) => {
-	const args = isRecord(state?.input) ? state.input : {};
+/** A tool's output as text (its text content joined), for renderers that read a string. */
+export const toolContentText = (tool: Tool): string | undefined => {
+	const content = (tool.state as { content?: readonly { type: string; text?: string }[] }).content;
+	if (!content) return undefined;
+	return content
+		.flatMap((item) => (item.type === "text" && item.text !== undefined ? [item.text] : []))
+		.join("\n");
+};
+
+/** A tool call's input once complete; a streaming call's partial JSON parsed when it can be. */
+export const toolInput = (tool: Tool): Record<string, unknown> => {
+	const input = tool.state.input;
+	if (isRecord(input)) return input;
+	if (typeof input === "string" && input.length > 0) {
+		try {
+			const parsed: unknown = JSON.parse(input);
+			if (isRecord(parsed)) return parsed;
+		} catch {
+			// Still streaming.
+		}
+	}
+	return {};
+};
+
+const mapToolState = (tool: Tool) => {
+	const args = toolInput(tool);
 	const argsText = JSON.stringify(args);
-
-	if (state?.status === "completed") {
-		return {
-			args,
-			argsText,
-			result: state.output,
-			isError: false,
-		};
+	if (tool.state.status === "completed") {
+		return { args, argsText, result: toolContentText(tool) ?? "", isError: false };
 	}
-
-	if (state?.status === "error") {
-		return {
-			args,
-			argsText,
-			result: state.error,
-			isError: true,
-		};
+	if (tool.state.status === "error") {
+		return { args, argsText, result: tool.state.error.message, isError: true };
 	}
-
-	return {
-		args,
-		argsText,
-		result: undefined,
-		isError: false,
-	};
-};
-
-const getPartToolCallId = (part: Part) => {
-	if (part.type !== "tool") return undefined;
-	return typeof part.callID === "string" ? part.callID : undefined;
+	return { args, argsText, result: undefined, isError: false };
 };
 
 type PermissionState = OpenCodeThreadState["interactions"]["permissions"];
 type PendingPermission = PermissionState["pending"][string];
 type ResolvedPermission = PermissionState["resolved"][string];
 
-type PermissionIndex = {
-	pendingByCallId: ReadonlyMap<string, PendingPermission>;
-	resolvedByCallId: ReadonlyMap<string, ResolvedPermission>;
-};
+interface PermissionIndex {
+	readonly pendingByCallId: ReadonlyMap<string, PendingPermission>;
+	readonly resolvedByCallId: ReadonlyMap<string, ResolvedPermission>;
+}
 
 const permissionIndexCache = new WeakMap<PermissionState, PermissionIndex>();
 
@@ -144,72 +138,49 @@ const getPermissionIndex = (state: OpenCodeThreadState): PermissionIndex => {
 	const permissions = state.interactions.permissions;
 	const cached = permissionIndexCache.get(permissions);
 	if (cached) return cached;
-
 	const pendingByCallId = new Map<string, PendingPermission>();
 	for (const request of Object.values(permissions.pending)) {
-		if (request.tool?.callID) pendingByCallId.set(request.tool.callID, request);
+		if (request.source?.id) pendingByCallId.set(request.source.id, request);
 	}
-
 	const resolvedByCallId = new Map<string, ResolvedPermission>();
 	for (const entry of Object.values(permissions.resolved)) {
-		const callId = entry.request.tool?.callID;
-		if (callId) resolvedByCallId.set(callId, entry);
+		if (entry.request.source?.id) resolvedByCallId.set(entry.request.source.id, entry);
 	}
-
-	const index: PermissionIndex = { pendingByCallId, resolvedByCallId };
+	const index = { pendingByCallId, resolvedByCallId };
 	permissionIndexCache.set(permissions, index);
 	return index;
 };
+
+/** The tool call a question form belongs to (`metadata.tool.id`). */
+export const questionToolCallId = (form: { metadata?: unknown }): string | undefined => {
+	const tool = isRecord(form.metadata) ? form.metadata.tool : undefined;
+	return isRecord(tool) && typeof tool.id === "string" ? tool.id : undefined;
+};
+
+const hasPendingInteractionForToolCall = (state: OpenCodeThreadState, toolCallId: string) => {
+	if (getPermissionIndex(state).pendingByCallId.has(toolCallId)) return true;
+	return Object.values(state.interactions.questions.pending).some(
+		(form) => questionToolCallId(form) === toolCallId,
+	);
+};
+
+const hasPendingInteractionForSteps = (state: OpenCodeThreadState, steps: readonly Assistant[]) =>
+	steps.some((step) =>
+		step.content.some(
+			(item) => item.type === "tool" && hasPendingInteractionForToolCall(state, item.id),
+		),
+	);
 
 const childMessagesCache = new WeakMap<OpenCodeThreadState, readonly ThreadMessage[]>();
 
 const getChildMessages = (childState: OpenCodeThreadState): readonly ThreadMessage[] => {
 	const cached = childMessagesCache.get(childState);
 	if (cached) return cached;
-
 	const messages = projectOpenCodeThreadRepository(childState).messages.map(
 		({ message }) => message,
 	);
 	childMessagesCache.set(childState, messages);
 	return messages;
-};
-
-const getPendingPermissionForToolCall = (state: OpenCodeThreadState, toolCallId: string) =>
-	getPermissionIndex(state).pendingByCallId.get(toolCallId);
-
-const getResolvedPermissionForToolCall = (state: OpenCodeThreadState, toolCallId: string) =>
-	getPermissionIndex(state).resolvedByCallId.get(toolCallId);
-
-const hasPendingInteractionForToolCall = (
-	state: OpenCodeThreadState,
-	toolCallId: string | undefined,
-) => {
-	if (!toolCallId) return false;
-
-	if (getPermissionIndex(state).pendingByCallId.has(toolCallId)) {
-		return true;
-	}
-
-	for (const request of Object.values(state.interactions.questions.pending)) {
-		if (request.tool?.callID === toolCallId) {
-			return true;
-		}
-	}
-
-	return false;
-};
-
-const hasPendingInteractionForMessage = (
-	state: OpenCodeThreadState,
-	message: OpenCodeServerMessage,
-) => {
-	for (const part of message.parts) {
-		if (hasPendingInteractionForToolCall(state, getPartToolCallId(part))) {
-			return true;
-		}
-	}
-
-	return false;
 };
 
 const makeDataPart = (name: string, data: Record<string, unknown>, parentId?: string) => ({
@@ -219,16 +190,6 @@ const makeDataPart = (name: string, data: Record<string, unknown>, parentId?: st
 	...(parentId ? { parentId } : {}),
 });
 
-const makeUnsupportedPart = (part: Part, parentId?: string) =>
-	makeDataPart(
-		"opencode-unsupported-part",
-		{
-			type: (part as { type?: string }).type ?? "unknown",
-			part,
-		},
-		parentId,
-	);
-
 const sanitizeReasoningText = (text: string | undefined) =>
 	(text ?? "")
 		.replaceAll("[REDACTED]", "")
@@ -237,228 +198,80 @@ const sanitizeReasoningText = (text: string | undefined) =>
 		.replaceAll("\\t", "\t")
 		.trim();
 
-const convertFilePart = (part: Extract<Part, { type: "file" }>) => {
-	const mimeType = part.mime ?? "application/octet-stream";
-	if (mimeType.startsWith("image/")) {
-		return {
-			type: "image" as const,
-			image: part.url ?? "",
-			...(part.filename ? { filename: part.filename } : {}),
-		};
-	}
+const mcpAppFor = (tool: Tool) => {
+	const local = _localMcpApps[tool.name];
+	const metadata = (tool.state as { metadata?: Record<string, unknown> }).metadata;
+	const fromMetadata = metadata?.mcpApp as { resourceUri: string; serverId?: string } | undefined;
+	const app = local ?? fromMetadata;
+	return app ? { mcp: { app: { resourceUri: app.resourceUri, serverId: app.serverId } } } : {};
+};
 
+const projectTool = (
+	state: OpenCodeThreadState,
+	tool: Tool,
+	stepId: string,
+): ProjectedContentPart => {
+	const toolState = mapToolState(tool);
+	const childSessionId = getOpenCodeTaskSessionId(tool);
+	const childState = childSessionId ? state.childSessionsById[childSessionId] : undefined;
+	const childMessages =
+		childState?.loadState.type === "ready" ? getChildMessages(childState) : undefined;
+	const permission = getPermissionIndex(state).pendingByCallId.get(tool.id);
+	const resolved = permission ? undefined : getPermissionIndex(state).resolvedByCallId.get(tool.id);
 	return {
-		type: "file" as const,
-		filename: part.filename ?? "file",
-		data: part.url ?? "",
-		mimeType,
-	};
+		type: "tool-call",
+		toolCallId: tool.id,
+		toolName: tool.name,
+		args: toolState.args as never,
+		argsText: toolState.argsText,
+		...(toolState.result !== undefined ? { result: toolState.result } : {}),
+		...(toolState.isError ? { isError: true } : {}),
+		...(childMessages !== undefined ? { messages: childMessages } : {}),
+		...(permission
+			? { approval: projectOpenCodePermissionApproval(permission) }
+			: resolved
+				? { approval: projectResolvedOpenCodePermissionApproval(resolved) }
+				: {}),
+		...mcpAppFor(tool),
+		parentId: stepId,
+		// `mcp` is assistant-ui's MCP App field, not in the part's type.
+	} as ProjectedContentPart;
 };
 
 const projectAssistantContent = (
 	state: OpenCodeThreadState,
-	message: OpenCodeServerMessage,
+	steps: readonly Assistant[],
 ): ProjectedContentPart[] => {
 	const content: ProjectedContentPart[] = [];
-	const stepStack: string[] = [];
-
-	const currentStepId = () => stepStack[stepStack.length - 1];
-
-	for (const [index, part] of message.parts.entries()) {
-		switch (part.type) {
-			case "text": {
-				const text = part.text ?? "";
-				if (part.synthetic) {
-					// Kilo's synthetic notes only show while their step runs.
-					const info = message.info as AssistantMessage | undefined;
-					if (info?.finish || info?.error) break;
-					if (
-						part.metadata?.["kilocode.lifecycle"] === "transient" &&
-						text.includes("Initializing snapshot")
-					) {
-						content.push(makeDataPart("opencode-snapshot-progress", { text }, currentStepId()));
-						break;
-					}
-				}
-				content.push({ type: "text", text });
-				break;
+	for (const step of steps) {
+		content.push(makeDataPart("opencode-step-start", { id: step.id, depth: 0 }));
+		for (const item of step.content) {
+			if (item.type === "text") {
+				content.push({ type: "text", text: item.text });
+			} else if (item.type === "reasoning") {
+				const text = sanitizeReasoningText(item.text);
+				if (text) content.push({ type: "reasoning", text, parentId: step.id });
+			} else {
+				content.push(projectTool(state, item, step.id));
 			}
-
-			case "reasoning":
-				{
-					const text = sanitizeReasoningText(part.text);
-					if (!text) break;
-					content.push({
-						type: "reasoning",
-						text,
-						...(currentStepId() ? { parentId: currentStepId() } : {}),
-					});
-				}
-				break;
-
-			case "file":
-				content.push(convertFilePart(part));
-				break;
-
-			case "tool": {
-				const toolState = mapToolState(part.state);
-				const toolCallId = part.callID ?? part.id ?? `tool-${index}`;
-				const toolName = part.tool ?? "tool";
-				const childSessionId = getOpenCodeTaskSessionId(part);
-				const childState = childSessionId ? state.childSessionsById[childSessionId] : undefined;
-				const childMessages =
-					childState?.loadState.type === "ready" ? getChildMessages(childState) : undefined;
-				const permission = getPendingPermissionForToolCall(state, toolCallId);
-				const resolvedPermission = permission
-					? undefined
-					: getResolvedPermissionForToolCall(state, toolCallId);
-				const localApp = _localMcpApps[toolName];
-				const metadataMcpApp = (part.state as { metadata?: Record<string, unknown> } | undefined)
-					?.metadata?.["mcpApp"] as { resourceUri: string; serverId?: string } | undefined;
-				const mcpAppMeta = localApp
-					? {
-							mcp: {
-								app: {
-									resourceUri: localApp.resourceUri,
-									serverId: localApp.serverId,
-								},
-							},
-						}
-					: metadataMcpApp
-						? {
-								mcp: {
-									app: {
-										resourceUri: metadataMcpApp.resourceUri,
-										serverId: metadataMcpApp.serverId,
-									},
-								},
-							}
-						: {};
-				content.push({
-					type: "tool-call",
-					toolCallId,
-					toolName,
-					args: toolState.args as never,
-					argsText: toolState.argsText,
-					...(toolState.result !== undefined ? { result: toolState.result } : {}),
-					...(toolState.isError ? { isError: true } : {}),
-					...(childMessages !== undefined ? { messages: childMessages } : {}),
-					...(permission
-						? { approval: projectOpenCodePermissionApproval(permission) }
-						: resolvedPermission
-							? {
-									approval: projectResolvedOpenCodePermissionApproval(resolvedPermission),
-								}
-							: {}),
-					...mcpAppMeta,
-					...(currentStepId() ? { parentId: currentStepId() } : {}),
-					// `mcp` is assistant-ui's MCP App field, not in the part's type.
-				} as ProjectedContentPart);
-				break;
-			}
-
-			case "step-start": {
-				const nestedParentId = currentStepId();
-				const stepId =
-					("id" in part && typeof part.id === "string" ? part.id : undefined) ?? `step-${index}`;
-				stepStack.push(stepId);
-				content.push(
-					makeDataPart(
-						"opencode-step-start",
-						{
-							id: stepId,
-							depth: stepStack.length - 1,
-							snapshot:
-								"snapshot" in part && typeof part.snapshot === "string" ? part.snapshot : undefined,
-						},
-						nestedParentId,
-					),
-				);
-				break;
-			}
-
-			case "step-finish": {
-				const stepId =
-					stepStack.pop() ??
-					("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-					`step-finish-${index}`;
-				content.push(
-					makeDataPart("opencode-step-finish", {
-						id: stepId,
-						reason: "reason" in part ? part.reason : undefined,
-						cost: "cost" in part ? part.cost : undefined,
-						snapshot:
-							"snapshot" in part && typeof part.snapshot === "string" ? part.snapshot : undefined,
-					}),
-				);
-				break;
-			}
-
-			case "patch":
-				content.push(
-					makeDataPart(
-						"opencode-patch",
-						{
-							id:
-								("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-								`patch-${index}`,
-							hash: "hash" in part ? part.hash : undefined,
-							files: Array.isArray((part as { files?: unknown[] }).files)
-								? (part as { files: unknown[] }).files.filter(
-										(file): file is string => typeof file === "string",
-									)
-								: [],
-							part,
-						},
-						currentStepId(),
-					),
-				);
-				break;
-
-			case "snapshot":
-				content.push(
-					makeDataPart(
-						"opencode-snapshot",
-						{
-							id:
-								("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-								`snapshot-${index}`,
-							part,
-						},
-						currentStepId(),
-					),
-				);
-				break;
-
-			case "retry":
-			case "compaction":
-			case "agent":
-			case "subtask":
-				content.push(
-					makeDataPart(
-						`opencode-${part.type}`,
-						{
-							id:
-								("id" in part && typeof part.id === "string" ? part.id : undefined) ??
-								`${part.type}-${index}`,
-							part,
-						},
-						currentStepId(),
-					),
-				);
-				break;
-
-			default:
-				content.push(makeUnsupportedPart(part, currentStepId()));
-				break;
+		}
+		if (step.time.completed) {
+			content.push(
+				makeDataPart("opencode-step-finish", {
+					id: step.id,
+					reason: step.finish,
+					cost: step.cost,
+					tokens: step.tokens,
+				}),
+			);
 		}
 	}
-
 	return content;
 };
 
 type ProjectedAttachment = NonNullable<OpenCodeProjectedThreadMessage["attachments"]>[number];
 
+/** A pending prompt's parts: text as content, images and files as attachments. */
 const splitUserParts = (
 	parts: readonly ThreadUserMessagePart[],
 ): { content: ProjectedContentPart[]; attachments: ProjectedAttachment[] } => {
@@ -470,7 +283,7 @@ const splitUserParts = (
 			continue;
 		}
 		// The same ladders the outbound prompt uses, so the pending copy and the
-		// reconciled server copy agree on the attachment's type and content type.
+		// server copy agree on the attachment's type and content type.
 		const mediaType =
 			part.type === "image"
 				? resolveImageMediaType(part.image, (part as { contentType?: string }).contentType)
@@ -487,247 +300,169 @@ const splitUserParts = (
 	return { content, attachments };
 };
 
-const projectUserFileAttachment = (part: Extract<Part, { type: "file" }>): ProjectedAttachment => {
-	const content = convertFilePart(part);
-	return {
-		id: part.id,
-		type: content.type === "image" ? "image" : "file",
-		name: part.filename ?? "file",
-		contentType: part.mime ?? "application/octet-stream",
-		status: { type: "complete" },
-		content: [content],
-	};
-};
+/** A stored prompt file as a data URL (inline files) or its URI. */
+const fileUrl = (file: NonNullable<SessionMessageUser["files"]>[number]) =>
+	file.source.type === "uri"
+		? file.source.uri
+		: file.data.startsWith("data:")
+			? file.data
+			: `data:${file.mime};base64,${file.data}`;
 
-const projectUserMessage = (
-	message: OpenCodeServerMessage,
-): { content: ProjectedContentPart[]; attachments: ProjectedAttachment[] } => {
-	if (message.parts.length === 0) {
-		return splitUserParts(message.shadowParts ?? []);
-	}
-
-	const content: ProjectedContentPart[] = [];
-	const attachments: ProjectedAttachment[] = [];
-	for (const part of message.parts) {
-		if (part.type === "text") {
-			// Kilo-only context the person didn't write.
-			if (part.synthetic) continue;
-			content.push({ type: "text", text: part.text ?? "" });
-		} else if (part.type === "file") {
-			attachments.push(projectUserFileAttachment(part));
-		}
-	}
+const projectUserMessage = (message: SessionMessageUser) => {
+	const attachments: ProjectedAttachment[] = (message.files ?? []).map((file, index) => {
+		const url = fileUrl(file);
+		const name = file.name ?? "file";
+		const image = file.mime.startsWith("image/");
+		return {
+			id: `${message.id}:${index}`,
+			type: image ? "image" : "file",
+			name,
+			contentType: file.mime,
+			status: { type: "complete" },
+			content: [
+				image
+					? { type: "image", image: url, filename: name }
+					: { type: "file", filename: name, data: url, mimeType: file.mime },
+			],
+		} as ProjectedAttachment;
+	});
+	const content: ProjectedContentPart[] = message.text
+		? [{ type: "text", text: message.text }]
+		: [];
 	return { content, attachments };
 };
 
 const CANCELLED_STATUS = { type: "incomplete", reason: "cancelled" } as const;
 
-// A turn only ends on a model reply; one whose last step handed off to tools
-// was halted before the next step (Stop kills subagents first, so their task
-// calls fail and the step closes cleanly). A completed plan_exit is the one
-// tool that ends a turn by design, mirroring the server's continuation check.
-const endsBetweenSteps = (message: OpenCodeServerMessage): boolean =>
-	(message.info as AssistantMessage | undefined)?.finish === "tool-calls" &&
-	!message.parts.some(
-		(part) =>
-			part.type === "tool" && part.tool === "plan_exit" && part.state?.status === "completed",
+// A turn ends on a model reply; one whose last step handed off to tools was
+// halted before the next step. A completed plan_exit is the one tool that
+// ends a turn by design.
+const endsBetweenSteps = (step: Assistant): boolean =>
+	step.finish === "tool-calls" &&
+	!step.content.some(
+		(item) =>
+			item.type === "tool" && item.name === "plan_exit" && item.state.status === "completed",
 	);
 
 /** What every message's status reads about the run, computed once per projection. */
 interface RunActivity {
-	readonly lastAssistantId: string | undefined;
+	readonly lastGroupId: string | undefined;
 	readonly isActiveRun: boolean;
 }
 
-const getRunActivity = (state: OpenCodeThreadState): RunActivity => ({
-	lastAssistantId: state.messageOrder.findLast(
-		(messageId) => state.messagesById[messageId]?.info?.role === "assistant",
-	),
-	isActiveRun:
-		state.runState.type === "streaming" ||
-		state.runState.type === "cancelling" ||
-		state.runState.type === "reverting" ||
-		state.sessionStatus?.type === "busy" ||
-		state.sessionStatus?.type === "retry",
-});
+const isActiveRun = (state: OpenCodeThreadState) =>
+	state.running ||
+	state.runState.type === "streaming" ||
+	state.runState.type === "cancelling" ||
+	state.runState.type === "reverting";
+
+/**
+ * One transcript message: a user message, or a run of assistant steps (with
+ * the `idle` message that ended it, if any). `id` is the first step's id, so
+ * the projected message keeps its identity as later steps join.
+ */
+interface MessageGroup {
+	readonly id: string;
+	readonly kind: "user" | "assistant";
+	readonly sources: readonly SessionMessageInfo[];
+	readonly steps: readonly Assistant[];
+	readonly idle: Extract<SessionMessageInfo, { type: "idle" }> | undefined;
+}
 
 const getMessageStatus = (
 	state: OpenCodeThreadState,
-	message: OpenCodeServerMessage,
-	activity: RunActivity = getRunActivity(state),
+	group: MessageGroup,
+	activity: RunActivity,
 ): OpenCodeProjectedThreadMessage["status"] => {
-	if (!isAssistantMessage(message.info)) {
-		return undefined;
+	const last = group.steps.at(-1);
+	if (!last) return undefined;
+	if (hasPendingInteractionForSteps(state, group.steps)) {
+		return { type: "requires-action", reason: "tool-calls" };
 	}
-
-	if (hasPendingInteractionForMessage(state, message)) {
-		return {
-			type: "requires-action",
-			reason: "tool-calls",
-		};
-	}
-
-	if (message.info.error) {
-		const error = message.info.error;
-		if (isRecord(error) && error.name === "MessageAbortedError") {
-			return CANCELLED_STATUS;
-		}
-		const maybeMessage =
-			isRecord(error) && isRecord(error.data) && typeof error.data.message === "string"
-				? error.data.message
-				: undefined;
-		const fallbackMessage =
-			typeof error === "string"
-				? error
-				: isRecord(error) && typeof error.name === "string"
-					? error.name
-					: "OpenCode run failed";
-
-		return {
-			type: "incomplete",
-			reason: "error",
-			error: maybeMessage ?? fallbackMessage,
-		};
-	}
-
-	const isActiveMessage = activity.lastAssistantId === message.id;
-	const { isActiveRun } = activity;
-
-	if (!message.info.finish) {
-		if (!isActiveMessage || !isActiveRun) return CANCELLED_STATUS;
-		return {
-			type: "running",
-		};
-	}
-
-	// Only the latest turn: an earlier assistant message can legitimately end
-	// on tool calls when a queued user message took over the loop.
-	if (isActiveMessage && !isActiveRun && endsBetweenSteps(message)) {
+	const error = last.error ?? (group.idle?.outcome === "failed" ? group.idle.error : undefined);
+	if (error) return { type: "incomplete", reason: "error", error: error.message };
+	if (group.idle?.outcome === "interrupted") return CANCELLED_STATUS;
+	const isActive = activity.lastGroupId === group.id && activity.isActiveRun;
+	if (!last.time.completed) return isActive ? { type: "running" } : CANCELLED_STATUS;
+	if (isActive) return { type: "running" };
+	// Only the latest turn: an earlier one may end on tool calls when a queued
+	// prompt took over the loop.
+	if (activity.lastGroupId === group.id && !group.idle && endsBetweenSteps(last)) {
 		return CANCELLED_STATUS;
 	}
-
-	return {
-		type: "complete",
-		reason: "stop",
-	};
+	return { type: "complete", reason: "stop" };
 };
 
-/**
- * One transcript message: a user message, or a run of assistant steps.
- * `id` is the first step's id, so the projected message keeps its identity
- * (React key, cache entry, disclosure state) as later steps join the run;
- * `message` carries the latest step's id, which status, timing and the
- * server read.
- */
-interface ServerMessageGroup {
-	readonly id: string;
-	readonly sources: readonly OpenCodeServerMessage[];
-	readonly message: OpenCodeServerMessage;
-}
-
-const isBackgroundUserMessage = (message: OpenCodeServerMessage) =>
-	message.info?.role === "user" &&
-	message.parts.some(
-		(part) => part.type === "text" && part.synthetic === true && part.metadata?.background === true,
-	);
-
-// Kilo-only context with nothing the person wrote (a fork's handoff note):
-// projected, it would be an empty bubble with its own actions.
-const isHiddenUserMessage = (message: OpenCodeServerMessage) =>
-	message.info?.role === "user" &&
-	message.parts.length > 0 &&
-	message.parts.every((part) => part.type === "text" && part.synthetic === true);
-
-const mergeAssistantSteps = (steps: readonly OpenCodeServerMessage[]): OpenCodeServerMessage => {
-	if (steps.length === 1) return steps[0]!;
-	const first = steps[0]!;
-	const last = steps[steps.length - 1]!;
-	const hasShadowParts = steps.some((step) => step.shadowParts);
-	return {
-		id: last.id,
-		info: {
-			...last.info!,
-			time: {
-				...last.info!.time,
-				created: first.info!.time?.created ?? last.info!.time?.created,
-			},
-		} as OpenCodeServerMessage["info"],
-		parts: steps.flatMap((step) => step.parts),
-		shadowParts: hasShadowParts ? steps.flatMap((step) => step.shadowParts ?? []) : undefined,
-	};
-};
-
-const groupServerMessages = (messages: readonly OpenCodeServerMessage[]): ServerMessageGroup[] => {
-	const groups: OpenCodeServerMessage[][] = [];
+/** Visible messages grouped; Kilo's own context is skipped without breaking a run of steps. */
+const groupMessages = (messages: readonly SessionMessageInfo[]): MessageGroup[] => {
+	const groups: {
+		id: string;
+		kind: "user" | "assistant";
+		sources: SessionMessageInfo[];
+		steps: Assistant[];
+		idle: MessageGroup["idle"];
+	}[] = [];
 	for (const message of messages) {
-		if (isBackgroundUserMessage(message) || isHiddenUserMessage(message)) continue;
-		const previous = groups[groups.length - 1];
-		if (previous?.[0]?.info?.role === "assistant" && message.info?.role === "assistant") {
-			previous.push(message);
-			continue;
+		const previous = groups.at(-1);
+		if (message.type === "assistant") {
+			if (previous?.kind === "assistant") {
+				previous.sources.push(message);
+				previous.steps.push(message);
+			} else {
+				groups.push({
+					id: message.id,
+					kind: "assistant",
+					sources: [message],
+					steps: [message],
+					idle: undefined,
+				});
+			}
+		} else if (message.type === "user") {
+			groups.push({ id: message.id, kind: "user", sources: [message], steps: [], idle: undefined });
+		} else if (message.type === "idle" && previous?.kind === "assistant") {
+			previous.sources.push(message);
+			previous.idle = message;
 		}
-		groups.push([message]);
 	}
-	return groups.map((sources) => ({
-		id: sources[0]!.id,
-		sources,
-		message: sources[0]?.info?.role === "assistant" ? mergeAssistantSteps(sources) : sources[0]!,
-	}));
+	return groups;
 };
 
-const projectServerMessage = (
+const projectGroup = (
 	state: OpenCodeThreadState,
-	id: string,
-	message: OpenCodeServerMessage,
+	group: MessageGroup,
 	timing: MessageTiming | undefined,
 	activity: RunActivity,
-): OpenCodeProjectedThreadMessage | null => {
-	if (!message.info) return null;
-
-	const metadata = {
-		custom: {
-			opencode: {
-				originalMessage: message.info,
-				parts: message.parts,
+): OpenCodeProjectedThreadMessage => {
+	const first = group.sources[0]!;
+	const opencode = { messages: group.sources };
+	if (group.kind === "user") {
+		return {
+			id: group.id,
+			role: "user",
+			createdAt: new Date(first.time.created),
+			...projectUserMessage(first as SessionMessageUser),
+			metadata: { custom: { opencode } },
+		};
+	}
+	const last = group.steps.at(-1)!;
+	return {
+		id: group.id,
+		role: "assistant",
+		createdAt: new Date(first.time.created),
+		content: projectAssistantContent(state, group.steps),
+		status: getMessageStatus(state, group, activity),
+		metadata: {
+			custom: {
+				opencode,
+				modelID: last.model.id,
+				providerID: last.model.providerID,
+				agent: last.agent,
+				cost: group.steps.reduce((sum, step) => sum + (step.cost ?? 0), 0),
+				tokens: last.tokens,
 			},
+			...(timing && { timing }),
 		},
 	};
-
-	if (message.info.role === "assistant") {
-		const assistantInfo = message.info as AssistantMessage;
-		return {
-			id,
-			role: "assistant",
-			createdAt: new Date(message.info.time?.created ?? Date.now()),
-			content: projectAssistantContent(state, message),
-			status: getMessageStatus(state, message, activity),
-			metadata: {
-				custom: {
-					...metadata.custom,
-					modelID: assistantInfo.modelID,
-					providerID: assistantInfo.providerID,
-					cost: assistantInfo.cost,
-					tokens: assistantInfo.tokens,
-					mode: assistantInfo.mode,
-				},
-				...(timing && { timing }),
-			},
-		};
-	}
-
-	if (message.info.role === "user") {
-		const { content, attachments } = projectUserMessage(message);
-		return {
-			id,
-			role: "user",
-			createdAt: new Date(message.info.time?.created ?? Date.now()),
-			content,
-			attachments,
-			metadata,
-		};
-	}
-
-	return null;
 };
 
 const projectPendingMessage = (pending: PendingUserMessage): OpenCodeProjectedThreadMessage => ({
@@ -738,6 +473,7 @@ const projectPendingMessage = (pending: PendingUserMessage): OpenCodeProjectedTh
 	metadata: {
 		custom: {
 			opencode: {
+				messages: [],
 				pending: true,
 				clientId: pending.clientId,
 				error:
@@ -751,71 +487,50 @@ const projectPendingMessage = (pending: PendingUserMessage): OpenCodeProjectedTh
 	},
 });
 
-type SessionRevert = NonNullable<OpenCodeThreadState["session"]>["revert"];
-
-const applyRevertVisibility = (
-	messages: readonly OpenCodeServerMessage[],
-	revert: SessionRevert,
-): OpenCodeServerMessage[] => {
-	if (!revert?.messageID) return [...messages];
-	return messages.flatMap((message) => {
-		if (message.id < revert.messageID) return [message];
-		if (message.id !== revert.messageID || !revert.partID) return [];
-		const boundaryIndex = message.parts.findIndex((part) => part.id === revert.partID);
-		return [
-			{
-				...message,
-				parts: boundaryIndex < 0 ? [] : message.parts.slice(0, boundaryIndex),
-			},
-		];
-	});
+/** The transcript without a staged revert's boundary and what follows it. */
+export const visibleMessages = (state: OpenCodeThreadState): readonly SessionMessageInfo[] => {
+	const boundary = state.session?.revert?.messageID;
+	if (!boundary) return state.messages;
+	const at = state.messages.findIndex((message) => message.id === boundary);
+	return at < 0 ? state.messages : state.messages.slice(0, at);
 };
 
-const visibleServerMessages = (state: OpenCodeThreadState) =>
-	applyRevertVisibility(
-		state.messageOrder.flatMap((messageId: string) => {
-			const message = state.messagesById[messageId];
-			return message ? [message] : [];
-		}),
-		state.session?.revert,
-	);
-
 const sortedPendingMessages = (state: OpenCodeThreadState) =>
-	(Object.values(state.pendingUserMessages) as PendingUserMessage[]).sort(
-		(left, right) => left.createdAt - right.createdAt,
-	);
+	Object.values(state.pendingUserMessages).sort((left, right) => left.createdAt - right.createdAt);
+
+const runActivity = (state: OpenCodeThreadState, groups: readonly MessageGroup[]): RunActivity => ({
+	lastGroupId: groups.findLast((group) => group.kind === "assistant")?.id,
+	isActiveRun: isActiveRun(state),
+});
+
+/** The timing key for a group: its latest step (where streaming timing is recorded). */
+const timingKey = (group: MessageGroup) => group.steps.at(-1)?.id ?? group.id;
 
 export function projectOpenCodeThreadMessages(
 	state: OpenCodeThreadState,
 	messageTiming: Record<string, MessageTiming> = {},
 ): OpenCodeProjectedThreadMessage[] {
-	const activity = getRunActivity(state);
-	const serverMessages = groupServerMessages(visibleServerMessages(state))
-		.map(({ id, message }) =>
-			projectServerMessage(state, id, message, messageTiming[message.id], activity),
-		)
-		.filter((message): message is OpenCodeProjectedThreadMessage => message !== null);
-
-	const pendingMessages = sortedPendingMessages(state).map(projectPendingMessage);
-
-	return mergeProjectedMessages(serverMessages, pendingMessages);
+	const groups = groupMessages(visibleMessages(state));
+	const activity = runActivity(state, groups);
+	const server = groups.map((group) =>
+		projectGroup(state, group, messageTiming[timingKey(group)], activity),
+	);
+	return mergeProjectedMessages(server, sortedPendingMessages(state).map(projectPendingMessage));
 }
 
 /*
- * Projection cache. A streamed token changes one part of one message, but
- * projecting rebuilds every message from the whole thread state; without a
- * cache every ThreadMessage is new on every token, so every message's
- * components render again and a token costs O(session). The cache keeps a
- * message's converted ThreadMessage while everything its projection reads is
- * unchanged by identity: its source server messages, its timing, the run
- * activity its status reads, the thread's pending interactions, its task
- * tools' child sessions, and the local MCP app registry. Reducers replace the
- * objects they change, so identity is a sound key. Entries live as long as
- * the cache (one per runtime) and are dropped once their message is gone.
+ * Projection cache. A streamed token changes one message, but projecting
+ * rebuilds every message from the whole thread state; without a cache every
+ * ThreadMessage is new on every token and a token costs O(session). The cache
+ * keeps a message's converted ThreadMessage while everything its projection
+ * reads is unchanged by identity: its source messages, its timing, the run
+ * activity its status reads, the thread's pending interactions, its subagent
+ * calls' child sessions, and the local MCP app registry. Reducers replace the
+ * objects they change, so identity is a sound key.
  */
 interface ProjectionCacheEntry {
 	readonly inputs: readonly unknown[];
-	readonly message: ThreadMessage | null;
+	readonly message: ThreadMessage;
 }
 
 export interface OpenCodeProjectionCache {
@@ -836,25 +551,26 @@ const toThreadMessage = (message: OpenCodeProjectedThreadMessage) =>
 
 const projectionInputs = (
 	state: OpenCodeThreadState,
-	group: ServerMessageGroup,
+	group: MessageGroup,
 	timing: MessageTiming | undefined,
 	activity: RunActivity,
 ): unknown[] => {
-	const { message } = group;
 	const inputs: unknown[] = [...group.sources, timing];
-	if (message.info?.role !== "assistant") return inputs;
-	// Status reads the run's activity only for the turn's latest message.
-	const isActiveMessage = activity.lastAssistantId === message.id;
+	if (group.kind !== "assistant") return inputs;
+	const isLatest = activity.lastGroupId === group.id;
 	inputs.push(
-		isActiveMessage,
-		isActiveMessage && activity.isActiveRun,
+		isLatest,
+		isLatest && activity.isActiveRun,
 		state.interactions.permissions,
 		state.interactions.questions.pending,
 		_localMcpApps,
 	);
-	for (const part of message.parts) {
-		const childSessionId = getOpenCodeTaskSessionId(part);
-		if (childSessionId) inputs.push(state.childSessionsById[childSessionId]);
+	for (const step of group.steps) {
+		for (const item of step.content) {
+			if (item.type !== "tool") continue;
+			const childSessionId = getOpenCodeTaskSessionId(item);
+			if (childSessionId) inputs.push(state.childSessionsById[childSessionId]);
+		}
 	}
 	return inputs;
 };
@@ -864,36 +580,33 @@ const projectCachedThreadMessages = (
 	messageTiming: Record<string, MessageTiming>,
 	cache: OpenCodeProjectionCache,
 ): ThreadMessage[] => {
-	const activity = getRunActivity(state);
+	const groups = groupMessages(visibleMessages(state));
+	const activity = runActivity(state, groups);
 	const seen = new Set<string>();
-	const serverMessages: ThreadMessage[] = [];
-	for (const group of groupServerMessages(visibleServerMessages(state))) {
-		const { id } = group;
-		seen.add(id);
-		const timing = messageTiming[group.message.id];
+	const server: ThreadMessage[] = [];
+	for (const group of groups) {
+		seen.add(group.id);
+		const timing = messageTiming[timingKey(group)];
 		const inputs = projectionInputs(state, group, timing, activity);
-		let entry = cache.server.get(id);
+		let entry = cache.server.get(group.id);
 		if (!entry || !sameInputs(entry.inputs, inputs)) {
-			const projected = projectServerMessage(state, id, group.message, timing, activity);
-			entry = { inputs, message: projected ? toThreadMessage(projected) : null };
-			cache.server.set(id, entry);
+			entry = { inputs, message: toThreadMessage(projectGroup(state, group, timing, activity)) };
+			cache.server.set(group.id, entry);
 		}
-		if (entry.message) serverMessages.push(entry.message);
+		server.push(entry.message);
 	}
 	for (const id of cache.server.keys()) if (!seen.has(id)) cache.server.delete(id);
-
-	const pendingMessages = sortedPendingMessages(state).map((pending) => {
-		let message = cache.pending.get(pending);
-		if (!message) {
-			message = toThreadMessage(projectPendingMessage(pending));
-			cache.pending.set(pending, message);
+	const pending = sortedPendingMessages(state).map((message) => {
+		let projected = cache.pending.get(message);
+		if (!projected) {
+			projected = toThreadMessage(projectPendingMessage(message));
+			cache.pending.set(message, projected);
 		}
-		return message;
+		return projected;
 	});
-
 	return mergeProjectedMessages(
-		serverMessages as unknown as OpenCodeProjectedThreadMessage[],
-		pendingMessages as unknown as OpenCodeProjectedThreadMessage[],
+		server as unknown as OpenCodeProjectedThreadMessage[],
+		pending as unknown as OpenCodeProjectedThreadMessage[],
 	) as unknown as ThreadMessage[];
 };
 

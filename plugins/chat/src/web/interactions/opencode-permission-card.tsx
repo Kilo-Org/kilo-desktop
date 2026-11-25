@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import type {
-	OpenCodePermissionRequest,
-	OpenCodePermissionResponse,
-} from "@kilo-desktop/react-opencode";
+import type { OpenCodePermissionResponse, PermissionRequest } from "@kilo-desktop/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { Badge } from "@kilo-desktop/ui/components/badge";
@@ -34,13 +31,19 @@ import { visiblePermissionPatterns } from "./permission-labels";
 const selectDetail = (implementation: PermissionRendererImplementation) =>
 	implementation.PermissionDetail;
 
+/** A tool's friendlier name for itself (`metadata.toolName`), when it gave one. */
+const toolNameOf = (request: PermissionRequest): string | undefined => {
+	const name = request.metadata?.["toolName"];
+	return typeof name === "string" && name.length > 0 ? name : undefined;
+};
+
 /** Whether the server still lists `request`; true when it can't be asked. */
 async function stillPending(
 	chats: DomainObjectHandle<typeof Chats>,
-	request: OpenCodePermissionRequest,
+	request: PermissionRequest,
 ): Promise<boolean> {
 	try {
-		const pending = await chats.methods.permissionRequests({ id: request.sessionId });
+		const pending = await chats.methods.permissionRequests({ id: request.sessionID });
 		return pending.some((candidate) => candidate.id === request.id);
 	} catch {
 		return true;
@@ -60,7 +63,7 @@ export const OpenCodePermissionCard = ({
 	origin,
 	acceptOnEnter = true,
 }: {
-	request: OpenCodePermissionRequest;
+	request: PermissionRequest;
 	/** Set when a subagent, not the chat's own session, raised the request. */
 	origin?: SubagentOrigin | undefined;
 	acceptOnEnter?: boolean;
@@ -80,14 +83,14 @@ export const OpenCodePermissionCard = ({
 
 		try {
 			await chats.methods.replyPermission({
-				chatId: request.sessionId,
+				chatId: request.sessionID,
 				permissionId: request.id,
 				decision: nextReply,
 			});
 		} catch (err) {
 			if (settlePermission && !(await stillPending(chats, request))) {
 				// Answered or dropped while this window wasn't listening: the card is stale.
-				settlePermission(request.id, request.sessionId);
+				settlePermission(request.id, request.sessionID);
 				// Settling unmounts the card; if it somehow stays, it must stay answerable.
 				setSubmittingReply(null);
 				return;
@@ -130,32 +133,33 @@ export const OpenCodePermissionCard = ({
 		return () => document.removeEventListener("keydown", acceptOnEnterKey);
 	});
 
-	const permissionLabel = request.toolName ?? request.permission;
+	const permissionLabel = toolNameOf(request) ?? request.action;
 	// The request carries no arguments, so read them from the call in the thread.
-	const threadArgs = useAuiState((state) =>
-		findPermissionToolArgs(state.thread.messages, request.tool),
+	const args = useAuiState((state) =>
+		findPermissionToolArgs(state.thread.messages, request.source),
 	);
-	const args = threadArgs ?? request.toolInput;
 	const renderers = usePermissionRenderers();
 	const tools = useDesktopTools();
-	const toolKey = toolKeyOf(tools, request.permission);
+	const toolKey = toolKeyOf(tools, request.action);
 	// A bare `*` (a tool-level rule's wildcard) means nothing to the person.
-	const patterns = visiblePermissionPatterns(request.patterns);
+	const patterns = visiblePermissionPatterns(request.resources);
+	const save = request.save ?? [];
+	const metadata = request.metadata ?? {};
 	// Renderers see Kilo's action name; the label may be a tool's friendlier `metadata.toolName`.
 	const interaction: PermissionInteraction = {
-		action: request.permission,
+		action: request.action,
 		...(toolKey ? { toolKey } : {}),
 		resources: patterns,
-		...(request.always.length > 0 ? { save: request.always } : {}),
-		metadata: request.metadata,
+		...(save.length > 0 ? { save } : {}),
+		metadata,
 		args,
 	};
 	const presentation = presentPermission(renderers, interaction);
 	const shownPatterns = presentation.showResources ? patterns : [];
-	const description = request.metadata["description"];
-	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as
-	// "Allow once". A contribution may withhold it so the request is answered one call at a time.
-	const canRemember = request.always.length > 0 && presentation.allowAlways;
+	const description = metadata["description"];
+	// "Always allow" remembers exactly `request.save`; Kilo ignores it without one, so it would only
+	// act as "Allow once". A contribution may withhold it so the request is answered one call at a time.
+	const canRemember = save.length > 0 && presentation.allowAlways;
 	const requester = origin
 		? origin.title
 			? `The subagent “${origin.title}” is`
@@ -176,7 +180,7 @@ export const OpenCodePermissionCard = ({
 				</div>
 				<div className="space-y-1.5">
 					<h3 className="text-base leading-snug font-medium tracking-tight text-pretty">
-						{request.title ?? `Allow ${presentation.title ?? permissionLabel}?`}
+						{request.message ?? `Allow ${presentation.title ?? permissionLabel}?`}
 					</h3>
 					<p className="text-muted-foreground text-sm text-pretty">
 						{typeof description === "string"
@@ -186,28 +190,16 @@ export const OpenCodePermissionCard = ({
 				</div>
 			</div>
 
-			{(shownPatterns.length > 0 || request.toolInput !== undefined) && (
+			{shownPatterns.length > 0 && (
 				<div className="grid min-w-0 gap-2">
-					{shownPatterns.length > 0 ? (
-						<div className="grid min-w-0 gap-2">
-							{shownPatterns.map((pattern) => (
-								<div
-									key={pattern}
-									className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5 text-sm"
-								>
-									<code className="block truncate font-mono">{pattern}</code>
-								</div>
-							))}
+					{shownPatterns.map((pattern) => (
+						<div
+							key={pattern}
+							className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5 text-sm"
+						>
+							<code className="block truncate font-mono">{pattern}</code>
 						</div>
-					) : null}
-					{request.toolInput !== undefined ? (
-						<div className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5">
-							<p className="text-muted-foreground mb-2 text-xs font-medium">Tool input</p>
-							<pre className="overflow-x-auto text-xs">
-								{JSON.stringify(request.toolInput, null, 2)}
-							</pre>
-						</div>
-					) : null}
+					))}
 				</div>
 			)}
 

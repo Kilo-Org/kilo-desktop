@@ -1,11 +1,13 @@
 import { OPEN_CODE_HISTORY_PAGE_SIZE } from "@kilo-desktop/react-opencode";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { OpenCodeClient } from "@kilocode/client";
+
+import { overrideMethod } from "./override-method";
 
 /*
  * Chat histories loaded ahead of opening (a work session's row hovered), kept
  * until the chat's transcript loads or briefly otherwise. A chat's thread
  * loads its history with `session.get` and the newest page of
- * `session.messages`; a client made by `withPrefetchedHistory` answers those
+ * `message.list`; a client made by `withPrefetchedHistory` answers those
  * from here, so the transcript shows without a round trip. (The older
  * messages the thread fetches next are not prefetched.)
  *
@@ -20,7 +22,7 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 /** How long a prefetched history waits to be opened. */
 export const PREFETCH_TTL_MS = 30_000;
 
-type HistoryReply = "get" | "messages";
+type HistoryReply = "get" | "list";
 
 interface Entry {
 	readonly replies: Map<HistoryReply, Promise<unknown>>;
@@ -31,16 +33,13 @@ export class HistoryPrefetch {
 	readonly #entries = new Map<string, Entry>();
 
 	/** Loads `chatId`'s history through `client`, unless it is already waiting. */
-	prefetch(chatId: string, client: KiloClient): void {
+	prefetch(chatId: string, client: OpenCodeClient): void {
 		const existing = this.#entries.get(chatId);
 		if (existing && existing.expires > Date.now()) return;
 		const entry: Entry = {
 			replies: new Map<HistoryReply, Promise<unknown>>([
 				["get", client.session.get({ sessionID: chatId })],
-				[
-					"messages",
-					client.session.messages({ sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE }),
-				],
+				["list", client.message.list({ sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE })],
 			]),
 			expires: Date.now() + PREFETCH_TTL_MS,
 		};
@@ -77,48 +76,49 @@ export class HistoryPrefetch {
 	}
 }
 
+/** Whether `input` is exactly `expected`: a thread's plain first history read. */
+function isExactly(input: unknown, expected: Record<string, unknown>): boolean {
+	if (typeof input !== "object" || input === null) return false;
+	const record = input as Record<string, unknown>;
+	const keys = Object.keys(record);
+	return (
+		keys.length === Object.keys(expected).length &&
+		keys.every((key) => record[key] === expected[key])
+	);
+}
+
+const sessionOf = (input: unknown) => (input as { sessionID?: unknown } | null)?.sessionID;
+
 /**
- * `client`, whose plain history reads for `chatId` (`session.get` with only
- * its id, `session.messages` for its newest page) are answered from
- * `prefetch` when it holds a current reply.
+ * `client`, whose plain history reads (`session.get` with only the session's
+ * id, `message.list` for its newest page) are answered from `prefetch` when
+ * it holds a current reply for that session.
  */
 export function withPrefetchedHistory(
-	client: KiloClient,
-	chatId: string,
+	client: OpenCodeClient,
 	prefetch: HistoryPrefetch,
-): KiloClient {
-	const isHistoryRead = (kind: HistoryReply, parameters: unknown) => {
-		const record = parameters as Record<string, unknown> | undefined;
-		if (record?.["sessionID"] !== chatId) return false;
-		const expected: Record<string, unknown> =
-			kind === "get"
-				? { sessionID: chatId }
-				: { sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE };
-		const keys = Object.keys(record);
-		return (
-			keys.length === Object.keys(expected).length &&
-			keys.every((key) => record[key] === expected[key])
-		);
-	};
-	return new Proxy(client as object, {
-		get(target, prop, receiver) {
-			const value = Reflect.get(target, prop, receiver);
-			if (prop !== "session" || value === null || typeof value !== "object") return value;
-			return new Proxy(value as object, {
-				get(sessionTarget, sessionProp, sessionReceiver) {
-					const method = Reflect.get(sessionTarget, sessionProp, sessionReceiver);
-					if (
-						(sessionProp !== "get" && sessionProp !== "messages") ||
-						typeof method !== "function"
-					) {
-						return method;
-					}
-					return (...args: unknown[]) =>
-						(isHistoryRead(sessionProp, args[0])
-							? prefetch.take(chatId, sessionProp)
-							: undefined) ?? Reflect.apply(method, sessionTarget, args);
-				},
-			});
-		},
-	}) as KiloClient;
+): OpenCodeClient {
+	const served =
+		(kind: HistoryReply, expected: (chatId: string) => Record<string, unknown>) =>
+		(original: (...args: unknown[]) => unknown) =>
+		(input: unknown, ...rest: unknown[]) => {
+			const chatId = sessionOf(input);
+			const reply =
+				typeof chatId === "string" && isExactly(input, expected(chatId))
+					? prefetch.take(chatId, kind)
+					: undefined;
+			return reply ?? original(input, ...rest);
+		};
+	const withGet = overrideMethod(
+		client,
+		"session",
+		"get",
+		served("get", (chatId) => ({ sessionID: chatId })),
+	);
+	return overrideMethod(
+		withGet,
+		"message",
+		"list",
+		served("list", (chatId) => ({ sessionID: chatId, limit: OPEN_CODE_HISTORY_PAGE_SIZE })),
+	);
 }

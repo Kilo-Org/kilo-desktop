@@ -84,6 +84,8 @@ export interface Kilo2ChatsOptions {
 	readonly onChatCreated?: (chat: ChatSummary) => void;
 	/** Records each method call, as fakeCore's `calls`. */
 	readonly record?: (method: string, input: unknown) => void;
+	/** The app tool a permission's action names (`desktop_…`), as kilo.core resolves it. */
+	readonly toolKeyOf?: (action: string) => string | undefined;
 }
 
 /** Provides kilo.core's server and chats over `fake`; see the file comment. */
@@ -215,6 +217,8 @@ export function provideKilo2Chats(
 								? [{ uri: part.url, ...(part.filename ? { name: part.filename } : {}) }]
 								: [],
 						) as never,
+						// As kilo.core does: v2 prompts have no `system`.
+						...(input.system ? { metadata: { "kilo-desktop": { system: input.system } } } : {}),
 					});
 				});
 			},
@@ -223,13 +227,19 @@ export function provideKilo2Chats(
 				await call("stop the chat", () => client.session.interrupt({ sessionID: id }));
 			},
 			permissionRequests: async ({ id }) =>
-				(await client.permission.list({ sessionID: id })).map((request) => ({
-					id: request.id,
-					chatId: request.sessionID,
-					action: request.action,
-					resources: [...request.resources],
-					metadata: { ...request.metadata },
-				})),
+				(await client.permission.list({ sessionID: id })).map((request) => {
+					const toolKey = options.toolKeyOf?.(request.action);
+					return {
+						id: request.id,
+						chatId: request.sessionID,
+						action: request.action,
+						...(toolKey ? { toolKey } : {}),
+						resources: [...request.resources],
+						...(request.save ? { save: [...request.save] } : {}),
+						...(request.message ? { message: request.message } : {}),
+						metadata: { ...request.metadata },
+					};
+				}),
 			replyPermission: async (input) => {
 				record("replyPermission", input);
 				await call("answer the permission request", () =>

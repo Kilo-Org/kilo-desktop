@@ -3,7 +3,8 @@ import { page, userEvent } from "vitest/browser";
 
 import { chatPaneObject } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
+import { assistantMessage, session, text, userMessage } from "../../test/kilo2/fixtures";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -29,18 +30,11 @@ function threadRoot(): HTMLElement {
 
 /** A chat that already has messages, so its composer is not a draft. */
 async function showChat() {
-	const server = new FakeKiloServer();
-	server.addChat({
-		id: "ses_a",
-		directory: "/projects/app",
-		title: "Chat",
-		messages: [
-			userMessage("ses_a", "msg_1", "Hello"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{ type: "text", text: "Hi there", time: { start: 1, end: 2 } },
-			]),
-		],
-	});
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Chat" }), [
+		userMessage("Hello"),
+		assistantMessage([text("Hi there")]),
+	]);
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -159,9 +153,7 @@ describe("the composer's resize edge", () => {
 
 		await page.getByTestId("kilo-composer-send").click();
 
-		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_a/prompt_async").length)
-			.toBe(1);
+		await expect.poll(() => host.server.promptsTo("ses_a").length).toBe(1);
 		await expect.element(handle()).not.toBeInTheDocument();
 		await expect.poll(() => inputBox().offsetHeight).toBeLessThan(128);
 	});

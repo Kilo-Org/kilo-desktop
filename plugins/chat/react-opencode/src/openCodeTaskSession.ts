@@ -1,19 +1,17 @@
-import type { Part } from "./types";
+import type { SessionMessageAssistantTool } from "@kilocode/client";
+
+/** The tool that runs a subagent in a child session (kilo2's `subagent`). */
+export const SUBAGENT_TOOL = "subagent";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null;
 
-const getSessionId = (metadata: unknown) => {
-	if (!isRecord(metadata)) return undefined;
-
-	const value = metadata.sessionId ?? metadata.sessionID;
+/** The child session a subagent call runs in (`state.metadata.sessionID`, set once it starts). */
+export const getOpenCodeTaskSessionId = (
+	tool: Pick<SessionMessageAssistantTool, "name" | "state">,
+): string | undefined => {
+	if (tool.name !== SUBAGENT_TOOL) return undefined;
+	const metadata = (tool.state as { metadata?: unknown }).metadata;
+	const value = isRecord(metadata) ? metadata.sessionID : undefined;
 	return typeof value === "string" && value.length > 0 ? value : undefined;
-};
-
-export const getOpenCodeTaskSessionId = (part: Part) => {
-	if (part.type !== "tool" || part.tool !== "task") return undefined;
-
-	const state: unknown = part.state;
-	const stateSessionId = isRecord(state) ? getSessionId(state.metadata) : undefined;
-	return stateSessionId ?? getSessionId(part.metadata);
 };

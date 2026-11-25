@@ -1,55 +1,57 @@
-import {
-	STREAM_RECONNECTED_EVENT_TYPE,
-	type OpenCodeServerEvent,
+import type {
+	OpenCodeServerEvent,
+	SessionMessageAssistant,
+	SessionMessageInfo,
 } from "@kilo-desktop/react-opencode";
-import type { KiloClient } from "@kilocode/sdk/v2/client";
+import type { OpenCodeClient } from "@kilocode/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { assistantMessage, reasoning, text, userMessage } from "../../test/kilo2/fixtures";
 import { ENDED_PART_TTL_MS, LiveParts, withLiveParts } from "./live-parts";
 
 const CHAT = "ses_1";
+const MESSAGE = "msg_1";
 
 const event = (
 	type: string,
-	properties: Record<string, unknown>,
+	data: Record<string, unknown> = {},
 	sessionId: string | undefined = CHAT,
-): OpenCodeServerEvent => ({ type, properties, sessionId, raw: null });
-
-const textPart = (text: string, extra: Record<string, unknown> = {}) => ({
-	id: "prt_1",
-	messageID: "msg_1",
-	sessionID: CHAT,
-	type: "text",
-	text,
-	...extra,
+): OpenCodeServerEvent => ({
+	type,
+	data: { sessionID: sessionId, ...data },
+	sessionId,
 });
 
-const started = (text = "") => event("message.part.updated", { part: textPart(text) });
-const delta = (text: string) =>
-	event("message.part.delta", { messageID: "msg_1", partID: "prt_1", field: "text", delta: text });
-const ended = (text: string) =>
-	event("message.part.updated", { part: textPart(text, { time: { start: 1, end: 2 } }) });
+const part = (kind: "text" | "reasoning", phase: string, ordinal: number, extra = {}) =>
+	event(`session.${kind}.${phase}`, { assistantMessageID: MESSAGE, ordinal, ...extra });
 
-/** A `session.messages` reply holding `part`. */
-const history = (part: Record<string, unknown>) => [{ info: { id: "msg_1" }, parts: [part] }];
-
-/** The first part of `chatId`'s history read through `withLiveParts`. */
-async function readPart(live: LiveParts, stored: Record<string, unknown>, chatId = CHAT) {
-	const client = {
-		session: { messages: async () => ({ data: history(stored), request: "kept" }) },
-	} as never as KiloClient;
-	const reply = (await withLiveParts(client, chatId, live).session.messages({
-		sessionID: chatId,
-	})) as unknown as { data: ReturnType<typeof history>; request: string };
-	expect(reply.request).toBe("kept");
-	return reply.data[0]!.parts[0]!;
-}
+const started = (ordinal = 0, kind: "text" | "reasoning" = "text") =>
+	part(kind, "started", ordinal);
+const delta = (value: string, ordinal = 0, kind: "text" | "reasoning" = "text") =>
+	part(kind, "delta", ordinal, { delta: value });
+const ended = (value: string, ordinal = 0) => part("text", "ended", ordinal, { text: value });
 
 function streaming(...deltas: string[]) {
 	const live = new LiveParts();
 	live.apply(started());
-	for (const text of deltas) live.apply(delta(text));
+	for (const value of deltas) live.apply(delta(value));
 	return live;
+}
+
+const stored = (...content: SessionMessageAssistant["content"]) =>
+	({ ...assistantMessage(content), id: MESSAGE }) as SessionMessageAssistant;
+
+/** The assistant message's content as `chatId`'s `message.list` reads it through `withLiveParts`. */
+async function readContent(
+	live: LiveParts,
+	message: SessionMessageAssistant,
+	chatId = CHAT,
+): Promise<SessionMessageAssistant["content"]> {
+	const reply = { data: [message] as SessionMessageInfo[], cursor: { next: "older" } };
+	const client = { message: { list: async () => reply } } as unknown as OpenCodeClient;
+	const read = await withLiveParts(client, live).message.list({ sessionID: chatId });
+	expect(read.cursor).toEqual({ next: "older" });
+	return (read.data[0] as SessionMessageAssistant).content;
 }
 
 afterEach(() => {
@@ -58,109 +60,105 @@ afterEach(() => {
 
 describe("LiveParts", () => {
 	it("fills a streaming part's stored text with what streamed", async () => {
-		const live = streaming("Hello ", "world");
+		const live = streaming("Hel", "lo");
 
-		expect((await readPart(live, textPart(""))).text).toBe("Hello world");
+		await expect(readContent(live, stored(text("")))).resolves.toEqual([text("Hello")]);
 	});
 
-	it("patches the reply when the thread reads it, with deltas that arrived meanwhile", async () => {
-		const live = streaming("Hello ");
-		let resolve: (value: unknown) => void = () => undefined;
-		const client = {
-			session: { messages: () => new Promise((done) => (resolve = done)) },
-		} as never as KiloClient;
-		const pending = withLiveParts(client, CHAT, live).session.messages({ sessionID: CHAT });
-		resolve({ data: history(textPart("")) });
-		const reply = (await pending) as unknown as { data: ReturnType<typeof history> };
-		live.apply(delta("world"));
-
-		expect(reply.data[0]!.parts[0]!.text).toBe("Hello world");
-	});
-
-	it("leaves a stored part that has ended", async () => {
-		const live = streaming("Hello");
-		const stored = textPart("Hello world", { time: { start: 1, end: 2 } });
-
-		expect(await readPart(live, stored)).toEqual(stored);
-	});
-
-	it("forgets a part once a read shows it ended", async () => {
-		const live = streaming("Hello");
-		live.apply(event(STREAM_RECONNECTED_EVENT_TYPE, {}, undefined));
-		await readPart(live, textPart("Hello world", { time: { start: 1, end: 2 } }));
-
-		expect((await readPart(live, textPart(""))).text).toBe("");
-	});
-
-	it("keeps an ended part for other reads after one shows it ended", async () => {
-		const live = streaming("Hello");
-		live.apply(ended("Hello world"));
-		await readPart(live, textPart("Hello world", { time: { start: 1, end: 2 } }));
-
-		expect((await readPart(live, textPart(""))).text).toBe("Hello world");
-	});
-
-	it("leaves a stored text the live text doesn't extend", async () => {
-		const live = streaming("Hello");
-
-		expect((await readPart(live, textPart("Goodbye"))).text).toBe("Goodbye");
-	});
-
-	it("only patches its own chat's parts", async () => {
-		const live = streaming("Hello");
-
-		expect((await readPart(live, textPart(""), "ses_other")).text).toBe("");
-	});
-
-	it("puts the ended part over a read answered before it ended", async () => {
-		const live = streaming("Hello");
-		live.apply(ended("Hello world"));
-
-		expect(await readPart(live, textPart("Hel"))).toEqual(
-			textPart("Hello world", { time: { start: 1, end: 2 } }),
-		);
-	});
-
-	it("forgets an ended part once its time runs out", async () => {
-		vi.useFakeTimers();
-		const live = streaming("Hello");
-		live.apply(ended("Hello world"));
-		vi.advanceTimersByTime(ENDED_PART_TTL_MS);
-
-		expect((await readPart(live, textPart(""))).text).toBe("");
-	});
-
-	it("keeps what streamed across a reconnect", async () => {
-		const live = streaming("Hello");
-		live.apply(event(STREAM_RECONNECTED_EVENT_TYPE, {}, undefined));
-
-		expect((await readPart(live, textPart(""))).text).toBe("Hello");
-	});
-
-	it.each([
-		["the part is removed", event("message.part.removed", { messageID: "msg_1", partID: "prt_1" })],
-		["its message is removed", event("message.removed", { messageID: "msg_1" })],
-		["its chat goes idle", event("session.idle", { sessionID: CHAT })],
-		["its chat is deleted", event("session.deleted", { info: { id: CHAT } })],
-	])("forgets a streaming part when %s", async (_, drop) => {
-		const live = streaming("Hello");
-		live.apply(drop);
-
-		expect((await readPart(live, textPart(""))).text).toBe("");
-	});
-
-	it("keeps an ended part when its chat goes idle", async () => {
-		const live = streaming("Hello");
-		live.apply(ended("Hello world"));
-		live.apply(event("session.idle", { sessionID: CHAT }));
-
-		expect((await readPart(live, textPart("Hello"))).text).toBe("Hello world");
-	});
-
-	it("ignores deltas to parts it didn't see start", async () => {
+	it("finds each part by its kind and ordinal", async () => {
 		const live = new LiveParts();
-		live.apply(delta("world"));
+		live.apply(started(0, "reasoning"));
+		live.apply(delta("thinking", 0, "reasoning"));
+		live.apply(started(0));
+		live.apply(delta("first"));
+		live.apply(ended("first"));
+		live.apply(started(1));
+		live.apply(delta("second", 1));
 
-		expect((await readPart(live, textPart(""))).text).toBe("");
+		const content = await readContent(live, stored(reasoning(""), text("first"), text("")));
+
+		expect(content.map((item) => (item.type === "tool" ? item.id : item.text))).toEqual([
+			"thinking",
+			"first",
+			"second",
+		]);
+	});
+
+	it("keeps stored text the live text doesn't extend", async () => {
+		const live = streaming("abc");
+
+		await expect(readContent(live, stored(text("xyz")))).resolves.toEqual([text("xyz")]);
+		await expect(readContent(live, stored(text("abcd")))).resolves.toEqual([text("abcd")]);
+	});
+
+	it("leaves other chats, messages and kinds alone", async () => {
+		const live = streaming("Hello");
+		const other = { ...stored(text("")), id: "msg_2" } as SessionMessageAssistant;
+
+		await expect(readContent(live, stored(text("")), "ses_2")).resolves.toEqual([text("")]);
+		await expect(readContent(live, other)).resolves.toEqual([text("")]);
+		const thought = reasoning("");
+		await expect(readContent(live, stored(thought))).resolves.toEqual([thought]);
+	});
+
+	it("patches with an ended part's final text until it expires", async () => {
+		vi.useFakeTimers();
+		const live = streaming("Hel");
+		live.apply(ended("Hello"));
+		live.apply(event("session.step.ended", { assistantMessageID: MESSAGE }));
+
+		await expect(readContent(live, stored(text("")))).resolves.toEqual([text("Hello")]);
+		vi.advanceTimersByTime(ENDED_PART_TTL_MS);
+		await expect(readContent(live, stored(text("")))).resolves.toEqual([text("")]);
+	});
+
+	it("forgets a part cut off when its step ends or fails, or its execution ends", async () => {
+		const ends = [
+			event("session.step.ended", { assistantMessageID: MESSAGE }),
+			event("session.step.failed", { assistantMessageID: MESSAGE }),
+			event("session.execution.interrupted"),
+		];
+		const reads = ends.map((end) => {
+			const live = streaming("Hel");
+			live.apply(end);
+			live.apply(delta("lo"));
+			return readContent(live, stored(text("")));
+		});
+
+		await expect(Promise.all(reads)).resolves.toEqual(ends.map(() => [text("")]));
+	});
+
+	it("forgets every part of a deleted chat", async () => {
+		const live = streaming("Hel");
+		live.apply(ended("Hello"));
+		live.apply(event("session.deleted"));
+
+		await expect(readContent(live, stored(text("")))).resolves.toEqual([text("")]);
+	});
+
+	it("patches a read when the thread reads it, with what streamed meanwhile", async () => {
+		const live = streaming("Hel");
+		const reply = { data: [stored(text(""))] as SessionMessageInfo[], cursor: {} };
+		const client = { message: { list: async () => reply } } as unknown as OpenCodeClient;
+		const read = await withLiveParts(client, live).message.list({ sessionID: CHAT });
+
+		live.apply(delta("lo"));
+
+		expect((read.data[0] as SessionMessageAssistant).content).toEqual([text("Hello")]);
+	});
+
+	it("passes other messages and calls through", async () => {
+		const live = streaming("Hello");
+		const user = userMessage("hi");
+		const client = {
+			message: { list: async () => ({ data: [user], cursor: {} }) },
+			session: { get: async () => "session" },
+		} as unknown as OpenCodeClient;
+		const wrapped = withLiveParts(client, live);
+
+		await expect(wrapped.message.list({ sessionID: CHAT })).resolves.toMatchObject({
+			data: [user],
+		});
+		await expect(wrapped.session.get({ sessionID: CHAT })).resolves.toBe("session");
 	});
 });

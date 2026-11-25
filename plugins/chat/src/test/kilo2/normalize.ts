@@ -1,7 +1,7 @@
 // Recorded kilo2 output made comparable: ids, times and paths that differ on
 // every run are replaced by stable placeholders.
 
-const ID = /^(ses|msg|evt|prt|per|frm|inb)_[A-Za-z0-9]+$/;
+const ID = /^(ses|msg|evt|prt|per|frm|inb)_[A-Za-z0-9_]+$/;
 const TIME_KEYS = new Set([
 	"created",
 	"updated",
@@ -16,22 +16,24 @@ const TIME_KEYS = new Set([
 	"archived",
 ]);
 
-/** Replaces run-specific values (ids by first appearance, times, the project's paths). */
+/**
+ * Replaces run-specific values: ids by first appearance (an id's suffix keeps
+ * one number across prefixes, since kilo2 derives some message ids from their
+ * event's id), times, and the project's paths.
+ */
 export function normalizeRecording<T>(value: T, project: string): T {
-	const ids = new Map<string, string>();
-	const counts = new Map<string, number>();
+	const numbers = new Map<string, number>();
 	const walk = (node: unknown, key?: string): unknown => {
 		if (typeof node === "string") {
 			if (ID.test(node)) {
-				let stable = ids.get(node);
-				if (!stable) {
-					const prefix = node.slice(0, node.indexOf("_"));
-					const next = (counts.get(prefix) ?? 0) + 1;
-					counts.set(prefix, next);
-					stable = `${prefix}_${next}`;
-					ids.set(node, stable);
+				const at = node.indexOf("_");
+				const suffix = node.slice(at + 1);
+				let number = numbers.get(suffix);
+				if (number === undefined) {
+					number = numbers.size + 1;
+					numbers.set(suffix, number);
 				}
-				return stable;
+				return `${node.slice(0, at)}_${number}`;
 			}
 			if (key === "projectID") return "project";
 			if (key === "slug") return "slug";

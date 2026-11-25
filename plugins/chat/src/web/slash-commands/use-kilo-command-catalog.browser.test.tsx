@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Command } from "@kilocode/sdk/v2/client";
+import type { CommandInfo } from "@kilocode/client";
 
 import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import {
@@ -20,12 +20,9 @@ function serveCommands(commands: unknown) {
 	const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
 		const request = input instanceof Request ? input : new Request(input);
 		const url = new URL(request.url);
-		directories.push(
-			url.searchParams.get("directory") ??
-				(request.headers.get("x-kilo-directory") &&
-					decodeURIComponent(request.headers.get("x-kilo-directory")!)),
-		);
-		return new Response(JSON.stringify(commands), {
+		directories.push(url.searchParams.get("location[directory]"));
+		const location = { directory: url.searchParams.get("location[directory]") };
+		return new Response(JSON.stringify({ location, data: commands }), {
 			headers: { "content-type": "application/json" },
 		});
 	});
@@ -40,21 +37,9 @@ const connection: KiloGlobalConnection = {
 	globalDirectory: "/kilo/runtime",
 };
 
-const payload: Command[] = [
-	{
-		name: "init",
-		description: "Create an AGENTS.md",
-		source: "command",
-		template: "/init $ARGUMENTS",
-		hints: [],
-	},
-	{
-		name: "compact",
-		description: "Compact the conversation",
-		source: "command",
-		template: "/compact",
-		hints: [],
-	},
+const payload: CommandInfo[] = [
+	{ name: "init", description: "Create an AGENTS.md", template: "/init $ARGUMENTS" },
+	{ name: "compact", description: "Compact the conversation", template: "/compact" },
 ];
 
 function createWrapper() {
@@ -102,26 +87,17 @@ describe("useKiloCommandCatalog", () => {
 		expect(served.directories).toEqual([connection.globalDirectory]);
 	});
 
-	it("keeps only autocomplete metadata from lazy MCP commands", async () => {
+	it("keeps only what the menu shows", async () => {
 		serveCommands([
-			{
-				name: "release-notes",
-				description: "Draft release notes",
-				source: "mcp",
-				template: {},
-				hints: ["release"],
-			},
+			{ name: "release-notes", description: "Draft release notes", template: "Draft $1" },
+			{ name: "plain", template: "x", model: "kilo/auto" },
 		]);
 
 		await expect(
 			fetchCommandCatalogForConnection(connection, "/workspace/project"),
 		).resolves.toEqual([
-			{
-				name: "release-notes",
-				description: "Draft release notes",
-				source: "mcp",
-				hints: ["release"],
-			},
+			{ name: "release-notes", description: "Draft release notes" },
+			{ name: "plain" },
 		]);
 	});
 

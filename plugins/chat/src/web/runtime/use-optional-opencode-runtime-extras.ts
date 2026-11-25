@@ -56,14 +56,20 @@ export function usePendingQuestions(): readonly PendingQuestion[] {
 	return questions ? Object.values(questions) : NO_QUESTIONS;
 }
 
-const selectOlderHistory = (extras: OpenCodeRuntimeExtras) =>
-	extras.state.olderHistory?.type ?? "complete";
+type OlderHistoryStatus = "complete" | "loading" | "failed";
+
+const selectOlderHistory = (extras: OpenCodeRuntimeExtras): OlderHistoryStatus => {
+	const older = extras.state.olderHistory;
+	if (!older || older.type === "complete") return "complete";
+	return older.type === "failed" ? "failed" : "loading";
+};
 
 /**
  * Whether the thread still waits for its older messages: a session shows its
- * newest page first and the rest after. Complete for threads without extras.
+ * newest page first and the rest after (`available` until their read starts,
+ * so loading too). Complete for threads without extras.
  */
-export const useOlderHistoryStatus = (): "complete" | "loading" | "failed" =>
+export const useOlderHistoryStatus = (): OlderHistoryStatus =>
 	useOpenCodeExtrasSlice(selectOlderHistory) ?? "complete";
 
 /**

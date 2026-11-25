@@ -81,6 +81,7 @@ import {
 	createTurnWorkGroupBy,
 } from "../tools/activity-grouping";
 import { DelegationGroup } from "../tools/delegation-group";
+import { openCodeMessagesOf } from "../tools/opencode-tool";
 import { activityKindFromGroupKey, isDelegationTool } from "../tools/tool-categories";
 import { ToolCallSignInGate } from "../tools/tool-sign-in-card";
 import { ToolCallFallback } from "../tools/tool-ui-inline";
@@ -174,7 +175,6 @@ const KiloMessageErrorBanner: FC = () => {
 							retryFailedTurn({
 								connection,
 								sessionID: session.id,
-								directory: session.directory,
 								messageID: userMessageId,
 								...(model ? { model } : {}),
 							}),
@@ -383,6 +383,12 @@ function groupMessageParts(
 		: createTurnWorkGroupBy(parts, { hiddenPlanCallIds });
 }
 
+/** When the turn's latest step completed, if it has. */
+const lastStepCompletedAt = (metadata: unknown): number | undefined => {
+	const step = openCodeMessagesOf(metadata).findLast((message) => message.type === "assistant");
+	return step?.type === "assistant" ? step.time.completed : undefined;
+};
+
 const AssistantMessage: FC = () => {
 	const messageParts = useAuiState((s) => s.message.parts);
 	const messageId = useAuiState((s) => s.message.id);
@@ -391,10 +397,9 @@ const AssistantMessage: FC = () => {
 	const pendingUserInteractions =
 		pendingInteractions.questions.length + pendingInteractions.permissions.length;
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
-	const isStreamingText = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return openCodeTextIsStreaming(custom?.opencode?.parts);
-	});
+	const isStreamingText = useAuiState((s) =>
+		openCodeTextIsStreaming(openCodeMessagesOf(s.message.metadata)),
+	);
 	const hasRenderablePart = useAuiState((s) =>
 		s.message.parts.some(
 			(part) =>
@@ -405,13 +410,7 @@ const AssistantMessage: FC = () => {
 	);
 	const status = useAuiState((s) => s.message.status);
 	const turnStartedAt = useTurnStartedAt();
-	const turnCompletedAt = useAuiState((s) => {
-		const custom = s.message.metadata?.custom as
-			| { opencode?: { originalMessage?: { time?: { completed?: unknown } } } }
-			| undefined;
-		const completed = custom?.opencode?.originalMessage?.time?.completed;
-		return typeof completed === "number" ? completed : undefined;
-	});
+	const turnCompletedAt = useAuiState((s) => lastStepCompletedAt(s.message.metadata));
 	const threadOwnsRun = useAuiState(
 		(s) => s.thread.isRunning && s.message.index === s.thread.messages.length - 1,
 	);
@@ -420,9 +419,10 @@ const AssistantMessage: FC = () => {
 	// A ready plan ended its turn. Kilo keeps the chat busy through the follow-up
 	// and the answer's hand-off, but that run belongs to the next message.
 	const planTurnEnded = usePlanReady(messageId);
+	// On v2 the latest turn reads running for as long as the session runs, the
+	// plan's follow-up included.
 	const isRunning =
-		status?.type === "running" ||
-		(threadOwnsRun && !planTurnEnded) ||
+		((status?.type === "running" || threadOwnsRun) && !planTurnEnded) ||
 		(isLastMessage && hasActiveSubagents);
 	const interrupted = status?.type === "incomplete" && status.reason === "cancelled";
 	const [wasRunning, setWasRunning] = useState(isRunning);

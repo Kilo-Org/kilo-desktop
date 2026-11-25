@@ -15,18 +15,18 @@ import {
 	WrenchIcon,
 } from "lucide-react";
 
+import { SUBAGENT_TOOL } from "@kilo-desktop/react-opencode";
+
 import type { ToolCategory } from "../../contracts";
+import { getToolFilePath } from "./tool-diff-stats";
 import {
 	basename,
 	getCommandSummary,
 	getPatchInfo,
 	isCancelledToolStatus,
-	isTaskErrorOutput,
-	parseBashResult,
 	resultText,
 	str,
 	truncate,
-	unwrapTaskOutput,
 } from "./tool-ui-shared";
 
 /**
@@ -46,30 +46,23 @@ export type ActivityKind = ToolCategory | "tools" | "thinking" | McpActivityKind
 
 const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	edit: "editing",
-	apply_patch: "editing",
+	patch: "editing",
 	notebook_edit: "editing",
 	write: "writing",
 	read: "reading",
 	notebook_read: "reading",
 	grep: "searching",
 	glob: "searching",
-	list: "searching",
-	codebase_search: "searching",
 	semantic_search: "searching",
 	webfetch: "web",
 	websearch: "web",
-	bash: "terminal",
-	interactive_terminal: "terminal",
+	shell: "terminal",
 	background_process: "terminal",
 	todowrite: "planning",
-	todoread: "planning",
 	plan_exit: "planning",
 	question: "asking",
-	ask_question: "asking",
-	request_user_input: "asking",
-	requestuserinput: "asking",
 	skill: "skill",
-	task: "subagent",
+	subagent: "subagent",
 	board_read: "subagent",
 	board_post: "subagent",
 };
@@ -92,16 +85,18 @@ export const isAskQuestionTool = (toolName: string): boolean =>
 
 export const isSkillTool = (toolName: string): boolean => getToolCategory(toolName) === "skill";
 
-export const isTaskTool = (toolName: string): boolean => getToolCategory(toolName) === "subagent";
+export const isSubagentCategoryTool = (toolName: string): boolean =>
+	getToolCategory(toolName) === "subagent";
 
-const COMPOSER_PROJECTED_TOOLS = new Set(["todowrite", "todoread"]);
+const COMPOSER_PROJECTED_TOOLS = new Set(["todowrite"]);
 
 /** Tools whose calls surface in the composer task shelf instead of the transcript. */
 export const isComposerProjectedTool = (toolName: string): boolean =>
 	COMPOSER_PROJECTED_TOOLS.has(toolName.toLowerCase());
 
 /** Subagent delegations render in their own transcript group, never inside activity summaries. */
-export const isDelegationTool = (toolName: string): boolean => toolName.toLowerCase() === "task";
+export const isDelegationTool = (toolName: string): boolean =>
+	toolName.toLowerCase() === SUBAGENT_TOOL;
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -185,6 +180,7 @@ export type ActivityPart = {
 	toolCallId?: string | undefined;
 	args?: unknown;
 	result?: unknown;
+	isError?: boolean | undefined;
 	status?: { type: string } | undefined;
 };
 
@@ -506,20 +502,15 @@ const mcpKindMeta = (kind: McpActivityKind): KindMeta => {
 export const getKindMeta = (kind: ActivityKind): KindMeta =>
 	isMcpActivityKind(kind) ? mcpKindMeta(kind) : KIND_META[kind];
 
-const FILE_ARG_KEYS = ["file_path", "filePath", "path", "file"] as const;
-
-/** Files touched by a single tool-call part (multi-file for apply_patch). */
+/** Files touched by a single tool-call part (multi-file for patch). */
 export const getPartFiles = (part: ActivityPart): string[] => {
 	const args = part.args as Record<string, unknown> | undefined;
 	if (!args) return [];
-	if (part.toolName?.toLowerCase() === "apply_patch") {
+	if (part.toolName?.toLowerCase() === "patch") {
 		return getPatchInfo(str(args.patchText)).files;
 	}
-	for (const key of FILE_ARG_KEYS) {
-		const value = str(args[key]);
-		if (value) return [value];
-	}
-	return [];
+	const path = getToolFilePath(args);
+	return path ? [path] : [];
 };
 
 const uniqueFiles = (parts: readonly ActivityPart[], indices: readonly number[]): string[] => {
@@ -564,26 +555,26 @@ const getPartQuestionSummary = (part: ActivityPart): string | undefined => {
 	return questionSummaryFromArgs(part.args);
 };
 
-/** OpenCode/Kilo `skill` tool takes `{ name }`. */
+/** Kilo's `skill` tool takes `{ id }`. */
 const getPartSkillName = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
 		return undefined;
 	}
 	if (!part.args || typeof part.args !== "object") return undefined;
-	const name = str((part.args as Record<string, unknown>).name);
-	return name ? truncate(name, 48) : undefined;
+	const id = str((part.args as Record<string, unknown>).id);
+	return id ? truncate(id, 48) : undefined;
 };
 
-/** OpenCode/Kilo `task` tool takes `{ description, prompt, subagent_type }`. */
+/** Kilo's `subagent` tool takes `{ agent, description, prompt }`. */
 const getPartTaskDescription = (part: ActivityPart): string | undefined => {
-	if (part.type !== "tool-call" || !part.toolName || !isTaskTool(part.toolName)) {
+	if (part.type !== "tool-call" || !part.toolName || !isSubagentCategoryTool(part.toolName)) {
 		return undefined;
 	}
 	if (!part.args || typeof part.args !== "object") return undefined;
 	const record = part.args as Record<string, unknown>;
 	const description = str(record.description).replace(/\s+/g, " ").trim();
 	if (description) return truncate(description, 72);
-	const agent = str(record.subagent_type).trim();
+	const agent = str(record.agent).trim();
 	return agent ? truncate(agent, 48) : undefined;
 };
 
@@ -652,26 +643,16 @@ export const getSegmentStats = (
 
 /**
  * True when a solo tool row hides itself (SoloAwareExpandableRow's
- * hideSoloWithoutDetail): a quiet successful command or a task without output
- * renders nothing under the subgroup header, so the header must stay
- * label-only — a disclosure would reveal an empty body. Mirrors the row
- * components' null conditions.
+ * hideSoloWithoutDetail): a quiet successful command renders nothing under
+ * the subgroup header, so the header must stay label-only — a disclosure
+ * would reveal an empty body. Mirrors the shell row's null condition: a
+ * failed command's result carries Kilo's exit-code notice, so it never
+ * reads as quiet.
  */
 export const soloRowHidesItself = (kind: ActivityKind, part: ActivityPart | undefined): boolean => {
-	if (!part) return false;
-	if (kind === "terminal") {
-		if (isCancelledToolStatus(part.status)) return false;
-		const running = part.status?.type === "running";
-		const parsed = parseBashResult(part.result);
-		if (!running && (parsed.exitCode ?? 0) !== 0) return false;
-		return !(parsed.stdout || parsed.stderr);
-	}
-	if (kind === "subagent") {
-		const raw = resultText(part.result);
-		if (isTaskErrorOutput(raw)) return false;
-		return !(part.status?.type !== "running" && unwrapTaskOutput(raw).length > 0);
-	}
-	return false;
+	if (!part || kind !== "terminal") return false;
+	if (isCancelledToolStatus(part.status) || part.isError) return false;
+	return resultText(part.result).length === 0;
 };
 
 export type ActivityIconItem = {

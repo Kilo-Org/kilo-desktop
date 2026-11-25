@@ -1,4 +1,7 @@
+import { createOpenCodeThreadState, type OpenCodeThreadState } from "@kilo-desktop/react-opencode";
 import { describe, expect, it } from "vitest";
+
+import { assistantMessage, text, userMessage } from "../../test/kilo2/fixtures";
 
 import {
 	fallbackTotalsFromMessages,
@@ -7,8 +10,8 @@ import {
 	lastAssistantCost,
 	lastAssistantTokens,
 	modelUsageName,
-	parseSessionModelUsage,
 	resolveServerSessionId,
+	sessionModelUsageOf,
 	toComposerUsageView,
 	toCostLines,
 	type SessionModelUsage,
@@ -253,21 +256,80 @@ describe("session-model-usage mapper", () => {
 		});
 		expect(view.lines).toEqual([]);
 	});
+});
 
-	it("parses a session model-usage payload and rejects junk", () => {
-		expect(
-			parseSessionModelUsage({ totals: { cost: 1, tokens: { input: 2, output: 3 } } }),
-		).toEqual({
-			sessionIDs: [],
+describe("sessionModelUsageOf", () => {
+	const tokens = (input: number, output: number) => ({
+		input,
+		output,
+		reasoning: 1,
+		cache: { read: 2, write: 0 },
+	});
+	const step = (providerID: string, id: string, cost: number, input: number, output: number) =>
+		assistantMessage([text("x")], {
+			model: { providerID, id },
+			cost,
+			tokens: tokens(input, output),
+		});
+	const thread = (
+		sessionId: string,
+		messages: OpenCodeThreadState["messages"],
+		children: readonly OpenCodeThreadState[] = [],
+	): OpenCodeThreadState => ({
+		...createOpenCodeThreadState(sessionId),
+		messages,
+		childSessionsById: Object.fromEntries(children.map((child) => [child.sessionId, child])),
+	});
+
+	it("sums every step of the session and its subagents' sessions per model", () => {
+		const child = thread("ses_child", [step("kilo", "fast", 0.5, 100, 10)]);
+		const usage = sessionModelUsageOf(
+			thread(
+				"ses_root",
+				[
+					userMessage("hi"),
+					step("anthropic", "sonnet", 1, 1_000, 100),
+					step("anthropic", "sonnet", 2, 2_000, 200),
+					step("kilo", "fast", 0.25, 50, 5),
+				],
+				[child],
+			),
+		);
+
+		expect(usage.sessionIDs).toEqual(["ses_root", "ses_child"]);
+		expect(usage.models).toEqual([
+			{
+				providerID: "anthropic",
+				modelID: "sonnet",
+				steps: 2,
+				cost: 3,
+				tokens: { input: 3_000, output: 300, reasoning: 2, cache: { read: 4, write: 0 } },
+			},
+			{
+				providerID: "kilo",
+				modelID: "fast",
+				steps: 2,
+				cost: 0.75,
+				tokens: { input: 150, output: 15, reasoning: 2, cache: { read: 4, write: 0 } },
+			},
+		]);
+		expect(usage.totals).toEqual({
+			steps: 4,
+			cost: 3.75,
+			tokens: { input: 3_150, output: 315, reasoning: 4, cache: { read: 8, write: 0 } },
+		});
+	});
+
+	it("is empty for a session without steps", () => {
+		expect(sessionModelUsageOf(thread("ses_1", [userMessage("hi")]))).toEqual({
+			sessionIDs: ["ses_1"],
+			models: [],
 			totals: {
 				steps: 0,
-				cost: 1,
-				tokens: { input: 2, output: 3, reasoning: 0, cache: { read: 0, write: 0 } },
+				cost: 0,
+				tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
 			},
-			models: [],
 		});
-		expect(parseSessionModelUsage(null)).toBeUndefined();
-		expect(parseSessionModelUsage({ models: [] })).toBeUndefined();
 	});
 });
 

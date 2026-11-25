@@ -15,7 +15,7 @@ import { ChatLightboxProvider } from "./lightbox/chat-lightbox";
 
 /**
  * The transcript's renderers: the `kilo.chat/tool-renderer` toolkit, the
- * contributed MCP App widgets, and OpenCode's data parts (snapshots, retries…).
+ * contributed MCP App widgets, and the projection's data parts (hidden step markers).
  */
 export function useTranscriptAui() {
 	const toolkit = useContributedToolkit();

@@ -8,78 +8,90 @@ import {
 	savedImages,
 	toolImageAttachments,
 } from "./message-images";
+import { assistantMessage, idleMessage, tool, userMessage } from "../../test/kilo2/fixtures";
 
-const tool = (callID: string, tool: string, state: Record<string, unknown>) => ({
-	type: "tool",
-	callID,
-	tool,
-	state: { status: "completed", input: {}, ...state },
-});
+const withFiles = (
+	name: string,
+	content: Array<
+		{ type: "file"; uri: string; mime: string; name?: string } | { type: "text"; text: string }
+	>,
+) =>
+	tool(name, {}, "", {
+		state: { status: "completed", input: {}, content: content as never, metadata: {} },
+	});
 
 describe("toolImageAttachments", () => {
-	it("returns the call's image attachments only", () => {
-		const parts = [
-			tool("call_a", "screenshot", {
-				attachments: [
-					{ type: "file", mime: "image/png", url: "data:image/png;base64,AAAA", filename: "a.png" },
-					{ type: "file", mime: "text/plain", url: "data:text/plain,hi" },
-					{ type: "file", mime: "image/jpeg", url: "" },
-				],
-			}),
-			tool("call_b", "read", {
-				attachments: [{ mime: "image/gif", url: "data:image/gif;base64,R0" }],
-			}),
-		];
+	it("returns the call's image file content only", () => {
+		const screenshot = withFiles("browser_take_screenshot", [
+			{ type: "text", text: "Took a screenshot" },
+			{ type: "file", mime: "image/png", uri: "data:image/png;base64,AAAA", name: "a.png" },
+			{ type: "file", mime: "text/plain", uri: "data:text/plain,hi" },
+			{ type: "file", mime: "image/jpeg", uri: "" },
+		]);
+		const read = withFiles("read", [
+			{ type: "file", mime: "image/gif", uri: "data:image/gif;base64,R0" },
+		]);
+		const messages = [userMessage("look"), assistantMessage([screenshot, read])];
 
-		expect(toolImageAttachments(parts, "call_a")).toEqual([
+		expect(toolImageAttachments(messages, screenshot.id)).toEqual([
 			{ url: "data:image/png;base64,AAAA", filename: "a.png" },
 		]);
-		expect(toolImageAttachments(parts, "call_b")).toEqual([{ url: "data:image/gif;base64,R0" }]);
-		expect(toolImageAttachments(parts, "call_c")).toEqual([]);
-		expect(toolImageAttachments(undefined, "call_a")).toEqual([]);
-		expect(toolImageAttachments([tool("call_d", "x", {})], "call_d")).toEqual([]);
+		expect(toolImageAttachments(messages, read.id)).toEqual([{ url: "data:image/gif;base64,R0" }]);
+		expect(toolImageAttachments(messages, "call_missing")).toEqual([]);
+		expect(toolImageAttachments([], screenshot.id)).toEqual([]);
+		const failed = tool("read", {}, { error: { type: "unknown", message: "nope" } });
+		expect(toolImageAttachments([assistantMessage([failed])], failed.id)).toEqual([]);
 	});
 });
 
+const patchCall = (files: readonly { file: string; status: string }[]) =>
+	tool("patch", { patchText: "" }, "Success.", {
+		state: {
+			status: "completed",
+			input: { patchText: "" },
+			content: [{ type: "text", text: "Success." }],
+			metadata: {
+				files: files.map((file) => ({ ...file, patch: "", additions: 1, deletions: 0 })),
+			} as never,
+		},
+	});
+
 describe("savedImages", () => {
-	it("lists images from snapshots and file tools once, at their latest revision", () => {
-		const parts = [
-			{ type: "patch", hash: "h1", files: ["/w/plot.png", "/w/src/app.ts"] },
-			tool("call_1", "write", { input: { filePath: "/w/logo.svg" } }),
-			tool("call_2", "write", { status: "running", input: { filePath: "/w/draft.png" } }),
-			tool("call_3", "bash", { input: { command: "python plot.py -o plot.png" } }),
-			{ type: "patch", hash: "h2", files: ["/w/plot.png"] },
+	it("lists images file tools wrote once, at their latest revision", () => {
+		const logo = tool("write", { path: "/w/logo.svg" });
+		const draft = tool("write", { path: "/w/draft.png" }, "", {
+			state: { status: "running", input: { path: "/w/draft.png" }, metadata: {} },
+		});
+		const firstPlot = patchCall([
+			{ file: "/w/plot.png", status: "added" },
+			{ file: "/w/src/app.ts", status: "modified" },
+			{ file: "/w/old.png", status: "deleted" },
+		]);
+		const secondPlot = tool("edit", { path: "/w/plot.png" });
+		const messages = [
+			userMessage("draw"),
+			assistantMessage([firstPlot, logo]),
+			assistantMessage([tool("shell", { command: "python plot.py" }), draft, secondPlot]),
+			idleMessage(),
 		];
 
-		expect(savedImages(parts)).toEqual({
+		expect(savedImages(messages)).toEqual({
 			images: [
-				{ path: "/w/plot.png", revision: "h2" },
-				{ path: "/w/logo.svg", revision: "call_1" },
+				{ path: "/w/plot.png", revision: secondPlot.id },
+				{ path: "/w/logo.svg", revision: logo.id },
 			],
 			more: 0,
 		});
-		expect(savedImages(undefined)).toEqual({ images: [], more: 0 });
-	});
-
-	it("skips snapshot images no tool call names, like files a checkout changed", () => {
-		const parts = [
-			tool("call_1", "bash", { input: { command: "git checkout feature" } }),
-			{ type: "patch", hash: "h1", files: ["/w/e2e/fixtures/sample-receipt.png"] },
-		];
-
-		expect(savedImages(parts)).toEqual({ images: [], more: 0 });
+		expect(savedImages([])).toEqual({ images: [], more: 0 });
 	});
 
 	it("caps how many it lists", () => {
-		const files = Array.from(
-			{ length: SAVED_IMAGES_LIMIT + 3 },
-			(_, index) => `/w/${String(index)}.png`,
-		);
+		const files = Array.from({ length: SAVED_IMAGES_LIMIT + 3 }, (_, index) => ({
+			file: `/w/${String(index)}.png`,
+			status: "added",
+		}));
 
-		const { images, more } = savedImages([
-			tool("call_1", "bash", { input: { command: `touch ${files.join(" ")}` } }),
-			{ type: "patch", hash: "h", files },
-		]);
+		const { images, more } = savedImages([assistantMessage([patchCall(files)])]);
 
 		expect(images).toHaveLength(SAVED_IMAGES_LIMIT);
 		expect(more).toBe(3);

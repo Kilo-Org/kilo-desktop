@@ -6,49 +6,19 @@ type OpenCodeDataPartProps = {
 	data: unknown;
 };
 
-const getSummary = (name: string, data: unknown) => {
-	if (
-		name === "opencode-unsupported-part" &&
-		typeof data === "object" &&
-		data !== null &&
-		"type" in data &&
-		typeof data.type === "string"
-	) {
-		return `Unsupported part: ${data.type}`;
-	}
-
-	if (name === "opencode-snapshot") return "Snapshot";
-	if (name === "opencode-retry") return "Retry";
-	if (name === "opencode-compaction") return "Compaction";
-	if (name === "opencode-agent") return "Agent event";
-
-	return name.replace(/^opencode-/, "").replace(/-/g, " ");
-};
-
-/** Transient snapshot-init progress projected by the react-opencode fork projection. */
-export const OPENCODE_SNAPSHOT_PROGRESS_PART = "opencode-snapshot-progress";
-
-const HIDDEN_DATA_PARTS = new Set([
-	"opencode-step-start",
-	"opencode-step-finish",
-	"opencode-patch",
-	"opencode-subtask",
-	OPENCODE_SNAPSHOT_PROGRESS_PART,
-]);
+/** The projection's step markers: they delimit model steps and render nothing. */
+const HIDDEN_DATA_PARTS = new Set(["opencode-step-start", "opencode-step-finish"]);
 
 export const isHiddenOpenCodeDataPart = (name: string): boolean => HIDDEN_DATA_PARTS.has(name);
 
-export const OpenCodeDataPart: FC<OpenCodeDataPartProps> = ({ name, data }) => {
-	if (isHiddenOpenCodeDataPart(name)) {
-		return null;
-	}
-
-	const summary = getSummary(name, data);
+/** Fallback for data parts no renderer claims: step markers hide, anything else shows its name. */
+export const OpenCodeDataPart: FC<OpenCodeDataPartProps> = ({ name }) => {
+	if (isHiddenOpenCodeDataPart(name)) return null;
 
 	return (
 		<div className="bg-muted/30 text-muted-foreground my-3 flex w-min items-center gap-2 rounded-full border px-2 py-1 text-xs text-nowrap">
 			<WrenchIcon className="size-3" />
-			{summary}
+			{name.replace(/^opencode-/, "").replace(/-/g, " ")}
 		</div>
 	);
 };

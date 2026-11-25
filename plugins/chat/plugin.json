@@ -323,27 +323,27 @@
 				},
 				{
 					"id": "bash",
-					"tools": ["bash"]
+					"tools": ["shell"]
 				},
 				{
 					"id": "search",
-					"tools": ["grep", "codebase_search", "semantic_search"]
+					"tools": ["grep", "semantic_search"]
 				},
 				{
 					"id": "glob",
-					"tools": ["glob", "list"]
+					"tools": ["glob"]
 				},
 				{
 					"id": "web-search",
-					"tools": ["websearch", "webSearch"]
+					"tools": ["websearch"]
 				},
 				{
 					"id": "web-fetch",
-					"tools": ["webfetch", "webFetch"]
+					"tools": ["webfetch"]
 				},
 				{
 					"id": "apply-patch",
-					"tools": ["apply_patch"]
+					"tools": ["patch"]
 				},
 				{
 					"id": "skill",
@@ -351,15 +351,15 @@
 				},
 				{
 					"id": "task",
-					"tools": ["task"]
+					"tools": ["subagent"]
 				},
 				{
 					"id": "question",
-					"tools": ["question", "ask_question", "request_user_input", "requestUserInput"]
+					"tools": ["question"]
 				},
 				{
 					"id": "todo",
-					"tools": ["todowrite", "todoread"]
+					"tools": ["todowrite"]
 				},
 				{
 					"id": "html-render",

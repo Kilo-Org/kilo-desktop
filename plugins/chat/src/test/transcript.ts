@@ -42,28 +42,6 @@ export function expectPresent(selector: string): HTMLElement {
 	return element!;
 }
 
-/** A finished Kilo tool part. */
-export function toolPart(
-	tool: string,
-	state: Record<string, unknown>,
-	callID = `call_${tool}`,
-): Record<string, unknown> {
-	return {
-		type: "tool",
-		tool,
-		callID,
-		state: {
-			status: "completed",
-			input: {},
-			output: "",
-			title: "",
-			metadata: {},
-			time: { start: 1, end: 2 },
-			...state,
-		},
-	};
-}
-
 /**
  * Opens every closed disclosure in the transcript (the turn's fold, activity
  * groups, rows with output) until none is left closed, so every tool row and

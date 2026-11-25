@@ -1,10 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import {
+	OPEN_CODE_HISTORY_PAGE_SIZE,
+	STREAM_RECONNECTED_EVENT_TYPE,
+	type OpenCodeServerEvent,
+} from "@kilo-desktop/react-opencode";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
-import { ChatServices, resyncOnceConnected } from "./chat-services";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
+import { session, userMessage } from "../../test/kilo2/fixtures";
+import { ChatServices } from "./chat-services";
 import { connectionKey, KiloClients } from "./kilo-client";
+
+afterEach(() => vi.unstubAllGlobals());
 
 type ServerStatus = "ready" | "starting" | "stopped" | "error";
 
@@ -87,46 +96,91 @@ describe("ChatServices.connection", () => {
 	});
 });
 
-describe("resyncOnceConnected", () => {
-	async function* events(...items: unknown[]) {
-		yield* items;
-	}
-	const collect = async (stream: AsyncIterable<unknown>) => {
-		const seen: unknown[] = [];
-		for await (const event of stream) seen.push(event);
-		return seen;
-	};
-	const resync = { payload: { type: "stream.reconnected", properties: {} } };
+function servicesFor(server: FakeKilo2Server): ChatServices {
+	const handle = {
+		getState: () => ({ status: "ready" }),
+		subscribe: () => () => {},
+		methods: { connect: async () => server.connection },
+	} as unknown as DomainObjectHandle<typeof KiloServer>;
+	return new ChatServices(() => handle);
+}
 
-	it("asks threads to resync once the server confirms the subscription", async () => {
-		const connected = { payload: { type: "server.connected", properties: {} } };
-		const status = { directory: "/app", payload: { type: "session.idle", properties: {} } };
+function listen(services: ChatServices) {
+	const received: OpenCodeServerEvent[] = [];
+	const stop = services.events().subscribe((event) => received.push(event));
+	return { received, stop };
+}
 
-		await expect(collect(resyncOnceConnected(events(connected, status)))).resolves.toEqual([
-			connected,
-			resync,
-			status,
-		]);
+describe("ChatServices.events", () => {
+	it("delivers the server's v2 frames, and asks threads to resync once connected", async () => {
+		const server = new FakeKilo2Server();
+		server.addChat(session("ses_1"));
+		server.install();
+		const services = servicesFor(server);
+		const { received } = listen(services);
+
+		await vi.waitFor(() =>
+			expect(received.map((event) => event.type)).toEqual([
+				"server.connected",
+				STREAM_RECONNECTED_EVENT_TYPE,
+			]),
+		);
+		server.emit("session.renamed", { title: "Renamed" }, "ses_1");
+
+		await vi.waitFor(() => expect(received.at(-1)?.type).toBe("session.renamed"));
+		expect(received.at(-1)).toMatchObject({ sessionId: "ses_1", data: { title: "Renamed" } });
+		expect(server.requestsTo("GET", "/api/event")).toHaveLength(1);
+		services.dispose();
 	});
 
-	it("passes other events through untouched", async () => {
-		const heartbeat = { payload: { type: "server.heartbeat", properties: {} } };
+	it("settles a permission for every thread as if its reply had arrived", () => {
+		const services = new ChatServices(() => null);
+		const received: OpenCodeServerEvent[] = [];
+		services.events().subscribe((event) => received.push(event));
 
-		await expect(collect(resyncOnceConnected(events(heartbeat)))).resolves.toEqual([heartbeat]);
+		services.settlePermission("per_1", "ses_1");
+
+		expect(received.at(-1)).toEqual({
+			type: "permission.replied",
+			data: { sessionID: "ses_1", requestID: "per_1", reply: "once" },
+			sessionId: "ses_1",
+		});
+		services.dispose();
+	});
+});
+
+describe("ChatServices.prefetchHistory", () => {
+	it("serves a chat's prefetched history to the transcript's first read, once", async () => {
+		const server = new FakeKilo2Server();
+		server.addChat(session("ses_1"), [userMessage("hi")]);
+		server.install();
+		const services = servicesFor(server);
+		const page = { sessionID: "ses_1", limit: OPEN_CODE_HISTORY_PAGE_SIZE };
+		// A (re)connect drops prefetched histories, so the stream connects first.
+		const { received } = listen(services);
+		await vi.waitFor(() =>
+			expect(received.map((event) => event.type)).toContain(STREAM_RECONNECTED_EVENT_TYPE),
+		);
+
+		services.prefetchHistory("ses_1");
+		await vi.waitFor(() =>
+			expect(server.requestsTo("GET", "/api/session/ses_1/message")).toHaveLength(1),
+		);
+		const read = await services.transcriptClient.message.list(page);
+		await services.transcriptClient.message.list(page);
+
+		expect(read.data.map((message) => message.type)).toEqual(["user"]);
+		expect(server.requestsTo("GET", "/api/session/ses_1/message")).toHaveLength(2);
+		services.dispose();
 	});
 });
 
 describe("KiloClients", () => {
-	it("keeps clients per connection and directory", () => {
+	it("keeps one client per connection", () => {
 		const clients = new KiloClients();
-		const global = clients.global(connection("a"));
-		expect(clients.global(connection("a"))).toBe(global);
-		const app = clients.directory(connection("a"), "/app");
-		expect(clients.directory(connection("a"), "/app")).toBe(app);
-		expect(clients.directory(connection("a"), "/lib")).not.toBe(app);
-
-		expect(clients.global(connection("b"))).not.toBe(global);
-		expect(clients.directory(connection("b"), "/app")).not.toBe(app);
+		const client = clients.for(connection("a"));
+		expect(clients.for(connection("a"))).toBe(client);
+		expect(clients.for(connection("b"))).not.toBe(client);
 		expect(connectionKey(connection("a"))).not.toBe(connectionKey(connection("b")));
 	});
 });

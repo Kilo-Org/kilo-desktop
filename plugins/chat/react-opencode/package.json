@@ -17,7 +17,7 @@
 	"dependencies": {
 		"@assistant-ui/core": "^0.3.35",
 		"@assistant-ui/store": "0.3.23",
-		"@kilocode/sdk": "7.8.27"
+		"@kilocode/client": "catalog:"
 	},
 	"peerDependencies": {
 		"@assistant-ui/react": "0.15.35",

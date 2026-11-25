@@ -29,342 +29,9 @@
 			"directory": "/project"
 		}
 	},
-	"events": [
-		{
-			"type": "session.created",
-			"data": {
-				"sessionID": "ses_1",
-				"slug": "slug",
-				"version": "version",
-				"projectID": "project",
-				"location": {
-					"directory": "/project"
-				},
-				"subpath": "",
-				"model": {
-					"id": "scripted",
-					"providerID": "stand-in"
-				}
-			}
-		},
-		{
-			"type": "session.inbox.enqueued",
-			"data": {
-				"inboxID": "msg_1",
-				"sessionID": "ses_1",
-				"item": {
-					"type": "user",
-					"payload": {
-						"text": "What do my notes say?"
-					},
-					"delivery": "steer"
-				}
-			}
-		},
-		{
-			"type": "session.execution.started",
-			"data": {
-				"sessionID": "ses_1"
-			}
-		},
-		{
-			"type": "session.inbox.delivered",
-			"data": {
-				"sessionID": "ses_1",
-				"inboxID": "msg_1"
-			}
-		},
-		{
-			"type": "session.usage.updated",
-			"data": {
-				"sessionID": "ses_1",
-				"cost": 0,
-				"tokens": {
-					"input": 100,
-					"output": 20,
-					"reasoning": 0,
-					"cache": {
-						"read": 0,
-						"write": 0
-					}
-				}
-			}
-		},
-		{
-			"type": "session.renamed",
-			"data": {
-				"sessionID": "ses_1",
-				"title": "Notes summary"
-			}
-		},
-		{
-			"type": "session.step.started",
-			"data": {
-				"sessionID": "ses_1",
-				"agent": "code",
-				"model": {
-					"id": "scripted",
-					"providerID": "stand-in",
-					"variant": "default"
-				},
-				"assistantMessageID": "msg_2",
-				"started": 0
-			}
-		},
-		{
-			"type": "session.step.first-token",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2"
-			}
-		},
-		{
-			"type": "session.reasoning.started",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"ordinal": 0,
-				"native": {
-					"reasoningField": "reasoning_content"
-				}
-			}
-		},
-		{
-			"type": "session.reasoning.delta",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"ordinal": 0,
-				"delta": "I should read the notes."
-			}
-		},
-		{
-			"type": "session.text.started",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"ordinal": 0
-			}
-		},
-		{
-			"type": "session.text.delta",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"ordinal": 0,
-				"delta": "Let me read the file."
-			}
-		},
-		{
-			"type": "session.tool.input.started",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"id": "call_1",
-				"name": "read"
-			}
-		},
-		{
-			"type": "session.reasoning.ended",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"ordinal": 0,
-				"text": "I should read the notes.",
-				"native": {
-					"reasoningField": "reasoning_content"
-				}
-			}
-		},
-		{
-			"type": "session.tool.input.ended",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"id": "call_1",
-				"text": "{\"path\":\"notes.txt\"}"
-			}
-		},
-		{
-			"type": "session.tool.called",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"id": "call_1",
-				"input": {
-					"path": "notes.txt"
-				},
-				"executed": false
-			}
-		},
-		{
-			"type": "session.text.ended",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"ordinal": 0,
-				"text": "Let me read the file."
-			}
-		},
-		{
-			"type": "session.step.streamed",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2"
-			}
-		},
-		{
-			"type": "session.tool.success",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"id": "call_1",
-				"content": [
-					{
-						"type": "text",
-						"text": "Read file notes.txt, lines 1-1\n1: hello"
-					}
-				],
-				"metadata": {
-					"truncated": false
-				},
-				"executed": false
-			}
-		},
-		{
-			"type": "session.step.ended",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_2",
-				"finish": "tool-calls",
-				"rawFinish": "tool_calls",
-				"tokens": {
-					"input": 100,
-					"output": 20,
-					"reasoning": 0,
-					"cache": {
-						"read": 0,
-						"write": 0
-					}
-				},
-				"cost": 0
-			}
-		},
-		{
-			"type": "session.usage.updated",
-			"data": {
-				"sessionID": "ses_1",
-				"cost": 0,
-				"tokens": {
-					"input": 200,
-					"output": 40,
-					"reasoning": 0,
-					"cache": {
-						"read": 0,
-						"write": 0
-					}
-				}
-			}
-		},
-		{
-			"type": "session.step.started",
-			"data": {
-				"sessionID": "ses_1",
-				"agent": "code",
-				"model": {
-					"id": "scripted",
-					"providerID": "stand-in",
-					"variant": "default"
-				},
-				"assistantMessageID": "msg_3",
-				"started": 0
-			}
-		},
-		{
-			"type": "session.step.first-token",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_3"
-			}
-		},
-		{
-			"type": "session.text.started",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_3",
-				"ordinal": 0
-			}
-		},
-		{
-			"type": "session.text.delta",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_3",
-				"ordinal": 0,
-				"delta": "The notes say hello."
-			}
-		},
-		{
-			"type": "session.text.ended",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_3",
-				"ordinal": 0,
-				"text": "The notes say hello."
-			}
-		},
-		{
-			"type": "session.step.streamed",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_3"
-			}
-		},
-		{
-			"type": "session.step.ended",
-			"data": {
-				"sessionID": "ses_1",
-				"assistantMessageID": "msg_3",
-				"finish": "stop",
-				"rawFinish": "stop",
-				"tokens": {
-					"input": 100,
-					"output": 20,
-					"reasoning": 0,
-					"cache": {
-						"read": 0,
-						"write": 0
-					}
-				},
-				"cost": 0
-			}
-		},
-		{
-			"type": "session.usage.updated",
-			"data": {
-				"sessionID": "ses_1",
-				"cost": 0,
-				"tokens": {
-					"input": 300,
-					"output": 60,
-					"reasoning": 0,
-					"cache": {
-						"read": 0,
-						"write": 0
-					}
-				}
-			}
-		},
-		{
-			"type": "session.execution.succeeded",
-			"data": {
-				"sessionID": "ses_1"
-			}
-		}
-	],
 	"messages": [
 		{
-			"id": "msg_1",
+			"id": "msg_2",
 			"time": {
 				"created": 0
 			},
@@ -372,7 +39,7 @@
 			"type": "user"
 		},
 		{
-			"id": "msg_2",
+			"id": "msg_3",
 			"time": {
 				"created": 0,
 				"firstToken": 0,
@@ -443,7 +110,7 @@
 			}
 		},
 		{
-			"id": "msg_3",
+			"id": "msg_4",
 			"time": {
 				"created": 0,
 				"firstToken": 0,
@@ -477,12 +144,405 @@
 			}
 		},
 		{
-			"id": "msg_4",
+			"id": "msg_5",
 			"time": {
 				"created": 0
 			},
 			"type": "idle",
 			"outcome": "succeeded"
+		}
+	],
+	"events": [
+		{
+			"id": "evt_6",
+			"created": 0,
+			"type": "session.created",
+			"data": {
+				"sessionID": "ses_1",
+				"slug": "slug",
+				"version": "version",
+				"projectID": "project",
+				"location": {
+					"directory": "/project"
+				},
+				"subpath": "",
+				"model": {
+					"id": "scripted",
+					"providerID": "stand-in"
+				}
+			}
+		},
+		{
+			"id": "evt_7",
+			"created": 0,
+			"type": "session.inbox.enqueued",
+			"data": {
+				"inboxID": "msg_2",
+				"sessionID": "ses_1",
+				"item": {
+					"type": "user",
+					"payload": {
+						"text": "What do my notes say?"
+					},
+					"delivery": "steer"
+				}
+			}
+		},
+		{
+			"id": "evt_8",
+			"created": 0,
+			"type": "session.execution.started",
+			"data": {
+				"sessionID": "ses_1"
+			}
+		},
+		{
+			"id": "evt_9",
+			"created": 0,
+			"type": "session.inbox.delivered",
+			"data": {
+				"sessionID": "ses_1",
+				"inboxID": "msg_2"
+			}
+		},
+		{
+			"id": "evt_10",
+			"created": 0,
+			"type": "session.usage.updated",
+			"data": {
+				"sessionID": "ses_1",
+				"cost": 0,
+				"tokens": {
+					"input": 100,
+					"output": 20,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				}
+			}
+		},
+		{
+			"id": "evt_11",
+			"created": 0,
+			"type": "session.renamed",
+			"data": {
+				"sessionID": "ses_1",
+				"title": "Notes summary"
+			}
+		},
+		{
+			"id": "evt_12",
+			"created": 0,
+			"type": "session.step.started",
+			"data": {
+				"sessionID": "ses_1",
+				"agent": "code",
+				"model": {
+					"id": "scripted",
+					"providerID": "stand-in",
+					"variant": "default"
+				},
+				"assistantMessageID": "msg_3",
+				"started": 0
+			}
+		},
+		{
+			"id": "evt_13",
+			"created": 0,
+			"type": "session.step.first-token",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3"
+			}
+		},
+		{
+			"id": "evt_14",
+			"created": 0,
+			"type": "session.reasoning.started",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"ordinal": 0,
+				"native": {
+					"reasoningField": "reasoning_content"
+				}
+			}
+		},
+		{
+			"id": "evt_15",
+			"created": 0,
+			"type": "session.reasoning.delta",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"ordinal": 0,
+				"delta": "I should read the notes."
+			}
+		},
+		{
+			"id": "evt_16",
+			"created": 0,
+			"type": "session.text.started",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"ordinal": 0
+			}
+		},
+		{
+			"id": "evt_17",
+			"created": 0,
+			"type": "session.text.delta",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"ordinal": 0,
+				"delta": "Let me read the file."
+			}
+		},
+		{
+			"id": "evt_18",
+			"created": 0,
+			"type": "session.tool.input.started",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"id": "call_1",
+				"name": "read"
+			}
+		},
+		{
+			"id": "evt_19",
+			"created": 0,
+			"type": "session.reasoning.ended",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"ordinal": 0,
+				"text": "I should read the notes.",
+				"native": {
+					"reasoningField": "reasoning_content"
+				}
+			}
+		},
+		{
+			"id": "evt_20",
+			"created": 0,
+			"type": "session.tool.input.ended",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"id": "call_1",
+				"text": "{\"path\":\"notes.txt\"}"
+			}
+		},
+		{
+			"id": "evt_21",
+			"created": 0,
+			"type": "session.tool.called",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"id": "call_1",
+				"input": {
+					"path": "notes.txt"
+				},
+				"executed": false
+			}
+		},
+		{
+			"id": "evt_22",
+			"created": 0,
+			"type": "session.text.ended",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"ordinal": 0,
+				"text": "Let me read the file."
+			}
+		},
+		{
+			"id": "evt_23",
+			"created": 0,
+			"type": "session.step.streamed",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3"
+			}
+		},
+		{
+			"id": "evt_24",
+			"created": 0,
+			"type": "session.tool.success",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"id": "call_1",
+				"content": [
+					{
+						"type": "text",
+						"text": "Read file notes.txt, lines 1-1\n1: hello"
+					}
+				],
+				"metadata": {
+					"truncated": false
+				},
+				"executed": false
+			}
+		},
+		{
+			"id": "evt_25",
+			"created": 0,
+			"type": "session.step.ended",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_3",
+				"finish": "tool-calls",
+				"rawFinish": "tool_calls",
+				"tokens": {
+					"input": 100,
+					"output": 20,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				},
+				"cost": 0
+			}
+		},
+		{
+			"id": "evt_26",
+			"created": 0,
+			"type": "session.usage.updated",
+			"data": {
+				"sessionID": "ses_1",
+				"cost": 0,
+				"tokens": {
+					"input": 200,
+					"output": 40,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				}
+			}
+		},
+		{
+			"id": "evt_27",
+			"created": 0,
+			"type": "session.step.started",
+			"data": {
+				"sessionID": "ses_1",
+				"agent": "code",
+				"model": {
+					"id": "scripted",
+					"providerID": "stand-in",
+					"variant": "default"
+				},
+				"assistantMessageID": "msg_4",
+				"started": 0
+			}
+		},
+		{
+			"id": "evt_28",
+			"created": 0,
+			"type": "session.step.first-token",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_4"
+			}
+		},
+		{
+			"id": "evt_29",
+			"created": 0,
+			"type": "session.text.started",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_4",
+				"ordinal": 0
+			}
+		},
+		{
+			"id": "evt_30",
+			"created": 0,
+			"type": "session.text.delta",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_4",
+				"ordinal": 0,
+				"delta": "The notes say hello."
+			}
+		},
+		{
+			"id": "evt_31",
+			"created": 0,
+			"type": "session.text.ended",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_4",
+				"ordinal": 0,
+				"text": "The notes say hello."
+			}
+		},
+		{
+			"id": "evt_32",
+			"created": 0,
+			"type": "session.step.streamed",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_4"
+			}
+		},
+		{
+			"id": "evt_33",
+			"created": 0,
+			"type": "session.step.ended",
+			"data": {
+				"sessionID": "ses_1",
+				"assistantMessageID": "msg_4",
+				"finish": "stop",
+				"rawFinish": "stop",
+				"tokens": {
+					"input": 100,
+					"output": 20,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				},
+				"cost": 0
+			}
+		},
+		{
+			"id": "evt_34",
+			"created": 0,
+			"type": "session.usage.updated",
+			"data": {
+				"sessionID": "ses_1",
+				"cost": 0,
+				"tokens": {
+					"input": 300,
+					"output": 60,
+					"reasoning": 0,
+					"cache": {
+						"read": 0,
+						"write": 0
+					}
+				}
+			}
+		},
+		{
+			"id": "evt_5",
+			"created": 0,
+			"type": "session.execution.succeeded",
+			"data": {
+				"sessionID": "ses_1"
+			}
 		}
 	]
 }

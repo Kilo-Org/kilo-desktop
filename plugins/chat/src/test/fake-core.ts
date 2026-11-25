@@ -1,4 +1,7 @@
-// A stand-in for kilo.core in main, for kilo.chat's tests: its server (a
+// A stand-in for kilo.core in main, for kilo.chat's tests: its server and
+// chats over a FakeKilo2Server (prompts, stops and answers reach it with the
+// calls kilo.core makes on v2; statuses and pending requests follow its v2
+// events), models and account. Run `activate` as renderShell's `core`.
 // FakeKiloServer's connection), chats (prompts, stops and answers reach the
 // server as kilo.core sends them; statuses and pending requests follow the
 // server's events), models and account. Run `activate` as renderShell's
@@ -8,10 +11,9 @@ import { vi } from "vitest";
 
 import { KernelError, type DomainObjectProvider, type PluginSdk } from "@kilo-desktop/kernel";
 import {
-	Chats,
 	KiloAccount,
-	KiloServer,
 	Models,
+	type Chats,
 	Tool,
 	modelKey,
 	toolWireName,
@@ -20,12 +22,10 @@ import {
 	type CreateChatInput,
 	type ModelInfo,
 	type ModelsState,
-	type PermissionRequest,
 	type PromptChatInput,
 } from "@kilo-desktop/plugin-core/contracts";
 
-import { FakeKiloServer } from "./fake-kilo-server";
-import type { FakeKilo2Server } from "./kilo2/fake-kilo2-server";
+import { FakeKilo2Server } from "./kilo2/fake-kilo2-server";
 import { provideKilo2Chats } from "./kilo2/kilo2-chats";
 
 export const SIGNED_IN: AccountState = {
@@ -106,13 +106,11 @@ export function chatSummary(id: string, patch: Partial<ChatSummary> = {}): ChatS
 }
 
 export interface FakeCoreOptions {
-	/** Backs the server's connection and the chats' actions; a new one by default. */
-	readonly server?: FakeKiloServer;
 	/**
-	 * Backs kilo.core's server and chats with this Kilo v2 fake instead of
-	 * `server` (`kilo2/kilo2-chats.ts`); the chats are seeded into it.
+	 * The Kilo v2 server behind kilo.core's server and chats
+	 * (`kilo2/kilo2-chats.ts`); the chats are seeded into it. A new one by default.
 	 */
-	readonly kilo2?: FakeKilo2Server;
+	readonly server?: FakeKilo2Server;
 	readonly chats?: readonly ChatSummary[];
 	/** kilo.core's account; signed in by default, null leaves it out. */
 	readonly account?: AccountState | null;
@@ -136,7 +134,7 @@ const unavailable = () => {
 
 /** kilo.core in main for kilo.chat's tests; see the file comment. */
 export function fakeCore(options: FakeCoreOptions = {}) {
-	const server = options.server ?? new FakeKiloServer();
+	const server = options.server ?? new FakeKilo2Server();
 	const calls = {
 		create: vi.fn<(input: CreateChatInput) => void>(),
 		fork: vi.fn<(input: { id: string; messageId: string }) => void>(),
@@ -163,231 +161,9 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 	let account: DomainObjectProvider<typeof KiloAccount> | undefined;
 	let sdkRef: PluginSdk | undefined;
 
-	const directoryOf = (chatId: string) => chats?.state.chats[chatId]?.directory ?? "/projects/app";
-
 	/** The `kilo.core/tool` contribution key Kilo's permission name stands for. */
 	const toolKeyOf = (permission: string) =>
 		sdkRef?.extensions.list(Tool).find((tool) => toolWireName(tool.key) === permission)?.key;
-
-	function permissionRequests(chatId: string): PermissionRequest[] {
-		return server.permissions
-			.filter((request) => request.sessionID === chatId)
-			.map((request) => {
-				const permission = String(request.permission);
-				const toolKey = toolKeyOf(permission);
-				return {
-					id: String(request.id),
-					chatId,
-					action: permission,
-					...(toolKey ? { toolKey } : {}),
-					resources: (request.patterns as string[] | undefined) ?? [],
-					metadata: (request.metadata as Record<string, unknown> | undefined) ?? {},
-				};
-			});
-	}
-
-	function write(next: ChatSummary): void {
-		const provider = chats!;
-		const before = provider.state.chats[next.id];
-		provider.setState({ ...provider.state, chats: { ...provider.state.chats, [next.id]: next } });
-		if (before) provider.emit("updated", { before, after: next });
-		else provider.emit("created", { chat: next });
-	}
-
-	/** Statuses and pending requests follow the server, as kilo.core's event stream does. */
-	function followServer(): void {
-		const provider = chats!;
-		for (const chat of Object.values(provider.state.chats)) {
-			const status: ChatSummary["activity"]["status"] = server.isBusy(chat.id) ? "busy" : "idle";
-			const pendingPermissionIds = server.permissions
-				.filter((request) => request.sessionID === chat.id)
-				.map((request) => String(request.id));
-			const pendingQuestionIds = server.questions
-				.filter((request) => request.sessionID === chat.id)
-				.map((request) => String(request.id));
-			const { activity } = chat;
-			const same = (a: readonly string[], b: readonly string[]) =>
-				a.length === b.length && a.every((id, index) => id === b[index]);
-			if (
-				activity.status === status &&
-				same(activity.pendingPermissionIds, pendingPermissionIds) &&
-				same(activity.pendingQuestionIds, pendingQuestionIds)
-			)
-				continue;
-			write({
-				...chat,
-				activity: { ...activity, status, pendingPermissionIds, pendingQuestionIds },
-			});
-			if (activity.status !== status) {
-				if (status === "busy") provider.emit("turn-started", { chatId: chat.id });
-				else provider.emit("turn-ended", { chatId: chat.id });
-			}
-			for (const id of pendingPermissionIds.filter(
-				(id) => !activity.pendingPermissionIds.includes(id),
-			))
-				provider.emit("permission-requested", { chatId: chat.id, permissionId: id });
-			for (const id of activity.pendingPermissionIds.filter(
-				(id) => !pendingPermissionIds.includes(id),
-			))
-				provider.emit("permission-resolved", { chatId: chat.id, permissionId: id });
-			for (const id of pendingQuestionIds.filter((id) => !activity.pendingQuestionIds.includes(id)))
-				provider.emit("question-requested", { chatId: chat.id, questionId: id });
-			for (const id of activity.pendingQuestionIds.filter((id) => !pendingQuestionIds.includes(id)))
-				provider.emit("question-resolved", { chatId: chat.id, questionId: id });
-		}
-	}
-
-	function provideChats(sdk: PluginSdk): void {
-		sdk.domainObjects.provide(KiloServer, {
-			initialState: { status: "ready", version: server.connection.version },
-			methods: {
-				connect: () => server.connection,
-				restart: () => undefined,
-				disposeInstance: () => undefined,
-				userConfigFile: () => ({ path: "/home/kilo/.config/kilo/kilo.json", exists: false }),
-			},
-		});
-		const provider: DomainObjectProvider<typeof Chats> = sdk.domainObjects.provide(Chats, {
-			initialState: {
-				ready: true,
-				chats: Object.fromEntries((options.chats ?? []).map((chat) => [chat.id, chat])),
-				declinedSignInTools: [...(options.declinedSignInTools ?? [])],
-			},
-			methods: {
-				create: (input) => {
-					calls.create(input);
-					if (options.createError) throw new KernelError("UNAVAILABLE", options.createError);
-					const created = server.createChat(input.directory ?? "/chats/chat-1");
-					const chat = chatSummary(created.id, {
-						title: input.title ?? created.title,
-						directory: created.directory,
-						workSessionId: input.workSessionId ?? null,
-						workspaceId: input.workspaceId ?? null,
-						worktreeBranch: input.worktreeBranch ?? null,
-						workspaceFolders: input.workspaceFolders ?? [],
-						createdAt: Date.now(),
-						updatedAt: Date.now(),
-					});
-					write(chat);
-					options.onChatCreated?.(chat);
-					return chat;
-				},
-				fork: async ({ id, messageId }) => {
-					calls.fork({ id, messageId });
-					const source = provider.state.chats[id];
-					if (!source) throw new KernelError("NOT_FOUND", "The chat was not found.");
-					const forked = await server
-						.fork(id, directoryOf(id), messageId)
-						.catch((error: unknown) => {
-							throw new KernelError(
-								"UNAVAILABLE",
-								`Could not fork the chat: ${error instanceof Error ? error.message : String(error)}`,
-							);
-						});
-					// kilo.core hands every fork a hidden note before returning it.
-					await server.post(`/session/${forked.id}/prompt_async`, directoryOf(id), {
-						noReply: true,
-						parts: [
-							{
-								type: "text",
-								text: "<system-reminder>\nThis session was forked from an existing session in the current repository or worktree.\n</system-reminder>",
-								synthetic: true,
-							},
-						],
-					});
-					const stored = server.chats.get(forked.id)!;
-					const chat: ChatSummary = {
-						...source,
-						id: stored.id,
-						title: stored.title,
-						directory: stored.directory,
-						createdAt: Date.now(),
-						updatedAt: Date.now(),
-						activity: { status: "idle", pendingPermissionIds: [], pendingQuestionIds: [] },
-					};
-					write(chat);
-					return chat;
-				},
-				setWorktreeBranch: unavailable,
-				chatConfig: (input) => {
-					calls.chatConfig(input);
-					return {
-						instructions: [...(options.instructions ?? [])],
-						disableTools: [],
-						permissions: [],
-					};
-				},
-				rename: ({ id, title }) => {
-					calls.rename({ id, title });
-					const chat = provider.state.chats[id];
-					if (chat) write({ ...chat, title });
-				},
-				delete: ({ id }) => {
-					calls.delete({ id });
-					const chat = provider.state.chats[id];
-					if (!chat) return;
-					const { [id]: _deleted, ...rest } = provider.state.chats;
-					provider.setState({ ...provider.state, chats: rest });
-					provider.emit("deleted", { chat });
-				},
-				prompt: async (input) => {
-					calls.prompt(input);
-					const { chatId, parts, command, model, ...rest } = input;
-					const wireModel = model
-						? {
-								model: { providerID: model.aiProviderId, modelID: model.modelId },
-								...(model.variant ? { variant: model.variant } : {}),
-							}
-						: {};
-					const path = command ? "command" : "prompt_async";
-					const body = command
-						? { command: command.name, arguments: command.arguments, ...rest, ...wireModel }
-						: { parts, ...rest, ...wireModel };
-					await server.post(`/session/${chatId}/${path}`, directoryOf(chatId), body);
-				},
-				abort: async (input) => {
-					calls.abort(input);
-					await server.post(`/session/${input.id}/abort`, directoryOf(input.id), {});
-				},
-				setArchived: ({ id, archived }) => {
-					calls.setArchived({ id, archived });
-					const chat = provider.state.chats[id];
-					if (!chat) return;
-					const { archivedAt: _archivedAt, ...rest } = chat;
-					write(archived ? { ...rest, archivedAt: Date.now() } : rest);
-				},
-				permissionRequests: ({ id }) => permissionRequests(id),
-				replyPermission: async (input) => {
-					calls.replyPermission(input);
-					await server.post(`/permission/${input.permissionId}/reply`, directoryOf(input.chatId), {
-						reply: input.decision,
-						...(input.message ? { message: input.message } : {}),
-					});
-				},
-				replyQuestion: async (input) => {
-					calls.replyQuestion(input);
-					await server.post(`/question/${input.questionId}/reply`, directoryOf(input.chatId), {
-						answers: input.answers,
-					});
-				},
-				rejectQuestion: async (input) => {
-					calls.rejectQuestion(input);
-					await server.post(`/question/${input.questionId}/reject`, directoryOf(input.chatId), {});
-				},
-				findMissing: () => ({ missing: [] }),
-				declineSignInTools: (input) => {
-					calls.declineSignInTools(input);
-					provider.setState({
-						...provider.state,
-						declinedSignInTools: [...provider.state.declinedSignInTools, input.pluginId],
-					});
-				},
-			},
-		});
-		chats = provider;
-		followServer();
-		sdk.onDispose(server.onEvent(followServer));
-	}
 
 	function provideModels(sdk: PluginSdk, initial: Partial<ModelsState>): void {
 		const provider: DomainObjectProvider<typeof Models> = sdk.domainObjects.provide(Models, {
@@ -480,8 +256,8 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 			sdk.context.set("termsAccepted", true);
 			if (options.withoutChats) {
 				// kilo.core without a Kilo server.
-			} else if (options.kilo2) {
-				chats = provideKilo2Chats(sdk, options.kilo2, {
+			} else {
+				chats = provideKilo2Chats(sdk, server, {
 					...(options.chats ? { chats: options.chats } : {}),
 					...(options.instructions ? { instructions: options.instructions } : {}),
 					...(options.createError ? { createError: options.createError } : {}),
@@ -491,8 +267,9 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 					...(options.onChatCreated ? { onChatCreated: options.onChatCreated } : {}),
 					record: (method, input) =>
 						(calls as Record<string, (input: never) => void>)[method]?.(input as never),
+					toolKeyOf,
 				});
-			} else provideChats(sdk);
+			}
 			if (options.models !== null) provideModels(sdk, options.models ?? {});
 			if (options.account !== null) provideAccount(sdk, options.account ?? SIGNED_IN);
 		},
@@ -505,7 +282,13 @@ export function fakeCore(options: FakeCoreOptions = {}) {
 			sdkRef?.context.set("signedIn", next.signedIn === true);
 		},
 		/** A chat joined or changed, as kilo.core announces it. */
-		updateChat: (next: ChatSummary) => write(next),
+		updateChat: (next: ChatSummary) => {
+			const provider = chats!;
+			const before = provider.state.chats[next.id];
+			provider.setState({ ...provider.state, chats: { ...provider.state.chats, [next.id]: next } });
+			if (before) provider.emit("updated", { before, after: next });
+			else provider.emit("created", { chat: next });
+		},
 	};
 }
 

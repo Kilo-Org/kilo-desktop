@@ -10,6 +10,7 @@ import {
 	type ReactNode,
 } from "react";
 import { useAuiState } from "@assistant-ui/react";
+import { questionToolCallId, type SessionMessageInfo } from "@kilo-desktop/react-opencode";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
@@ -41,6 +42,7 @@ import {
 	type ActivitySegment,
 } from "./tool-categories";
 import { usePendingInteractions } from "../interactions/PendingInteractionsContext";
+import { openCodeStepIds, useOpenCodeMessages } from "./opencode-tool";
 import { ReasoningText } from "../thread/reasoning";
 import { getGroupDiffStats } from "./tool-diff-stats";
 import { DiffCounts } from "./tool-ui-shared";
@@ -62,13 +64,11 @@ const ThinkingStreamText: FC<PropsWithChildren<{ streaming: boolean }>> = ({
 	</ReasoningText>
 );
 
-const pendingAskCallIds = (
-	questions: readonly { tool?: { callID?: string } | undefined }[],
-): Set<string> => {
+const pendingAskCallIds = (questions: readonly { metadata?: unknown }[]): Set<string> => {
 	const ids = new Set<string>();
 	for (const question of questions) {
-		const callId = question.tool?.callID;
-		if (typeof callId === "string") ids.add(callId);
+		const callId = questionToolCallId(question);
+		if (callId) ids.add(callId);
 	}
 	return ids;
 };
@@ -77,54 +77,45 @@ const pendingAskCallIds = (
 const ownsPendingAsk = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
-	pendingQuestions: readonly { tool?: { callID?: string } | undefined }[],
+	pendingQuestions: readonly { metadata?: unknown }[],
 	messageRequiresAction: boolean,
 ): boolean => {
 	if (pendingQuestions.length === 0) return false;
 	const callIds = pendingAskCallIds(pendingQuestions);
 	if (callIds.size > 0) return indicesHavePendingAsk(parts, indices, callIds);
-	// Questions without callIDs: only the message's last ask while awaiting input.
+	// Questions without a tool call: only the message's last ask while awaiting input.
 	if (!messageRequiresAction) return false;
 	const lastAsk = lastAskingPartIndex(parts);
 	return lastAsk >= 0 && indices.includes(lastAsk);
 };
 
+/** Whether a permission asked by one of these steps names a tool call among these indices. */
 const ownsPendingPermission = (
 	parts: readonly ActivityPart[],
 	indices: readonly number[],
-	permissions: readonly {
-		tool?: { messageID?: string; callID?: string } | undefined;
-	}[],
-	stepIds: ReadonlySet<string | undefined>,
+	permissions: readonly { source?: { messageID?: string; id?: string } | undefined }[],
+	stepIds: ReadonlySet<string>,
 ): boolean => {
 	for (const permission of permissions) {
-		const tool = permission.tool;
-		if (!tool?.callID || (tool.messageID && !stepIds.has(tool.messageID))) continue;
+		const source = permission.source;
+		if (!source?.id || (source.messageID && !stepIds.has(source.messageID))) continue;
 		for (const index of indices) {
 			const part = parts[index];
-			if (part && getPartToolCallId(part) === tool.callID) return true;
+			if (part && getPartToolCallId(part) === source.id) return true;
 		}
 	}
 	return false;
 };
 
 /**
- * The server message ids behind a transcript message. Consecutive assistant
- * steps are projected as one message under the first step's id, while a
- * permission names the step whose tool asked.
+ * The step ids behind a transcript message: consecutive assistant steps are
+ * projected as one message under the first step's id, while a permission
+ * names the step whose tool asked.
  */
 const messageStepIds = (
-	messageId: string | undefined,
-	opencodeParts: unknown,
-): ReadonlySet<string | undefined> => {
-	const ids = new Set<string | undefined>([messageId]);
-	if (Array.isArray(opencodeParts)) {
-		for (const part of opencodeParts as readonly { messageID?: unknown }[]) {
-			if (typeof part?.messageID === "string") ids.add(part.messageID);
-		}
-	}
-	return ids;
-};
+	messageId: string,
+	messages: readonly SessionMessageInfo[],
+): ReadonlySet<string> => openCodeStepIds(messages).add(messageId);
 
 const AUTO_COLLAPSE_DELAY = 1600;
 const GROUP_ANIMATION_DURATION = 200;
@@ -405,35 +396,29 @@ const NO_ACTIVE_SEGMENT: LastActiveSegment = {
 	shouldExpand: false,
 };
 
-const useOpenCodeParts = () =>
-	useAuiState((s) => {
-		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
-
 /** The group's activity summary, and whether it owns a pending question or permission. */
 function useActivityGroupSummary(group: GroupLike) {
 	const parts = useAuiState((s) => s.message.parts);
 	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
-	const opencodeParts = useOpenCodeParts();
+	const opencodeMessages = useOpenCodeMessages();
 	const { questions, permissions } = usePendingInteractions();
 	return {
 		parts,
-		opencodeParts,
+		opencodeMessages,
 		summary: summarizeActivity(parts, group.indices),
 		hasPendingAsk: ownsPendingAsk(parts, group.indices, questions, messageRequiresAction),
 		hasPendingPermission: ownsPendingPermission(
 			parts,
 			group.indices,
 			permissions,
-			messageStepIds(messageId, opencodeParts),
+			messageStepIds(messageId, opencodeMessages),
 		),
 	};
 }
 
 const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
-	const { parts, opencodeParts, summary, hasPendingAsk, hasPendingPermission } =
+	const { parts, opencodeMessages, summary, hasPendingAsk, hasPendingPermission } =
 		useActivityGroupSummary(group);
 
 	const disclosureId = `activity:${group.indices[0] ?? 0}`;
@@ -546,7 +531,7 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 							<SettledGroupHeader
 								summary={summary}
 								parts={parts}
-								opencodeParts={opencodeParts}
+								opencodeMessages={opencodeMessages}
 								open={open}
 								label={triggerLabel}
 								settlingSegment={settlingSegment}
@@ -611,15 +596,15 @@ const StreamingGroupHeader: FC<{
 const SettledGroupHeader: FC<{
 	summary: ActivitySummary;
 	parts: readonly ActivityPart[];
-	opencodeParts: unknown;
+	opencodeMessages: readonly SessionMessageInfo[];
 	open: boolean;
 	label: string;
 	settlingSegment: ActivitySegment | undefined;
-}> = ({ summary, parts, opencodeParts, open, label, settlingSegment }) => {
+}> = ({ summary, parts, opencodeMessages, open, label, settlingSegment }) => {
 	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
 	const settlingDiffStats =
 		settlingSegment?.kind === "editing" || settlingSegment?.kind === "writing"
-			? getGroupDiffStats(parts, settlingSegment.indices, opencodeParts)
+			? getGroupDiffStats(parts, settlingSegment.indices, opencodeMessages)
 			: null;
 	return (
 		<>
@@ -653,7 +638,7 @@ function useActivitySegment(group: GroupLike, kind: ActivityKind) {
 	const parts = useAuiState((s) => s.message.parts);
 	const messageId = useAuiState((s) => s.message.id);
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
-	const opencodeParts = useOpenCodeParts();
+	const opencodeMessages = useOpenCodeMessages();
 	const { questions, permissions } = usePendingInteractions();
 	const segment = activitySegment(
 		parts,
@@ -670,12 +655,12 @@ function useActivitySegment(group: GroupLike, kind: ActivityKind) {
 			parts,
 			segment.indices,
 			permissions,
-			messageStepIds(messageId, opencodeParts),
+			messageStepIds(messageId, opencodeMessages),
 		),
 		stats: getSegmentStats(parts, segment),
 		diffStats:
 			kind === "editing" || kind === "writing"
-				? getGroupDiffStats(parts, segment.indices, opencodeParts)
+				? getGroupDiffStats(parts, segment.indices, opencodeMessages)
 				: null,
 	};
 }

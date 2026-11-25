@@ -4,8 +4,14 @@ import { page } from "vitest/browser";
 
 import { chatPaneObject, SUBAGENT_PANE_KIND, subagentPaneId } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
-import { toolPart } from "../../test/transcript";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
+import {
+	assistantMessage,
+	idleMessage,
+	session,
+	tool,
+	userMessage,
+} from "../../test/kilo2/fixtures";
 import { longSession } from "../../test/long-session";
 import { renderChat } from "../../test/render-chat";
 import {
@@ -21,13 +27,8 @@ afterEach(() => {
 const TURNS = 60;
 
 async function openLongChat() {
-	const server = new FakeKiloServer();
-	server.addChat({
-		id: "ses_a",
-		directory: "/projects/app",
-		title: "Long chat",
-		messages: longSession("ses_a", TURNS),
-	});
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Long chat" }), longSession(TURNS));
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -68,33 +69,30 @@ describe("windowed transcript", () => {
 	});
 
 	it("renders the oldest turn of a subagent's transcript once the reader scrolls to it", async () => {
-		const server = new FakeKiloServer();
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			messages: [
-				userMessage("ses_a", "msg_1", "Audit login"),
-				assistantMessage("ses_a", "msg_2", "msg_1", [
-					toolPart(
-						"task",
-						{
-							status: "completed",
-							input: { description: "Audit login", subagent_type: "explore" },
-							output: "<task_result>Done</task_result>",
-							metadata: { sessionId: "ses_c1" },
-						},
-						"call_t1",
-					),
-				]),
-			],
-		});
-		server.addChat({
-			id: "ses_c1",
-			directory: "/projects/app",
-			title: "Child",
-			messages: longSession("ses_c1", TURNS),
-		});
+		const delegation = tool(
+			"subagent",
+			{ agent: "explore", description: "Audit login", prompt: "Audit login" },
+			"Done",
+			{ id: "call_t1" },
+		);
+		const server = new FakeKilo2Server();
+		server.addChat(session("ses_a", { title: "Chat" }), [
+			userMessage("Audit login"),
+			assistantMessage(
+				[
+					{
+						...delegation,
+						state: {
+							...delegation.state,
+							metadata: { sessionID: "ses_c1" },
+						} as typeof delegation.state,
+					},
+				],
+				{ finish: "stop", rawFinish: "stop" },
+			),
+			idleMessage(),
+		]);
+		server.addChat(session("ses_c1", { title: "Child", parentID: "ses_a" }), longSession(TURNS));
 		await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),

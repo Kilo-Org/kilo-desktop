@@ -1,374 +1,457 @@
-import { describe, it, expect } from "vitest";
-import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState";
-import { serializeOpenCodeParts } from "./serializeUserParts";
-import type { MessageWithParts, PendingUserMessage, ThreadUserMessagePart } from "./types";
+import { describe, expect, it } from "vitest";
 
-describe("reduceOpenCodeThreadState", () => {
-	it("reconciles a pending user message with loaded history", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-		const pending: PendingUserMessage = {
-			clientId: "local_1",
-			sessionId: "ses_1",
-			createdAt: 1000,
-			parentId: null,
-			sourceId: null,
-			runConfig: undefined,
-			contentText: "hello world",
-			parts: [{ type: "text", text: "hello world" }],
-			status: "pending",
-		};
+import {
+	createOpenCodeThreadState,
+	isQuestionForm,
+	questionsOfForm,
+	reduceOpenCodeThreadState,
+} from "./openCodeThreadState";
+import {
+	assistant,
+	permissionRequest,
+	questionForm,
+	serverEvent,
+	session,
+	SESSION_ID,
+	text,
+	threadState,
+	user,
+} from "./testUtils";
+import type { OpenCodeStateEvent, OpenCodeThreadState, PendingUserMessage } from "./types";
 
-		const queued = reduceOpenCodeThreadState(initial, {
-			type: "local.message.queued",
-			pending,
+const reduce = (state: OpenCodeThreadState, ...events: OpenCodeStateEvent[]) =>
+	events.reduce(reduceOpenCodeThreadState, state);
+
+const onServer = (type: string, data: Record<string, unknown> = {}): OpenCodeStateEvent => ({
+	type: "server.event",
+	event: serverEvent(type, data),
+});
+
+const ids = (state: OpenCodeThreadState) => state.messages.map((message) => message.id);
+
+const pending = (clientId: string): PendingUserMessage => ({
+	clientId,
+	sessionId: SESSION_ID,
+	createdAt: 1,
+	parts: [{ type: "text", text: "hello" }],
+	status: "pending",
+});
+
+describe("reduceOpenCodeThreadState: history", () => {
+	it("loads a session's newest page and whether it runs", () => {
+		const state = reduce(
+			createOpenCodeThreadState(SESSION_ID),
+			{ type: "history.loading" },
+			{
+				type: "history.loaded",
+				session: session(),
+				messages: [user("msg_1"), assistant("msg_2")],
+				running: true,
+				olderHistory: { type: "available", cursor: "c1" },
+			},
+		);
+
+		expect(state).toMatchObject({
+			session: { id: SESSION_ID },
+			running: true,
+			runState: { type: "streaming" },
+			loadState: { type: "ready" },
+			olderHistory: { type: "available", cursor: "c1" },
 		});
+		expect(ids(state)).toEqual(["msg_1", "msg_2"]);
+	});
 
-		const history = reduceOpenCodeThreadState(queued, {
+	it("keeps older messages already held when a reload brings only the newest page", () => {
+		const held = threadState([
+			user("msg_1"),
+			assistant("msg_2"),
+			user("msg_3"),
+			assistant("msg_4"),
+		]);
+
+		const reloaded = reduce(held, {
 			type: "history.loaded",
-			session: null,
-			messages: [
-				{
-					info: {
-						id: "msg_1",
-						role: "user",
-						sessionID: "ses_1",
-						time: { created: 1000 },
-					},
-					parts: [],
-				} as unknown as MessageWithParts,
-			],
+			session: session(),
+			messages: [user("msg_3"), assistant("msg_4"), user("msg_5")],
+			running: false,
+			olderHistory: { type: "available", cursor: "c1" },
 		});
 
-		expect(Object.keys(history.pendingUserMessages)).toHaveLength(0);
-		expect(history.messageOrder).toEqual(["msg_1"]);
-		expect(history.messagesById.msg_1?.shadowParts).toEqual(pending.parts);
+		expect(ids(reloaded)).toEqual(["msg_1", "msg_2", "msg_3", "msg_4", "msg_5"]);
 	});
 
-	it("reconciles a pending copy whose unsendable parts never reached the wire", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-		const parts: readonly ThreadUserMessagePart[] = [
-			{ type: "text", text: "hello" },
-			{ type: "audio", audio: { data: "QUJD", format: "mp3" } },
-			{ type: "data", name: "custom", data: { foo: "bar" } },
-		];
-		const pending: PendingUserMessage = {
-			clientId: "local_1",
-			sessionId: "ses_1",
-			createdAt: 1000,
-			parentId: null,
-			sourceId: null,
-			runConfig: undefined,
-			contentText: serializeOpenCodeParts(parts).trim(),
-			parts,
-			status: "pending",
-		};
+	it("takes a complete history as it is", () => {
+		const held = threadState([user("msg_1"), assistant("msg_2"), user("msg_3")]);
 
-		const queued = reduceOpenCodeThreadState(initial, {
-			type: "local.message.queued",
-			pending,
-		});
-		const history = reduceOpenCodeThreadState(queued, {
+		const reloaded = reduce(held, {
 			type: "history.loaded",
-			session: null,
-			messages: [
-				{
-					info: {
-						id: "msg_1",
-						role: "user",
-						sessionID: "ses_1",
-						time: { created: 1000 },
-					},
-					parts: [{ type: "text", text: "hello" }],
-				} as unknown as MessageWithParts,
-			],
+			session: session(),
+			messages: [user("msg_3")],
+			running: false,
 		});
 
-		expect(Object.keys(history.pendingUserMessages)).toHaveLength(0);
-		expect(history.messageOrder).toEqual(["msg_1"]);
+		expect(ids(reloaded)).toEqual(["msg_3"]);
+		expect(reloaded.olderHistory).toEqual({ type: "complete" });
 	});
 
-	it("reconciles a filename-less inline file after its media type is rewritten", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-		const pending: PendingUserMessage = {
-			clientId: "local_1",
-			sessionId: "ses_1",
-			createdAt: 1000,
-			parentId: null,
-			sourceId: null,
-			runConfig: undefined,
-			// deliberately the un-rewritten payload, as a copy created before this
-			// fix would hold. it cannot match the server url, which forces the match
-			// through `partTextFingerprint`, the arm under test.
-			contentText: "data:image/jpeg;base64,QUJD",
-			parts: [
-				{
-					type: "file",
-					data: "data:image/jpeg;base64,QUJD",
-					mimeType: "image/png",
-				},
-			],
-			status: "pending",
-		};
+	it("prepends older pages ahead of everything held, skipping messages already held", () => {
+		const state = reduce(
+			threadState([user("msg_3"), assistant("msg_4")], {
+				olderHistory: { type: "available", cursor: "c1" },
+			}),
+			{ type: "history.olderLoading" },
+		);
+		expect(state.olderHistory).toEqual({ type: "loading", cursor: "c1" });
 
-		const queued = reduceOpenCodeThreadState(initial, {
-			type: "local.message.queued",
-			pending,
+		const prepended = reduce(state, {
+			type: "history.prepended",
+			messages: [user("msg_1"), assistant("msg_2"), user("msg_3")],
+			olderHistory: { type: "complete" },
 		});
-		const history = reduceOpenCodeThreadState(queued, {
+
+		expect(ids(prepended)).toEqual(["msg_1", "msg_2", "msg_3", "msg_4"]);
+		expect(prepended.olderHistory).toEqual({ type: "complete" });
+	});
+
+	it("records a failed older page with its cursor, for a retry", () => {
+		const error = new Error("offline");
+		const state = reduce(threadState([], { olderHistory: { type: "loading", cursor: "c1" } }), {
+			type: "history.olderFailed",
+			error,
+		});
+
+		expect(state.olderHistory).toEqual({ type: "failed", cursor: "c1", error });
+	});
+
+	it("records a failed load", () => {
+		const error = new Error("offline");
+
+		expect(
+			reduce(createOpenCodeThreadState(SESSION_ID), { type: "history.failed", error }).loadState,
+		).toEqual({
+			type: "error",
+			error,
+		});
+	});
+
+	it("keeps a cancelling run cancelling when a reload says the session still runs", () => {
+		const state = reduce(threadState([], { runState: { type: "cancelling" } }), {
 			type: "history.loaded",
-			session: null,
-			messages: [
-				{
-					info: {
-						id: "msg_1",
-						role: "user",
-						sessionID: "ses_1",
-						time: { created: 1000 },
-					},
-					parts: [
-						{
-							type: "file",
-							url: "data:image/png;base64,QUJD",
-						},
-					],
-				} as unknown as MessageWithParts,
-			],
+			session: session(),
+			messages: [],
+			running: true,
 		});
 
-		expect(Object.keys(history.pendingUserMessages)).toHaveLength(0);
-		expect(history.messageOrder).toEqual(["msg_1"]);
+		expect(state.runState).toEqual({ type: "cancelling" });
+	});
+});
+
+describe("reduceOpenCodeThreadState: running", () => {
+	it("runs from an execution start until the execution ends", () => {
+		const started = reduce(threadState([user("msg_1")]), onServer("session.execution.started"));
+		expect(started).toMatchObject({ running: true, runState: { type: "streaming" } });
+
+		const ended = reduce(started, onServer("session.execution.succeeded"));
+		expect(ended).toMatchObject({ running: false, runState: { type: "idle" } });
+		expect(ended.messages.at(-1)).toMatchObject({ type: "idle", outcome: "succeeded" });
 	});
 
-	it("loads history containing a file part that carries no url", () => {
-		const initial = createOpenCodeThreadState("ses_1");
+	it.each(["cancelling", "reverting"] as const)(
+		"keeps a %s run while the session still runs",
+		(type) => {
+			const state = reduce(threadState([], { runState: { type } }), {
+				type: "status",
+				running: true,
+			});
 
-		const history = reduceOpenCodeThreadState(initial, {
-			type: "history.loaded",
-			session: null,
-			messages: [
-				{
-					info: {
-						id: "msg_1",
-						role: "user",
-						sessionID: "ses_1",
-						time: { created: 1000 },
-					},
-					parts: [{ type: "file" }],
-				} as unknown as MessageWithParts,
-			],
-		});
+			expect(state.runState).toEqual({ type });
+		},
+	);
+});
 
-		expect(history.messageOrder).toEqual(["msg_1"]);
-	});
-
-	it("adds assistant parts without losing message order", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-
-		const withMessage = reduceOpenCodeThreadState(initial, {
-			type: "message.updated",
-			info: {
-				id: "msg_assistant",
-				role: "assistant",
-				sessionID: "ses_1",
-				time: { created: 1001 },
-			} as never,
-		});
-
-		const withPart = reduceOpenCodeThreadState(withMessage, {
-			type: "part.updated",
-			messageId: "msg_assistant",
-			part: {
-				id: "prt_1",
-				type: "text",
-				text: "Hello",
-				sessionID: "ses_1",
-				messageID: "msg_assistant",
-			} as never,
-		});
-
-		expect(withPart.messageOrder).toEqual(["msg_assistant"]);
-		expect(withPart.messagesById.msg_assistant?.parts).toHaveLength(1);
-	});
-
-	it("reconciles a pending user message with a streamed message update", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-		const pending: PendingUserMessage = {
-			clientId: "local_1",
-			sessionId: "ses_1",
-			createdAt: 1000,
-			parentId: "msg_parent",
-			sourceId: null,
-			runConfig: undefined,
-			contentText: "hello world",
-			parts: [{ type: "text", text: "hello world" }],
-			status: "pending",
-		};
-
-		const queued = reduceOpenCodeThreadState(initial, {
+describe("reduceOpenCodeThreadState: pending prompts", () => {
+	it("drops a pending prompt once the server message with its id arrives on the stream", () => {
+		const queued = reduce(threadState(), {
 			type: "local.message.queued",
-			pending,
+			pending: pending("msg_p"),
 		});
+		expect(Object.keys(queued.pendingUserMessages)).toEqual(["msg_p"]);
 
-		const updated = reduceOpenCodeThreadState(queued, {
-			type: "message.updated",
-			info: {
-				id: "msg_1",
-				role: "user",
-				parentID: "msg_parent",
-				sessionID: "ses_1",
-				time: { created: 1000 },
-			} as never,
-		});
+		const admitted = reduce(
+			queued,
+			onServer("session.inbox.enqueued", {
+				inboxID: "msg_p",
+				item: { type: "user", payload: { text: "hello" }, delivery: "queue" },
+			}),
+		);
 
-		expect(Object.keys(updated.pendingUserMessages)).toHaveLength(0);
-		expect(updated.messageOrder).toEqual(["msg_1"]);
-		expect(updated.messagesById.msg_1?.shadowParts).toEqual(pending.parts);
+		expect(admitted.pendingUserMessages).toEqual({});
+		expect(ids(admitted)).toEqual(["msg_p"]);
 	});
 
-	it("tracks session status and applies text deltas", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-
-		const withStatus = reduceOpenCodeThreadState(initial, {
-			type: "session.status",
-			status: { type: "busy" },
+	it("drops a pending prompt the loaded history holds", () => {
+		const queued = reduce(threadState(), {
+			type: "local.message.queued",
+			pending: pending("msg_p"),
 		});
 
-		const withMessage = reduceOpenCodeThreadState(withStatus, {
-			type: "message.updated",
-			info: {
-				id: "msg_assistant",
-				role: "assistant",
-				sessionID: "ses_1",
-				time: { created: 1001 },
-			} as never,
+		const loaded = reduce(queued, {
+			type: "history.loaded",
+			session: session(),
+			messages: [user("msg_p", "hello")],
+			running: false,
 		});
 
-		const withPart = reduceOpenCodeThreadState(withMessage, {
-			type: "part.updated",
-			messageId: "msg_assistant",
-			part: {
-				id: "prt_1",
-				type: "text",
-				text: "Hello",
-				sessionID: "ses_1",
-				messageID: "msg_assistant",
-			} as never,
+		expect(loaded.pendingUserMessages).toEqual({});
+	});
+
+	it("keeps a pending prompt the server hasn't admitted", () => {
+		const queued = reduce(threadState(), {
+			type: "local.message.queued",
+			pending: pending("msg_p"),
 		});
 
-		const withDelta = reduceOpenCodeThreadState(withPart, {
-			type: "part.delta",
-			messageId: "msg_assistant",
-			partId: "prt_1",
-			field: "text",
-			delta: " world",
+		const updated = reduce(queued, {
+			type: "history.loaded",
+			session: session(),
+			messages: [user("msg_other")],
+			running: false,
 		});
 
-		expect(withDelta.sessionStatus).toEqual({ type: "busy" });
-		expect(withDelta.runState.type).toBe("streaming");
-		expect(withDelta.messagesById.msg_assistant?.parts).toMatchObject([
-			{ type: "text", text: "Hello world" },
+		expect(Object.keys(updated.pendingUserMessages)).toEqual(["msg_p"]);
+	});
+
+	it("marks a prompt that failed to send", () => {
+		const error = new Error("Unauthorized");
+		const state = reduce(
+			threadState(),
+			{ type: "local.message.queued", pending: pending("msg_p") },
+			{ type: "local.message.failed", clientId: "msg_p", error },
+		);
+
+		expect(state.pendingUserMessages.msg_p).toMatchObject({ status: "failed", error });
+		expect(state.runState).toEqual({ type: "error", error });
+	});
+});
+
+describe("reduceOpenCodeThreadState: permissions", () => {
+	it("holds an asked permission until it is replied to, keeping the request", () => {
+		const request = permissionRequest("per_1", {
+			source: { type: "tool", messageID: "msg_2", id: "call_1" },
+		});
+		const asked = reduce(threadState(), onServer("permission.asked", request));
+		expect(asked.interactions.permissions.pending.per_1).toEqual(request);
+
+		const replied = reduce(
+			asked,
+			onServer("permission.replied", { requestID: "per_1", reply: "always" }),
+		);
+
+		expect(replied.interactions.permissions.pending).toEqual({});
+		expect(replied.interactions.permissions.resolved.per_1).toMatchObject({
+			request,
+			reply: "always",
+		});
+	});
+
+	it("ignores a permission asked twice", () => {
+		const asked = reduce(threadState(), onServer("permission.asked", permissionRequest("per_1")));
+
+		expect(reduce(asked, onServer("permission.asked", permissionRequest("per_1")))).toBe(asked);
+	});
+
+	it("records the controller's own reply", () => {
+		const state = reduce(threadState(), onServer("permission.asked", permissionRequest("per_1")), {
+			type: "permission.replied",
+			permissionId: "per_1",
+			reply: "reject",
+		});
+
+		expect(state.interactions.permissions.resolved.per_1?.reply).toBe("reject");
+	});
+
+	it("replaces the pending permissions with those the server lists", () => {
+		const state = reduce(
+			threadState(),
+			onServer("permission.asked", permissionRequest("per_gone")),
+			{ type: "permissions.loaded", requests: [permissionRequest("per_1")] },
+		);
+
+		expect(Object.keys(state.interactions.permissions.pending)).toEqual(["per_1"]);
+	});
+});
+
+describe("reduceOpenCodeThreadState: question forms", () => {
+	it("holds a created question form apart from permissions", () => {
+		const form = questionForm("frm_1");
+		const state = reduce(threadState(), onServer("form.created", { form }));
+
+		expect(state.interactions.questions.pending.frm_1).toEqual(form);
+		expect(state.interactions.permissions.pending).toEqual({});
+	});
+
+	it("ignores forms that aren't the question tool's", () => {
+		const initial = threadState();
+		const form = { ...questionForm("frm_1"), metadata: { kind: "mcp" } };
+
+		expect(reduce(initial, onServer("form.created", { form }))).toBe(initial);
+	});
+
+	it("records a reply's answers as labels per question, keeping the form", () => {
+		const form = questionForm("frm_1", [
+			{ header: "Pick", question: "Which?", options: ["A", "B"] },
+			{ header: "Many", question: "Which ones?", options: ["X", "Y"], multiple: true },
+			{ header: "Skip", question: "Optional?", options: [] },
+		]);
+		const state = reduce(
+			threadState(),
+			onServer("form.created", { form }),
+			onServer("form.replied", { id: "frm_1", answer: { q0: "A", q1: ["X", "Y"], q2: "" } }),
+		);
+
+		expect(state.interactions.questions.pending).toEqual({});
+		expect(state.interactions.questions.answered.frm_1).toMatchObject({
+			request: form,
+			answers: [["A"], ["X", "Y"], []],
+		});
+	});
+
+	it("records a cancelled form as rejected", () => {
+		const state = reduce(
+			threadState(),
+			onServer("form.created", { form: questionForm("frm_1") }),
+			onServer("form.cancelled", { id: "frm_1" }),
+		);
+
+		expect(state.interactions.questions.rejected.frm_1?.request.id).toBe("frm_1");
+		expect(state.interactions.questions.pending).toEqual({});
+	});
+
+	it("loads only the question forms the server lists", () => {
+		const state = reduce(threadState(), {
+			type: "questions.loaded",
+			forms: [questionForm("frm_q"), { ...questionForm("frm_other"), metadata: {} }],
+		});
+
+		expect(Object.keys(state.interactions.questions.pending)).toEqual(["frm_q"]);
+	});
+
+	it("records the controller's own answers and rejections", () => {
+		const asked = reduce(
+			threadState(),
+			onServer("form.created", { form: questionForm("frm_1") }),
+			onServer("form.created", { form: questionForm("frm_2") }),
+		);
+		const settled = reduce(
+			asked,
+			{ type: "question.replied", questionId: "frm_1", answers: [["Yes"]] },
+			{ type: "question.rejected", questionId: "frm_2" },
+		);
+
+		expect(settled.interactions.questions.answered.frm_1?.answers).toEqual([["Yes"]]);
+		expect(settled.interactions.questions.rejected.frm_2).toBeDefined();
+	});
+});
+
+describe("reduceOpenCodeThreadState: session info", () => {
+	it("follows a rename", () => {
+		const state = reduce(threadState(), onServer("session.renamed", { title: "Fix the build" }));
+
+		expect(state.session?.title).toBe("Fix the build");
+	});
+
+	it("applies a staged revert and clears it", () => {
+		const revert = { messageID: "msg_3" };
+		const staged = reduce(threadState(), onServer("session.revert.staged", { revert }));
+		expect(staged.session?.revert).toEqual(revert);
+
+		const cleared = reduce(staged, onServer("session.revert.cleared"));
+		expect(cleared.session).not.toHaveProperty("revert");
+	});
+
+	it("drops the reverted messages and the staged revert once committed", () => {
+		const state = reduce(
+			threadState([user("msg_1"), assistant("msg_2", [text("a")]), user("msg_3")], {
+				session: session(SESSION_ID, { revert: { messageID: "msg_3" } }),
+			}),
+			onServer("session.revert.committed", { to: "msg_3" }),
+		);
+
+		expect(ids(state)).toEqual(["msg_1", "msg_2"]);
+		expect(state.session).not.toHaveProperty("revert");
+	});
+
+	it("ignores session info events before the session has loaded", () => {
+		const initial = createOpenCodeThreadState(SESSION_ID);
+
+		expect(reduce(initial, onServer("session.renamed", { title: "x" }))).toBe(initial);
+	});
+
+	it("replaces the session with the controller's own copy", () => {
+		const next = session(SESSION_ID, { title: "Mine" });
+
+		expect(reduce(threadState(), { type: "session.info", session: next }).session).toBe(next);
+	});
+});
+
+describe("question forms", () => {
+	it("recognises the question tool's forms by their kind", () => {
+		expect(isQuestionForm(questionForm("frm_1"))).toBe(true);
+		expect(isQuestionForm({ metadata: { kind: "other" } })).toBe(false);
+		expect(isQuestionForm(undefined)).toBe(false);
+	});
+
+	it("reads one question per field, in order", () => {
+		const form = questionForm("frm_1", [
+			{ header: "Pick", question: "Which one?", options: ["A", "B"] },
+			{ header: "Many", question: "Which ones?", options: ["X"], multiple: true },
+		]);
+
+		expect(questionsOfForm(form)).toEqual([
+			{
+				key: "q0",
+				question: "Which one?",
+				header: "Pick",
+				options: [{ label: "A" }, { label: "B" }],
+				multiple: false,
+				custom: true,
+			},
+			{
+				key: "q1",
+				question: "Which ones?",
+				header: "Many",
+				options: [{ label: "X" }],
+				multiple: true,
+				custom: true,
+			},
 		]);
 	});
 
-	it("ignores part removals for unknown messages", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-
-		const updated = reduceOpenCodeThreadState(initial, {
-			type: "part.removed",
-			messageId: "missing_message",
-			partId: "missing_part",
-		});
-
-		expect(updated).toBe(initial);
-	});
-
-	it("stores pending questions separately from permissions", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-
-		const withQuestion = reduceOpenCodeThreadState(initial, {
-			type: "question.asked",
-			request: {
-				id: "question_1",
-				sessionID: "ses_1",
-				questions: [
-					{
-						header: "Confirm",
-						question: "Should I continue?",
-						options: [
-							{ label: "Yes", description: "Continue the task." },
-							{ label: "No", description: "Stop here." },
-						],
-					},
-				],
-				askedAt: 1000,
-			} as never,
-		});
-
-		expect(withQuestion.interactions.questions.pending.question_1?.questions[0]?.header).toBe(
-			"Confirm",
-		);
-		expect(Object.keys(withQuestion.interactions.permissions.pending)).toHaveLength(0);
-	});
-
-	it("retains request details for resolved questions and permissions", () => {
-		const initial = createOpenCodeThreadState("ses_1");
-
-		const withPermission = reduceOpenCodeThreadState(initial, {
-			type: "permission.asked",
-			request: {
-				id: "permission_1",
-				sessionId: "ses_1",
-				permission: "bash",
-				patterns: [],
-				metadata: {},
-				always: [],
-				askedAt: 1000,
-				raw: {} as never,
-				tool: {
-					messageID: "msg_1",
-					callID: "call_1",
+	it("keeps option descriptions and falls back to an option's value and the field's title", () => {
+		const form = {
+			...questionForm("frm_1"),
+			fields: [
+				{
+					key: "q0",
+					title: "Mode",
+					type: "string",
+					options: [
+						{ value: "fast", description: "Quick" },
+						{ value: "slow", label: "Slow" },
+					],
 				},
+			],
+		} as never;
+
+		expect(questionsOfForm(form)).toEqual([
+			{
+				key: "q0",
+				question: "Mode",
+				header: "Mode",
+				options: [{ label: "fast", description: "Quick" }, { label: "Slow" }],
+				multiple: false,
+				custom: false,
 			},
-		});
-
-		const resolvedPermission = reduceOpenCodeThreadState(withPermission, {
-			type: "permission.replied",
-			permissionId: "permission_1",
-			reply: "once",
-		});
-
-		expect(
-			resolvedPermission.interactions.permissions.resolved.permission_1?.request.tool?.callID,
-		).toBe("call_1");
-
-		const withQuestion = reduceOpenCodeThreadState(initial, {
-			type: "question.asked",
-			request: {
-				id: "question_1",
-				sessionID: "ses_1",
-				questions: [
-					{
-						header: "Confirm",
-						question: "Should I continue?",
-						options: [],
-					},
-				],
-				askedAt: 1000,
-				tool: {
-					messageID: "msg_1",
-					callID: "call_2",
-				},
-			} as never,
-		});
-
-		const answeredQuestion = reduceOpenCodeThreadState(withQuestion, {
-			type: "question.replied",
-			questionId: "question_1",
-			answers: [["Yes"]],
-		});
-
-		expect(answeredQuestion.interactions.questions.answered.question_1?.request.tool?.callID).toBe(
-			"call_2",
-		);
+		]);
 	});
 });

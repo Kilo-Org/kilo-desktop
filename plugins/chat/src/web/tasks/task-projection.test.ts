@@ -1,78 +1,41 @@
 import { describe, expect, it } from "vitest";
+import {
+	createOpenCodeThreadState,
+	type SessionMessageAssistantTool,
+	type SessionMessageInfo,
+} from "@kilo-desktop/react-opencode";
 
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode";
-
+import { assistantMessage, idleMessage, tool, userMessage } from "../../test/kilo2/fixtures";
 import { projectTaskThread, type TaskThreadSource } from "./task-projection";
 
-const taskWritePart = (callID: string, todos: unknown): ToolPart => ({
-	id: `part-${callID}`,
-	sessionID: "session-1",
-	messageID: "message-1",
-	type: "tool",
-	tool: "todowrite",
-	callID,
-	state: {
-		status: "completed",
-		input: { todos },
-		output: "",
-		title: "todos",
-		metadata: {},
-		time: { start: 1, end: 2 },
+const taskWrite = (todos: unknown) => tool("todowrite", { todos }, "", {});
+
+const streamingTaskWrite = (input: string): SessionMessageAssistantTool => ({
+	...tool("todowrite", {}),
+	state: { status: "streaming", input },
+});
+
+const source = (
+	messages: readonly SessionMessageInfo[],
+	lifecycle: Partial<Pick<TaskThreadSource, "running" | "runState">> = {
+		running: true,
+		runState: { type: "streaming" },
 	},
-});
-
-const streamingTaskWritePart = (callID: string): ToolPart =>
-	({
-		id: `part-${callID}`,
-		sessionID: "session-1",
-		messageID: "message-1",
-		type: "tool",
-		tool: "todowrite",
-		callID,
-		state: { status: "pending" },
-	}) as ToolPart;
-
-const source = (partsByMessage: readonly (readonly Part[])[]): TaskThreadSource => ({
-	messageOrder: partsByMessage.map((_, index) => `message-${index}`),
-	messagesById: Object.fromEntries(
-		partsByMessage.map((parts, index) => [
-			`message-${index}`,
-			{ info: { role: "assistant" }, parts },
-		]),
-	),
-});
-
-const messageSource = (
-	messages: readonly { role: string; parts: readonly Part[] }[],
-	lifecycle?: Pick<TaskThreadSource, "runState" | "sessionStatus">,
-): TaskThreadSource => ({
-	...lifecycle,
-	messageOrder: messages.map((_, index) => `message-${index}`),
-	messagesById: Object.fromEntries(
-		messages.map((message, index) => [
-			`message-${index}`,
-			{ info: { role: message.role }, parts: message.parts },
-		]),
-	),
-});
+): TaskThreadSource => ({ ...createOpenCodeThreadState("ses_1"), messages, ...lifecycle });
 
 describe("projectTaskThread", () => {
 	it("projects only the latest task write and maps Kilo statuses", () => {
 		const projection = projectTaskThread(
 			source([
-				[
-					taskWritePart("first", [
-						{ content: "Old task", status: "in_progress", priority: "high" },
+				assistantMessage([taskWrite([{ content: "Old task", status: "in_progress" }])]),
+				assistantMessage([
+					taskWrite([
+						{ content: "Inspect behavior", status: "completed" },
+						{ content: "Implement dock", status: "in_progress" },
+						{ content: "Run checks", status: "pending" },
+						{ content: "Obsolete step", status: "cancelled" },
 					]),
-				],
-				[
-					taskWritePart("second", [
-						{ content: "Inspect behavior", status: "completed", priority: "high" },
-						{ content: "Implement dock", status: "in_progress", priority: "medium" },
-						{ content: "Run checks", status: "pending", priority: "low" },
-						{ content: "Obsolete step", status: "cancelled", priority: "low" },
-					]),
-				],
+				]),
 			]),
 		);
 
@@ -89,86 +52,78 @@ describe("projectTaskThread", () => {
 	it("keeps the last valid snapshot while a newer call is only partially parsed", () => {
 		const projection = projectTaskThread(
 			source([
-				[taskWritePart("valid", [{ content: "Keep me", status: "pending", priority: "high" }])],
-				[taskWritePart("partial", [{ content: "Missing status" }])],
+				assistantMessage([taskWrite([{ content: "Keep me", status: "pending" }])]),
+				assistantMessage([taskWrite([{ content: "Missing status" }])]),
 			]),
 		);
 
-		expect(projection).toEqual({
-			items: [{ id: "task-0", text: "Keep me", status: "pending" }],
-		});
+		expect(projection).toEqual({ items: [{ id: "task-0", text: "Keep me", status: "pending" }] });
 	});
 
-	it("keeps the last valid snapshot while a newer call has no streamed input", () => {
+	it("keeps the last valid snapshot while a newer call's input streams", () => {
 		const projection = projectTaskThread(
 			source([
-				[taskWritePart("valid", [{ content: "Keep me", status: "pending", priority: "high" }])],
-				[streamingTaskWritePart("streaming")],
+				assistantMessage([taskWrite([{ content: "Keep me", status: "pending" }])]),
+				assistantMessage([streamingTaskWrite('{"todos":[{"content":"Half')]),
 			]),
 		);
 
-		expect(projection).toEqual({
-			items: [{ id: "task-0", text: "Keep me", status: "pending" }],
-		});
+		expect(projection).toEqual({ items: [{ id: "task-0", text: "Keep me", status: "pending" }] });
+	});
+
+	it("reads a streaming call once its input parses", () => {
+		const projection = projectTaskThread(
+			source([
+				assistantMessage([
+					streamingTaskWrite('{"todos":[{"content":"Streamed","status":"in_progress"}]}'),
+				]),
+			]),
+		);
+
+		expect(projection).toEqual({ items: [{ id: "task-0", text: "Streamed", status: "active" }] });
 	});
 
 	it("treats an empty task write as a valid cleared snapshot", () => {
 		expect(
 			projectTaskThread(
 				source([
-					[taskWritePart("initial", [{ content: "Task", status: "pending", priority: "high" }])],
-					[taskWritePart("clear", [])],
+					assistantMessage([taskWrite([{ content: "Task", status: "pending" }])]),
+					assistantMessage([taskWrite([])]),
 				]),
 			),
 		).toEqual({ items: [] });
 	});
 
-	it("clears the task list when the turn settles", () => {
-		const write = taskWritePart("write", [
-			{ content: "Unfinished task", status: "in_progress", priority: "high" },
-		]);
+	it("clears the task list when the session stops", () => {
+		const messages = [
+			assistantMessage([taskWrite([{ content: "Unfinished task", status: "in_progress" }])]),
+		];
 
 		expect(
-			projectTaskThread(
-				messageSource([{ role: "assistant", parts: [write] }], {
-					runState: { type: "idle" },
-					sessionStatus: { type: "idle" },
-				}),
-			),
+			projectTaskThread(source(messages, { running: false, runState: { type: "idle" } })),
 		).toBeUndefined();
 	});
 
 	it("keeps the current task list while cancellation is in progress", () => {
-		const write = taskWritePart("write", [
-			{ content: "Unfinished task", status: "in_progress", priority: "high" },
-		]);
+		const messages = [
+			assistantMessage([taskWrite([{ content: "Unfinished task", status: "in_progress" }])]),
+		];
 
 		expect(
-			projectTaskThread(
-				messageSource([{ role: "assistant", parts: [write] }], {
-					runState: { type: "cancelling" },
-					sessionStatus: { type: "busy" },
-				}),
-			),
+			projectTaskThread(source(messages, { running: false, runState: { type: "cancelling" } })),
 		).toEqual({ items: [{ id: "task-0", text: "Unfinished task", status: "active" }] });
 	});
 
 	it("does not revive the prior turn's tasks when a new turn starts", () => {
-		const oldWrite = taskWritePart("old", [
-			{ content: "Old unfinished task", status: "pending", priority: "high" },
-		]);
+		const oldWrite = taskWrite([{ content: "Old unfinished task", status: "pending" }]);
 
 		expect(
 			projectTaskThread(
-				messageSource(
-					[
-						{ role: "assistant", parts: [oldWrite] },
-						{ role: "user", parts: [] },
-						{ role: "assistant", parts: [] },
-					],
-					{ runState: { type: "streaming" }, sessionStatus: { type: "busy" } },
-				),
+				source([assistantMessage([oldWrite]), userMessage("next"), assistantMessage([])]),
 			),
+		).toBeUndefined();
+		expect(
+			projectTaskThread(source([assistantMessage([oldWrite]), idleMessage("interrupted")])),
 		).toBeUndefined();
 	});
 });

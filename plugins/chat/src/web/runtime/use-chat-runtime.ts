@@ -73,7 +73,6 @@ function chatRuntimeBackend(
 ) {
 	return createChatBackend({
 		services,
-		directoryOf: (chatId) => latest.current.directoryOf(chatId),
 		createChat: () => {
 			const create = () => latest.current.createChat();
 			return handover ? handover.createChat(create) : create();

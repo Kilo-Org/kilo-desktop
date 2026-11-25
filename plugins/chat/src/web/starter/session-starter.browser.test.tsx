@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { chatPaneObject } from "../../contracts";
-import type { RecordedRequest } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -16,11 +15,8 @@ async function send(text: string) {
 	await page.getByTestId("kilo-composer-send").click();
 }
 
-const promptText = (request: RecordedRequest) =>
-	(request.body as { parts: { type: string; text?: string }[] }).parts
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("");
+const systemOf = (prompt: { metadata?: { "kilo-desktop"?: { system?: string } } } | undefined) =>
+	prompt?.metadata?.["kilo-desktop"]?.system ?? "";
 
 describe("the New Session page's composer", () => {
 	it("is origin's draft composer, focused, without a strip under it while it has nothing to say", async () => {
@@ -85,9 +81,10 @@ describe("the New Session page's composer", () => {
 		expect(host.panesOf("wses_new_1")?.panes).toEqual([
 			expect.objectContaining({ kind: "kilo.chat/agent", object: chatPaneObject("ses_new_1") }),
 		]);
-		const [prompt] = host.server.requestsTo("POST", "/session/ses_new_1/prompt_async");
-		expect(promptText(prompt!)).toBe("Fix the login form");
-		expect((prompt!.body as { system: string }).system).toContain("Prefer small diffs.");
+		await vi.waitFor(() => expect(host.server.promptsTo("ses_new_1")).toHaveLength(1));
+		const [prompt] = host.server.promptsTo("ses_new_1");
+		expect(prompt!.text).toBe("Fix the login form");
+		expect(systemOf(prompt)).toContain("Prefer small diffs.");
 	});
 
 	it("works in the copy the work session was started in", async () => {
@@ -104,9 +101,11 @@ describe("the New Session page's composer", () => {
 				worktreeBranch: "kilo/new",
 			}),
 		);
-		const [prompt] = host.server.requestsTo("POST", "/session/ses_new_1/prompt_async");
-		expect(prompt!.directory).toBe("/projects/app/.kilo/worktrees/new");
-		expect((prompt!.body as { system: string }).system).toContain(
+		await vi.waitFor(() => expect(host.server.promptsTo("ses_new_1")).toHaveLength(1));
+		expect(host.server.chat("ses_new_1")?.location.directory).toBe(
+			"/projects/app/.kilo/worktrees/new",
+		);
+		expect(systemOf(host.server.promptsTo("ses_new_1")[0])).toContain(
 			JSON.stringify("/projects/app/.kilo/worktrees/new"),
 		);
 	});
@@ -130,7 +129,7 @@ describe("the New Session page's composer", () => {
 
 	it("opens the work session when its first message fails, where the chat shows why", async () => {
 		const host = await renderChat({ starter: {} });
-		host.server.failPrompts = true;
+		host.server.failing.add("POST /api/session/ses_new_1/prompt");
 
 		await send("Try this");
 
@@ -161,17 +160,15 @@ describe("the New Session page's composer", () => {
 		host.view.unmount();
 		finishWorktree();
 
-		await vi.waitFor(
-			() =>
-				expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
-			{ timeout: 5_000 },
+		await vi.waitFor(() => expect(host.server.promptsTo("ses_new_1")).toHaveLength(1), {
+			timeout: 5_000,
+		});
+		const [prompt] = host.server.promptsTo("ses_new_1");
+		expect(prompt!.text).toBe("Fix the login form");
+		expect(host.server.chat("ses_new_1")?.location.directory).toBe(
+			"/projects/app/.kilo/worktrees/new",
 		);
-		const [prompt] = host.server.requestsTo("POST", "/session/ses_new_1/prompt_async");
-		expect(promptText(prompt!)).toBe("Fix the login form");
-		expect(prompt!.directory).toBe("/projects/app/.kilo/worktrees/new");
-		expect((prompt!.body as { system: string }).system).toContain(
-			JSON.stringify("/projects/app/.kilo/worktrees/new"),
-		);
+		expect(systemOf(prompt)).toContain(JSON.stringify("/projects/app/.kilo/worktrees/new"));
 		expect(host.starter.open).not.toHaveBeenCalled();
 	});
 
@@ -182,11 +179,9 @@ describe("the New Session page's composer", () => {
 		await vi.waitFor(() => expect(host.starter.open).toHaveBeenCalledWith("wses_new_1"));
 		// Opening the work session closes the New Session page.
 		host.view.unmount();
-		await vi.waitFor(() =>
-			expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1),
-		);
+		await vi.waitFor(() => expect(host.server.promptsTo("ses_new_1")).toHaveLength(1));
 
-		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toHaveLength(1);
+		expect(host.server.promptsTo("ses_new_1")).toHaveLength(1);
 	});
 
 	it("starts outside a workspace, in the chat's own folder", async () => {

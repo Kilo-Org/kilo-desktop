@@ -1,3 +1,4 @@
+import type { SessionMessageAssistant, SessionMessageInfo } from "@kilocode/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -10,12 +11,15 @@ import {
 	type MarkdownExtensionImplementation,
 } from "../contracts";
 import { agentPane, chatSummary } from "../test/chat-host";
+import { FakeKilo2Server } from "../test/kilo2/fake-kilo2-server";
 import {
 	assistantMessage,
-	FakeKiloServer,
+	idleMessage,
+	session,
+	text,
+	tool,
 	userMessage,
-	type FakeMessage,
-} from "../test/fake-kilo-server";
+} from "../test/kilo2/fixtures";
 import { SIGNED_IN, SIGNED_OUT } from "../test/kernel-harness";
 import { renderChat } from "../test/render-chat";
 import { expectPresent } from "../test/transcript";
@@ -26,20 +30,54 @@ afterEach(() => {
 
 const QUESTION = "What does login do?";
 
-function chatWith(parts: Record<string, unknown>[], userPatch: Partial<FakeMessage["info"]> = {}) {
-	const user = userMessage("ses_a", "msg_1", QUESTION);
+/** A finished turn answering with `content`. */
+const answer = (content: SessionMessageAssistant["content"]): SessionMessageInfo[] => [
+	assistantMessage(content, { finish: "stop", rawFinish: "stop" }),
+	idleMessage(),
+];
+
+/** A finished turn that edited login.ts (+3 −1) before answering `reply`. */
+const editingAnswer = (reply: string) =>
+	answer([
+		tool(
+			"edit",
+			{ path: "/projects/app/login.ts", oldString: "a", newString: "b" },
+			"Edit applied",
+			{
+				state: {
+					status: "completed",
+					input: { path: "/projects/app/login.ts", oldString: "a", newString: "b" },
+					content: [{ type: "text", text: "Edit applied" }],
+					metadata: {
+						files: [
+							{ file: "login.ts", patch: "", additions: 3, deletions: 1, status: "modified" },
+						],
+					},
+				},
+			},
+		),
+		text(reply),
+	]);
+
+/** The prompt and a turn that ended in the Gateway's sign-in error. */
+const refusedByGateway = (): SessionMessageInfo[] => {
+	const error = {
+		type: "APIError",
+		message: '{"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}',
+	};
 	return [
-		{ ...user, info: { ...user.info, ...userPatch } },
-		assistantMessage("ses_a", "msg_2", "msg_1", parts),
+		userMessage(QUESTION, { id: "msg_1" }),
+		assistantMessage([], { finish: "error", error }),
+		idleMessage("failed", error),
 	];
-}
+};
 
 async function showChat(
-	messages: FakeMessage[],
+	messages: SessionMessageInfo[],
 	options: Omit<Parameters<typeof renderChat>[0] & object, "server"> = {},
 ) {
-	const server = new FakeKiloServer();
-	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Chat" }), messages);
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -68,11 +106,6 @@ function contributor(
 	};
 }
 
-const reply = (text: string) => ({ type: "text", text, time: { start: 3, end: 4 } });
-
-const promptsTo = (server: FakeKiloServer) =>
-	server.requestsTo("POST", "/session/ses_a/prompt_async");
-
 describe("the markdown-extension point", () => {
 	it("decorates the transcript's markdown, knowing where it is", async () => {
 		const shout: MarkdownExtensionImplementation = (context) => ({
@@ -85,7 +118,7 @@ describe("the markdown-extension point", () => {
 				),
 			}),
 		});
-		await showChat(chatWith([reply("It posts **credentials**.")]), {
+		await showChat([userMessage(QUESTION), ...answer([text("It posts **credentials**.")])], {
 			plugins: [
 				contributor(
 					{ "kilo.chat/markdown-extension": [{ id: "shout" }] },
@@ -106,62 +139,45 @@ describe("the markdown-extension point", () => {
 });
 
 describe("reverting and retrying", () => {
-	const CHANGES = { summary: { diffs: [{ file: "login.ts", additions: 3, deletions: 1 }] } };
-
 	it("reverts to a prompt that changed files and puts it back in the composer", async () => {
-		const host = await showChat(chatWith([reply("Changed login.")], CHANGES));
+		const host = await showChat([
+			userMessage(QUESTION, { id: "msg_1" }),
+			...editingAnswer("Changed login."),
+		]);
 
 		const revert = page.getByTestId("kilo-revert-to-here-button");
 		await expect.element(revert).toBeInTheDocument();
 		(revert.element() as HTMLElement).click();
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_a/revert")[0]?.body)
+			.poll(() => host.server.requestsTo("POST", "/api/session/ses_a/revert/stage")[0]?.body)
 			.toMatchObject({ messageID: "msg_1" });
 		await expect.element(page.getByTestId("kilo-composer-header")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-composer-input")).toHaveTextContent(QUESTION);
 
 		await page.getByTestId("kilo-revert-undo-button").click();
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_a/unrevert").length)
+			.poll(() => host.server.requestsTo("DELETE", "/api/session/ses_a/revert").length)
 			.toBe(1);
 	});
 
 	it("lists the reverted prompts and restores them one at a time", async () => {
-		const first = userMessage("ses_a", "msg_1", QUESTION);
-		const firstReply = assistantMessage("ses_a", "msg_2", "msg_1", [reply("Changed login.")]);
-		const second = userMessage("ses_a", "msg_3", "Now fix signup");
-		const secondReply = assistantMessage("ses_a", "msg_4", "msg_3", [reply("Changed signup.")]);
-		const withImage = {
-			...second,
-			info: { ...second.info, ...CHANGES },
-			parts: [
-				...second.parts,
-				{
-					id: "msg_3_f",
-					sessionID: "ses_a",
-					messageID: "msg_3",
-					type: "file",
-					mime: "image/png",
-					filename: "shot.png",
-					url: "data:image/png;base64,iVBORw0KGgo=",
-				},
-				{
-					id: "msg_3_d",
-					sessionID: "ses_a",
-					messageID: "msg_3",
-					type: "file",
-					mime: "text/csv",
-					filename: "data.csv",
-					url: "data:text/csv;base64,YSxi",
-				},
-			],
-		};
 		const host = await showChat([
-			{ ...first, info: { ...first.info, ...CHANGES } },
-			firstReply,
-			withImage,
-			secondReply,
+			userMessage(QUESTION, { id: "msg_1" }),
+			...editingAnswer("Changed login."),
+			userMessage("Now fix signup", {
+				id: "msg_3",
+				files: [
+					{
+						data: "iVBORw0KGgo=",
+						mime: "image/png",
+						source: { type: "inline" },
+						name: "shot.png",
+					},
+					{ data: "YSxi", mime: "text/csv", source: { type: "inline" }, name: "data.csv" },
+				],
+			}),
+			...editingAnswer("Changed signup."),
 		]);
 
 		const reverts = page.getByTestId("kilo-revert-to-here-button");
@@ -174,7 +190,7 @@ describe("reverting and retrying", () => {
 		await page.getByTestId("kilo-revert-row-restore-button").first().click();
 
 		await expect
-			.poll(() => host.server.requestsTo("POST", "/session/ses_a/revert").at(-1)?.body)
+			.poll(() => host.server.requestsTo("POST", "/api/session/ses_a/revert/stage").at(-1)?.body)
 			.toMatchObject({ messageID: "msg_3" });
 		await expect
 			.element(page.getByTestId("kilo-composer-input"))
@@ -182,38 +198,19 @@ describe("reverting and retrying", () => {
 	});
 
 	it("offers no revert for a prompt that changed nothing", async () => {
-		await showChat(chatWith([reply("Nothing to change.")]));
+		await showChat([userMessage(QUESTION), ...answer([text("Nothing to change.")])]);
 
 		await expect.element(page.getByText("Nothing to change.")).toBeVisible();
 		expect(document.querySelector('[data-qa-id="kilo-revert-to-here-button"]')).toBeNull();
 	});
 
 	it("retries a prompt the Gateway refused once the person has signed in", async () => {
-		const prompt = userMessage("ses_a", "msg_1", QUESTION);
-		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
-		const host = await showChat(
-			[
-				prompt,
-				{
-					...failed,
-					info: {
-						...failed.info,
-						error: {
-							name: "APIError",
-							data: { message: '{"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}' },
-						},
-					},
-				},
-			],
-			{ identity: SIGNED_IN },
-		);
+		const host = await showChat(refusedByGateway(), { identity: SIGNED_IN });
 
 		await expect.element(page.getByTestId("kilo-message-error-signed-in")).toBeVisible();
 		await page.getByTestId("kilo-message-error-retry").click();
 
-		await expect
-			.poll(() => promptsTo(host.server)[0]?.body)
-			.toMatchObject({ messageID: "msg_1", parts: [] });
+		await expect.poll(() => host.server.promptsTo("ses_a")[0]?.text).toBe(QUESTION);
 	});
 });
 
@@ -240,31 +237,7 @@ const KILO_AUTO_ONLY: Partial<ModelsState> = {
 
 describe("a Kilo Gateway model refused while signed out", () => {
 	it("offers to connect", async () => {
-		const server = new FakeKiloServer();
-		const prompt = userMessage("ses_a", "msg_1", QUESTION);
-		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			messages: [
-				prompt,
-				{
-					...failed,
-					info: {
-						...failed.info,
-						error: {
-							name: "APIError",
-							data: { message: '{"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}' },
-						},
-					},
-				},
-			],
-		});
-		const host = await renderChat({
-			server,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
+		const host = await showChat(refusedByGateway(), {
 			identity: SIGNED_OUT,
 			models: KILO_AUTO_ONLY,
 		});

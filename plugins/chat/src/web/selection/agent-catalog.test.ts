@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Agent } from "@kilocode/sdk/v2/client";
+import type { AgentInfo } from "@kilocode/client";
 import {
 	BotIcon,
 	BugIcon,
@@ -16,11 +16,32 @@ import {
 	OPTIMISTIC_AGENT_CATALOG,
 } from "./agent-catalog";
 
-function agent(partial: Partial<Agent> & Pick<Agent, "name" | "mode">): Agent {
+type AgentFields = Partial<Omit<AgentInfo, "model">> &
+	Pick<AgentInfo, "mode"> & {
+		readonly name: string;
+		readonly displayName?: string;
+		readonly model?: { providerID: string; modelID: string };
+		readonly variant?: string;
+	};
+
+/** A v2 agent: `name` is its id, `displayName` its server name. */
+function agent({ name, displayName, model, variant, ...rest }: AgentFields): AgentInfo {
 	return {
-		permission: [],
-		options: {},
-		...partial,
+		id: name,
+		name: displayName ?? name,
+		hidden: false,
+		request: {} as AgentInfo["request"],
+		permissions: [],
+		...(model
+			? {
+					model: {
+						providerID: model.providerID,
+						id: model.modelID,
+						...(variant ? { variant } : {}),
+					},
+				}
+			: {}),
+		...rest,
 	};
 }
 
@@ -83,7 +104,7 @@ describe("agent-catalog", () => {
 		const catalog = buildAgentCatalog([
 			agent({ name: "plan", mode: "primary" }),
 			agent({ name: "code", mode: "subagent" }),
-			agent({ name: "debug", mode: "primary", deprecated: true }),
+			agent({ name: "debug", mode: "primary", hidden: true }),
 		]);
 		expect(catalog.agents.map((entry) => entry.name)).toEqual(["plan"]);
 	});
@@ -116,7 +137,6 @@ describe("agent-catalog", () => {
 			agent({ name: "docs-writer", mode: "primary" }),
 			agent({ name: "orchestrator", mode: "subagent" }),
 			agent({ name: "secret-agent", mode: "primary", hidden: true }),
-			agent({ name: "old-agent", mode: "primary", deprecated: true }),
 		]);
 		expect(catalog.agents.map((entry) => entry.name)).toEqual(["code", "docs-writer"]);
 	});

@@ -67,7 +67,6 @@ function MirrorRuntime({
 	children: ReactNode;
 }) {
 	const chats = useDomainObject(Chats);
-	const directoryOf = (id: string) => chats?.getState().chats[id]?.directory ?? null;
 	const getSystem = async (id: string) => {
 		const chat = chats?.getState().chats[id];
 		const config = await chats?.methods
@@ -83,7 +82,6 @@ function MirrorRuntime({
 	const runtime = useChatRuntime({
 		services,
 		chatId,
-		directoryOf,
 		createChat: cannotStartChats,
 		getSystem,
 		getAgent: () => IMPLEMENTING_AGENT,

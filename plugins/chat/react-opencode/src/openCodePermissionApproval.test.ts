@@ -1,65 +1,55 @@
 import { describe, expect, it } from "vitest";
+
 import {
 	projectOpenCodePermissionApproval,
 	projectResolvedOpenCodePermissionApproval,
 	toOpenCodePermissionResponse,
 } from "./openCodePermissionApproval";
-import type { OpenCodePermissionRequest } from "./types";
+import { permissionRequest } from "./testUtils";
 
-const request: OpenCodePermissionRequest = {
-	id: "permission-1",
-	sessionId: "session-1",
-	permission: "bash",
-	patterns: ["git status"],
-	metadata: {},
-	always: ["git *"],
-	tool: {
-		messageID: "message-1",
-		callID: "call-1",
-	},
-	askedAt: 1,
-	raw: {} as never,
-};
+const request = permissionRequest("per_1", {
+	action: "shell",
+	resources: ["git status"],
+	save: ["git *"],
+	source: { type: "tool", messageID: "msg_1", id: "call_1" },
+});
 
 describe("OpenCode permission approvals", () => {
-	it("projects OpenCode replies as standard approval options", () => {
+	it("offers once, always (granting the request's save patterns) and reject", () => {
 		expect(projectOpenCodePermissionApproval(request)).toEqual({
-			id: "permission-1",
+			id: "per_1",
 			options: [
-				{
-					id: "once",
-					kind: "allow-once",
-				},
+				{ id: "once", kind: "allow-once" },
 				{
 					id: "always",
 					kind: "allow-always",
-					description: "Allow these patterns until OpenCode is restarted.",
+					description: "Allow these patterns from now on.",
 					grants: ["git *"],
 					confirm: true,
 				},
-				{
-					id: "reject",
-					kind: "reject-once",
-				},
+				{ id: "reject", kind: "reject-once" },
 			],
 		});
 	});
 
-	it("omits the always option when the request grants nothing", () => {
-		expect(projectOpenCodePermissionApproval({ ...request, always: [] }).options).toEqual([
+	it("omits always when the request saves nothing", () => {
+		const once = [
 			{ id: "once", kind: "allow-once" },
 			{ id: "reject", kind: "reject-once" },
-		]);
+		];
+		expect(projectOpenCodePermissionApproval({ ...request, save: [] }).options).toEqual(once);
+		const { save: _save, ...unsaved } = request;
+		expect(projectOpenCodePermissionApproval(unsaved).options).toEqual(once);
 	});
 
 	it("projects resolved replies with the recorded decision", () => {
 		expect(projectResolvedOpenCodePermissionApproval({ request, reply: "always" })).toEqual({
-			id: "permission-1",
+			id: "per_1",
 			approved: true,
 			optionId: "always",
 		});
 		expect(projectResolvedOpenCodePermissionApproval({ request, reply: "reject" })).toEqual({
-			id: "permission-1",
+			id: "per_1",
 			approved: false,
 			optionId: "reject",
 		});

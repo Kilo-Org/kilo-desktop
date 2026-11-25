@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useAuiState } from "@assistant-ui/react";
+import { getOpenCodeTaskSessionId } from "@kilo-desktop/react-opencode";
 import { SquareIcon } from "lucide-react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -12,7 +12,6 @@ import {
 } from "../subagents/delegation-reveal-store";
 import { useSubagentActivity } from "../subagents/SubagentActivityContext";
 import {
-	childSessionIdForToolCall,
 	delegationStatus,
 	isActiveSubagentStatus,
 	subagentTypeLabel,
@@ -20,6 +19,7 @@ import {
 } from "../subagents/subagent-state";
 import { useOpenSubagentPane } from "../subagents/use-open-subagent-pane";
 import { useIsDelegationRowHidden } from "./delegation-group";
+import { useOpenCodeTool } from "./opencode-tool";
 import { ToolActivityRow } from "./tool-ui-activity-row";
 import { str, truncate, type ToolCallStatusLike } from "./tool-ui-shared";
 import type { ToolCallComponent } from "./tool-call";
@@ -27,7 +27,7 @@ import type { ToolCallComponent } from "./tool-call";
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
 
-const taskTitleFromArgs = (args: unknown): string | undefined => {
+const subagentTitleFromArgs = (args: unknown): string | undefined => {
 	const description = str(asRecord(args)?.description).replace(/\s+/g, " ").trim();
 	return description ? truncate(description, 72) : undefined;
 };
@@ -64,34 +64,27 @@ const ROW_STATUS: Record<SubagentDisplayStatus, NonNullable<ToolCallStatusLike>>
 	cancelled: { type: "incomplete", reason: "cancelled" },
 };
 
-/** A `task` call as a one-line delegation row inside its {@link DelegationGroup}. */
-export const TaskActivity: ToolCallComponent = ({ args, status, toolCallId }) => {
+/** A `subagent` call as a one-line delegation row inside its {@link DelegationGroup}. */
+export const SubagentActivity: ToolCallComponent = ({ args, status, toolCallId }) => {
 	const hidden = useIsDelegationRowHidden(toolCallId);
-	const originalParts = useAuiState((state) => {
-		const custom = state.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
-		return custom?.opencode?.parts;
-	});
+	const tool = useOpenCodeTool(toolCallId);
 	const { activityByToolCallId, stoppingIds, stopSubagent } = useSubagentActivity();
-	const knownChildSessionId =
-		activityByToolCallId.get(toolCallId)?.childSessionId ??
-		childSessionIdForToolCall(originalParts, toolCallId);
+	const activity = activityByToolCallId.get(toolCallId);
+	const childSessionId =
+		activity?.childSessionId ?? (tool ? getOpenCodeTaskSessionId(tool) : undefined);
 	const childDirectory = useOpenCodeExtrasSlice((extras) =>
-		knownChildSessionId
-			? extras.state?.childSessionsById?.[knownChildSessionId]?.session?.directory
+		childSessionId
+			? extras.state?.childSessionsById?.[childSessionId]?.session?.location.directory
 			: undefined,
 	);
 	const openPane = useOpenSubagentPane();
 	const ref = useRevealRow(toolCallId, hidden);
 	if (hidden) return null;
 
-	const activity = activityByToolCallId.get(toolCallId);
-	const childSessionId =
-		activity?.childSessionId ?? childSessionIdForToolCall(originalParts, toolCallId);
 	const displayStatus = delegationStatus(activity?.status, status);
 	const active = isActiveSubagentStatus(displayStatus);
-	const title = activity?.title ?? taskTitleFromArgs(args) ?? "Delegated task";
-	const typeLabel =
-		activity?.typeLabel ?? subagentTypeLabel(str(asRecord(args)?.subagent_type).trim());
+	const title = activity?.title ?? subagentTitleFromArgs(args) ?? "Delegated task";
+	const typeLabel = activity?.typeLabel ?? subagentTypeLabel(str(asRecord(args)?.agent).trim());
 	const directory = activity?.directory ?? childDirectory;
 	const stopping = childSessionId ? stoppingIds.has(childSessionId) : false;
 	const canStop = active && childSessionId !== undefined;
@@ -141,4 +134,4 @@ export const TaskActivity: ToolCallComponent = ({ args, status, toolCallId }) =>
 		</div>
 	);
 };
-TaskActivity.displayName = "TaskActivity";
+SubagentActivity.displayName = "SubagentActivity";

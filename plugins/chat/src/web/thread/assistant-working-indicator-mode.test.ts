@@ -5,6 +5,7 @@ import {
 	messageHasInFlightActivity,
 	openCodeTextIsStreaming,
 } from "./assistant-working-indicator-mode";
+import { assistantMessage, reasoning, text, userMessage } from "../../test/kilo2/fixtures";
 
 describe("messageHasInFlightActivity", () => {
 	it("is false when nothing is running", () => {
@@ -38,21 +39,28 @@ describe("messageHasInFlightActivity", () => {
 });
 
 describe("openCodeTextIsStreaming", () => {
-	it("is true while an OpenCode text part has started but not ended", () => {
-		expect(openCodeTextIsStreaming([{ type: "text", time: { start: 1 } }])).toBe(true);
+	const streamingStep = (content: Parameters<typeof assistantMessage>[0]) =>
+		assistantMessage(content, { time: { created: 1, firstToken: 2 } });
+
+	it("is true while the latest step is still emitting text", () => {
+		expect(openCodeTextIsStreaming([userMessage("hi"), streamingStep([text("Hel")])])).toBe(true);
 	});
 
-	it("is false once every text part has ended", () => {
-		expect(openCodeTextIsStreaming([{ type: "text", time: { start: 1, end: 2 } }])).toBe(false);
+	it("is false once the step has streamed or completed", () => {
+		expect(openCodeTextIsStreaming([assistantMessage([text("Hello")])])).toBe(false);
+		expect(
+			openCodeTextIsStreaming([
+				assistantMessage([text("Hello")], { time: { created: 1, streamed: 2 } }),
+			]),
+		).toBe(false);
 	});
 
-	it("ignores synthetic text, non-text parts, and missing part data", () => {
-		expect(openCodeTextIsStreaming([{ type: "text", synthetic: true, time: { start: 1 } }])).toBe(
+	it("is false while the step's newest content is not text, or without steps", () => {
+		expect(openCodeTextIsStreaming([streamingStep([text("Let me look"), reasoning("hmm")])])).toBe(
 			false,
 		);
-		expect(openCodeTextIsStreaming([{ type: "reasoning", time: { start: 1 } }])).toBe(false);
-		expect(openCodeTextIsStreaming([{ type: "text" }])).toBe(false);
-		expect(openCodeTextIsStreaming(undefined)).toBe(false);
+		expect(openCodeTextIsStreaming([userMessage("hi")])).toBe(false);
+		expect(openCodeTextIsStreaming([])).toBe(false);
 	});
 });
 

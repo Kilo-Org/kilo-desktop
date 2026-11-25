@@ -1,158 +1,94 @@
-import {
-	createOpenCodeThreadState,
-	projectOpenCodeThreadMessages,
-	reduceOpenCodeThreadState,
-	type OpenCodeServerMessage,
-	type OpenCodeThreadState,
-} from "./index";
 import { describe, expect, it } from "vitest";
 
+import { projectOpenCodeThreadMessages } from "./openCodeMessageProjection";
+import { assistant, idle, streamingAssistant, text, threadState, tool, user } from "./testUtils";
+import type { OpenCodeThreadState, Transcript } from "./types";
+
 /*
- * Stop status in Desktop's fork (requirement in docs/kilo-v2.md): a stopped turn projects as
+ * Stop status (requirement R8 in docs/kilo-v2.md): a stopped turn projects as
  * `incomplete/cancelled` so the transcript says "You stopped" instead of
  * "Worked for" or an error banner.
  */
 
-const assistant = (
-	id: string,
-	info: Record<string, unknown>,
-	parts: Array<Record<string, unknown>> = [],
-): OpenCodeServerMessage => ({
-	id,
-	info: {
-		id,
-		role: "assistant",
-		sessionID: "ses_1",
-		modelID: "model",
-		providerID: "provider",
-		mode: "primary",
-		path: { cwd: "/", root: "/" },
-		cost: 0,
-		tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-		time: { created: Number(id.split("-")[1] ?? 1), completed: 10 },
-		...info,
-	} as never,
-	parts: parts as never,
-	shadowParts: undefined,
-});
+const statusOf = (messages: Transcript, overrides: Partial<OpenCodeThreadState> = {}) =>
+	projectOpenCodeThreadMessages(threadState(messages, overrides)).at(-1)?.status;
 
-const user = (id: string): OpenCodeServerMessage => ({
-	id,
-	info: {
-		id,
-		role: "user",
-		sessionID: "ses_1",
-		time: { created: Number(id.split("-")[1] ?? 1) },
-	} as never,
-	parts: [{ id: `${id}_1`, sessionID: "ses_1", messageID: id, type: "text", text: "go" }] as never,
-	shadowParts: undefined,
-});
-
-const taskPart = (id: string, status: string) => ({
-	id,
-	sessionID: "ses_1",
-	messageID: "msg-2",
-	type: "tool",
-	tool: "task",
-	callID: `call-${id}`,
-	state: { status, input: {}, error: "Task cancelled", time: { start: 1, end: 2 } },
-});
-
-const statusOf = (
-	messages: readonly OpenCodeServerMessage[],
-	overrides: Partial<OpenCodeThreadState> = {},
-) => {
-	const state: OpenCodeThreadState = {
-		...createOpenCodeThreadState("ses_1"),
-		sessionStatus: { type: "idle" },
-		messageOrder: messages.map((message) => message.id),
-		messagesById: Object.fromEntries(messages.map((message) => [message.id, message])),
-		...overrides,
-	};
-	return projectOpenCodeThreadMessages(state).at(-1)?.status;
-};
+const CANCELLED = { type: "incomplete", reason: "cancelled" };
 
 describe("projectOpenCodeThreadMessages stop status", () => {
-	it("reports a turn aborted mid-step as stopped, not failed", () => {
-		const status = statusOf([
-			user("msg-1"),
-			assistant("msg-2", { error: { name: "MessageAbortedError", data: { message: "Aborted" } } }),
-		]);
-
-		expect(status).toEqual({ type: "incomplete", reason: "cancelled" });
+	it("reports an interrupted turn as stopped, not failed", () => {
+		expect(
+			statusOf([
+				user("msg_1"),
+				assistant("msg_2", [text("Partial")]),
+				idle("msg_3", "interrupted"),
+			]),
+		).toEqual(CANCELLED);
 	});
 
-	it("reports a turn halted between steps as stopped", () => {
-		const status = statusOf([
-			user("msg-1"),
-			assistant("msg-2", { finish: "tool-calls" }, [taskPart("prt-1", "error")]),
-		]);
-
-		expect(status).toEqual({ type: "incomplete", reason: "cancelled" });
-	});
-
-	it("keeps a tool-call step complete while the run is still going", () => {
-		const status = statusOf(
-			[
-				user("msg-1"),
-				assistant("msg-2", { finish: "tool-calls" }, [taskPart("prt-1", "completed")]),
-			],
-			{ sessionStatus: { type: "busy" } },
+	it("reports a step that never finished once the run is over as stopped", () => {
+		expect(statusOf([user("msg_1"), streamingAssistant("msg_2", [text("Partial")])])).toEqual(
+			CANCELLED,
 		);
+	});
 
-		expect(status).toMatchObject({ type: "complete" });
+	it("reports a turn halted between steps, its last step handing off to tools, as stopped", () => {
+		expect(statusOf([user("msg_1"), assistant("msg_2", [tool("call_1", "subagent")])])).toEqual(
+			CANCELLED,
+		);
+	});
+
+	it("keeps a turn running while the session runs, even between steps", () => {
+		expect(
+			statusOf([user("msg_1"), assistant("msg_2", [tool("call_1", "read")])], { running: true }),
+		).toEqual({ type: "running" });
 	});
 
 	it("treats a completed plan_exit as the intended end of a turn", () => {
-		const status = statusOf([
-			user("msg-1"),
-			assistant("msg-2", { finish: "tool-calls" }, [
-				{ ...taskPart("prt-1", "completed"), tool: "plan_exit" },
+		expect(
+			statusOf([
+				user("msg_1"),
+				assistant("msg_2", [tool("call_1", "plan_exit", {}, "Plan ready")]),
 			]),
-		]);
+		).toEqual({
+			type: "complete",
+			reason: "stop",
+		});
+	});
 
-		expect(status).toMatchObject({ type: "complete" });
+	it("keeps a turn that ended on tool calls complete once its idle message says it succeeded", () => {
+		expect(
+			statusOf([
+				user("msg_1"),
+				assistant("msg_2", [tool("call_1", "read")]),
+				idle("msg_3", "succeeded"),
+			]),
+		).toEqual({ type: "complete", reason: "stop" });
+	});
+
+	it("keeps an earlier turn that ended on tool calls complete", () => {
+		const messages = projectOpenCodeThreadMessages(
+			threadState([
+				user("msg_1"),
+				assistant("msg_2", [tool("call_1", "read")]),
+				user("msg_3"),
+				assistant("msg_4", [text("Done")]),
+			]),
+		);
+
+		expect(messages[1]?.status).toEqual({ type: "complete", reason: "stop" });
 	});
 
 	it("still surfaces genuine errors", () => {
-		const status = statusOf([
-			user("msg-1"),
-			assistant("msg-2", { error: { name: "APIError", data: { message: "Rate limited" } } }),
-		]);
-
-		expect(status).toEqual({ type: "incomplete", reason: "error", error: "Rate limited" });
-	});
-});
-
-describe("reduceOpenCodeThreadState part activity", () => {
-	const message = assistant("msg-2", {}, [taskPart("prt-1", "completed")]);
-	const stateWith = (overrides: Partial<OpenCodeThreadState>): OpenCodeThreadState => ({
-		...createOpenCodeThreadState("ses_1"),
-		messageOrder: [message.id],
-		messagesById: { [message.id]: message },
-		...overrides,
-	});
-	const trailingPart = {
-		type: "part.updated",
-		messageId: message.id,
-		part: taskPart("prt-1", "completed"),
-	} as never;
-
-	it.each(["cancelling", "reverting"] as const)(
-		"keeps a %s run from flipping back to streaming on trailing part output",
-		(type) => {
-			const state = stateWith({ runState: { type } });
-			const next = reduceOpenCodeThreadState(state, trailingPart);
-
-			expect(next.runState).toEqual({ type });
-			expect(next.sessionStatus).toBe(state.sessionStatus);
-		},
-	);
-
-	it("treats part output with an unknown status as a live run", () => {
-		const next = reduceOpenCodeThreadState(stateWith({ runState: { type: "idle" } }), trailingPart);
-
-		expect(next.runState).toEqual({ type: "streaming" });
-		expect(next.sessionStatus).toEqual({ type: "busy" });
+		expect(
+			statusOf([
+				user("msg_1"),
+				assistant("msg_2", [], {
+					finish: "error",
+					error: { type: "api", message: "Rate limited" },
+				}),
+				idle("msg_3", "failed"),
+			]),
+		).toEqual({ type: "incomplete", reason: "error", error: "Rate limited" });
 	});
 });

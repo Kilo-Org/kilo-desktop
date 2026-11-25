@@ -1,3 +1,4 @@
+import { bytesToBase64 } from "@assistant-ui/core/internal";
 import { useQuery } from "@tanstack/react-query";
 import { ImageOffIcon } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
@@ -7,7 +8,7 @@ import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useChatConnection } from "../runtime/chat-connection";
-import { directoryClient } from "../runtime/kilo-client";
+import { kiloClient } from "../runtime/kilo-client";
 import { useChatMarkdownContext } from "../thread/chat-markdown";
 import { useLightboxItem, type LightboxItemInput } from "../thread/lightbox/chat-lightbox";
 import { fileName, fileUrlPath, imageDataUrl } from "./message-images";
@@ -136,11 +137,14 @@ function WorkspaceImage({
 		],
 		enabled: Boolean(connection && target?.relativePath),
 		queryFn: async () => {
-			const { data } = await directoryClient(connection!, target!.workspaceDirectory).file.read(
-				{ path: target!.relativePath },
-				{ throwOnError: true },
+			const bytes = await kiloClient(connection!).file.read({
+				location: { directory: target!.workspaceDirectory },
+				path: target!.relativePath,
+			});
+			return imageDataUrl(
+				{ encoding: "base64", content: bytesToBase64(bytes) },
+				target!.relativePath,
 			);
-			return imageDataUrl(data, target!.relativePath);
 		},
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,

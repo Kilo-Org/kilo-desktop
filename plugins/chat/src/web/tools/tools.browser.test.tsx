@@ -1,3 +1,8 @@
+import type {
+	SessionMessageAssistant,
+	SessionMessageAssistantTool,
+	SessionMessageInfo,
+} from "@kilocode/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { z } from "zod";
@@ -12,23 +17,19 @@ import {
 	type ModelsState,
 } from "@kilo-desktop/plugin-core/contracts";
 
-import { chatPaneObject, McpApp, ToolRenderer, type ToolRendererProps } from "../../contracts";
-import { agentPane, chatSummary } from "../../test/chat-host";
+import { chatPaneObject, ToolRenderer, type ToolRendererProps } from "../../contracts";
+import { agentPane, chatSummary, SIGNED_IN, SIGNED_OUT, TEST_MODELS } from "../../test/chat-host";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
 import {
 	assistantMessage,
-	FakeKiloServer,
+	idleMessage,
+	reasoning,
+	session,
+	text,
+	tool,
 	userMessage,
-	type FakeMessage,
-} from "../../test/fake-kilo-server";
-import { SIGNED_IN, SIGNED_OUT, TEST_MODELS } from "../../test/chat-host";
-import {
-	button,
-	expandAll,
-	expandUntil,
-	expectPresent,
-	toolPart,
-	turnWork,
-} from "../../test/transcript";
+} from "../../test/kilo2/fixtures";
+import { button, expandAll, expandUntil, expectPresent, turnWork } from "../../test/transcript";
 import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
@@ -41,20 +42,36 @@ const signInRequiredToolMessage = () =>
 	`${SIGN_IN_REQUIRED_TOOL_ERROR_CODE} The user is not signed in to Kilo, so this tool did not run.`;
 const SIGN_IN_DECLINED_TOOL_MESSAGE = `${SIGN_IN_DECLINED_TOOL_ERROR_CODE} The user chose not to sign in.`;
 
-function chatWith(parts: Record<string, unknown>[], userPatch: Partial<FakeMessage["info"]> = {}) {
-	const user = userMessage("ses_a", "msg_1", QUESTION);
+/** A completed tool call that reports `metadata`. */
+function toolWith(
+	name: string,
+	input: Record<string, unknown>,
+	output: string,
+	metadata: Record<string, unknown>,
+	id?: string,
+): SessionMessageAssistantTool {
+	const call = tool(name, input, output, id ? { id } : {});
+	return { ...call, state: { ...call.state, metadata } as SessionMessageAssistantTool["state"] };
+}
+
+const failedTool = (name: string, input: Record<string, unknown>, message: string, id?: string) =>
+	tool(name, input, { error: { type: "tool", message } }, id ? { id } : {});
+
+/** The question and a finished one-step turn answering it with `content`. */
+function chatWith(content: SessionMessageAssistant["content"]): SessionMessageInfo[] {
 	return [
-		{ ...user, info: { ...user.info, ...userPatch } },
-		assistantMessage("ses_a", "msg_2", "msg_1", parts),
+		userMessage(QUESTION),
+		assistantMessage(content, { finish: "stop", rawFinish: "stop" }),
+		idleMessage(),
 	];
 }
 
 async function showChat(
-	messages: FakeMessage[],
+	messages: SessionMessageInfo[],
 	options: Omit<Parameters<typeof renderChat>[0] & object, "server"> = {},
+	server = new FakeKilo2Server(),
 ) {
-	const server = new FakeKiloServer();
-	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
+	server.addChat(session("ses_a", { title: "Chat" }), messages);
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -78,7 +95,6 @@ function contributor(
 			version: "1.0.0",
 			requires: {
 				"kilo.chat/tool-renderer": "optional",
-				"kilo.chat/mcp-app": "optional",
 				"kilo.core/tool": "optional",
 			},
 			contributes: { extensions },
@@ -86,8 +102,6 @@ function contributor(
 		...entries,
 	};
 }
-
-const reply = (text: string) => ({ type: "text", text, time: { start: 3, end: 4 } });
 
 /** The code agent remembers Acme's model, so a turn sent after sign-in has a model to run with. */
 const REMEMBERED_MODEL = {
@@ -98,17 +112,35 @@ const REMEMBERED_MODEL = {
 	},
 };
 
-const promptsTo = (server: FakeKiloServer) =>
-	server.requestsTo("POST", "/session/ses_a/prompt_async");
+const promptTexts = (server: FakeKilo2Server) =>
+	server.promptsTo("ses_a").map((prompt) => prompt.text);
+
+/** A unified diff of `path` replacing `before` lines with `after` ones. */
+const fileDiff = (path: string, before: readonly string[], after: readonly string[]) => ({
+	file: path,
+	patch: [
+		`--- a/${path}`,
+		`+++ b/${path}`,
+		`@@ -1,${String(before.length)} +1,${String(after.length)} @@`,
+		...before.map((line) => `-${line}`),
+		...after.map((line) => `+${line}`),
+	].join("\n"),
+	additions: after.length,
+	deletions: before.length,
+	status: "modified",
+});
 
 describe("kilo.chat's tool renderers", () => {
 	it("shows a file edit's diff and counts", async () => {
 		await showChat(
 			chatWith([
-				toolPart("edit", {
-					input: { filePath: "/projects/app/login.ts", oldString: "a\n", newString: "b\nc\n" },
-				}),
-				reply("Edited."),
+				toolWith(
+					"edit",
+					{ path: "/projects/app/login.ts", oldString: "a\n", newString: "b\nc\n" },
+					"Edit applied",
+					{ files: [fileDiff("login.ts", ["a"], ["b", "c"])] },
+				),
+				text("Edited."),
 			]),
 		);
 
@@ -121,12 +153,12 @@ describe("kilo.chat's tool renderers", () => {
 	it("shows a command and its output", async () => {
 		await showChat(
 			chatWith([
-				toolPart("bash", {
-					input: { command: "pnpm test", description: "Run the tests" },
+				toolWith("shell", { command: "pnpm test", description: "Run the tests" }, "12 passed", {
+					status: "completed",
+					exit: 0,
 					output: "12 passed",
-					metadata: { output: "12 passed", exit: 0 },
 				}),
-				reply("Tests pass."),
+				text("Tests pass."),
 			]),
 		);
 
@@ -138,12 +170,12 @@ describe("kilo.chat's tool renderers", () => {
 	it("groups a turn's searches and web lookups", async () => {
 		await showChat(
 			chatWith([
-				toolPart("grep", { input: { pattern: "login" }, output: "Found 2 matches" }, "c1"),
-				toolPart("glob", { input: { pattern: "**/*.ts" }, output: "a.ts\nb.ts" }, "c2"),
-				toolPart("webfetch", { input: { url: "https://example.com/docs" } }, "c3"),
-				toolPart("websearch", { input: { query: "oauth" } }, "c4"),
-				toolPart("skill", { input: { name: "tdd" } }, "c5"),
-				reply("Found it."),
+				tool("grep", { pattern: "login" }, "Found 2 matches"),
+				tool("glob", { pattern: "**/*.ts" }, "a.ts\nb.ts"),
+				tool("webfetch", { url: "https://example.com/docs" }),
+				tool("websearch", { query: "oauth" }),
+				tool("skill", { id: "tdd" }),
+				text("Found it."),
 			]),
 		);
 
@@ -153,35 +185,30 @@ describe("kilo.chat's tool renderers", () => {
 	});
 
 	it("lists a running turn's tasks over the composer", async () => {
-		const host = await showChat(
-			chatWith([
-				toolPart("todowrite", {
-					input: {
-						todos: [
-							{ content: "Write the tests", status: "completed" },
-							{ content: "Port the cards", status: "in_progress" },
-						],
-					},
-				}),
-				reply("On it."),
-			]),
-		);
+		const host = await showChat([userMessage(QUESTION)]);
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
+		const todos = [
+			{ content: "Write the tests", status: "completed" },
+			{ content: "Port the cards", status: "in_progress" },
+		];
 
-		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		const turn = host.server.startTurn("ses_a");
+		turn.step().call("todowrite", { todos }).succeed("", { todos });
 
 		await expect.element(page.getByText("Port the cards")).toBeInTheDocument();
-		host.server.emit("session.idle", { sessionID: "ses_a" });
+		turn.succeed();
 		await expect.element(page.getByText("Port the cards")).not.toBeInTheDocument();
 	});
 
 	it("shows a delegation to a subagent", async () => {
 		await showChat(
 			chatWith([
-				toolPart("task", {
-					input: { description: "Audit the login flow", subagent_type: "explore" },
-					output: "<task_result>Looks fine</task_result>",
-				}),
+				toolWith(
+					"subagent",
+					{ agent: "explore", description: "Audit the login flow", prompt: "Audit it" },
+					"Looks fine",
+					{ sessionID: "ses_child" },
+				),
 			]),
 		);
 
@@ -205,131 +232,92 @@ describe("every built-in renderer, opened up", () => {
 		"*** End Patch",
 	].join("\n");
 
-	const SETTLED_PARTS = [
-		{ type: "reasoning", text: "Planning the change", time: { start: 1, end: 2 } },
-		toolPart("read", { input: { filePath: "/projects/app/src/login.ts" } }, "r1"),
-		toolPart("read", { input: { filePath: "/projects/app/src/auth.ts" } }, "r2"),
-		toolPart(
-			"grep",
-			{ input: { pattern: "login", include: "*.ts" }, output: "Found 3 matches\nsrc/login.ts:1" },
-			"g1",
-		),
-		toolPart(
-			"glob",
-			{ input: { pattern: "**/*.ts", path: "/projects/app" }, output: "src/a.ts\nsrc/b.ts" },
-			"g2",
-		),
-		toolPart("list", { input: { path: "/projects/app/src" }, output: "a.ts\nb.ts" }, "g3"),
-		toolPart("codebase_search", { input: { query: "where is auth" }, output: "src/auth.ts" }, "g4"),
-		toolPart(
-			"webfetch",
-			{ input: { url: "https://example.com/docs", format: "markdown" }, output: "# Docs" },
-			"w1",
-		),
-		toolPart("websearch", { input: { query: "oauth pkce" }, output: "Result: PKCE" }, "w2"),
-		toolPart("skill", { input: { name: "tdd" }, output: "Loaded" }, "s1"),
-		toolPart(
-			"bash",
-			{
-				input: { command: "pnpm test", description: "Run tests" },
-				output: "12 passed",
-				metadata: { output: "12 passed", exit: 0 },
-			},
-			"b1",
-		),
-		toolPart("bash", { status: "error", input: { command: "make" }, error: "exit 2" }, "b2"),
-		toolPart(
+	const settledTools = (): SessionMessageAssistantTool[] => [
+		tool("read", { path: "/projects/app/src/login.ts" }),
+		tool("read", { path: "/projects/app/src/auth.ts" }),
+		tool("grep", { pattern: "login", include: "*.ts" }, "Found 3 matches\nsrc/login.ts:1"),
+		tool("glob", { pattern: "**/*.ts", path: "/projects/app" }, "src/a.ts\nsrc/b.ts"),
+		tool("list", { path: "/projects/app/src" }, "a.ts\nb.ts"),
+		tool("codebase_search", { query: "where is auth" }, "src/auth.ts"),
+		tool("webfetch", { url: "https://example.com/docs", format: "markdown" }, "# Docs"),
+		tool("websearch", { query: "oauth pkce" }, "Result: PKCE"),
+		tool("skill", { id: "tdd" }, "Loaded"),
+		toolWith("shell", { command: "pnpm test", description: "Run tests" }, "12 passed", {
+			status: "completed",
+			exit: 0,
+			output: "12 passed",
+		}),
+		failedTool("shell", { command: "make" }, "exit 2"),
+		toolWith(
 			"edit",
 			{
-				input: {
-					filePath: "/projects/app/src/login.ts",
-					oldString: "const b = 2;\n",
-					newString: "const b = 3;\nconst c = 4;\n",
+				path: "/projects/app/src/login.ts",
+				oldString: "const b = 2;\n",
+				newString: "const b = 3;\nconst c = 4;\n",
+			},
+			"Edit applied",
+			{
+				files: [
+					fileDiff(
+						"/projects/app/src/login.ts",
+						["const b = 2;"],
+						["const b = 3;", "const c = 4;"],
+					),
+				],
+			},
+		),
+		tool("write", {
+			path: "/projects/app/src/new.ts",
+			content: "export const x = 1;\nexport const y = 2;\n",
+		}),
+		toolWith("patch", { patchText: PATCH }, "Patch applied", {
+			files: [
+				fileDiff("src/login.ts", ["const b = 2;"], ["const b = 3;"]),
+				{
+					...fileDiff("src/new.ts", [], ["export const fresh = true;"]),
+					status: "added",
 				},
-			},
-			"e1",
+				{ ...fileDiff("src/old.ts", ["gone"], []), status: "deleted" },
+			],
+		}),
+		tool("question", { questions: [{ question: "Which?", options: [] }] }, "Answered"),
+		tool("github_list_issues", {}, "[]"),
+		toolWith(
+			"subagent",
+			{ agent: "explore", description: "Audit login", prompt: "Audit it" },
+			"ok",
+			{ sessionID: "ses_child" },
 		),
-		toolPart(
-			"write",
-			{
-				input: {
-					filePath: "/projects/app/src/new.ts",
-					content: "export const x = 1;\nexport const y = 2;\n",
-				},
-			},
-			"e2",
+		failedTool(
+			"subagent",
+			{ agent: "general", description: "Audit auth", prompt: "Audit it" },
+			"Cancelled",
 		),
-		toolPart("apply_patch", { input: { patchText: PATCH } }, "p1"),
-		toolPart(
-			"question",
-			{ input: { questions: [{ question: "Which?", options: [] }] }, output: "Answered" },
-			"q1",
-		),
-		toolPart("github_list_issues", { output: "[]" }, "m1"),
-		toolPart(
-			"task",
-			{
-				input: { description: "Audit login", subagent_type: "explore" },
-				output: "<task_result>ok</task_result>",
-				metadata: { sessionId: "ses_child" },
-			},
-			"t1",
-		),
-		toolPart(
-			"task",
-			{
-				status: "error",
-				input: { description: "Audit auth", subagent_type: "general" },
-				error: "Cancelled",
-			},
-			"t2",
-		),
-		{ type: "snapshot", snapshot: "abc" },
-		{ type: "compaction", auto: true },
-		{ type: "agent", name: "explore" },
-		{ type: "mystery" },
-		reply("All changed."),
 	];
 
 	it("draws a settled turn's work", async () => {
-		await showChat(chatWith(SETTLED_PARTS));
+		await showChat(
+			chatWith([reasoning("Planning the change"), ...settledTools(), text("All changed.")]),
+		);
 
 		await expandAll();
 
 		await expect.element(page.getByText("12 passed").first()).toBeInTheDocument();
-		await expect.element(page.getByText("src/new.ts").first()).toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Edited new.ts" })).toBeInTheDocument();
 		await expect.element(page.getByText("Audit login").first()).toBeInTheDocument();
 	});
 
 	it("draws a running turn's work as it happens", async () => {
-		const host = await showChat([userMessage("ses_a", "msg_1", QUESTION)]);
+		const host = await showChat([userMessage(QUESTION)]);
 		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
-		const live = assistantMessage("ses_a", "msg_2", "msg_1", []);
-		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
-		host.server.emit("message.updated", {
-			info: { ...live.info, time: { created: Date.now() }, finish: undefined },
-		});
-		const running = (part: Record<string, unknown>, id: string) => ({
-			...part,
-			id,
-			sessionID: "ses_a",
-			messageID: "msg_2",
-			state: { ...(part.state as object), status: "running", time: { start: Date.now() } },
-		});
-		for (const [index, part] of SETTLED_PARTS.slice(1, -1).entries()) {
-			host.server.emit("message.part.updated", { part: running(part, `part_${index}`) });
+
+		const turn = host.server.startTurn("ses_a");
+		const step = turn.step();
+		step.reasoning("Planning the change");
+		for (const call of settledTools()) {
+			step.call(call.name, call.state.input as Record<string, unknown>);
 		}
-		host.server.emit("message.part.updated", {
-			part: {
-				id: "part_retry",
-				sessionID: "ses_a",
-				messageID: "msg_2",
-				type: "retry",
-				attempt: 2,
-				error: { name: "APIError", data: { message: "Overloaded" } },
-				time: { created: Date.now() },
-			},
-		});
+		turn.retry(2, { type: "APIError", message: "Overloaded" });
 
 		await expect.element(page.getByRole("status").first()).toBeInTheDocument();
 		await expandAll();
@@ -340,11 +328,11 @@ describe("every built-in renderer, opened up", () => {
 describe("the agent's HTML pages", () => {
 	it.each(["desktop_chat_html_render", "desktop_kilo_ui_html_render"])(
 		"shows a %s page above the reply, outside the fold",
-		async (tool) => {
+		async (name) => {
 			await showChat(
 				chatWith([
-					toolPart(tool, { input: { title: "Sales chart", html: "<p>chart</p>" } }),
-					reply("Sales doubled."),
+					tool(name, { title: "Sales chart", html: "<p>chart</p>" }),
+					text("Sales doubled."),
 				]),
 			);
 
@@ -372,14 +360,14 @@ describe("the tool-renderer point", () => {
 	const plugin = contributor(
 		{
 			"kilo.chat/tool-renderer": [
-				{ id: "framed-bash", tools: ["bash"], priority: 10 },
+				{ id: "framed-shell", tools: ["shell"], priority: 10 },
 				{ id: "ping", tools: ["acme.tools/ping"], standalone: true, category: "web" },
 			],
 		},
 		{
 			web: {
 				activate(sdk) {
-					sdk.extensions.implement(ToolRenderer, "framed-bash", { component: Framed });
+					sdk.extensions.implement(ToolRenderer, "framed-shell", { component: Framed });
 					sdk.extensions.implement(ToolRenderer, "ping", { component: Ping });
 				},
 			},
@@ -389,8 +377,8 @@ describe("the tool-renderer point", () => {
 	it("lets a plugin draw its own tool, outside the fold when standalone", async () => {
 		await showChat(
 			chatWith([
-				toolPart(toolWireName("acme.tools/ping"), { input: { host: "example.com" } }),
-				reply("Reachable."),
+				tool(toolWireName("acme.tools/ping"), { host: "example.com" }),
+				text("Reachable."),
 			]),
 			{ plugins: [plugin] },
 		);
@@ -401,12 +389,12 @@ describe("the tool-renderer point", () => {
 	it("hands an override kilo.chat's renderer to wrap", async () => {
 		await showChat(
 			chatWith([
-				toolPart("bash", {
-					input: { command: "make", description: "Build" },
+				toolWith("shell", { command: "make", description: "Build" }, "built", {
+					status: "completed",
+					exit: 0,
 					output: "built",
-					metadata: { output: "built", exit: 0 },
 				}),
-				reply("Built."),
+				text("Built."),
 			]),
 			{ plugins: [plugin] },
 		);
@@ -414,73 +402,6 @@ describe("the tool-renderer point", () => {
 		await expandUntil([turnWork, button(/^(Ran|Build)/)], () =>
 			expect(expectPresent('[data-qa-id="acme-framed"]').textContent).toMatch(/make|Build/),
 		);
-	});
-});
-
-describe("the mcp-app point", () => {
-	const WIDGET = "<!doctype html><title>Acme list</title><p>widget</p>";
-
-	it("frames a contributed widget for its tool's calls", async () => {
-		const loadHtml = vi.fn(() => WIDGET);
-		await showChat(
-			chatWith([toolPart(toolWireName("acme.tools/list"), { output: "[]" }), reply("Listed.")]),
-			{
-				plugins: [
-					contributor(
-						{
-							"kilo.chat/mcp-app": [
-								{ id: "list", tools: ["acme.tools/list"], resourceUri: "ui://acme/list" },
-							],
-						},
-						{
-							web: {
-								activate(sdk) {
-									sdk.extensions.implement(McpApp, "list", { loadHtml });
-								},
-							},
-						},
-					),
-				],
-			},
-		);
-
-		await vi.waitFor(() => expectPresent('iframe[title="MCP App"]'), { timeout: 10_000 });
-		expect(loadHtml).toHaveBeenCalled();
-	});
-
-	it("reads a widget without its own HTML from the tool's server", async () => {
-		const server = new FakeKiloServer();
-		server.resources["ui://acme/remote"] = { mimeType: "text/html;profile=mcp-app", text: WIDGET };
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			messages: chatWith([
-				toolPart(toolWireName("acme.tools/remote"), { output: "[]" }),
-				reply("Done."),
-			]),
-		});
-		await renderChat({
-			server,
-			pane: agentPane({ object: chatPaneObject("ses_a") }),
-			chats: [chatSummary("ses_a")],
-			plugins: [
-				contributor(
-					{
-						"kilo.chat/mcp-app": [
-							{ id: "remote", tools: ["acme.tools/remote"], resourceUri: "ui://acme/remote" },
-						],
-					},
-					{},
-				),
-			],
-		});
-
-		await vi.waitFor(() => expectPresent('iframe[title="MCP App"]'), { timeout: 10_000 });
-		expect(server.requestsTo("POST", "/experimental/resource/read")[0]?.body).toEqual({
-			uri: "ui://acme/remote",
-			server: "desktop",
-		});
 	});
 });
 
@@ -500,11 +421,7 @@ describe("tools that need sign-in", () => {
 		},
 	);
 	const refused = (callID: string) =>
-		toolPart(
-			toolWireName("acme.tools/secret"),
-			{ status: "error", error: signInRequiredToolMessage() },
-			callID,
-		);
+		failedTool(toolWireName("acme.tools/secret"), {}, signInRequiredToolMessage(), callID);
 
 	it("asks a signed-out person to sign in where the call was refused", async () => {
 		const host = await showChat(chatWith([refused("call_secret_1")]), {
@@ -565,9 +482,7 @@ describe("tools that need sign-in", () => {
 		await page.getByTestId("kilo-tool-signin-prompt-decline").click();
 
 		await expect.element(page.getByTestId("kilo-tool-signin-declined")).toBeVisible();
-		await expect
-			.poll(() => JSON.stringify(promptsTo(host.server)[0]?.body ?? ""))
-			.toContain("continue without");
+		await expect.poll(() => promptTexts(host.server)[0] ?? "").toContain("continue without");
 	});
 
 	it("turns the tool's plugin off for the agent in kilo.core when the person declines", async () => {
@@ -596,9 +511,10 @@ describe("tools that need sign-in", () => {
 	it("says the tools are off for a call refused because the person already declined", async () => {
 		await showChat(
 			chatWith([
-				toolPart(
+				failedTool(
 					toolWireName("acme.tools/secret"),
-					{ status: "error", error: SIGN_IN_DECLINED_TOOL_MESSAGE },
+					{},
+					SIGN_IN_DECLINED_TOOL_MESSAGE,
 					"call_secret_after_decline",
 				),
 			]),
@@ -630,7 +546,7 @@ describe("tools that need sign-in", () => {
 		await expect.element(page.getByTestId("kilo-tool-signin-signed-in")).toBeVisible();
 		await page.getByTestId("kilo-tool-signin-continue").click();
 		await expect
-			.poll(() => JSON.stringify(promptsTo(host.server)[0]?.body ?? ""))
+			.poll(() => promptTexts(host.server)[0] ?? "")
 			.toContain("I've signed in. Please continue.");
 	});
 
@@ -646,7 +562,7 @@ describe("tools that need sign-in", () => {
 		host.setIdentity(SIGNED_IN);
 
 		await expect
-			.poll(() => JSON.stringify(promptsTo(host.server)[0]?.body ?? ""))
+			.poll(() => promptTexts(host.server)[0] ?? "")
 			.toContain("I've signed in. Please continue.");
 	});
 
@@ -680,17 +596,15 @@ describe("tools that need sign-in", () => {
 	});
 
 	it("continues after sign-in only once the signed-in account's models are read", async () => {
-		const server = new FakeKiloServer();
-		server.addChat({
-			id: "ses_a",
-			directory: "/projects/app",
-			title: "Chat",
-			agent: "code",
-			model: { providerID: "kilo", id: "kilo-auto/free" },
-			messages: chatWith([refused("call_secret_race")], {
-				model: { providerID: "kilo", modelID: "kilo-auto/free" },
+		const server = new FakeKilo2Server();
+		server.addChat(
+			session("ses_a", {
+				title: "Chat",
+				agent: "code",
+				model: { providerID: "kilo", id: "kilo-auto/free" },
 			}),
-		});
+			chatWith([refused("call_secret_race")]),
+		);
 		const host = await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
@@ -711,24 +625,22 @@ describe("tools that need sign-in", () => {
 		// turn sent before the models settle would still carry the signed-out one.
 		await expect.element(page.getByTestId("kilo-tool-signin-signed-in")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-tool-signin-continue")).not.toBeInTheDocument();
-		expect(promptsTo(server)).toEqual([]);
+		expect(server.promptsTo("ses_a")).toEqual([]);
 
 		models.setState(kiloModels("kilo-auto/balanced"));
 
-		await expect
-			.poll(() => promptsTo(server)[0]?.body)
-			.toMatchObject({ model: { providerID: "kilo", modelID: "kilo-auto/balanced" } });
+		await expect.poll(() => promptTexts(server)[0] ?? "").toContain("I've signed in.");
+		expect(server.chat("ses_a")?.model).toMatchObject({
+			providerID: "kilo",
+			id: "kilo-auto/balanced",
+		});
 	});
 
 	it("leaves other tools' errors that mention the marker alone", async () => {
 		await showChat(
 			chatWith([
-				toolPart("bash", {
-					status: "error",
-					input: { command: "grep" },
-					error: signInRequiredToolMessage(),
-				}),
-				reply("Searched."),
+				failedTool("shell", { command: "grep" }, signInRequiredToolMessage()),
+				text("Searched."),
 			]),
 			{ identity: SIGNED_OUT, plugins: [secretTools] },
 		);

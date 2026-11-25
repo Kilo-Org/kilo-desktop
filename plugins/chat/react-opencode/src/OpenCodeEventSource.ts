@@ -1,72 +1,44 @@
-import type { KiloClient as OpencodeClient } from "@kilocode/sdk/v2/client";
+import type { OpenCodeClient } from "@kilocode/client";
 import type { OpenCodeServerEvent } from "./types";
 
 type Listener = (event: OpenCodeServerEvent) => void;
 
+/** Opens the server's v2 event stream (`/api/event`) until `signal` aborts. */
 export type OpenCodeEventSubscriber = (options: {
 	signal: AbortSignal;
-	sseMaxRetryAttempts: number;
-}) => Promise<{ stream: AsyncIterable<unknown> }>;
+}) => Promise<{ stream: AsyncIterable<unknown> }> | { stream: AsyncIterable<unknown> };
 
-const asRecord = (value: unknown): Record<string, unknown> | null => {
-	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+
+/** The session a v2 frame is about: `data.sessionID`, or a form's. */
+export const sessionIdOfEvent = (data: Record<string, unknown>): string | undefined => {
+	if (typeof data.sessionID === "string") return data.sessionID;
+	const form = asRecord(data.form);
+	return typeof form?.sessionID === "string" ? form.sessionID : undefined;
 };
 
-const extractSessionId = (
-	type: string,
-	properties: Record<string, unknown>,
-): string | undefined => {
-	if (typeof properties.sessionID === "string") {
-		return properties.sessionID;
-	}
-
-	const info = asRecord(properties.info);
-	if (info) {
-		if (typeof info.sessionID === "string") {
-			return info.sessionID;
-		}
-
-		if (
-			(type === "session.created" || type === "session.updated" || type === "session.deleted") &&
-			typeof info.id === "string"
-		) {
-			return info.id;
-		}
-	}
-
-	const part = asRecord(properties.part);
-	if (part && typeof part.sessionID === "string") {
-		return part.sessionID;
-	}
-
-	return undefined;
+/** A v2 frame (`{ id, created, type, location, data, metadata }`) for the thread layer. */
+export const normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {
+	const frame = asRecord(event);
+	if (!frame || typeof frame.type !== "string") return null;
+	const data = asRecord(frame.data) ?? {};
+	const location = asRecord(frame.location);
+	return {
+		type: frame.type,
+		data,
+		...(typeof frame.id === "string" ? { id: frame.id } : {}),
+		...(typeof frame.created === "number" ? { created: frame.created } : {}),
+		...(asRecord(frame.metadata) ? { metadata: frame.metadata as Record<string, unknown> } : {}),
+		...(typeof location?.directory === "string"
+			? { location: { directory: location.directory } }
+			: {}),
+		sessionId: sessionIdOfEvent(data),
+	};
 };
 
-const normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {
-	const outer = asRecord(event);
-	if (!outer) return null;
-
-	const payload = asRecord(outer.payload);
-	const candidate = payload ?? outer;
-
-	if (
-		typeof candidate.type !== "string" ||
-		!("properties" in candidate) ||
-		!asRecord(candidate.properties)
-	) {
-		return null;
-	}
-
-	const normalized = {
-		type: candidate.type,
-		properties: candidate.properties as Record<string, unknown>,
-		directory: typeof outer.directory === "string" ? outer.directory : undefined,
-		sessionId: extractSessionId(candidate.type, candidate.properties as Record<string, unknown>),
-		raw: event,
-	} satisfies OpenCodeServerEvent;
-
-	return normalized;
-};
+/** What the server sends first on every (re)connect. */
+const SERVER_CONNECTED = "server.connected";
 
 export const STREAM_RECONNECTED_EVENT_TYPE = "stream.reconnected";
 
@@ -78,20 +50,17 @@ export class OpenCodeEventSource {
 	private connectionPromise: Promise<void> | null = null;
 	private stopped = false;
 	private nextReconnectDelayMs = this.reconnectDelayMs;
-	private hadConnection = false;
 
-	private readonly client: OpencodeClient;
 	private readonly subscribeToEvents: OpenCodeEventSubscriber;
 	private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;
 
 	constructor(
-		client: OpencodeClient,
+		client: OpenCodeClient,
 		subscribeToEvents?: OpenCodeEventSubscriber,
 		onEvent?: (event: OpenCodeServerEvent) => void,
 	) {
-		this.client = client;
 		this.subscribeToEvents =
-			subscribeToEvents ?? ((options) => this.client.event.subscribe(undefined, options));
+			subscribeToEvents ?? (({ signal }) => ({ stream: client.event.subscribe({ signal }) }));
 		this.onEvent = onEvent;
 	}
 
@@ -150,22 +119,9 @@ export class OpenCodeEventSource {
 			let reconnectDelayMs = this.reconnectDelayMs;
 
 			try {
-				const subscription = await this.subscribeToEvents({
-					signal: abortController.signal,
-					sseMaxRetryAttempts: 1,
-				});
+				const subscription = await this.subscribeToEvents({ signal: abortController.signal });
 				failedToConnect = false;
 				this.nextReconnectDelayMs = this.reconnectDelayMs;
-
-				if (this.hadConnection) {
-					this.emit({
-						type: STREAM_RECONNECTED_EVENT_TYPE,
-						sessionId: undefined,
-						raw: undefined,
-						properties: {},
-					});
-				}
-				this.hadConnection = true;
 
 				for await (const event of subscription.stream) {
 					if (abortController.signal.aborted || this.stopped) {
@@ -176,6 +132,11 @@ export class OpenCodeEventSource {
 					if (!normalized) continue;
 					this.onEvent?.(normalized);
 					this.emit(normalized);
+					// The stream replays nothing: once the server publishes to this
+					// subscription, threads read again what they may have missed.
+					if (normalized.type === SERVER_CONNECTED) {
+						this.emit({ type: STREAM_RECONNECTED_EVENT_TYPE, data: {}, sessionId: undefined });
+					}
 				}
 				if (abortController.signal.aborted || this.stopped) {
 					return;

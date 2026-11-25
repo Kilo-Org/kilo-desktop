@@ -39,12 +39,12 @@ describe("finding a permission request's tool arguments", () => {
 			{ content: [{ type: "text", text: "hi" }] },
 			{ content: [{ type: "tool-call", toolCallId: "call_1", args: { a: 1 } }] },
 		];
-		expect(findPermissionToolArgs(messages, { messageID: "m", callID: "call_1" })).toEqual({
+		expect(findPermissionToolArgs(messages, { messageID: "m", id: "call_1" })).toEqual({
 			a: 1,
 		});
-		expect(findPermissionToolArgs(messages, { messageID: "m", callID: "call_2" })).toBeUndefined();
+		expect(findPermissionToolArgs(messages, { messageID: "m", id: "call_2" })).toBeUndefined();
 		expect(findPermissionToolArgs(messages, undefined)).toBeUndefined();
-		expect(findPermissionToolArgs([null, { content: "x" }], { messageID: "m", callID: "c" })).toBe(
+		expect(findPermissionToolArgs([null, { content: "x" }], { messageID: "m", id: "c" })).toBe(
 			undefined,
 		);
 	});

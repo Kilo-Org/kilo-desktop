@@ -21,7 +21,8 @@ import { testWebEntry } from "@kilo-desktop/plugin-work-sessions/testing";
 
 import { AGENT_PANE_KIND, chatPaneObject } from "../contracts";
 import { agentPane, chatSummary, workSession } from "../test/chat-host";
-import { FakeKiloServer } from "../test/fake-kilo-server";
+import { FakeKilo2Server } from "../test/kilo2/fake-kilo2-server";
+import { session as sessionInfo } from "../test/kilo2/fixtures";
 import { longSession } from "../test/long-session";
 import { renderChat } from "../test/render-chat";
 
@@ -89,15 +90,10 @@ const sessionPanes = (session: string) => {
 };
 
 async function renderLayout() {
-	const server = new FakeKiloServer();
+	const server = new FakeKilo2Server();
 	for (const session of ["a", "b", "c", "d"]) {
 		for (const chatId of chatIds(session)) {
-			server.addChat({
-				id: chatId,
-				directory: "/projects/app",
-				title: chatId,
-				messages: longSession(chatId, TURNS),
-			});
+			server.addChat(sessionInfo(chatId, { title: chatId }), longSession(TURNS));
 		}
 	}
 	const started = performance.now();

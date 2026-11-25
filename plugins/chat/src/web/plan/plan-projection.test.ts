@@ -1,173 +1,147 @@
 import { describe, expect, it } from "vitest";
+import {
+	createOpenCodeThreadState,
+	type SessionMessageAssistant,
+	type SessionMessageAssistantTool,
+	type SessionMessageInfo,
+} from "@kilo-desktop/react-opencode";
 
-import type { Part, ToolPart } from "@kilo-desktop/react-opencode";
-
+import { assistantMessage, idleMessage, tool, userMessage } from "../../test/kilo2/fixtures";
 import {
 	findNewestPlanProjection,
 	findPlanProjectionByAnchorCallId,
 	getPlanProjectionForMessage,
-	getPlanProjectionFromParts,
+	getPlanProjectionFromTools,
 	isCurrentPlanVersion,
 	projectPlanThread,
 	shouldExcludeToolCallFromActivityGroup,
 	type PlanThreadSource,
 } from "./plan-projection";
 
-const toolPart = (
-	tool: string,
-	callID: string,
-	state:
-		| { status: "running"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
-		| { status: "completed"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
-		| {
-				status: "error";
-				input: Record<string, unknown>;
-				error: string;
-				metadata?: Record<string, unknown>;
-		  },
-): ToolPart => {
-	const identity = {
-		id: `part-${callID}`,
-		sessionID: "session-1",
-		messageID: "message-1",
-		type: "tool" as const,
-		tool,
-		callID,
-	};
-	if (state.status === "running") {
-		return {
-			...identity,
-			state: {
-				...state,
-				time: { start: 1 },
-			},
-		};
+type ToolState =
+	| { status: "streaming"; input: string }
+	| { status: "running"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
+	| { status: "completed"; input: Record<string, unknown>; metadata?: Record<string, unknown> }
+	| { status: "error"; input: Record<string, unknown>; error: string };
+
+const toolCall = (name: string, id: string, state: ToolState): SessionMessageAssistantTool => {
+	const base = tool(name, {}, "", { id });
+	switch (state.status) {
+		case "streaming":
+			return { ...base, state };
+		case "running":
+			return {
+				...base,
+				state: {
+					status: "running",
+					input: state.input as never,
+					metadata: (state.metadata ?? {}) as never,
+				},
+			};
+		case "completed":
+			return {
+				...base,
+				state: {
+					status: "completed",
+					input: state.input as never,
+					content: [{ type: "text", text: "" }],
+					metadata: (state.metadata ?? {}) as never,
+				},
+			};
+		case "error":
+			return {
+				...base,
+				state: {
+					status: "error",
+					input: state.input as never,
+					error: { type: "tool", message: state.error },
+				},
+			};
 	}
-	if (state.status === "error") {
-		return {
-			...identity,
-			state: {
-				...state,
-				time: { start: 1, end: 2 },
-			},
-		};
-	}
-	return {
-		...identity,
-		state: {
-			...state,
-			output: "",
-			title: tool,
-			metadata: state.metadata ?? {},
-			time: { start: 1, end: 2 },
-		},
-	};
 };
 
-const writePart = (
-	callID = "write-1",
+const writeCall = (
+	id = "write-1",
 	input: Record<string, unknown> = {
-		filePath: ".kilo/plans/ship.md",
+		path: ".kilo/plans/ship.md",
 		content: "# Ship it\n\n- step 1",
 	},
-): ToolPart => toolPart("write", callID, { status: "completed", input });
+) => toolCall("write", id, { status: "completed", input });
 
-const editPart = (
-	callID = "edit-1",
+const editCall = (
+	id = "edit-1",
 	input: Record<string, unknown> = {
-		filePath: ".kilo/plans/ship.md",
+		path: ".kilo/plans/ship.md",
 		oldString: "# Ship it",
 		newString: "# Ship it faster",
 	},
-): ToolPart => toolPart("edit", callID, { status: "completed", input });
+) => toolCall("edit", id, { status: "completed", input });
 
-const exitPart = (
-	callID = "exit-1",
+const exitCall = (
+	id = "exit-1",
 	status: "completed" | "error" = "completed",
 	plan = ".kilo/plans/ship.md",
-): ToolPart =>
+) =>
 	status === "error"
-		? toolPart("plan_exit", callID, {
-				status: "error",
-				input: {},
-				error: "Plan file not found",
-			})
-		: toolPart("plan_exit", callID, {
-				status: "completed",
-				input: {},
-				metadata: { plan },
-			});
+		? toolCall("plan_exit", id, { status: "error", input: {}, error: "Plan file not found" })
+		: toolCall("plan_exit", id, { status: "completed", input: {}, metadata: { plan } });
+
+/** One model step; `finish` defaults to a finished step that handed off to tools. */
+const step = (
+	id: string,
+	tools: readonly SessionMessageAssistantTool[],
+	patch: Partial<SessionMessageAssistant> = {},
+): SessionMessageAssistant => assistantMessage([...tools], { id, finish: "tool-calls", ...patch });
+
+const user = (id: string) => userMessage("go", { id });
 
 const threadSource = (
-	messages: readonly {
-		id: string;
-		role: "assistant" | "user";
-		agent?: string;
-		finish?: string;
-		error?: unknown;
-		parts?: readonly Part[];
-	}[],
-): PlanThreadSource => ({
-	messageOrder: messages.map((message) => message.id),
-	messagesById: Object.fromEntries(
-		messages.map((message) => [
-			message.id,
-			{
-				info: {
-					role: message.role,
-					...(message.agent ? { agent: message.agent } : {}),
-					...(message.finish ? { finish: message.finish } : {}),
-					...(message.error ? { error: message.error } : {}),
-				},
-				parts: message.parts ?? [],
-			},
-		]),
-	),
-});
+	messages: readonly SessionMessageInfo[],
+	lifecycle: Partial<Pick<PlanThreadSource, "running" | "runState">> = {},
+): PlanThreadSource => ({ ...createOpenCodeThreadState("ses_1"), messages, ...lifecycle });
+
+/** A thread still running (so a run without a closing step stays open). */
+const running = { running: true, runState: { type: "streaming" } } as const;
 
 const refinedPlanSource = (): PlanThreadSource =>
 	threadSource([
-		{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
-		{ id: "msg-user", role: "user" },
-		{
-			id: "msg-refine",
-			role: "assistant",
-			parts: [editPart("edit-2"), exitPart("exit-2")],
-		},
+		step("msg-plan", [writeCall(), exitCall()]),
+		user("msg-user"),
+		step("msg-refine", [editCall("edit-2"), exitCall("exit-2")]),
 	]);
 
-describe("getPlanProjectionFromParts", () => {
+describe("getPlanProjectionFromTools", () => {
 	it("projects writing, ready, and error states from typed tool parts", () => {
-		const writing = getPlanProjectionFromParts([
-			toolPart("write", "write-running", {
+		const writing = getPlanProjectionFromTools([
+			toolCall("write", "write-running", {
 				status: "running",
-				input: { filePath: ".kilo/plans/ship.md", content: "# Ship" },
+				input: { path: ".kilo/plans/ship.md", content: "# Ship" },
 			}),
 		]);
 		expect(writing?.status).toBe("writing");
 		expect(writing?.anchorCallId).toBe("write-running");
 
-		const ready = getPlanProjectionFromParts([writePart(), exitPart()]);
+		const ready = getPlanProjectionFromTools([writeCall(), exitCall()]);
 		expect(ready?.status).toBe("ready");
 		expect(ready?.markdown).toContain("# Ship it");
 		expect(ready?.hiddenCallIds).toEqual(new Set(["write-1", "exit-1"]));
 
-		const failed = getPlanProjectionFromParts([writePart(), exitPart("exit-error", "error")]);
+		const failed = getPlanProjectionFromTools([writeCall(), exitCall("exit-error", "error")]);
 		expect(failed?.status).toBe("error");
 		expect(failed?.error).toBe("Plan file not found");
 	});
 
 	it("ignores non-plan and pathless writes", () => {
 		expect(
-			getPlanProjectionFromParts([writePart("write-src", { path: "src/app.ts" })]),
+			getPlanProjectionFromTools([writeCall("write-src", { path: "src/app.ts" })]),
 		).toBeUndefined();
 
-		const pending = toolPart("write", "write-pending", { status: "running", input: {} });
-		expect(getPlanProjectionFromParts([pending])).toBeUndefined();
+		const pending = toolCall("write", "write-pending", { status: "running", input: {} });
+		expect(getPlanProjectionFromTools([pending])).toBeUndefined();
 	});
 
 	it("reconstructs edit-only plan revisions from prior markdown", () => {
-		const projection = getPlanProjectionFromParts([editPart(), exitPart("exit-2")], {
+		const projection = getPlanProjectionFromTools([editCall(), exitCall("exit-2")], {
 			priorMarkdown: "# Ship it\n\n- step 1",
 		});
 		expect(projection?.markdown).toBe("# Ship it faster\n\n- step 1");
@@ -175,10 +149,10 @@ describe("getPlanProjectionFromParts", () => {
 	});
 
 	it("keeps prior markdown when an edit streams without replacement text", () => {
-		const projection = getPlanProjectionFromParts(
+		const projection = getPlanProjectionFromTools(
 			[
-				editPart("edit-incomplete", {
-					filePath: ".kilo/plans/ship.md",
+				editCall("edit-incomplete", {
+					path: ".kilo/plans/ship.md",
 					oldString: "# Ship it",
 				}),
 			],
@@ -189,8 +163,8 @@ describe("getPlanProjectionFromParts", () => {
 	});
 
 	it("reports a malformed completed handoff without a path or markdown", () => {
-		const projection = getPlanProjectionFromParts([
-			toolPart("plan_exit", "exit-empty", { status: "completed", input: {} }),
+		const projection = getPlanProjectionFromTools([
+			toolCall("plan_exit", "exit-empty", { status: "completed", input: {} }),
 		]);
 
 		expect(projection?.status).toBe("error");
@@ -202,12 +176,9 @@ describe("projectPlanThread", () => {
 	it("does not project a pathless write from the code agent", () => {
 		const projected = projectPlanThread(
 			threadSource([
-				{
-					id: "msg-code",
-					role: "assistant",
+				step("msg-code", [toolCall("write", "write-code", { status: "running", input: {} })], {
 					agent: "code",
-					parts: [toolPart("write", "write-code", { status: "running", input: {} })],
-				},
+				}),
 			]),
 		);
 
@@ -216,34 +187,34 @@ describe("projectPlanThread", () => {
 
 	it("keeps a plan-agent write projected while its nonstandard path streams", () => {
 		const pending = projectPlanThread(
-			threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					parts: [toolPart("write", "write-plan", { status: "running", input: {} })],
-				},
-			]),
+			threadSource(
+				[
+					step(
+						"msg-plan",
+						[toolCall("write", "write-plan", { status: "streaming", input: '{"pa' })],
+						{ agent: "plan" },
+					),
+				],
+				running,
+			),
 		);
 		expect(getPlanProjectionForMessage(pending, "msg-plan")?.anchorCallId).toBe("write-plan");
 
+		const nonstandardWrite = {
+			path: "1786491776051-random-coffee-break-plan.md",
+			content: "# Random Coffee Break Ritual",
+		};
 		const writing = projectPlanThread(
-			threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					parts: [
-						toolPart("write", "write-plan", {
-							status: "running",
-							input: {
-								filePath: "1786491776051-random-coffee-break-plan.md",
-								content: "# Random Coffee Break Ritual",
-							},
-						}),
-					],
-				},
-			]),
+			threadSource(
+				[
+					step(
+						"msg-plan",
+						[toolCall("write", "write-plan", { status: "running", input: nonstandardWrite })],
+						{ agent: "plan" },
+					),
+				],
+				running,
+			),
 		);
 		const writingProjection = getPlanProjectionForMessage(writing, "msg-plan");
 		expect(writingProjection?.status).toBe("writing");
@@ -251,26 +222,16 @@ describe("projectPlanThread", () => {
 
 		const ready = projectPlanThread(
 			threadSource([
-				{
-					id: "msg-write",
-					role: "assistant",
-					agent: "plan",
-					parts: [
-						toolPart("write", "write-plan", {
-							status: "completed",
-							input: {
-								filePath: "1786491776051-random-coffee-break-plan.md",
-								content: "# Random Coffee Break Ritual",
-							},
-						}),
-					],
-				},
-				{
-					id: "msg-exit",
-					role: "assistant",
-					agent: "plan",
-					parts: [exitPart("exit-plan", "completed", "1786491776051-random-coffee-break-plan.md")],
-				},
+				step(
+					"msg-write",
+					[toolCall("write", "write-plan", { status: "completed", input: nonstandardWrite })],
+					{ agent: "plan" },
+				),
+				step(
+					"msg-exit",
+					[exitCall("exit-plan", "completed", "1786491776051-random-coffee-break-plan.md")],
+					{ agent: "plan" },
+				),
 			]),
 		);
 		const readyProjection = getPlanProjectionForMessage(ready, "msg-exit");
@@ -281,136 +242,89 @@ describe("projectPlanThread", () => {
 	});
 
 	it("settles a completed plan write when the assistant run has finished", () => {
-		const finishedMessage = projectPlanThread(
-			threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					finish: "stop",
-					parts: [writePart()],
-				},
-			]),
+		const finishedStep = projectPlanThread(
+			threadSource([step("msg-plan", [writeCall()], { agent: "plan", finish: "stop" })], running),
 		);
-		expect(getPlanProjectionForMessage(finishedMessage, "msg-plan")?.status).toBe("ready");
+		expect(getPlanProjectionForMessage(finishedStep, "msg-plan")?.status).toBe("ready");
 
-		const restoredIdleRun = projectPlanThread({
-			...threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					parts: [writePart()],
-				},
-			]),
-			runState: { type: "idle" },
-			sessionStatus: { type: "idle" },
-		});
-		expect(getPlanProjectionForMessage(restoredIdleRun, "msg-plan")?.status).toBe("ready");
+		const idleSession = projectPlanThread(
+			threadSource([step("msg-plan", [writeCall()], { agent: "plan" })]),
+		);
+		expect(getPlanProjectionForMessage(idleSession, "msg-plan")?.status).toBe("ready");
+
+		const endedTurn = projectPlanThread(
+			threadSource(
+				[step("msg-plan", [writeCall()], { agent: "plan" }), idleMessage("succeeded")],
+				running,
+			),
+		);
+		expect(getPlanProjectionForMessage(endedTurn, "msg-plan")?.status).toBe("ready");
 
 		const historicalRun = projectPlanThread(
-			threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					parts: [writePart()],
-				},
-				{ id: "msg-user", role: "user" },
-			]),
+			threadSource([step("msg-plan", [writeCall()], { agent: "plan" }), user("msg-user")], running),
 		);
 		expect(getPlanProjectionForMessage(historicalRun, "msg-plan")?.status).toBe("ready");
 	});
 
 	it("keeps a completed write in Writing Plan during an active run", () => {
-		const projected = projectPlanThread({
-			...threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					parts: [writePart()],
-				},
-			]),
-			runState: { type: "streaming" },
-			sessionStatus: { type: "busy" },
-		});
+		const projected = projectPlanThread(
+			threadSource([step("msg-plan", [writeCall()], { agent: "plan" })], running),
+		);
 
 		expect(getPlanProjectionForMessage(projected, "msg-plan")?.status).toBe("writing");
 	});
 
-	it("keeps a busy run's plan writing between tool-call steps", () => {
-		const projected = projectPlanThread({
-			...threadSource([
-				{ id: "msg-plan", role: "assistant", agent: "plan", parts: [writePart(), exitPart()] },
-				{ id: "msg-user", role: "user" },
-				{
-					id: "msg-step-1",
-					role: "assistant",
-					agent: "plan",
-					finish: "tool-calls",
-					parts: [editPart("edit-1")],
-				},
-				{
-					id: "msg-step-2",
-					role: "assistant",
-					agent: "plan",
-					finish: "unknown",
-					parts: [
-						editPart("edit-2", {
-							filePath: ".kilo/plans/ship.md",
-							oldString: "- step 1",
-							newString: "- step 1\n- step 2",
-						}),
-					],
-				},
-			]),
-			sessionStatus: { type: "busy" },
-		});
+	it("keeps a running session's plan writing between tool-call steps", () => {
+		const projected = projectPlanThread(
+			threadSource(
+				[
+					step("msg-plan", [writeCall(), exitCall()], { agent: "plan" }),
+					user("msg-user"),
+					step("msg-step-1", [editCall("edit-1")], { agent: "plan" }),
+					step(
+						"msg-step-2",
+						[
+							editCall("edit-2", {
+								path: ".kilo/plans/ship.md",
+								oldString: "- step 1",
+								newString: "- step 1\n- step 2",
+							}),
+						],
+						{ agent: "plan", finish: "unknown" },
+					),
+				],
+				{ running: true },
+			),
+		);
 
 		expect(getPlanProjectionForMessage(projected, "msg-step-2")?.status).toBe("writing");
 		expect(isCurrentPlanVersion(projected, "write-1")).toBe(false);
 	});
 
 	it("settles a run whose last step failed without a finish reason", () => {
-		const projected = projectPlanThread({
-			...threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					error: { name: "MessageAbortedError" },
-					parts: [writePart()],
-				},
-			]),
-			sessionStatus: { type: "busy" },
+		const { finish: _finish, ...failedStep } = step("msg-plan", [writeCall()], {
+			agent: "plan",
+			error: { type: "aborted", message: "Aborted" },
 		});
+		const projected = projectPlanThread(threadSource([failedStep], running));
 
 		expect(getPlanProjectionForMessage(projected, "msg-plan")?.status).toBe("ready");
 	});
 
 	it("projects each message once and enriches chained edits in order", () => {
 		const source = threadSource([
-			{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
-			{ id: "msg-user-1", role: "user" },
-			{
-				id: "msg-refine-1",
-				role: "assistant",
-				parts: [editPart("edit-a"), exitPart("exit-a")],
-			},
-			{ id: "msg-user-2", role: "user" },
-			{
-				id: "msg-refine-2",
-				role: "assistant",
-				parts: [
-					editPart("edit-b", {
-						filePath: ".kilo/plans/ship.md",
-						oldString: "- step 1",
-						newString: "- step 1\n- step 2",
-					}),
-					exitPart("exit-b"),
-				],
-			},
+			step("msg-plan", [writeCall(), exitCall()]),
+			user("msg-user-1"),
+			step("msg-refine-1", [editCall("edit-a"), exitCall("exit-a")]),
+			user("msg-user-2"),
+			step("msg-refine-2", [
+				editCall("edit-b", {
+					path: ".kilo/plans/ship.md",
+					oldString: "- step 1",
+					newString: "- step 1\n- step 2",
+				}),
+				exitCall("exit-b"),
+			]),
 		]);
 		const projected = projectPlanThread(source);
 
@@ -424,49 +338,45 @@ describe("projectPlanThread", () => {
 	it("does not classify implementation writes as plans after a completed handoff", () => {
 		const projected = projectPlanThread(
 			threadSource([
-				{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
-				{ id: "msg-approve", role: "user" },
-				{
-					id: "msg-implement",
-					role: "assistant",
-					parts: [toolPart("write", "write-impl", { status: "running", input: {} })],
-				},
+				step("msg-plan", [writeCall(), exitCall()]),
+				user("msg-approve"),
+				step("msg-implement", [toolCall("write", "write-impl", { status: "running", input: {} })]),
 			]),
 		);
 		expect(getPlanProjectionForMessage(projected, "msg-implement")).toBeUndefined();
 	});
 
 	it("keeps a denied scratch-script write out of the refined plan", () => {
+		const denied = "The user has specified a rule which prevents you from using this tool call.";
 		const projected = projectPlanThread(
 			threadSource([
-				{ id: "msg-plan", role: "assistant", agent: "plan", parts: [writePart(), exitPart()] },
-				{ id: "msg-user", role: "user" },
-				{
-					id: "msg-refine",
-					role: "assistant",
-					agent: "plan",
-					parts: [
-						toolPart("bash", "bash-denied", {
+				step("msg-plan", [writeCall(), exitCall()], { agent: "plan" }),
+				user("msg-user"),
+				step(
+					"msg-refine",
+					[
+						toolCall("shell", "shell-denied", {
 							status: "error",
 							input: { command: "curl -sL https://example.test/Ubuntu.terminal | python3 -" },
-							error: "The user has specified a rule which prevents you from using this tool call.",
+							error: denied,
 						}),
-						toolPart("write", "write-script", {
+						toolCall("write", "write-script", {
 							status: "error",
 							input: {
-								filePath: "/var/folders/lz/T/kilo/decode_ubuntu_terminal.py",
+								path: "/var/folders/lz/T/kilo/decode_ubuntu_terminal.py",
 								content: "import plistlib\nimport urllib.request\n",
 							},
-							error: "The user has specified a rule which prevents you from using this tool call.",
+							error: denied,
 						}),
-						editPart("edit-colors", {
-							filePath: "/repo/.kilo/plans/ship.md",
+						editCall("edit-colors", {
+							path: "/repo/.kilo/plans/ship.md",
 							oldString: "- step 1",
 							newString: "- step 1 with real Ubuntu colors",
 						}),
-						exitPart("exit-2"),
+						exitCall("exit-2"),
 					],
-				},
+					{ agent: "plan" },
+				),
 			]),
 		);
 
@@ -477,24 +387,20 @@ describe("projectPlanThread", () => {
 	});
 
 	it("ignores a failed edit to the plan file and keeps the plan ready", () => {
-		const projection = getPlanProjectionFromParts(
+		const projection = getPlanProjectionFromTools(
 			[
-				writePart(),
-				toolPart("edit", "edit-failed", {
+				writeCall(),
+				toolCall("edit", "edit-failed", {
 					status: "error",
-					input: {
-						filePath: ".kilo/plans/ship.md",
-						oldString: "# Ship it",
-						newString: "# Dropped",
-					},
+					input: { path: ".kilo/plans/ship.md", oldString: "# Ship it", newString: "# Dropped" },
 					error: "File changed since it was last read",
 				}),
-				editPart("edit-applied", {
-					filePath: ".kilo/plans/ship.md",
+				editCall("edit-applied", {
+					path: ".kilo/plans/ship.md",
 					oldString: "- step 1",
 					newString: "- step 1\n- step 2",
 				}),
-				exitPart("exit-2"),
+				exitCall("exit-2"),
 			],
 			{ treatWritesAsPlan: true },
 		);
@@ -505,11 +411,11 @@ describe("projectPlanThread", () => {
 	});
 
 	it("only treats writes to the file plan_exit names as the plan", () => {
-		const projection = getPlanProjectionFromParts(
+		const projection = getPlanProjectionFromTools(
 			[
-				writePart(),
-				writePart("write-notes", { filePath: "docs/notes.md", content: "# Scratch notes" }),
-				exitPart("exit-1"),
+				writeCall(),
+				writeCall("write-notes", { path: "docs/notes.md", content: "# Scratch notes" }),
+				exitCall("exit-1"),
 			],
 			{ treatWritesAsPlan: true },
 		);
@@ -523,15 +429,11 @@ describe("projectPlanThread", () => {
 	it("does not project a plan-agent script write before the handoff", () => {
 		const projected = projectPlanThread(
 			threadSource([
-				{
-					id: "msg-plan",
-					role: "assistant",
-					agent: "plan",
-					finish: "stop",
-					parts: [
-						writePart("write-script", { filePath: "scripts/fetch.py", content: "import requests" }),
-					],
-				},
+				step(
+					"msg-plan",
+					[writeCall("write-script", { path: "scripts/fetch.py", content: "import requests" })],
+					{ agent: "plan", finish: "stop" },
+				),
 			]),
 		);
 
@@ -558,7 +460,7 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 		expect(
 			shouldExcludeToolCallFromActivityGroup({
 				toolName: "write",
-				args: { filePath: ".kilo/plans/a.md" },
+				args: { path: ".kilo/plans/a.md" },
 			}),
 		).toBe(true);
 		expect(
@@ -570,13 +472,12 @@ describe("shouldExcludeToolCallFromActivityGroup", () => {
 		expect(
 			shouldExcludeToolCallFromActivityGroup({
 				toolName: "write",
-				args: { filePath: "src/a.ts" },
+				args: { path: "src/a.ts" },
 			}),
 		).toBe(false);
 	});
 
-	it("excludes task-list lifecycle calls", () => {
+	it("excludes task-list calls", () => {
 		expect(shouldExcludeToolCallFromActivityGroup({ toolName: "todowrite" })).toBe(true);
-		expect(shouldExcludeToolCallFromActivityGroup({ toolName: "todoread" })).toBe(true);
 	});
 });

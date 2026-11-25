@@ -82,10 +82,10 @@ describe("the fake kilo2 against the golden turn", () => {
 		const replayed = normalizeRecording(
 			{
 				session: await client.session.get({ sessionID: created.id }),
+				messages,
 				events: events
 					.filter((event) => (event.data as { sessionID?: string }).sessionID === created.id)
-					.map(({ type, data }) => ({ type, data })),
-				messages,
+					.map((event) => ({ id: event.id, type: event.type, data: event.data })),
 			},
 			directory,
 		);

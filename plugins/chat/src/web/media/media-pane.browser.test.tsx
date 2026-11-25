@@ -14,7 +14,14 @@ import {
 	type MediaItem,
 } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import { FakeKilo2Server } from "../../test/kilo2/fake-kilo2-server";
+import {
+	assistantMessage,
+	idleMessage,
+	session,
+	text,
+	userMessage,
+} from "../../test/kilo2/fixtures";
 import { renderInKernel } from "../../test/kernel-harness";
 import { renderChat } from "../../test/render-chat";
 import { MediaPane } from "./MediaPane";
@@ -39,22 +46,16 @@ const diagram = (id: string): MediaItem => ({
 });
 
 async function showDiagrams() {
-	const server = new FakeKiloServer();
-	server.addChat({
-		id: "ses_a",
-		directory: "/projects/app",
-		title: "Chat",
-		messages: [
-			userMessage("ses_a", "msg_1", "Draw"),
-			assistantMessage("ses_a", "msg_2", "msg_1", [
-				{
-					type: "text",
-					text: "```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n",
-					time: { start: 1, end: 2 },
-				},
-			]),
-		],
-	});
+	const server = new FakeKilo2Server();
+	server.addChat(session("ses_a", { title: "Chat" }), [
+		userMessage("Draw"),
+		assistantMessage([
+			text(
+				"```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n",
+			),
+		]),
+		idleMessage(),
+	]);
 	const host = await renderChat({
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),

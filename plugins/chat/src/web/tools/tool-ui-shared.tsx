@@ -67,22 +67,8 @@ export const DiffCounts: FC<{ added: number; removed: number }> = ({ added, remo
 	);
 };
 
-/** Visible text of a tool result payload (string, or object with output/stdout). */
-export const resultText = (result: unknown): string => {
-	if (typeof result === "string") return result;
-	if (result && typeof result === "object") {
-		const record = result as Record<string, unknown>;
-		if (typeof record.output === "string") return record.output;
-		if (typeof record.stdout === "string") return record.stdout;
-	}
-	return "";
-};
-
-export type BashResultPayload = {
-	stdout?: string | undefined;
-	stderr?: string | undefined;
-	exitCode?: number | undefined;
-};
+/** A tool result's visible text: Kilo v2 results are the tool's text content joined. */
+export const resultText = (result: unknown): string => (typeof result === "string" ? result : "");
 
 const ESC = String.fromCharCode(0x1b);
 const CSI = String.fromCharCode(0x9b);
@@ -94,75 +80,6 @@ const ANSI_ESCAPE = new RegExp(
 
 export const normalizeBashOutput = (value: string): string =>
 	value.replace(ANSI_ESCAPE, "").replace(/\r\n?/g, "\n");
-
-/** OpenCode bash metadata.output for a running (or completed) tool call. */
-export const getToolBashMetadataOutput = (
-	parts: unknown,
-	toolCallId: string,
-): string | undefined => {
-	if (!Array.isArray(parts)) return undefined;
-	for (const part of parts) {
-		if (!part || typeof part !== "object") continue;
-		const record = part as Record<string, unknown>;
-		if (record.type !== "tool") continue;
-		const callId = record.callID ?? record.id;
-		if (callId !== toolCallId) continue;
-		const state = record.state;
-		if (!state || typeof state !== "object") continue;
-		const metadata = (state as Record<string, unknown>).metadata;
-		if (!metadata || typeof metadata !== "object") continue;
-		const output = (metadata as Record<string, unknown>).output;
-		return typeof output === "string" && output.length > 0 ? output : undefined;
-	}
-	return undefined;
-};
-
-/** Bash tool result: a JSON string or an object carrying stdout/stderr/exitCode. */
-export const parseBashResult = (result: unknown): BashResultPayload => {
-	if (!result) return {};
-	let record: Record<string, unknown> | undefined;
-	if (typeof result === "string") {
-		try {
-			const parsed: unknown = JSON.parse(result);
-			if (typeof parsed === "object" && parsed !== null) {
-				record = parsed as Record<string, unknown>;
-			}
-		} catch {
-			// plain text output
-		}
-		if (!record) return { stdout: result };
-	} else if (typeof result === "object") {
-		record = result as Record<string, unknown>;
-	}
-	if (!record) return {};
-	const stdout =
-		typeof record.stdout === "string"
-			? record.stdout
-			: typeof record.output === "string"
-				? record.output
-				: undefined;
-	const exitCode =
-		typeof record.exitCode === "number"
-			? record.exitCode
-			: typeof record.exit === "number"
-				? record.exit
-				: undefined;
-	return {
-		stdout,
-		stderr: typeof record.stderr === "string" ? record.stderr : undefined,
-		exitCode,
-	};
-};
-
-const TASK_OUTPUT_TAG = /<(task_result|task_error)>\s*([\s\S]*?)\s*<\/\1>/i;
-
-export const unwrapTaskOutput = (raw: string): string => {
-	const match = raw.match(TASK_OUTPUT_TAG);
-	if (match?.[2]) return match[2].trim();
-	return raw.trim();
-};
-
-export const isTaskErrorOutput = (raw: string): boolean => /<task_error>/i.test(raw);
 
 export const ToolStatusIcon = ({
 	status,

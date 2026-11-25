@@ -42,6 +42,15 @@ export interface EventFrame {
 	readonly data: Record<string, unknown>;
 }
 
+/** A `session.prompt` request body. */
+export interface PromptBody {
+	readonly id?: string;
+	readonly text: string;
+	readonly files?: readonly { readonly uri: string; readonly name?: string }[];
+	readonly metadata?: { readonly "kilo-desktop"?: { readonly system?: string } };
+	readonly delivery?: string;
+}
+
 /** How a prompt is answered: steps played at once, or a turn left for the test to drive. */
 export type Reply = readonly (readonly ScriptedPart[])[] | ((turn: Turn) => void);
 
@@ -101,6 +110,8 @@ export class FakeKilo2Server {
 	readonly #listeners = new Set<(frame: EventFrame) => void>();
 	readonly #streams = new Set<EventStream>();
 	readonly #encoder = new TextEncoder();
+	#created = 0;
+	#forked = 0;
 
 	/** Permission requests waiting on the person, every chat's. */
 	permissions: PermissionRequest[] = [];
@@ -124,8 +135,40 @@ export class FakeKilo2Server {
 	eventStreamGate?: Promise<void>;
 	/** Holds every request (after it is recorded) until the test releases it. */
 	requestGate?: Promise<void>;
+	/** Delays every `message.list` reply, as a server sending a long history takes a while (benchmarks). */
+	historyReadDelayMs = 0;
+	/** The chats a `message.list` page was sent for, in order. */
+	readonly messagePagesSent: string[] = [];
 	/** Fails requests matching `METHOD /path` with a 500 `UnknownError`. */
 	readonly failing = new Set<string>();
+	/**
+	 * Fails requests matching `METHOD /path` with a declared error carrying
+	 * `message` (409 by default; the client decodes only a route's declared statuses).
+	 */
+	readonly failingWith = new Map<string, { readonly message: string; readonly status?: number }>();
+	readonly #holds: {
+		readonly matches: (request: RecordedRequest) => boolean;
+		gate: Promise<void>;
+	}[] = [];
+
+	/**
+	 * Holds requests matching `METHOD /path` (or a predicate) after they are
+	 * recorded, until the returned release runs.
+	 */
+	hold(match: string | ((request: RecordedRequest) => boolean)): () => void {
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		const matches =
+			typeof match === "string"
+				? (request: RecordedRequest) => `${request.method} ${request.path}` === match
+				: match;
+		const entry = { matches, gate };
+		this.#holds.push(entry);
+		return () => {
+			this.#holds.splice(this.#holds.indexOf(entry), 1);
+			release();
+		};
+	}
 
 	// --- Chats ---
 
@@ -247,6 +290,13 @@ export class FakeKilo2Server {
 		return this.requests.filter((request) => request.method === method && request.path === path);
 	}
 
+	/** The prompts (`session.prompt` bodies) sent to a chat, in order. */
+	promptsTo(sessionID: string): PromptBody[] {
+		return this.requestsTo("POST", `/api/session/${sessionID}/prompt`).map(
+			(request) => request.body as PromptBody,
+		);
+	}
+
 	// --- Transport ---
 
 	/** A `fetch` answering this server's address, for `OpenCode.make({ fetch })`. */
@@ -308,22 +358,24 @@ export class FakeKilo2Server {
 	}
 
 	/** A chat's event; its data names the chat (`sessionID`) first, as kilo2's do. */
-	#publish(sessionID: string, type: string, data: Record<string, unknown>) {
-		this.#publishFrame(sessionID, type, { sessionID, ...data });
+	#publish(sessionID: string, type: string, data: Record<string, unknown>): EventFrame {
+		return this.#publishFrame(sessionID, type, { sessionID, ...data });
 	}
 
-	#publishFrame(sessionID: string, type: string, data: Record<string, unknown>) {
+	#publishFrame(sessionID: string, type: string, data: Record<string, unknown>): EventFrame {
 		const stored = this.#chats.get(sessionID);
 		const durable = stored && !EPHEMERAL.test(type);
 		if (durable) stored.seq += 1;
-		this.#send({
+		const frame: EventFrame = {
 			id: nextId("evt"),
 			created: nextTime(),
 			type,
 			...(stored ? { location: stored.info.location } : {}),
 			...(durable ? { durable: { aggregateID: sessionID, seq: stored.seq, version: 1 } } : {}),
 			data,
-		});
+		};
+		this.#send(frame);
+		return frame;
 	}
 
 	#send(frame: EventFrame) {
@@ -377,6 +429,13 @@ export class FakeKilo2Server {
 			return failure(401, "UnauthorizedError", "Unauthorized");
 		}
 		await this.requestGate;
+		await Promise.all(
+			this.#holds.filter((hold) => hold.matches(recorded)).map((hold) => hold.gate),
+		);
+		const customFailure = this.failingWith.get(`${request.method} ${url.pathname}`);
+		if (customFailure !== undefined) {
+			return failure(customFailure.status ?? 409, "SessionBusyError", customFailure.message);
+		}
 		if (this.failing.has(`${request.method} ${url.pathname}`)) {
 			return failure(500, "UnknownError", "The fake server was told to fail this request");
 		}
@@ -388,7 +447,11 @@ export class FakeKilo2Server {
 		return this.#route(request.method, url, recorded.body as Record<string, unknown> | undefined);
 	}
 
-	#route(method: string, url: URL, body: Record<string, unknown> = {}): Response {
+	#route(
+		method: string,
+		url: URL,
+		body: Record<string, unknown> = {},
+	): Response | Promise<Response> {
 		const path = url.pathname;
 		const query = url.searchParams;
 		const location = { directory: query.get("location[directory]") ?? "/projects/app" };
@@ -432,7 +495,7 @@ export class FakeKilo2Server {
 		stored: StoredChat,
 		body: Record<string, unknown>,
 		query: URLSearchParams,
-	): Response {
+	): Response | Promise<Response> {
 		const sessionID = stored.info.id;
 		const route = `${method} ${rest}`;
 		if (route === "GET ") return json({ data: stored.info });
@@ -471,6 +534,25 @@ export class FakeKilo2Server {
 			return empty();
 		}
 		if (route === "POST fork") return this.#fork(stored, body.before as string | undefined);
+		if (route === "POST revert/stage") {
+			const revert = { messageID: String(body.messageID) };
+			stored.info = { ...stored.info, revert };
+			this.#publish(sessionID, "session.revert.staged", { revert });
+			return json({ data: revert });
+		}
+		if (route === "DELETE revert") {
+			const { revert: _revert, ...info } = stored.info;
+			stored.info = info;
+			this.#publish(sessionID, "session.revert.cleared", {});
+			return empty();
+		}
+		if (route === "POST revert/commit") return this.#commitRevert(stored);
+		if (route === "POST compact") {
+			const inboxID = String(body.id ?? nextId("msg"));
+			const item = { type: "compaction", payload: {}, delivery: body.delivery ?? "queue" };
+			this.#publish(sessionID, "session.inbox.enqueued", { inboxID, item });
+			return json({ data: { id: inboxID, sessionID, time: { created: nextTime() }, ...item } });
+		}
 		if (route === "POST prompt") return this.#prompt(stored, body);
 		if (route === "POST command") {
 			this.#prompt(stored, { text: `/${String(body.name)} ${String(body.text ?? "")}`.trim() });
@@ -506,7 +588,20 @@ export class FakeKilo2Server {
 			turn?.interrupt("user");
 			return json({ interrupted: turn !== undefined });
 		}
-		if (route === "GET message") return this.#messagePage(stored, query);
+		if (route === "GET message") {
+			const page = this.#messagePage(stored, query);
+			if (this.historyReadDelayMs === 0) {
+				this.messagePagesSent.push(sessionID);
+				return page;
+			}
+			const delayMs = this.historyReadDelayMs;
+			return new Promise<Response>((resolve) =>
+				setTimeout(() => {
+					this.messagePagesSent.push(sessionID);
+					resolve(page);
+				}, delayMs),
+			);
+		}
 		const messageMatch = /^GET message\/(.+)$/.exec(route);
 		if (messageMatch) {
 			const message = stored.messages.find((candidate) => candidate.id === messageMatch[1]);
@@ -580,7 +675,9 @@ export class FakeKilo2Server {
 		const location = (body.location as { directory: string } | undefined) ?? {
 			directory: this.connection.globalDirectory,
 		};
-		const { title: _untitled, ...untitled } = sessionFixture(String(body.id ?? nextId("ses")), {
+		// Predictable ids, as tests name the chats they create: ses_new_1, ses_new_2, …
+		const id = String(body.id ?? `ses_new_${++this.#created}`);
+		const { title: _untitled, ...untitled } = sessionFixture(id, {
 			directory: location.directory,
 		});
 		const info: SessionInfo = {
@@ -643,7 +740,7 @@ export class FakeKilo2Server {
 		const forks = [...this.#chats.values()].filter(
 			(chat) => chat.info.fork?.sessionID === source.info.id,
 		).length;
-		const info = sessionFixture(nextId("ses"), {
+		const info = sessionFixture(`ses_fork_${++this.#forked}`, {
 			directory: source.info.location.directory,
 			title: `${source.info.title ?? "New session"} (fork #${forks + 1})`,
 			...(source.info.agent ? { agent: source.info.agent } : {}),
@@ -666,8 +763,22 @@ export class FakeKilo2Server {
 		return json({ data: info });
 	}
 
+	/** A staged revert drops its boundary message and every later one. */
+	#commitRevert(stored: StoredChat): Response {
+		const boundary = stored.info.revert?.messageID;
+		if (!boundary) return empty();
+		const at = stored.messages.findIndex((message) => message.id === boundary);
+		if (at >= 0) stored.messages.splice(at);
+		const { revert: _revert, ...info } = stored.info;
+		stored.info = info;
+		this.#publish(stored.info.id, "session.revert.committed", { to: boundary });
+		return empty();
+	}
+
 	#prompt(stored: StoredChat, body: Record<string, unknown>): Response {
 		const sessionID = stored.info.id;
+		// The next prompt commits a staged revert first, as kilo2 does.
+		if (stored.info.revert) this.#commitRevert(stored);
 		const message = {
 			id: String(body.id ?? nextId("msg")),
 			type: "user" as const,

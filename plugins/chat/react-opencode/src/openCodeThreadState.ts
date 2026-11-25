@@ -1,348 +1,284 @@
+// One Kilo v2 session as thread state. Server events fold into the
+// transcript through `kiloTranscript.ts`; this module adds what the thread
+// layer owns: loading and paging, running, pending prompts shown before the
+// server admits them, and the permission requests and question forms the
+// session waits on. Reducers never mutate (identity is the projection's
+// cache key).
+import type { FormInfo, PermissionRequest, SessionInfo } from "@kilocode/client";
+
+import { applyTranscriptEvent, type KiloEventFrame, type Transcript } from "./kiloTranscript";
 import type {
-	Message,
-	MessageWithParts,
 	OpenCodeOlderHistory,
-	OpenCodePermissionRequest,
-	OpenCodePermissionResponse,
-	OpenCodeQuestionRequest,
-	OpenCodeServerMessage,
 	OpenCodeStateEvent,
 	OpenCodeThreadState,
-	Part,
 	PendingUserMessage,
-	QuestionAnswer,
-	ThreadUserMessagePart,
 } from "./types";
-import { serializeOpenCodeParts } from "./serializeUserParts";
 
-const PENDING_MATCH_WINDOW_MS = 2 * 60 * 1000;
-const MAX_UNHANDLED_EVENTS = 25;
-
-const extractCreatedAt = (message: Message | undefined): number | undefined => {
-	const created = message?.time?.created;
-	return typeof created === "number" ? created : undefined;
-};
-
-const normalizeText = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-
-const pendingFingerprint = (pending: PendingUserMessage) => normalizeText(pending.contentText);
-
-const partTextFingerprint = (parts: readonly ThreadUserMessagePart[]) =>
-	normalizeText(serializeOpenCodeParts(parts));
-
-const serverFingerprint = (message: MessageWithParts) =>
-	normalizeText(serializeOpenCodeParts(message.parts));
-
-/** Transcript order: by creation time, ids breaking ties. */
-const compareMessages = (
-	left: OpenCodeServerMessage | undefined,
-	right: OpenCodeServerMessage | undefined,
-	leftId: string,
-	rightId: string,
-) => {
-	const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;
-	const rightCreated = extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;
-	if (leftCreated !== rightCreated) return leftCreated - rightCreated;
-	return leftId.localeCompare(rightId);
-};
-
-const sortMessageIds = (
-	messagesById: Readonly<Record<string, OpenCodeServerMessage>>,
-	ids: Iterable<string>,
-) => {
-	return [...ids].sort((leftId, rightId) =>
-		compareMessages(messagesById[leftId], messagesById[rightId], leftId, rightId),
-	);
-};
-
-const toServerMessage = (message: MessageWithParts): OpenCodeServerMessage => ({
-	id: message.info.id,
-	info: message.info,
-	parts: message.parts,
-	shadowParts: undefined,
-});
-
-const upsertMessage = (
-	state: OpenCodeThreadState,
-	messageId: string,
-	updater: (current: OpenCodeServerMessage | undefined) => OpenCodeServerMessage,
-): OpenCodeThreadState => {
-	const current = state.messagesById[messageId];
-	const nextMessage = updater(current);
-	const messagesById = {
-		...state.messagesById,
-		[messageId]: nextMessage,
-	};
-	const messageOrder = current
-		? state.messageOrder
-		: sortMessageIds(messagesById, [...state.messageOrder, messageId]);
-
-	return {
-		...state,
-		messagesById,
-		messageOrder,
-	};
-};
-
-const updateExistingMessage = (
-	state: OpenCodeThreadState,
-	messageId: string,
-	updater: (current: OpenCodeServerMessage) => OpenCodeServerMessage,
-): OpenCodeThreadState => {
-	const current = state.messagesById[messageId];
-	if (!current) return state;
-
-	return {
-		...state,
-		messagesById: {
-			...state.messagesById,
-			[messageId]: updater(current),
-		},
-	};
-};
-
-const removePending = (state: OpenCodeThreadState, clientId: string): OpenCodeThreadState => {
-	if (!(clientId in state.pendingUserMessages)) return state;
-	const pendingUserMessages = { ...state.pendingUserMessages };
-	delete pendingUserMessages[clientId];
-	return {
-		...state,
-		pendingUserMessages,
-	};
-};
-
-const findPendingMatchByHistory = (state: OpenCodeThreadState, message: MessageWithParts) => {
-	const createdAt = extractCreatedAt(message.info);
-	const fingerprint = serverFingerprint(message);
-	const candidates = (Object.values(state.pendingUserMessages) as PendingUserMessage[]).filter(
-		(pending) =>
-			pending.status === "pending" &&
-			(createdAt === undefined ||
-				Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS) &&
-			(fingerprint.length === 0 ||
-				pendingFingerprint(pending) === fingerprint ||
-				partTextFingerprint(pending.parts) === fingerprint),
-	);
-
-	if (candidates.length === 1) return candidates[0];
-	if (candidates.length > 1) {
-		return candidates.sort((left, right) => left.createdAt - right.createdAt)[0];
-	}
-	return undefined;
-};
-
-const findPendingMatchByMessageInfo = (state: OpenCodeThreadState, message: Message) => {
-	const createdAt = extractCreatedAt(message);
-	const candidates = (Object.values(state.pendingUserMessages) as PendingUserMessage[]).filter(
-		(pending) =>
-			pending.status === "pending" &&
-			(createdAt === undefined ||
-				Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS),
-	);
-
-	if (candidates.length === 1) return candidates[0];
-	return undefined;
-};
-
-/*
- * History arrives newest first: `history.loaded` brings the newest page and
- * says whether older messages remain (`olderHistory`), and
- * `history.prepended` brings everything older than that page's oldest
- * message. A reload while the older history is still to come keeps the older
- * messages it already holds rather than dropping a scrolled-up reader's
- * transcript to one page; the older history that follows replaces them.
- */
-const historyLoaded = (
-	state: OpenCodeThreadState,
-	session: OpenCodeThreadState["session"],
-	messages: readonly MessageWithParts[],
-	olderHistory: OpenCodeOlderHistory = { type: "complete" },
-): OpenCodeThreadState => {
-	let nextState: OpenCodeThreadState = {
-		...state,
-		session,
-		loadState: { type: "ready" },
-		olderHistory,
-		messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,
-		messageOrder: [],
-		sync: {
-			...state.sync,
-			lastHistoryLoadAt: Date.now(),
-		},
-	};
-
-	const nextMessagesById: Record<string, OpenCodeServerMessage> = {};
-	for (const message of messages) {
-		const pendingMatch =
-			message.info.role === "user" ? findPendingMatchByHistory(nextState, message) : undefined;
-
-		nextMessagesById[message.info.id] = {
-			id: message.info.id,
-			info: message.info,
-			parts: message.parts,
-			shadowParts: message.parts.length === 0 && pendingMatch ? pendingMatch.parts : undefined,
-		};
-
-		if (pendingMatch) {
-			nextState = removePending(nextState, pendingMatch.clientId);
-		}
-	}
-
-	const oldestId = messages[0]?.info.id;
-	if (olderHistory.type !== "complete" && oldestId) {
-		const oldest = nextMessagesById[oldestId];
-		for (const id of state.messageOrder) {
-			const kept = state.messagesById[id];
-			if (compareMessages(kept, oldest, id, oldestId) >= 0) break;
-			if (kept) nextMessagesById[id] = kept;
-		}
-	}
-
-	nextState = {
-		...nextState,
-		messagesById: nextMessagesById,
-		messageOrder: sortMessageIds(nextMessagesById, Object.keys(nextMessagesById)),
-	};
-
-	return nextState;
-};
-
-/**
- * Everything older than `boundaryId` (the loaded page's oldest message),
- * replacing what was held before it. Without the boundary (removed since),
- * only messages not already held are added.
- */
-const historyPrepended = (
-	state: OpenCodeThreadState,
-	messages: readonly MessageWithParts[],
-	boundaryId: string,
-): OpenCodeThreadState => {
-	const boundary = state.messagesById[boundaryId];
-	const messagesById: Record<string, OpenCodeServerMessage> = {};
-	for (const id of state.messageOrder) {
-		const held = state.messagesById[id];
-		if (!held) continue;
-		if (boundary && compareMessages(held, boundary, id, boundaryId) < 0) {
-			continue;
-		}
-		messagesById[id] = held;
-	}
-	for (const message of messages) {
-		if (message.info.id in messagesById) continue;
-		messagesById[message.info.id] = toServerMessage(message);
-	}
-	return {
-		...state,
-		olderHistory: { type: "complete" },
-		messagesById,
-		messageOrder: sortMessageIds(messagesById, Object.keys(messagesById)),
-	};
-};
-
-const removeMessagePart = (parts: readonly Part[], partId: string) =>
-	parts.filter((part) => part.id !== partId);
-
-const upsertMessagePart = (parts: readonly Part[], part: Part) => {
-	if (!part.id) return [...parts, part];
-	const index = parts.findIndex((candidate) => candidate.id === part.id);
-	if (index === -1) return [...parts, part];
-	const nextParts = [...parts];
-	nextParts[index] = part;
-	return nextParts;
-};
-
-const applyMessagePartDelta = (
-	parts: readonly Part[],
-	partId: string,
-	field: string,
-	delta: string,
-) => {
-	const index = parts.findIndex((candidate) => candidate.id === partId);
-	if (index === -1) return null;
-
-	const current = parts[index];
-	if (!current) return null;
-	if (field === "text" && (current.type === "text" || current.type === "reasoning")) {
-		const nextParts = [...parts];
-		nextParts[index] = {
-			...current,
-			text: (current.text ?? "") + delta,
-		};
-		return nextParts;
-	}
-
-	return null;
-};
-
-// Parts imply activity only while status is unknown or busy. While cancelling,
-// reverting, or after an explicit idle they are cleanup output, not a new turn;
-// a new turn always announces itself with a busy session.status first.
-const activityFromPartEvent = (
-	state: OpenCodeThreadState,
-): Pick<OpenCodeThreadState, "runState" | "sessionStatus"> => {
-	if (
-		state.runState.type === "cancelling" ||
-		state.runState.type === "reverting" ||
-		state.sessionStatus?.type === "idle"
-	) {
-		return { runState: state.runState, sessionStatus: state.sessionStatus };
-	}
-	return {
-		runState: { type: "streaming" },
-		sessionStatus: state.sessionStatus?.type === "retry" ? state.sessionStatus : { type: "busy" },
-	};
-};
+export const isQuestionForm = (form: Pick<FormInfo, "metadata"> | undefined): boolean =>
+	form?.metadata?.kind === "question";
 
 export const createOpenCodeThreadState = (sessionId: string): OpenCodeThreadState => ({
 	sessionId,
 	session: null,
-	sessionStatus: null,
+	running: false,
 	loadState: { type: "idle" },
 	runState: { type: "idle" },
-	messageOrder: [],
-	messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,
-	childSessionsById: {} as Readonly<Record<string, OpenCodeThreadState>>,
-	pendingUserMessages: {} as Readonly<Record<string, PendingUserMessage>>,
+	messages: [],
+	childSessionsById: {},
+	pendingUserMessages: {},
 	interactions: {
-		permissions: {
-			pending: {} as Readonly<Record<string, OpenCodePermissionRequest>>,
-			resolved: {} as Readonly<
-				Record<
-					string,
-					{
-						request: OpenCodePermissionRequest;
-						reply: OpenCodePermissionResponse;
-						respondedAt: number;
-					}
-				>
-			>,
-		},
-		questions: {
-			pending: {} as Readonly<Record<string, OpenCodeQuestionRequest>>,
-			answered: {} as Readonly<
-				Record<
-					string,
-					{
-						request: OpenCodeQuestionRequest;
-						answers: readonly QuestionAnswer[];
-						respondedAt: number;
-					}
-				>
-			>,
-			rejected: {} as Readonly<
-				Record<
-					string,
-					{
-						request: OpenCodeQuestionRequest;
-						rejectedAt: number;
-					}
-				>
-			>,
-		},
+		permissions: { pending: {}, resolved: {} },
+		questions: { pending: {}, answered: {}, rejected: {} },
 	},
-	unhandledEvents: [],
 	sync: {},
 });
+
+const touched = (state: OpenCodeThreadState): OpenCodeThreadState["sync"] => ({
+	...state.sync,
+	lastEventAt: Date.now(),
+});
+
+/** Drops pending prompts the transcript now holds (a prompt is sent with its pending id). */
+const withoutAdmitted = (
+	pending: OpenCodeThreadState["pendingUserMessages"],
+	messages: Transcript,
+): OpenCodeThreadState["pendingUserMessages"] => {
+	const ids = Object.keys(pending);
+	if (ids.length === 0) return pending;
+	const present = new Set(messages.map((message) => message.id));
+	if (!ids.some((id) => present.has(id))) return pending;
+	return Object.fromEntries(Object.entries(pending).filter(([id]) => !present.has(id)));
+};
+
+/**
+ * The newest page, keeping older messages already held when more remain to
+ * load (a reload must not drop a scrolled-up reader's transcript to a page).
+ */
+const historyLoaded = (
+	state: OpenCodeThreadState,
+	session: SessionInfo | null,
+	page: Transcript,
+	running: boolean,
+	olderHistory: OpenCodeOlderHistory = { type: "complete" },
+): OpenCodeThreadState => {
+	let messages = page;
+	const oldest = page[0];
+	if (olderHistory.type !== "complete" && oldest) {
+		const at = state.messages.findIndex((message) => message.id === oldest.id);
+		if (at > 0) messages = [...state.messages.slice(0, at), ...page];
+	}
+	return {
+		...state,
+		session,
+		running,
+		runState: running
+			? state.runState.type === "cancelling" || state.runState.type === "reverting"
+				? state.runState
+				: { type: "streaming" }
+			: state.runState.type === "error"
+				? state.runState
+				: { type: "idle" },
+		loadState: { type: "ready" },
+		olderHistory,
+		messages,
+		pendingUserMessages: withoutAdmitted(state.pendingUserMessages, messages),
+		sync: { ...state.sync, lastHistoryLoadAt: Date.now() },
+	};
+};
+
+/** Older messages, ahead of everything held (skipping any already held). */
+const historyPrepended = (
+	state: OpenCodeThreadState,
+	older: Transcript,
+	olderHistory: OpenCodeOlderHistory,
+): OpenCodeThreadState => {
+	const held = new Set(state.messages.map((message) => message.id));
+	return {
+		...state,
+		olderHistory,
+		messages: [...older.filter((message) => !held.has(message.id)), ...state.messages],
+	};
+};
+
+const setRunning = (state: OpenCodeThreadState, running: boolean): OpenCodeThreadState => ({
+	...state,
+	running,
+	runState: running
+		? state.runState.type === "cancelling" || state.runState.type === "reverting"
+			? state.runState
+			: { type: "streaming" }
+		: { type: "idle" },
+});
+
+function withPermissions(
+	state: OpenCodeThreadState,
+	permissions: OpenCodeThreadState["interactions"]["permissions"],
+): OpenCodeThreadState {
+	return { ...state, interactions: { ...state.interactions, permissions } };
+}
+
+function withQuestions(
+	state: OpenCodeThreadState,
+	questions: OpenCodeThreadState["interactions"]["questions"],
+): OpenCodeThreadState {
+	return { ...state, interactions: { ...state.interactions, questions } };
+}
+
+function resolvePermission(
+	state: OpenCodeThreadState,
+	permissionId: string,
+	reply: "once" | "always" | "reject",
+): OpenCodeThreadState {
+	const { [permissionId]: request, ...pending } = state.interactions.permissions.pending;
+	if (!request) return state;
+	return withPermissions(state, {
+		pending,
+		resolved: {
+			...state.interactions.permissions.resolved,
+			[permissionId]: { request, reply, respondedAt: Date.now() },
+		},
+	});
+}
+
+function settleQuestion(
+	state: OpenCodeThreadState,
+	questionId: string,
+	outcome: { readonly answers: readonly (readonly string[])[] } | "rejected",
+): OpenCodeThreadState {
+	const { [questionId]: request, ...pending } = state.interactions.questions.pending;
+	if (!request) return state;
+	const { questions } = state.interactions;
+	return withQuestions(
+		state,
+		outcome === "rejected"
+			? {
+					...questions,
+					pending,
+					rejected: { ...questions.rejected, [questionId]: { request, rejectedAt: Date.now() } },
+				}
+			: {
+					...questions,
+					pending,
+					answered: {
+						...questions.answered,
+						[questionId]: { request, answers: outcome.answers, respondedAt: Date.now() },
+					},
+				},
+	);
+}
+
+/** A form reply's answer (`{ q0: …, q1: … }`) as labels per question. */
+const answersOf = (form: FormInfo, answer: unknown): string[][] => {
+	const values = (answer ?? {}) as Record<string, unknown>;
+	return form.fields.map((field) => {
+		const value = values[field.key];
+		if (Array.isArray(value)) return value.map(String);
+		return value === undefined || value === "" ? [] : [String(value)];
+	});
+};
+
+const SESSION_INFO_EVENTS: Record<
+	string,
+	(session: SessionInfo, event: KiloEventFrame) => SessionInfo
+> = {
+	"session.renamed": (session, event) => ({ ...session, title: String(event.data.title ?? "") }),
+	"session.metadata.updated": (session, event) => ({
+		...session,
+		metadata: event.data.metadata as never,
+	}),
+	"session.permissions": (session, event) => ({
+		...session,
+		permissions: event.data.permissions as never,
+	}),
+	"session.agent.selected": (session, event) => ({ ...session, agent: String(event.data.agent) }),
+	"session.model.selected": (session, event) => ({ ...session, model: event.data.model as never }),
+	"session.moved": (session, event) => ({ ...session, location: event.data.location as never }),
+	"session.archived": (session, event) => ({
+		...session,
+		time: { ...session.time, archived: event.created ?? Date.now() },
+	}),
+	"session.unarchived": (session) => {
+		const { archived: _archived, ...time } = session.time;
+		return { ...session, time };
+	},
+	"session.usage.updated": (session, event) => ({
+		...session,
+		cost: event.data.cost as number,
+		tokens: event.data.tokens as never,
+	}),
+	"session.revert.staged": (session, event) => ({ ...session, revert: event.data.revert as never }),
+	"session.revert.cleared": (session) => {
+		const { revert: _revert, ...rest } = session;
+		return rest;
+	},
+	"session.revert.committed": (session) => {
+		const { revert: _revert, ...rest } = session;
+		return rest;
+	},
+};
+
+/** A server event about this session. */
+function serverEvent(state: OpenCodeThreadState, event: KiloEventFrame): OpenCodeThreadState {
+	const data = event.data;
+	switch (event.type) {
+		case "session.execution.started":
+			return { ...setRunning(state, true), sync: touched(state) };
+		case "session.execution.succeeded":
+		case "session.execution.failed":
+		case "session.execution.interrupted": {
+			const messages = applyTranscriptEvent(state.messages, event);
+			return { ...setRunning(state, false), messages, sync: touched(state) };
+		}
+		case "permission.asked": {
+			const request = data as unknown as PermissionRequest;
+			if (state.interactions.permissions.pending[request.id]) return state;
+			return {
+				...withPermissions(state, {
+					...state.interactions.permissions,
+					pending: { ...state.interactions.permissions.pending, [request.id]: request },
+				}),
+				sync: touched(state),
+			};
+		}
+		case "permission.replied":
+			return resolvePermission(
+				state,
+				String(data.requestID),
+				data.reply as "once" | "always" | "reject",
+			);
+		case "form.created": {
+			const form = data.form as FormInfo;
+			if (!isQuestionForm(form) || state.interactions.questions.pending[form.id]) return state;
+			return {
+				...withQuestions(state, {
+					...state.interactions.questions,
+					pending: { ...state.interactions.questions.pending, [form.id]: form },
+				}),
+				sync: touched(state),
+			};
+		}
+		case "form.replied": {
+			const form = state.interactions.questions.pending[String(data.id)];
+			if (!form) return state;
+			return settleQuestion(state, form.id, { answers: answersOf(form, data.answer) });
+		}
+		case "form.cancelled":
+			return settleQuestion(state, String(data.id), "rejected");
+		default: {
+			const info = SESSION_INFO_EVENTS[event.type];
+			const session = info && state.session ? info(state.session, event) : state.session;
+			const messages = applyTranscriptEvent(state.messages, event);
+			if (session === state.session && messages === state.messages) return state;
+			return {
+				...state,
+				session,
+				messages,
+				pendingUserMessages: withoutAdmitted(state.pendingUserMessages, messages),
+				sync: touched(state),
+			};
+		}
+	}
+}
 
 export const reduceOpenCodeThreadState = (
 	state: OpenCodeThreadState,
@@ -350,338 +286,56 @@ export const reduceOpenCodeThreadState = (
 ): OpenCodeThreadState => {
 	switch (event.type) {
 		case "history.loading":
-			return {
-				...state,
-				loadState: { type: "loading" },
-			};
-
+			return { ...state, loadState: { type: "loading" } };
 		case "history.loaded":
-			return historyLoaded(state, event.session, event.messages, event.olderHistory);
-
+			return historyLoaded(state, event.session, event.messages, event.running, event.olderHistory);
+		case "history.olderLoading":
+			return state.olderHistory && state.olderHistory.type !== "complete"
+				? { ...state, olderHistory: { type: "loading", cursor: state.olderHistory.cursor } }
+				: state;
 		case "history.prepended":
-			return historyPrepended(state, event.messages, event.boundaryId);
-
+			return historyPrepended(state, event.messages, event.olderHistory);
 		case "history.olderFailed":
-			return {
-				...state,
-				olderHistory: { type: "failed", error: event.error },
-			};
-
+			return state.olderHistory && state.olderHistory.type !== "complete"
+				? {
+						...state,
+						olderHistory: { type: "failed", cursor: state.olderHistory.cursor, error: event.error },
+					}
+				: state;
 		case "history.failed":
-			return {
-				...state,
-				loadState: { type: "error", error: event.error },
-			};
-
+			return { ...state, loadState: { type: "error", error: event.error } };
+		case "session.info":
+			return { ...state, session: event.session, sync: touched(state) };
+		case "status":
+			return setRunning(state, event.running);
 		case "run.started":
-			return {
-				...state,
-				runState: { type: "streaming" },
-				sessionStatus: { type: "busy" },
-			};
-
+			return { ...state, running: true, runState: { type: "streaming" } };
 		case "run.cancelling":
-			return {
-				...state,
-				runState: { type: "cancelling" },
-			};
-
+			return { ...state, runState: { type: "cancelling" } };
 		case "run.reverting":
-			return {
-				...state,
-				runState: { type: "reverting" },
-			};
-
+			return { ...state, runState: { type: "reverting" } };
 		case "run.failed":
-			return {
-				...state,
-				runState: { type: "error", error: event.error },
-			};
-
-		case "session.updated":
-			return {
-				...state,
-				session: event.session,
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "session.status":
-			return {
-				...state,
-				sessionStatus: event.status,
-				runState:
-					event.status.type === "idle"
-						? { type: "idle" }
-						: state.runState.type === "cancelling" || state.runState.type === "reverting"
-							? state.runState
-							: { type: "streaming" },
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "session.idle":
-			return {
-				...state,
-				sessionStatus: { type: "idle" },
-				runState: { type: "idle" },
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "session.compacted":
-			return {
-				...state,
-				sync: {
-					...state.sync,
-					lastCompactionAt: Date.now(),
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "message.updated": {
-			const pendingMatch =
-				event.info.role === "user" ? findPendingMatchByMessageInfo(state, event.info) : undefined;
-
-			let nextState = upsertMessage(state, event.info.id, (current) => ({
-				id: event.info.id,
-				info: event.info,
-				parts: current?.parts ?? [],
-				shadowParts:
-					current?.shadowParts ??
-					(pendingMatch && (current?.parts?.length ?? 0) === 0 ? pendingMatch.parts : undefined),
-			}));
-
-			if (pendingMatch) {
-				nextState = removePending(nextState, pendingMatch.clientId);
-			}
-
-			return {
-				...nextState,
-				sync: {
-					...nextState.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "message.removed": {
-			if (!(event.messageId in state.messagesById)) return state;
-			const messagesById = { ...state.messagesById };
-			delete messagesById[event.messageId];
-			return {
-				...state,
-				messagesById,
-				messageOrder: state.messageOrder.filter((id) => id !== event.messageId),
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "part.updated": {
-			const nextState = updateExistingMessage(state, event.messageId, (current) => ({
-				id: event.messageId,
-				info: current.info,
-				parts: upsertMessagePart(current.parts, event.part),
-				shadowParts: current.shadowParts,
-			}));
-
-			if (nextState === state) return state;
-
-			return {
-				...nextState,
-				...activityFromPartEvent(state),
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "part.delta": {
-			const current = state.messagesById[event.messageId];
-			const nextParts = current
-				? applyMessagePartDelta(current.parts, event.partId, event.field, event.delta)
-				: null;
-
-			if (!current || !nextParts) return state;
-
-			return {
-				...updateExistingMessage(state, event.messageId, () => ({
-					...current,
-					parts: nextParts,
-				})),
-				...activityFromPartEvent(state),
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "part.removed": {
-			const nextState = updateExistingMessage(state, event.messageId, (current) => ({
-				id: event.messageId,
-				info: current.info,
-				parts: removeMessagePart(current.parts, event.partId),
-				shadowParts: current.shadowParts,
-			}));
-
-			if (nextState === state) return state;
-
-			return {
-				...nextState,
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "permission.asked":
-			return {
-				...state,
-				interactions: {
-					...state.interactions,
-					permissions: {
-						...state.interactions.permissions,
-						pending: {
-							...state.interactions.permissions.pending,
-							[event.request.id]: event.request,
-						},
-					},
-				},
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "permission.replied": {
-			const pending = { ...state.interactions.permissions.pending };
-			const request = pending[event.permissionId];
-			delete pending[event.permissionId];
-			if (!request) return state;
-
-			return {
-				...state,
-				interactions: {
-					...state.interactions,
-					permissions: {
-						pending,
-						resolved: {
-							...state.interactions.permissions.resolved,
-							[event.permissionId]: {
-								request,
-								reply: event.reply,
-								respondedAt: Date.now(),
-							},
-						},
-					},
-				},
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "question.asked":
-			return {
-				...state,
-				interactions: {
-					...state.interactions,
-					questions: {
-						...state.interactions.questions,
-						pending: {
-							...state.interactions.questions.pending,
-							[event.request.id]: event.request,
-						},
-					},
-				},
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-
-		case "question.replied": {
-			const pending = { ...state.interactions.questions.pending };
-			const request = pending[event.questionId];
-			delete pending[event.questionId];
-			if (!request) return state;
-
-			return {
-				...state,
-				interactions: {
-					...state.interactions,
-					questions: {
-						...state.interactions.questions,
-						pending,
-						answered: {
-							...state.interactions.questions.answered,
-							[event.questionId]: {
-								request,
-								answers: event.answers,
-								respondedAt: Date.now(),
-							},
-						},
-					},
-				},
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "question.rejected": {
-			const pending = { ...state.interactions.questions.pending };
-			const request = pending[event.questionId];
-			delete pending[event.questionId];
-			if (!request) return state;
-
-			return {
-				...state,
-				interactions: {
-					...state.interactions,
-					questions: {
-						...state.interactions.questions,
-						pending,
-						rejected: {
-							...state.interactions.questions.rejected,
-							[event.questionId]: {
-								request,
-								rejectedAt: Date.now(),
-							},
-						},
-					},
-				},
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-		}
-
-		case "unhandled.event":
-			return {
-				...state,
-				unhandledEvents: [...state.unhandledEvents.slice(-(MAX_UNHANDLED_EVENTS - 1)), event.event],
-				sync: {
-					...state.sync,
-					lastEventAt: Date.now(),
-				},
-			};
-
+			return { ...state, runState: { type: "error", error: event.error } };
+		case "server.event":
+			return serverEvent(state, event.event);
+		case "permissions.loaded":
+			return withPermissions(state, {
+				...state.interactions.permissions,
+				pending: Object.fromEntries(event.requests.map((request) => [request.id, request])),
+			});
+		case "questions.loaded":
+			return withQuestions(state, {
+				...state.interactions.questions,
+				pending: Object.fromEntries(
+					event.forms.filter(isQuestionForm).map((form) => [form.id, form]),
+				),
+			});
+		case "permission.replied":
+			return resolvePermission(state, event.permissionId, event.reply);
+		case "question.replied":
+			return settleQuestion(state, event.questionId, { answers: event.answers });
+		case "question.rejected":
+			return settleQuestion(state, event.questionId, "rejected");
 		case "local.message.queued":
 			return {
 				...state,
@@ -690,23 +344,13 @@ export const reduceOpenCodeThreadState = (
 					[event.pending.clientId]: event.pending,
 				},
 			};
-
-		case "local.message.reconciled":
-			return removePending(state, event.clientId);
-
 		case "local.message.failed": {
 			const current = state.pendingUserMessages[event.clientId];
 			if (!current) return state;
+			const failed: PendingUserMessage = { ...current, status: "failed", error: event.error };
 			return {
 				...state,
-				pendingUserMessages: {
-					...state.pendingUserMessages,
-					[event.clientId]: {
-						...current,
-						status: "failed",
-						error: event.error,
-					},
-				},
+				pendingUserMessages: { ...state.pendingUserMessages, [event.clientId]: failed },
 				runState: { type: "error", error: event.error },
 			};
 		}
@@ -715,3 +359,30 @@ export const reduceOpenCodeThreadState = (
 
 /** Stable placeholder state used before a session controller is attached. */
 export const EMPTY_OPENCODE_THREAD_STATE = createOpenCodeThreadState("__pending__");
+
+/** One question of the question tool's form, in the shape question cards draw. */
+export interface QuestionPrompt {
+	readonly key: string;
+	readonly question: string;
+	readonly header: string;
+	readonly options: readonly { readonly label: string; readonly description?: string }[];
+	readonly multiple: boolean;
+	readonly custom: boolean;
+}
+
+/** A question form's questions (`core/src/tool/plugin/question.ts`: one field per question). */
+export const questionsOfForm = (form: FormInfo): QuestionPrompt[] =>
+	form.fields.map((field) => {
+		const options = "options" in field && Array.isArray(field.options) ? field.options : [];
+		return {
+			key: field.key,
+			question: field.description ?? field.title ?? "",
+			header: field.title ?? "",
+			options: options.map((option: { label?: string; value?: unknown; description?: string }) => ({
+				label: option.label ?? String(option.value ?? ""),
+				...(option.description ? { description: option.description } : {}),
+			})),
+			multiple: field.type === "multiselect",
+			custom: "custom" in field ? field.custom === true : false,
+		};
+	});

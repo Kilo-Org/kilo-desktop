@@ -39,7 +39,7 @@ function goldenReply(request: StandInRequest): StandInReply {
 }
 
 /** Ignored: the server's catalogs and instructions (their hashes change daily). */
-const isTurnEvent = (event: { type: string; data?: { sessionID?: unknown } }, sessionID: string) =>
+const isTurnEvent = (event: { type: string; data?: Record<string, unknown> }, sessionID: string) =>
 	event.type !== "session.instructions.updated" && event.data?.sessionID === sessionID;
 
 /**
@@ -71,7 +71,12 @@ async function recordGoldenTurn(): Promise<GoldenTurn> {
 				authorization: `Basic ${btoa(`${connection.username}:${connection.password}`)}`,
 			},
 		});
-		const events: { type: string; data?: Record<string, unknown> }[] = [];
+		const events: {
+			id?: string;
+			created?: number;
+			type: string;
+			data?: Record<string, unknown>;
+		}[] = [];
 		void (async () => {
 			for await (const event of client.event.subscribe({ signal: stream.signal })) {
 				events.push(event as never);
@@ -97,11 +102,12 @@ async function recordGoldenTurn(): Promise<GoldenTurn> {
 		});
 		return normalizeRecording(
 			{
+				// Messages before events, so ids number by transcript order, which is stable.
 				session: await client.session.get({ sessionID: session.id }),
+				messages,
 				events: events
 					.filter((event) => isTurnEvent(event, session.id))
-					.map(({ type, data }) => ({ type, data })),
-				messages,
+					.map(({ id, created, type, data }) => ({ id, created, type, data })),
 			},
 			project,
 		) as GoldenTurn;

@@ -96,7 +96,7 @@ export interface RenderInKernelOptions {
 
 /**
  * Renders `ui` in a kernel pair with kilo.core (signed in, `TEST_MODELS`,
- * chats over a FakeKiloServer), kilo.work-sessions (a workspace, one work
+ * chats over a FakeKilo2Server), kilo.work-sessions (a workspace, one work
  * session, `authorize` allowing everything) and kilo.shell's navigation and
  * notifications in main, and kilo.chat's entries. `ui` renders as kilo.chat's
  * window half, as it does inside its contributions.
@@ -105,8 +105,8 @@ export async function renderInKernel(ui: ReactNode, options: RenderInKernelOptio
 	cleanup();
 	const opened: string[] = [];
 	const workSessions = fakeWorkSessionsMain(options.workSessions);
-	options.core?.kilo2?.install();
 	const core = fakeCore({ ...options.core, onChatCreated: workSessions.attachChat });
+	core.server.install();
 	const shell = fakeShellMain();
 	const storage = createMemoryStorage("/data/kilo.chat");
 	const host = await createTestKernelPair({

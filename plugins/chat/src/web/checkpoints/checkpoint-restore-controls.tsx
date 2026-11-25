@@ -24,8 +24,8 @@ import { selectOpenCodeExtras } from "../runtime/use-optional-opencode-runtime-e
 import { DiffStat, RevertMessageRows } from "./checkpoint-revert-messages";
 import { COMPOSER_SHELF_CLASS, COMPOSER_SHELF_LIST_CLASS } from "../thread/composer-shelf";
 
-// Mirrors the kilocode clients' non-restored revert.workspace states. The
-// undefined case covers reverts performed by older CLIs/TUI that did not report status.
+// Mirrors the kilocode clients' non-restored `session.revert.workspace` states.
+// The undefined case covers a staged revert that did not report its status.
 const WORKSPACE_NOT_RESTORED_COPY = {
 	"snapshots-disabled":
 		"Conversation reverted. File changes were not restored because snapshots are disabled.",
@@ -52,8 +52,7 @@ export const CheckpointRestoreControls: FC = () => {
 				? undefined
 				: WORKSPACE_NOT_RESTORED_COPY[workspace];
 
-	// `file` is optional in the wire type; entries without one cannot be listed.
-	const files = (diffs ?? []).filter((diff) => diff.file !== undefined);
+	const files = diffs ?? [];
 	const additions = files.reduce((total, diff) => total + diff.additions, 0);
 	const deletions = files.reduce((total, diff) => total + diff.deletions, 0);
 	const revertedCopy =

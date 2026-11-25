@@ -5,6 +5,12 @@
 // steps 9-12) changes it in place, and nothing tracks upstream.
 export { useOpenCodeRuntime } from "./useOpenCodeRuntime";
 export {
+	applyTranscriptEvent,
+	applyTranscriptEvents,
+	type KiloEventFrame,
+	type Transcript,
+} from "./kiloTranscript";
+export {
 	OpenCodeAttachmentAdapter,
 	type OpenCodeAttachmentAdapterOptions,
 } from "./openCodeAttachmentAdapter";
@@ -26,7 +32,14 @@ export {
 	STREAM_RECONNECTED_EVENT_TYPE,
 	type OpenCodeEventSubscriber,
 } from "./OpenCodeEventSource";
-export { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeThreadController } from "./OpenCodeThreadController";
+export {
+	OPEN_CODE_HISTORY_PAGE_SIZE,
+	OpenCodeThreadController,
+	createDefaultPromptSender,
+	createMessageId,
+	toFormAnswer,
+	toPromptInput,
+} from "./OpenCodeThreadController";
 export {
 	createOpenCodeMessageQueue,
 	type OpenCodeMessageQueueController,
@@ -34,68 +47,62 @@ export {
 	type OpenCodeMessageQueueDriver,
 	type OpenCodeMessageQueueOptions,
 } from "./openCodeMessageQueue";
-export { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState";
+export {
+	createOpenCodeThreadState,
+	isQuestionForm,
+	questionsOfForm,
+	reduceOpenCodeThreadState,
+	type QuestionPrompt,
+} from "./openCodeThreadState";
 export {
 	createOpenCodeProjectionCache,
 	projectOpenCodeThreadMessages,
 	projectOpenCodeThreadRepository,
+	questionToolCallId,
 	setLocalMcpApps,
+	toolContentText,
+	toolInput,
+	visibleMessages,
 	type LocalMcpApp,
 	type OpenCodeProjectionCache,
 } from "./openCodeMessageProjection";
+export { getOpenCodeTaskSessionId, SUBAGENT_TOOL } from "./openCodeTaskSession";
+export { normalizeEventPayload, sessionIdOfEvent } from "./OpenCodeEventSource";
 
 export type {
-	MessageWithParts,
+	FormInfo,
+	ModelRef,
+	OpenCodeClient,
 	OpenCodeLoadState,
+	OpenCodeMessageSource,
 	OpenCodeOlderHistory,
 	OpenCodeEventSourceLike,
-	OpenCodePartPayload,
-	OpenCodePermissionRequest,
 	OpenCodePermissionResponse,
 	OpenCodeProjectedThreadMessage,
-	OpenCodeQuestionRequest,
+	OpenCodePromptSender,
 	OpenCodeRunState,
 	OpenCodeRuntime,
 	OpenCodeRuntimeBackend,
 	OpenCodeRuntimeExtras,
 	OpenCodeRuntimeOptions,
 	OpenCodeServerEvent,
+	OpenCodeSessionListPage,
 	OpenCodeSessionRef,
-	OpenCodeServerMessage,
 	OpenCodeStateEvent,
 	OpenCodeThreadControllerLike,
 	OpenCodeThreadControllerSnapshot,
 	OpenCodeThreadState,
 	OpenCodeThreadStateSelector,
-	OpenCodeUnhandledEvent,
 	OpenCodeUserMessageOptions,
 	PendingUserMessage,
-} from "./types";
-
-export type {
-	AssistantMessage,
-	Event,
-	FilePart,
-	GlobalSession,
-	Message,
-	Model,
-	OpencodeClient,
-	OpencodeClientConfig,
-	Part,
 	PermissionRequest,
-	Provider,
 	QuestionAnswer,
-	QuestionRequest,
-	ReasoningPart,
-	Session,
-	SessionStatus,
-	SnapshotPart,
-	StepFinishPart,
-	StepStartPart,
-	TextPart,
-	ToolPart,
-	ToolState,
-	UserMessage,
+	SessionInfo,
+	SessionMessageAssistant,
+	SessionMessageAssistantReasoning,
+	SessionMessageAssistantText,
+	SessionMessageAssistantTool,
+	SessionMessageInfo,
+	SessionMessageUser,
+	ToolContent,
 } from "./types";
-
-export { createKiloClient as createOpencodeClient } from "@kilocode/sdk/v2/client";

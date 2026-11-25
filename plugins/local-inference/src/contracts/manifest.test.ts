@@ -22,6 +22,7 @@ import {
 	LOCAL_MODEL_SERVER_SETTINGS_SECTION,
 	LocalModels,
 	MODEL_CATALOG_FLAG,
+	MODEL_INSTALL_DEEP_LINK,
 	MODEL_LOADING_STATUS_ITEM,
 	ModelCatalogPoint,
 	ModelServer,
@@ -77,11 +78,13 @@ describe("kilo.local-inference manifest", () => {
 			LOCAL_MODEL_SERVER_SETTINGS_SECTION,
 		]);
 		expect(contributions("kilo.shell/deep-link")).toEqual([
-			expect.objectContaining({
-				host: "model-catalog",
-				path: "/settings/local-model-server",
-				pathParam: "catalogModel",
-			}),
+			{
+				id: MODEL_INSTALL_DEEP_LINK.id,
+				host: MODEL_INSTALL_DEEP_LINK.host,
+				path: `/settings/${LOCAL_MODEL_SERVER_SETTINGS_SECTION}`,
+				pathParam: MODEL_INSTALL_DEEP_LINK.pathParam,
+				query: [...MODEL_INSTALL_DEEP_LINK.query],
+			},
 		]);
 		expect(contributions("kilo.shell/status-bar-item")).toEqual([
 			expect.objectContaining({ id: MODEL_LOADING_STATUS_ITEM, kind: "view" }),

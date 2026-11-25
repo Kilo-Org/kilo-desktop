@@ -77,6 +77,8 @@ function ModelDetailsSection({ model }: { model: ModelCatalogEntry }) {
 
 export function ModelDetailPane({
 	model,
+	initialQuantizationId,
+	selectionKey,
 	hardware,
 	downloads,
 	addedCatalogArtifacts,
@@ -85,6 +87,8 @@ export function ModelDetailPane({
 	onDeleteModel,
 }: {
 	model: ModelCatalogEntry;
+	initialQuantizationId?: string | undefined;
+	selectionKey?: string | number | undefined;
 	hardware: LocalInferenceHardwareProfile | undefined;
 	downloads: readonly ModelDownload[];
 	addedCatalogArtifacts: ReadonlyMap<string, LocalModel>;
@@ -118,8 +122,9 @@ export function ModelDetailPane({
 					</p>
 				</div>
 				<ModelDownloadSection
-					key={model.id}
+					key={`${model.id}:${selectionKey ?? ""}`}
 					model={model}
+					initialQuantizationId={initialQuantizationId}
 					hardware={hardware}
 					downloads={downloads}
 					addedCatalogArtifacts={addedCatalogArtifacts}

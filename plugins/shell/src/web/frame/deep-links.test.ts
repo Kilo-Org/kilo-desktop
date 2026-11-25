@@ -41,7 +41,7 @@ describe("resolveDeepLink", () => {
 		expect(resolveDeepLink("kilo-desktop://model-catalog", catalog)?.search).toEqual({});
 	});
 
-	it("carries an action segment and its listed parameters together (anaconda.org install links)", () => {
+	it("carries an action segment and its listed parameters together (web catalog install links)", () => {
 		const packages = [
 			link(
 				"packages",
@@ -62,6 +62,24 @@ describe("resolveDeepLink", () => {
 				package: "scikit-learn",
 				version: "1.5.2",
 				channel: "conda-forge/label/dev",
+				source: "dot-org",
+			},
+		});
+
+		const models = [
+			link("models", "/settings/local-model-server", ["model", "file", "source"], "modelAction"),
+		];
+		expect(
+			resolveDeepLink(
+				"kilo-desktop://models/install?model=550e8400-e29b-41d4-a716-446655440000&file=660e8400-e29b-41d4-a716-446655440001&source=dot-org&extra=ignored",
+				models,
+			),
+		).toEqual({
+			path: "/settings/local-model-server",
+			search: {
+				modelAction: "install",
+				model: "550e8400-e29b-41d4-a716-446655440000",
+				file: "660e8400-e29b-41d4-a716-446655440001",
 				source: "dot-org",
 			},
 		});

@@ -105,10 +105,11 @@
 			],
 			"kilo.shell/deep-link": [
 				{
-					"id": "model-catalog",
-					"host": "model-catalog",
+					"id": "model-install",
+					"host": "models",
 					"path": "/settings/local-model-server",
-					"pathParam": "catalogModel"
+					"pathParam": "modelAction",
+					"query": ["model", "file", "source"]
 				}
 			],
 			"kilo.shell/status-bar-item": [
@@ -137,6 +138,14 @@
 				{
 					"id": "local-model-server-stopped",
 					"name": "Local Model Server Stopped"
+				},
+				{
+					"id": "model-install-link-received",
+					"name": "Model Install Link Received"
+				},
+				{
+					"id": "model-install-link-rejected",
+					"name": "Model Install Link Rejected"
 				}
 			]
 		}

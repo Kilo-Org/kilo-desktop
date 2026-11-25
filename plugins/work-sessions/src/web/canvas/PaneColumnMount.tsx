@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 /** Places `host` among `container`'s column hosts by ascending order. */
@@ -55,9 +55,18 @@ export function PaneColumnMount({
 	useLayoutEffect(
 		() => () => {
 			onBeforeRemove?.(host);
-			host.remove();
 		},
 		[host, onBeforeRemove],
+	);
+
+	// A live column always portals its column's <div>, so an empty host means React
+	// detached the children on a real unmount. `<Activity mode="hidden">` cleans
+	// effects up while they stay attached, keeping descendant iframes alive.
+	useEffect(
+		() => () => {
+			if (!host.hasChildNodes()) host.remove();
+		},
+		[host],
 	);
 
 	// Mount children in a connected host so autofocus and initial measurements work.

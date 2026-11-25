@@ -124,6 +124,12 @@ export interface HtmlRenderFrameProps {
 	/** Identity of the page (its tool call) for reusing its last reported height. */
 	readonly heightCacheKey?: string | undefined;
 	readonly className?: string | undefined;
+	/**
+	 * Overrides the isolated shell URL normally derived from `window.location`
+	 * on the `kilo-desktop*` custom scheme. Exposed for tests that exercise the
+	 * shell handshake outside Electron.
+	 */
+	readonly shellSrc?: string | undefined;
 }
 
 /**
@@ -143,14 +149,25 @@ export function HtmlRenderFrame({
 	maxHeight = HTML_RENDER_MAX_HEIGHT,
 	heightCacheKey,
 	className,
+	shellSrc: shellSrcOverride,
 }: HtmlRenderFrameProps) {
 	const os = useDomainObject(KernelOs);
 	const linkPromptId = useId();
 	const theme = useHtmlRenderTheme();
 	const iframeRef = useRef<HTMLIFrameElement>(null);
-	const [shellSrc] = useState(() => htmlRenderShellSrc(window.location));
+	const [shellSrc] = useState(() => shellSrcOverride ?? htmlRenderShellSrc(window.location));
+	const [frameGeneration, setFrameGeneration] = useState(0);
+	const activeGeneration = useRef(frameGeneration);
 	const shellReady = useRef(false);
-	const pageDelivered = useRef(false);
+	// The frame window that already received this page. A WindowProxy stays
+	// identical across in-frame navigations (so a page navigating to a looser
+	// shell like /widget-host.html cannot trigger a second delivery), while
+	// disconnecting and reconnecting an iframe destroys its browsing context and
+	// creates a new WindowProxy.
+	const deliveredWindow = useRef<Window | null>(null);
+	// The page that window was handed, so a changed `html` gets a fresh shell.
+	const deliveredHtml = useRef<string | null>(null);
+	const hiddenBeforeDelivery = useRef(false);
 	// The page whose shell never reported ready; a new page clears it.
 	const [failedPage, setFailedPage] = useState<string | null>(null);
 	const shellError = failedPage === html;
@@ -173,12 +190,57 @@ export function HtmlRenderFrame({
 
 	useEffect(() => {
 		if (!shellSrc) return;
+		if (activeGeneration.current !== frameGeneration) {
+			activeGeneration.current = frameGeneration;
+			deliveredWindow.current = null;
+			deliveredHtml.current = null;
+			hiddenBeforeDelivery.current = false;
+		}
+		const frame = iframeRef.current?.contentWindow ?? null;
+		// Resumed from a hidden `<Activity>` while the iframe stayed connected:
+		// this exact browsing context already has the page (or navigated away from
+		// it), so keep the frame untouched and do not re-arm the failure timeout.
+		if (frame && deliveredWindow.current === frame) {
+			if (deliveredHtml.current === html) {
+				shellReady.current = true;
+				return;
+			}
+			// The shell accepts one page and the page owns the document now, so a
+			// different page can only arrive at a fresh shell.
+			setFrameGeneration((generation) => generation + 1);
+			return;
+		}
+		// Previously delivered to a browsing context that was destroyed (e.g. an
+		// ancestor portal detached and reattached the iframe), or hidden before
+		// the shell's READY retry loop could finish: remount the iframe so it is
+		// guaranteed to start fresh at `shellSrc` (`/html-render.html`).
+		if (
+			(deliveredWindow.current !== null && deliveredWindow.current !== frame) ||
+			hiddenBeforeDelivery.current
+		) {
+			hiddenBeforeDelivery.current = false;
+			shellReady.current = false;
+			setFrameGeneration((generation) => generation + 1);
+			return;
+		}
 		shellReady.current = false;
+		// Distinguish real `<Activity mode="hidden">` cleanups from synchronous
+		// StrictMode mount/unmount/mount checks: StrictMode cleans up before any
+		// microtask runs.
+		let settled = false;
+		queueMicrotask(() => {
+			settled = true;
+		});
 		const timer = setTimeout(() => {
 			if (!shellReady.current) setFailedPage(html);
 		}, SHELL_READY_TIMEOUT_MS);
-		return () => clearTimeout(timer);
-	}, [html, shellSrc]);
+		return () => {
+			clearTimeout(timer);
+			if (settled && deliveredWindow.current === null) {
+				hiddenBeforeDelivery.current = true;
+			}
+		};
+	}, [frameGeneration, html, shellSrc]);
 
 	useEffect(() => {
 		const onMessage = (event: MessageEvent) => {
@@ -189,8 +251,9 @@ export function HtmlRenderFrame({
 				// Only the frame's first document is known to be the page shell: a
 				// later READY comes from wherever the page navigated its frame
 				// (e.g. the widget shell, under a looser policy).
-				if (pageDelivered.current) return;
-				pageDelivered.current = true;
+				if (deliveredWindow.current !== null) return;
+				deliveredWindow.current = frame;
+				deliveredHtml.current = html;
 				const page = bootstrapPage(html);
 				frame.postMessage({ type: MCP_APP_SHELL_HTML_MESSAGE, html: page }, "*");
 				return;
@@ -226,6 +289,7 @@ export function HtmlRenderFrame({
 			: undefined;
 	return (
 		<iframe
+			key={frameGeneration}
 			ref={iframeRef}
 			src={shellSrc}
 			sandbox="allow-scripts"

@@ -355,15 +355,17 @@ const useRuntimeHook = (
 			| readonly ThreadMessageLike[]
 			| ((previous: readonly ThreadMessageLike[]) => readonly ThreadMessageLike[]),
 	) => {
-		setOptimisticMessagesState((previous) => {
-			const next = typeof updater === "function" ? updater(previous) : updater;
-			if (next.length === 0) {
-				optimisticMessagesByThreadId.delete(localThreadId);
-			} else {
-				optimisticMessagesByThreadId.set(localThreadId, next);
-			}
-			return next;
-		});
+		// The registry's entry is the source of truth (it outlives remounts and is
+		// written on every change), so the next list is computed from it outside
+		// React's updater, which must stay free of side effects.
+		const previous = optimisticMessagesByThreadId.get(localThreadId) ?? [];
+		const next = typeof updater === "function" ? updater(previous) : updater;
+		if (next.length === 0) {
+			optimisticMessagesByThreadId.delete(localThreadId);
+		} else {
+			optimisticMessagesByThreadId.set(localThreadId, next);
+		}
+		setOptimisticMessagesState(next);
 	};
 
 	const initializeController = () => {

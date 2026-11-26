@@ -1,7 +1,7 @@
 # Chat and agent tools
 
-**kilo.core** (data, main process) owns the Kilo server, its chats, models
-and desktop tools; contracts: `@kilo-desktop/plugin-core/contracts`.
+**kilo.core** (data, main process) owns the Kilo v2 server (`kilo2`), its
+chats, models and desktop tools; contracts: `@kilo-desktop/plugin-core/contracts`.
 **kilo.chat** draws them: the chat pane (transcript, composer, tool calls,
 permission and question cards); contracts:
 `@kilo-desktop/plugin-chat/contracts`. Both may be absent — declare their
@@ -66,14 +66,14 @@ apps, and their trust rules: [Agent tools](../agent-tools.md).
 
 ### Shaping chats and Kilo (main)
 
-| Extension point             | Kind | Use it to                                                                                                                                                              |
-| --------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kilo.core/chat-config`     | A    | `configure({ chatId, directory, workSessionId, workspaceId })` → `{ disableTools, instructions, permissions }` for a chat                                              |
-| `kilo.core/tool-approval`   | D    | Answer `"proceed"`, `{ ask }` or `{ reject }` per tool when a chat is created (`input` undefined): ask adds an ask rule, reject a deny rule; fails closed              |
-| `kilo.core/ai-provider`     | A    | Add an AI provider entry (and the env it refers to) to Kilo's config                                                                                                   |
-| `kilo.core/mcp-server`      | A    | Add an MCP server to Kilo: static `{ command, args, env }` in metadata (`${resources}` is resolved by the kernel to the contributor's own folder) or an implementation |
-| `kilo.core/agent-extension` | A    | Add an agent, command, skill folder or Kilo plugin to Kilo, all data in metadata (`${resources}` is resolved by the kernel to the contributor's own folder)            |
-| `kilo.core/server-env`      | A    | Give the Kilo server process environment variables (`read()`, optional `subscribe`); `PATH`, proxies and `KILO_`/`XDG_`/loader variables are never taken               |
+| Extension point             | Kind | Use it to                                                                                                                                                                                                                       |
+| --------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kilo.core/chat-config`     | A    | `configure({ chatId, directory, workSessionId, workspaceId })` → `{ disableTools, instructions, permissions }` for a chat                                                                                                       |
+| `kilo.core/tool-approval`   | D    | Answer `"proceed"`, `{ ask }` or `{ reject }` per tool when a chat is created (`input` undefined): ask adds an ask rule, reject a deny rule; fails closed                                                                       |
+| `kilo.core/ai-provider`     | A    | Add an AI provider entry (and the env it refers to) to Kilo's config                                                                                                                                                            |
+| `kilo.core/mcp-server`      | A    | Add an MCP server to Kilo: static `{ command, args, env }` in metadata (`${resources}` is resolved by the kernel to the contributor's own folder) or an implementation                                                          |
+| `kilo.core/agent-extension` | A    | Add an agent, command, skill folder or Kilo plugin (a Kilo v2 `{ id, setup }` bundle, installed as a plugin directory) to Kilo, all data in metadata (`${resources}` is resolved by the kernel to the contributor's own folder) |
+| `kilo.core/server-env`      | A    | Give the Kilo server process environment variables (`read()`, optional `subscribe`); `PATH`, proxies and `KILO_`/`XDG_`/loader variables are never taken                                                                        |
 
 ## How tool calls look (`kilo.chat/tool-renderer`)
 
@@ -190,8 +190,9 @@ commands).
 
 ### Slash commands (`kilo.chat/client-slash-command`)
 
-The `/` menu lists the Kilo server's commands for the chat's folder (its
-commands, skills and MCP prompts) and **client** commands: `kernel/command`s
+The `/` menu lists the Kilo server's commands and skills for the chat's
+folder (Kilo v2 lists them apart; the commands are read once the folder's
+plugins have loaded) and **client** commands: `kernel/command`s
 that run in the window instead of being sent to the agent (`/compact`). The
 plugin contributes the command; a `client-slash-command` entry places it in
 the menu, and kilo.chat decides what it is given:

@@ -32,7 +32,7 @@ plugins/          Bundled plugins, in layers: kernel → kilo.core → kilo.shel
 ├── anaconda/     @kilo-desktop/plugin-anaconda kilo.anaconda: the Anaconda account — browser sign-in, the Anaconda API key in the shared Anaconda keyring, its Account settings row — and Anaconda's model catalog for the Local Model Server
 ├── browser/      @kilo-desktop/plugin-browser kilo.browser: Browser panes — web pages, and a workspace's HTML files, in an embedded guest driven through the host's browser
 ├── chat/         @kilo-desktop/plugin-chat  kilo.chat: the chat pane — a work session's chats with the agent, drawn from kilo.core (its assistant-ui runtime is a private fork in chat/react-opencode)
-├── core/         @kilo-desktop/plugin-core  kilo.core: the Kilo CLI server and everything it knows (data only, no UI)
+├── core/         @kilo-desktop/plugin-core  kilo.core: the Kilo v2 server (`kilo2`, reached through `@kilocode/client`) and everything it knows (data only, no UI)
 ├── developer/    @kilo-desktop/plugin-developer kilo.developer: Settings → Developer → Diagnostics, behind the `developer` flag
 ├── environments/ @kilo-desktop/plugin-environments kilo.environments: conda environments and packages through the bundled conda bridge, for the person and the agent
 ├── files/        @kilo-desktop/plugin-files kilo.files: the Files pane — browse, edit and mention the files in a work session's workspace folders

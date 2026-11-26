@@ -1,9 +1,10 @@
 # Kilo v2 server: what Desktop uses and how it maps
 
-Desktop is moving from the Kilo v1 server (`kilo serve`, `@kilocode/sdk`) to the
-Kilo v2 server (`kilo2`, `@kilocode/client`), v2 only. This document maps every
-Desktop interaction with the server to its v2 equivalent and lists the gaps. It
-is the reference for the migration steps; update it as each area moves.
+Desktop runs on the Kilo v2 server (`kilo2`, `@kilocode/client`) only; it moved
+from the Kilo v1 server (`kilo serve`, `@kilocode/sdk`), and the decision is
+[ADR-003](./adr/003-desktop-runs-on-kilo-v2.md). This document maps every
+Desktop interaction with the server to its v2 equivalent and lists the gaps.
+Keep it current as Desktop's use of the server changes.
 
 Sources: Kilo-Org/kilocode branch `origin/v2` (surveyed at `3036835f40`,
 2026-11-24) and the published client types at `0.0.0-v2-239`. Start upstream

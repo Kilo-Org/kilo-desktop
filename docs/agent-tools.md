@@ -89,8 +89,10 @@ sanitize alike keep the first.
 ### Caller context
 
 `run` receives `ToolCallContext`: `chatId`, `workSessionId` and `workspaceId` (the calling chat's
-stamp), `callId`, `external` and an abort `signal`. Desktop's Kilo plugin stamps every `desktop_*`
-call with `__anacondaDesktopKiloCaller` (chat and call id); the gateway strips it and reads the
+stamp), `callId`, `external` and an abort `signal`. Desktop's caller-context Kilo plugin (a Kilo
+v2 server plugin whose `execute.before` tool hook edits the call's input) stamps every `desktop_*`
+call with `__anacondaDesktopKiloCaller` (chat and call id); the gateway lists the key in its tool
+schemas so Kilo's input validation keeps it, then strips it and reads the
 chat's stamp from `kilo.core/chats` at call time (a subagent's chat has its root's). A chat without
 a stamp gets `workSessionId: null`, as does every external app. Session-bound tools (opening
 panes, reading terminals) refuse such calls; they never fall back to the visually focused work
@@ -131,8 +133,9 @@ session gets its own server; beyond 32 sessions the least recently used one is c
 client re-initializes.
 
 The `tool-gateway` daemon starts the endpoint at activation; `config-sync` waits for its first
-start, then writes (or removes, if it failed) a static entry in the app-owned `kilo.jsonc` and the
-caller-context Kilo plugin:
+start, then writes (or removes, if it failed) a static entry in the app-owned `kilo2.jsonc` and the
+caller-context Kilo plugin (a directory in Desktop's managed plugin folder, listed in Kilo's inline
+config):
 
 ```jsonc
 "desktop": {
@@ -140,15 +143,19 @@ caller-context Kilo plugin:
   "url": "{env:KILO_DESKTOP_WEBMCP_URL}",
   "oauth": false,
   "headers": { "Authorization": "Bearer {env:KILO_DESKTOP_WEBMCP_TOKEN}" },
-  "enabled": true
+  "codemode": false
 }
 ```
+
+`codemode: false` keeps Desktop's tools out of Kilo v2's Code Mode, which otherwise offers an MCP
+server's tools only as calls inside one `execute` tool: the chat's tool renderers, permission rules
+and the caller-context plugin all key on the `desktop_<tool>` names.
 
 The per-start URL and token never touch disk: `KiloServerManager` sets both variables at every
 spawn, strips inherited values, and the `KILO_` prefix is reserved so contributed env
 (such as `kilo.core/server-env`'s) cannot set them. A server spawned with another
 endpoint (the daemon restarted) is restarted. The ownership sidecar
-`<kilo.core storage>/agent/runtime/config/kilo/.kilo-desktop-ownership.json` tracks which MCP
+`<kilo.core storage>/agent/runtime/config/kilo2/.kilo-desktop-ownership.json` tracks which MCP
 entries Desktop owns.
 
 ---

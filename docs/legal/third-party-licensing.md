@@ -56,6 +56,11 @@ No copyleft license. Nine packages publish no license file (`@kilocode/sdk`,
 `react-remove-scroll-bar`, `toggle-selection`, `use-composed-ref`); their entries
 give the declared license and the source URL.
 
+Since this audit, Desktop moved to the Kilo v2 server: `@kilocode/sdk` no
+longer ships, and the renderer bundles `@kilocode/client` and
+`@kilocode/schema` instead (MIT, each with its `LICENSE` file). Recount when the
+audit is next refreshed.
+
 ### Fonts
 
 The renderer self-hosts three typefaces. `apps/web/src/globals.css` imports them,

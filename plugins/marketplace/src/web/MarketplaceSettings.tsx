@@ -30,18 +30,15 @@ import {
 	MARKETPLACE_TELEMETRY_EVENTS,
 	type MarketplaceIncludedItem,
 	type MarketplaceInstalled,
+	type MarketplaceInstallInput,
 	type MarketplaceItem,
-	type MarketplaceItemRef,
-	type MarketplaceMcpStatus,
-	type MarketplaceMutationInput,
+	type MarketplaceKind,
+	type MarketplaceOption,
+	type MarketplaceParameter,
 	type MarketplaceSnapshot,
 	type MarketplaceTarget,
-	type MarketplaceType,
-	type McpMethod,
-	type McpParameter,
 } from "../contracts/index";
 import { filterMarketplaceItems, installedScopes, matchesSearch } from "./marketplace-filter";
-import { mcpInstallContent } from "../contracts/mcp-config";
 import { McpConfigReview } from "./McpConfigReview";
 import { mcpConfigPreview } from "./mcp-config-preview";
 import { mcpLaunchCommand, missingCommand } from "./mcp-commands";
@@ -141,13 +138,13 @@ import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-const TYPE_OPTIONS: Array<{ value: MarketplaceType; label: string; noun: string }> = [
+const TYPE_OPTIONS: Array<{ value: MarketplaceKind; label: string; noun: string }> = [
 	{ value: "agent", label: "Agents", noun: "agents" },
 	{ value: "mcp", label: "MCPs", noun: "MCPs" },
 	{ value: "skill", label: "Skills", noun: "skills" },
 ];
 const COUNT_CLASS = "inline-block min-w-[3ch] text-right text-2xs tabular-nums opacity-60";
-const TYPE_ICON_STYLES: Record<MarketplaceType, string> = {
+const TYPE_ICON_STYLES: Record<MarketplaceKind, string> = {
 	agent: "text-emerald-500!",
 	mcp: "text-sky-500!",
 	skill: "text-amber-500!",
@@ -157,15 +154,17 @@ const ITEM_NAME_COLLATOR = new Intl.Collator(undefined, {
 	sensitivity: "base",
 });
 const CATEGORY_PREVIEW_LIMIT = 6;
+/** Where catalog items without a category are grouped. */
+const UNCATEGORIZED = "other";
 
 function itemTelemetryData(
-	item: MarketplaceItemRef & { name: string },
+	item: { kind: MarketplaceKind; id: string; name: string },
 	target?: MarketplaceInstalled["scope"],
 ) {
 	return {
 		itemId: item.id,
 		itemName: item.name,
-		itemType: item.type,
+		itemType: item.kind,
 		...(target ? { target } : {}),
 	};
 }
@@ -180,7 +179,7 @@ const CATEGORY_TILE_PLACEHOLDERS = [
 ];
 const LIST_FORMAT = new Intl.ListFormat("en", { type: "conjunction" });
 
-type InstallDestination = { label: string; input: MarketplaceMutationInput };
+type InstallDestination = { label: string; input: MarketplaceInstallInput };
 type InstallFailure = InstallDestination & { message: string };
 type InstallOutcome = { failed: InstallFailure[]; succeeded: string[] };
 
@@ -194,12 +193,15 @@ type InstallDialogProps = {
 };
 
 type RemoveSelection = {
-	item: MarketplaceItemRef & { name: string };
+	item: { kind: MarketplaceKind; id: string; name: string };
 	installed: MarketplaceInstalled;
 };
 
 type MarketplaceMode = "installed" | "browse";
-type ConfiguredItem = MarketplaceItemRef & {
+/** An installation whose catalog item is gone: still listed so it can be removed. */
+type ConfiguredItem = {
+	kind: MarketplaceKind;
+	id: string;
 	name: string;
 	description: string;
 	category: string;
@@ -229,7 +231,7 @@ function toggled<T>(set: ReadonlySet<T>, value: T, on = !set.has(value)): Set<T>
 
 function configuredItem(installation: MarketplaceInstalled): ConfiguredItem {
 	return {
-		type: installation.type,
+		kind: installation.kind,
 		id: installation.id,
 		name:
 			installation.name ??
@@ -240,13 +242,13 @@ function configuredItem(installation: MarketplaceInstalled): ConfiguredItem {
 					index === 0 ? `${word.charAt(0).toLocaleUpperCase()}${word.slice(1)}` : word,
 				)
 				.join(" "),
-		description: installation.description ?? "Configured in Kilo.",
-		category: installation.category ?? "Custom",
+		description: installation.description ?? "Installed from the Marketplace.",
+		category: "Custom",
 	};
 }
 
 function isCatalogItem(item: MarketplaceListItem): item is MarketplaceItem {
-	return "content" in item;
+	return "registry" in item;
 }
 
 function installationLabel(
@@ -263,7 +265,7 @@ function installationLabel(
 }
 
 function installationKey(installation: MarketplaceInstalled): string {
-	return installation.scope === "workspace" && installation.workspaceId
+	return installation.scope === "project" && installation.workspaceId
 		? installation.workspaceId
 		: installation.scope;
 }
@@ -282,7 +284,7 @@ function installationMatchesWorkspaces(
 function installedWorkspaceIds(installations: readonly MarketplaceInstalled[]): Set<string> {
 	return new Set(
 		installations.flatMap((installation) =>
-			installation.scope === "workspace" && installation.workspaceId
+			installation.scope === "project" && installation.workspaceId
 				? [installation.workspaceId]
 				: [],
 		),
@@ -347,7 +349,7 @@ function marketplaceRows(
 								mode !== "installed" ||
 								installationMatchesWorkspaces(installation, excludedWorkspaceIds),
 						),
-						key: `${item.type}:${item.id}`,
+						key: `${item.kind}:${item.id}`,
 					}))
 					.filter((row) => mode !== "installed" || row.installations.length > 0)
 			: [];
@@ -358,10 +360,10 @@ function marketplaceRows(
 	if (mode === "installed" && showUser) {
 		for (const installation of installed) {
 			if (!installationMatchesWorkspaces(installation, excludedWorkspaceIds)) continue;
-			if (items.some((item) => item.type === installation.type && item.id === installation.id)) {
+			if (items.some((item) => item.kind === installation.kind && item.id === installation.id)) {
 				continue;
 			}
-			const key = `${installation.type}:${installation.id}`;
+			const key = `${installation.kind}:${installation.id}`;
 			const existing = configuredByItem.get(key);
 			if (existing) {
 				existing.installations.push(installation);
@@ -378,7 +380,7 @@ function marketplaceRows(
 	const includedRows = included.map((item) => ({
 		item,
 		installations: [],
-		key: `included:${item.type}:${item.id}`,
+		key: `included:${item.kind}:${item.id}`,
 	}));
 	return [...marketplaceRows, ...configuredRows, ...includedRows].toSorted((left, right) => {
 		const byName = ITEM_NAME_COLLATOR.compare(left.item.name, right.item.name);
@@ -403,8 +405,8 @@ function useDeferredMarketplaceRows(
 		snapshot?.included ?? [],
 		{ ...view, search: deferredSearch },
 	);
-	const typeCounts: Record<MarketplaceType, number> = { agent: 0, mcp: 0, skill: 0 };
-	for (const row of filtered) typeCounts[row.item.type] += 1;
+	const typeCounts: Record<MarketplaceKind, number> = { agent: 0, mcp: 0, skill: 0 };
+	for (const row of filtered) typeCounts[row.item.kind] += 1;
 	return { searching: deferredSearch.trim().length > 0, filtered, typeCounts };
 }
 
@@ -412,9 +414,10 @@ function useDeferredMarketplaceRows(
 function catalogSectionsOf(rows: readonly MarketplaceListRow[]) {
 	const rowsByCategory = new Map<string, MarketplaceListRow[]>();
 	for (const row of rows) {
-		const categoryRows = rowsByCategory.get(row.item.category) ?? [];
+		const category = row.item.category ?? UNCATEGORIZED;
+		const categoryRows = rowsByCategory.get(category) ?? [];
 		categoryRows.push(row);
-		rowsByCategory.set(row.item.category, categoryRows);
+		rowsByCategory.set(category, categoryRows);
 	}
 	return [...rowsByCategory.entries()]
 		.map(([value, categoryRows]) => ({
@@ -436,13 +439,10 @@ function summaryDescription(description: string): string {
 }
 
 function itemLink(item: MarketplaceListItem): string | undefined {
-	if (!isCatalogItem(item)) return undefined;
-	if (item.type === "skill") return item.githubUrl;
-	if (item.type === "mcp") return item.url;
-	return item.authorUrl;
+	return isCatalogItem(item) ? item.url : undefined;
 }
 
-function TypeIcon({ type }: { type: MarketplaceType }) {
+function TypeIcon({ type }: { type: MarketplaceKind }) {
 	switch (type) {
 		case "agent":
 			return <BotIcon aria-hidden />;
@@ -459,8 +459,8 @@ function TypeIcon({ type }: { type: MarketplaceType }) {
 
 function MarketplaceItemIcon({ item }: { item: MarketplaceListItem }) {
 	return (
-		<span className={cn("contents", TYPE_ICON_STYLES[item.type])}>
-			<TypeIcon type={item.type} />
+		<span className={cn("contents", TYPE_ICON_STYLES[item.kind])}>
+			<TypeIcon type={item.kind} />
 		</span>
 	);
 }
@@ -479,11 +479,11 @@ function TypeToggles({
 	onToggle,
 	onClear,
 }: {
-	selected: ReadonlySet<MarketplaceType>;
+	selected: ReadonlySet<MarketplaceKind>;
 	total: number;
-	counts: Record<MarketplaceType, number>;
+	counts: Record<MarketplaceKind, number>;
 	loading: boolean;
-	onToggle(type: MarketplaceType): void;
+	onToggle(type: MarketplaceKind): void;
 	onClear(): void;
 }) {
 	return (
@@ -811,12 +811,14 @@ function ItemMetadata({
 				<SourceLinkButton
 					url={link}
 					onOpenLink={onOpenLink}
-					qaId={`marketplace-source-${item.type}-${item.id}`}
+					qaId={`marketplace-source-${item.kind}-${item.id}`}
 				/>
 			) : null}
-			<Badge variant="secondary" data-qa-id={categoryQaId}>
-				{categoryDisplayName(item.category)}
-			</Badge>
+			{item.category ? (
+				<Badge variant="secondary" data-qa-id={categoryQaId}>
+					{categoryDisplayName(item.category)}
+				</Badge>
+			) : null}
 		</div>
 	);
 }
@@ -845,7 +847,7 @@ function MarketplaceCardActions({
 								variant="secondary"
 								size="sm"
 								className="text-muted-foreground text-2xs h-7 shrink-0 rounded-md px-2"
-								data-qa-id={`marketplace-installed-badge-${item.type}-${item.id}`}
+								data-qa-id={`marketplace-installed-badge-${item.kind}-${item.id}`}
 							/>
 						}
 					>
@@ -854,11 +856,11 @@ function MarketplaceCardActions({
 					<TooltipContent side="bottom" align="end" className="block w-64">
 						<div
 							className="grid gap-1.5"
-							data-qa-id={`marketplace-installed-locations-${item.type}-${item.id}`}
+							data-qa-id={`marketplace-installed-locations-${item.kind}-${item.id}`}
 						>
 							<p
 								className="font-medium"
-								data-qa-id={`marketplace-installed-title-${item.type}-${item.id}`}
+								data-qa-id={`marketplace-installed-title-${item.kind}-${item.id}`}
 							>
 								Installed in
 							</p>
@@ -886,7 +888,7 @@ function MarketplaceCardActions({
 						disabled={!canInstall}
 						aria-label={canInstall ? `Install ${item.name}` : "Installed everywhere"}
 						onClick={() => onInstall(item)}
-						data-qa-id={`marketplace-install-${item.type}-${item.id}`}
+						data-qa-id={`marketplace-install-${item.kind}-${item.id}`}
 					>
 						<PlusIcon aria-hidden />
 					</Button>
@@ -915,7 +917,7 @@ function MarketplaceCatalogCard({
 		<Card
 			size="sm"
 			className="group/catalog-card hover:border-foreground/25 min-w-0 gap-3 p-3 transition-colors"
-			data-qa-id={`marketplace-item-${item.type}-${item.id}`}
+			data-qa-id={`marketplace-item-${item.kind}-${item.id}`}
 		>
 			<div className="flex min-w-0 items-center gap-2.5">
 				<span className="border-border bg-background flex size-8 shrink-0 items-center justify-center rounded-md border [&_svg]:size-4">
@@ -923,7 +925,7 @@ function MarketplaceCatalogCard({
 				</span>
 				<h3
 					className="min-w-0 truncate text-sm font-medium"
-					data-qa-id={`marketplace-name-${item.type}-${item.id}`}
+					data-qa-id={`marketplace-name-${item.kind}-${item.id}`}
 				>
 					{item.name}
 				</h3>
@@ -937,7 +939,7 @@ function MarketplaceCatalogCard({
 			</div>
 			<p
 				className="text-muted-foreground line-clamp-2 min-h-8 w-full max-w-none self-stretch text-xs leading-4"
-				data-qa-id={`marketplace-card-description-${item.type}-${item.id}`}
+				data-qa-id={`marketplace-card-description-${item.kind}-${item.id}`}
 			>
 				{item.description}
 			</p>
@@ -945,51 +947,34 @@ function MarketplaceCatalogCard({
 				item={item}
 				author={item.author ?? "Unknown"}
 				onOpenLink={onOpenLink}
-				authorQaId={`marketplace-row-author-${item.type}-${item.id}`}
-				categoryQaId={`marketplace-card-category-${item.type}-${item.id}`}
+				authorQaId={`marketplace-row-author-${item.kind}-${item.id}`}
+				categoryQaId={`marketplace-card-category-${item.kind}-${item.id}`}
 				className="gap-1.5"
 			/>
 		</Card>
 	);
 }
 
-type InstallationStatusLookup = (
-	installation: MarketplaceInstalled,
-) => MarketplaceMcpStatus | undefined;
-
-function installationStatusLookup(
-	item: MarketplaceListItem,
-	mcpInstallationStatuses: Record<string, MarketplaceMcpStatus>,
-	selectedMcpStatus: MarketplaceMcpStatus | undefined,
-	selectedWorkspaceId: string | null,
-): InstallationStatusLookup {
-	return (installation: MarketplaceInstalled) => {
-		if (item.type !== "mcp") return undefined;
-		const scopedStatus = mcpInstallationStatuses[`${item.id}:${installationKey(installation)}`];
-		if (scopedStatus) return scopedStatus;
-		const isSelectedLocation = selectedWorkspaceId
-			? installation.workspaceId === selectedWorkspaceId
-			: installation.scope === "global";
-		return isSelectedLocation ? selectedMcpStatus : undefined;
-	};
+/** Whether a Marketplace record no longer matches what it installed (a reinstall or removal repairs it). */
+function needsRepair(installation: MarketplaceInstalled): boolean {
+	return (
+		installation.recovering === true ||
+		(installation.status !== undefined && installation.status !== "ready")
+	);
 }
 
 type InstalledDetailsProps = {
 	item: MarketplaceListItem;
 	installations: MarketplaceInstalled[];
 	targets: MarketplaceTarget[];
-	installationStatus: InstallationStatusLookup;
 	authenticatingWorkspaceId: string | null | undefined;
 	onAddLocation(item: MarketplaceItem): void;
-	onAuthenticate(id: string, workspaceId?: string): void;
-	onRemove(item: MarketplaceItemRef & { name: string }, entry: MarketplaceInstalled): void;
+	onAuthenticate(server: string, workspaceId?: string): void;
+	onRemove(item: RemoveSelection["item"], entry: MarketplaceInstalled): void;
 	onOpenLink(url: string): void;
 };
 
-type InstalledCardProps = Omit<InstalledDetailsProps, "installationStatus"> & {
-	mcpInstallationStatuses: Record<string, MarketplaceMcpStatus>;
-	selectedMcpStatus: MarketplaceMcpStatus | undefined;
-	selectedWorkspaceId: string | null;
+type InstalledCardProps = InstalledDetailsProps & {
 	detailsOpen: boolean;
 	onToggleDetails(): void;
 };
@@ -999,9 +984,6 @@ function InstalledCard({
 	installations,
 	targets,
 	detailsOpen,
-	mcpInstallationStatuses,
-	selectedMcpStatus,
-	selectedWorkspaceId,
 	authenticatingWorkspaceId,
 	onToggleDetails,
 	onAddLocation,
@@ -1010,16 +992,10 @@ function InstalledCard({
 	onOpenLink,
 }: InstalledCardProps) {
 	const included = "installedIn" in item;
-	const installationStatus = installationStatusLookup(
-		item,
-		mcpInstallationStatuses,
-		selectedMcpStatus,
-		selectedWorkspaceId,
-	);
-	const hasStatus = (status: MarketplaceMcpStatus["status"]) =>
-		installations.some((installation) => installationStatus(installation)?.status === status);
+	const hasStatus = (status: NonNullable<MarketplaceInstalled["mcpStatus"]>["status"]) =>
+		installations.some((installation) => installation.mcpStatus?.status === status);
 	const needsAuth = hasStatus("needs_auth");
-	const needsClientRegistration = hasStatus("needs_client_registration");
+	const repair = installations.some(needsRepair);
 	const failed = hasStatus("failed");
 	const disabled = hasStatus("disabled");
 	const locationCount = included ? 1 : installations.length;
@@ -1032,7 +1008,7 @@ function InstalledCard({
 		: locationCount === 1
 			? installationLabel(primaryInstallation!, targets)
 			: `${locationCount} places`;
-	const detailsId = `marketplace-card-details-${item.type}-${item.id}`;
+	const detailsId = `marketplace-card-details-${item.kind}-${item.id}`;
 	const toggleLabel = `Toggle ${item.name} details`;
 
 	return (
@@ -1040,35 +1016,35 @@ function InstalledCard({
 			className="max-w-full min-w-0"
 			open={detailsOpen}
 			onOpenChange={onToggleDetails}
-			data-qa-id={`marketplace-item-${item.type}-${item.id}`}
+			data-qa-id={`marketplace-item-${item.kind}-${item.id}`}
 			data-state={detailsOpen ? "details-open" : "summary"}
 		>
-			<SummaryCard.Row data-qa-id={`marketplace-card-header-${item.type}-${item.id}`}>
+			<SummaryCard.Row data-qa-id={`marketplace-card-header-${item.kind}-${item.id}`}>
 				<SummaryCard.Trigger
 					type="button"
 					aria-label={toggleLabel}
-					data-qa-id={`marketplace-card-trigger-${item.type}-${item.id}`}
+					data-qa-id={`marketplace-card-trigger-${item.kind}-${item.id}`}
 				>
 					<SummaryCard.Icon>
 						<MarketplaceItemIcon item={item} />
 					</SummaryCard.Icon>
 					<SummaryCard.Content>
 						<SummaryCard.Title>
-							<span className="truncate" data-qa-id={`marketplace-name-${item.type}-${item.id}`}>
+							<span className="truncate" data-qa-id={`marketplace-name-${item.kind}-${item.id}`}>
 								{item.name}
 							</span>
-							{needsClientRegistration ? (
+							{repair ? (
 								<Badge
 									variant="destructive"
-									data-qa-id={`marketplace-mcp-blocked-${item.type}-${item.id}-${primaryDestination}`}
+									data-qa-id={`marketplace-needs-repair-${item.kind}-${item.id}-${primaryDestination}`}
 								>
 									<CircleAlertIcon aria-hidden="true" />
-									Requires setup
+									Needs repair
 								</Badge>
 							) : null}
 						</SummaryCard.Title>
 						<SummaryCard.Description
-							data-qa-id={`marketplace-card-summary-${item.type}-${item.id}`}
+							data-qa-id={`marketplace-card-summary-${item.kind}-${item.id}`}
 						>
 							{summaryDescription(item.description)}
 						</SummaryCard.Description>
@@ -1081,12 +1057,12 @@ function InstalledCard({
 							className="text-muted-foreground inline-flex size-7 items-center justify-center"
 							aria-label="Built in"
 							title="Built in"
-							data-qa-id={`marketplace-included-${item.type}-${item.id}`}
+							data-qa-id={`marketplace-included-${item.kind}-${item.id}`}
 						>
 							<LockIcon className="size-3.5" aria-hidden="true" />
 						</span>
 					) : null}
-					{item.type === "mcp" ? (
+					{item.kind === "mcp" ? (
 						<span className={cn(HEADER_SLOT_CLASS, "w-[8.25rem] justify-center")}>
 							{failed ? (
 								<Badge
@@ -1113,7 +1089,7 @@ function InstalledCard({
 						<Badge
 							variant="secondary"
 							className="max-w-full"
-							data-qa-id={`marketplace-card-location-summary-${item.type}-${item.id}`}
+							data-qa-id={`marketplace-card-location-summary-${item.kind}-${item.id}`}
 						>
 							{included || primaryInstallation?.scope === "global" ? (
 								<EarthIcon aria-hidden="true" />
@@ -1126,7 +1102,7 @@ function InstalledCard({
 					<SummaryCard.Toggle
 						label={toggleLabel}
 						open={detailsOpen}
-						data-qa-id={`marketplace-card-chevron-${item.type}-${item.id}`}
+						data-qa-id={`marketplace-card-chevron-${item.kind}-${item.id}`}
 					/>
 				</SummaryCard.Actions>
 			</SummaryCard.Row>
@@ -1140,7 +1116,6 @@ function InstalledCard({
 						item={item}
 						installations={installations}
 						targets={targets}
-						installationStatus={installationStatus}
 						authenticatingWorkspaceId={authenticatingWorkspaceId}
 						onAddLocation={onAddLocation}
 						onAuthenticate={onAuthenticate}
@@ -1163,7 +1138,6 @@ function InstalledDetails({
 	item,
 	installations,
 	targets,
-	installationStatus,
 	authenticatingWorkspaceId,
 	onAddLocation,
 	onAuthenticate,
@@ -1191,8 +1165,8 @@ function InstalledDetails({
 					item={item}
 					author={author}
 					onOpenLink={onOpenLink}
-					categoryQaId={`marketplace-card-category-${item.type}-${item.id}`}
-					authorQaId={`marketplace-card-author-${item.type}-${item.id}`}
+					categoryQaId={`marketplace-card-category-${item.kind}-${item.id}`}
+					authorQaId={`marketplace-card-author-${item.kind}-${item.id}`}
 					authorClassName="text-foreground"
 				/>
 			</FieldSet>
@@ -1210,7 +1184,7 @@ function InstalledDetails({
 							className="shrink-0"
 							aria-label="Add location"
 							onClick={() => onAddLocation(item)}
-							data-qa-id={`marketplace-add-location-${item.type}-${item.id}`}
+							data-qa-id={`marketplace-add-location-${item.kind}-${item.id}`}
 						>
 							<PlusIcon aria-hidden />
 						</Button>
@@ -1222,7 +1196,7 @@ function InstalledDetails({
 							<LockIcon className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
 							<span
 								className="min-w-0 flex-1 truncate text-sm font-medium"
-								data-qa-id={`marketplace-installed-in-${item.type}-${item.id}`}
+								data-qa-id={`marketplace-installed-in-${item.kind}-${item.id}`}
 							>
 								{includedLocationLabel(item)}
 							</span>
@@ -1230,12 +1204,12 @@ function InstalledDetails({
 					) : (
 						installations.map((installation) => {
 							const destination = installationKey(installation);
-							const status = installationStatus(installation);
+							const status = installation.mcpStatus;
 							const authenticating =
 								status?.status === "needs_auth" &&
 								authenticatingWorkspaceId === (installation.workspaceId ?? null);
 							const unavailable =
-								installation.scope === "workspace" &&
+								installation.scope === "project" &&
 								!targets.some((target) => target.id === installation.workspaceId);
 							const location = installationLabel(installation, targets);
 							const missingLaunchCommand =
@@ -1250,18 +1224,27 @@ function InstalledDetails({
 									<span className="min-w-0 flex-1">
 										<span
 											className="block truncate text-sm font-medium"
-											data-qa-id={`marketplace-installed-in-${item.type}-${item.id}-${destination}`}
+											data-qa-id={`marketplace-installed-in-${item.kind}-${item.id}-${destination}`}
 										>
 											{location}
 										</span>
-										{(status?.status === "failed" ||
-											status?.status === "needs_client_registration") &&
-										!missingLaunchCommand ? (
+										{status?.status === "failed" && !missingLaunchCommand ? (
 											<span
 												className="text-destructive text-2xs block leading-4 break-words"
 												data-qa-id={`marketplace-mcp-error-${item.id}-${destination}`}
 											>
 												{status.error}
+											</span>
+										) : null}
+										{needsRepair(installation) ? (
+											<span
+												className="text-destructive text-2xs block leading-4 break-words"
+												data-qa-id={`marketplace-repair-${item.kind}-${item.id}-${destination}`}
+											>
+												{[
+													"Changed since it was installed. Install it again here or remove it.",
+													...(installation.warnings ?? []),
+												].join(" ")}
 											</span>
 										) : null}
 									</span>
@@ -1271,15 +1254,13 @@ function InstalledDetails({
 											size="xs"
 											className="shrink-0"
 											disabled={authenticating}
-											onClick={() => onAuthenticate(item.id, installation.workspaceId)}
+											onClick={() =>
+												onAuthenticate(installation.server ?? item.id, installation.workspaceId)
+											}
 											data-qa-id={`marketplace-authenticate-mcp-${item.id}-${destination}`}
 										>
 											{authenticating ? "Signing in" : "Sign in"}
 										</Button>
-									) : status?.status === "needs_client_registration" ? (
-										<span className="text-destructive text-2xs shrink-0 font-medium">
-											Requires setup
-										</span>
 									) : missingLaunchCommand ? (
 										<MissingCommandFix
 											command={missingLaunchCommand}
@@ -1290,6 +1271,10 @@ function InstalledDetails({
 									) : status?.status === "disabled" ? (
 										<span className="text-muted-foreground text-2xs shrink-0 font-medium">
 											Disabled
+										</span>
+									) : status?.status === "pending" ? (
+										<span className="text-muted-foreground text-2xs shrink-0 font-medium">
+											Starting
 										</span>
 									) : status?.status === "connected" ? (
 										<Badge variant="secondary">Connected</Badge>
@@ -1303,7 +1288,7 @@ function InstalledDetails({
 														tabIndex={0}
 														className="text-muted-foreground inline-flex size-6 shrink-0 items-center justify-center"
 														aria-label="Unavailable"
-														data-qa-id={`marketplace-locked-${item.type}-${item.id}-${destination}`}
+														data-qa-id={`marketplace-locked-${item.kind}-${item.id}-${destination}`}
 													/>
 												}
 											>
@@ -1321,7 +1306,7 @@ function InstalledDetails({
 											className="hover:text-destructive shrink-0"
 											aria-label={`Remove ${item.name} from ${location}`}
 											onClick={() => onRemove(item, installation)}
-											data-qa-id={`marketplace-remove-${item.type}-${item.id}-${destination}`}
+											data-qa-id={`marketplace-remove-${item.kind}-${item.id}-${destination}`}
 										>
 											<Trash2Icon aria-hidden />
 										</Button>
@@ -1341,25 +1326,21 @@ function currentCatalogItem(
 	item: MarketplaceItem,
 	items: readonly MarketplaceItem[],
 ): MarketplaceItem {
-	return items.find((entry) => entry.type === item.type && entry.id === item.id) ?? item;
+	return items.find((entry) => entry.kind === item.kind && entry.id === item.id) ?? item;
 }
 
-function isSecretParameter(key: string): boolean {
-	return /key|token|password|secret/i.test(key);
+function mcpOptions(item: MarketplaceItem): MarketplaceOption[] {
+	return item.kind === "mcp" ? item.options : [];
 }
 
-function mcpMethods(item: MarketplaceItem): McpMethod[] {
-	if (item.type !== "mcp" || typeof item.content === "string") return [];
-	return item.content;
-}
-
-function mcpParameters(item: MarketplaceItem, method: string | undefined): McpParameter[] {
-	if (item.type !== "mcp") return [];
-	const selected = mcpMethods(item).find((entry) => entry.name === method);
-	const parameters = new Map(
-		(item.parameters ?? []).map((parameter) => [parameter.key, parameter]),
-	);
-	for (const parameter of selected?.parameters ?? []) parameters.set(parameter.key, parameter);
+/** The parameters an install asks for: the item's, overridden by the chosen option's (as Kilo merges them). */
+function installParameters(
+	item: MarketplaceItem,
+	option: MarketplaceOption | undefined,
+): MarketplaceParameter[] {
+	if (item.kind !== "mcp") return [];
+	const parameters = new Map(item.parameters.map((parameter) => [parameter.key, parameter]));
+	for (const parameter of option?.parameters ?? []) parameters.set(parameter.key, parameter);
 	return [...parameters.values()];
 }
 
@@ -1373,8 +1354,9 @@ function InstallDialog({
 }: InstallDialogProps) {
 	const track = useTrack();
 	const queryClient = useQueryClient();
+	const client = useMarketplace();
 	const install = useMarketplaceMutation("install", { invalidates: ["list"] });
-	const methods = mcpMethods(item);
+	const options = mcpOptions(item);
 	const globalInstalled = installed.some((entry) => entry.scope === "global");
 	const installedIds = installedWorkspaceIds(installed);
 	const availableTargets = uninstalledTargets(installed, targets).toSorted((left, right) => {
@@ -1387,11 +1369,12 @@ function InstallDialog({
 		globalInstalled && availableTargets[0] ? [availableTargets[0].id] : [],
 	);
 	const [destinationOpen, setDestinationOpen] = useState(false);
-	const [method, setMethod] = useState<string | undefined>(methods[0]?.name);
+	const [optionName, setOptionName] = useState<string | undefined>(options[0]?.name);
 	const [parameters, setParameters] = useState<Record<string, string>>({});
 	const [submitting, setSubmitting] = useState(false);
 	const [outcome, setOutcome] = useState<InstallOutcome | null>(null);
-	const required = mcpParameters(item, method);
+	const option = options.find((entry) => entry.name === optionName);
+	const required = installParameters(item, option);
 	const parametersValid = required.every(
 		(parameter) => parameter.optional || Boolean(parameters[parameter.key]?.trim()),
 	);
@@ -1400,7 +1383,26 @@ function InstallDialog({
 		return target ? [target] : [];
 	});
 	const destinationValid = globalSelected ? !globalInstalled : selectedTargets.length > 0;
-	const valid = parametersValid && destinationValid;
+	const params = Object.fromEntries(
+		Object.entries(parameters).filter(([, value]) => value.trim().length > 0),
+	);
+	// Kilo builds the MCP entry; its preview is what the person reviews and what install is bound to.
+	const previewInput = {
+		item: { registry: item.registry, kind: item.kind, id: item.id },
+		...(globalSelected || !selectedTargets[0]
+			? { scope: "global" as const }
+			: { scope: "project" as const, workspaceId: selectedTargets[0].id }),
+		...(optionName ? { option: optionName } : {}),
+		...(Object.keys(params).length > 0 ? { params } : {}),
+	};
+	const preview = useQuery({
+		...marketplaceQueryOptions(client, "preview", previewInput),
+		enabled: item.kind === "mcp" && parametersValid,
+		retry: false,
+	});
+	const reviewed = item.kind === "mcp" ? preview.data?.server : undefined;
+	const valid =
+		parametersValid && destinationValid && (item.kind !== "mcp" || reviewed !== undefined);
 	const confirmLabel = globalSelected
 		? "Install in All workspaces"
 		: selectedTargets.length === 1
@@ -1429,21 +1431,10 @@ function InstallDialog({
 	} else if (validWorkspaceIds.length !== workspaceIds.length) {
 		setWorkspaceIds(validWorkspaceIds);
 	}
-	const prerequisites =
-		method && item.type === "mcp"
-			? (methods.find((entry) => entry.name === method)?.prerequisites ?? item.prerequisites)
-			: item.prerequisites;
-	const selectedContent = item.type === "mcp" ? mcpInstallContent(item, method) : undefined;
-	const configPreview =
-		selectedContent === undefined
-			? undefined
-			: mcpConfigPreview(
-					selectedContent,
-					parameters,
-					new Set(Object.keys(parameters).filter(isSecretParameter)),
-				);
+	const prerequisites = option?.prerequisites.length ? option.prerequisites : item.prerequisites;
+	const configPreview = reviewed === undefined ? undefined : mcpConfigPreview(reviewed);
 	const missingLaunchCommand = useMissingCommand(
-		selectedContent ? mcpLaunchCommand(selectedContent) : undefined,
+		reviewed === undefined ? undefined : mcpLaunchCommand(reviewed),
 	);
 	const close = () => {
 		if (submitting) return;
@@ -1452,16 +1443,16 @@ function InstallDialog({
 	const submit = () => {
 		if (!valid) return;
 		const baseInput = {
-			item: { type: item.type, id: item.id },
-			...(method ? { method } : {}),
-			...(Object.keys(parameters).length > 0 ? { parameters } : {}),
-			...(selectedContent === undefined ? {} : { reviewedContent: selectedContent }),
+			item: previewInput.item,
+			...(optionName ? { option: optionName } : {}),
+			...(Object.keys(params).length > 0 ? { params } : {}),
+			...(reviewed === undefined ? {} : { reviewed }),
 		};
 		const destinations: InstallDestination[] = globalSelected
 			? [{ label: "All workspaces", input: { ...baseInput, scope: "global" } }]
 			: selectedTargets.map((target) => ({
 					label: target.name,
-					input: { ...baseInput, scope: "workspace", workspaceId: target.id },
+					input: { ...baseInput, scope: "project", workspaceId: target.id },
 				}));
 		setSubmitting(true);
 		setOutcome(null);
@@ -1499,6 +1490,7 @@ function InstallDialog({
 			// workspaces are pruned by the availability effect once the list refreshes; narrowing
 			// explicitly keeps the retry selection correct even before that lands.
 			void queryClient.invalidateQueries({ queryKey: marketplaceQueryKey("list") });
+			void queryClient.invalidateQueries({ queryKey: marketplaceQueryKey("preview") });
 			setWorkspaceIds(
 				failed.flatMap(({ input }) => (input.workspaceId ? [input.workspaceId] : [])),
 			);
@@ -1615,17 +1607,17 @@ function InstallDialog({
 						<MissingCommandAlert missing={missingLaunchCommand} onFixInChat={close} />
 					) : null}
 
-					{methods.length > 1 ? (
+					{options.length > 1 ? (
 						<Field>
 							<FieldLabel htmlFor="marketplace-install-method">Install method</FieldLabel>
 							<Select
-								items={methods.map((entry) => ({
+								items={options.map((entry) => ({
 									label: entry.name,
 									value: entry.name,
 								}))}
-								value={method}
+								value={optionName}
 								onValueChange={(value) => {
-									setMethod(value ?? undefined);
+									setOptionName(value ?? undefined);
 									setParameters({});
 								}}
 							>
@@ -1638,7 +1630,7 @@ function InstallDialog({
 								</SelectTrigger>
 								<SelectContent>
 									<SelectGroup>
-										{methods.map((entry) => (
+										{options.map((entry) => (
 											<SelectItem key={entry.name} value={entry.name}>
 												{entry.name}
 											</SelectItem>
@@ -1671,7 +1663,7 @@ function InstallDialog({
 							</FieldLabel>
 							<Input
 								id={`marketplace-param-${parameter.key}`}
-								type={isSecretParameter(parameter.key) ? "password" : "text"}
+								type={parameter.secret ? "password" : "text"}
 								value={parameters[parameter.key] ?? ""}
 								placeholder={parameter.placeholder}
 								onChange={(event) => {
@@ -1686,18 +1678,29 @@ function InstallDialog({
 						</Field>
 					))}
 
-					{item.type === "mcp" && !globalSelected && required.length > 0 ? (
+					{item.kind === "mcp" && !globalSelected && required.length > 0 ? (
 						<Alert data-qa-id="marketplace-secret-warning">
 							<CircleAlertIcon aria-hidden="true" />
 							<AlertTitle>Workspace configuration may contain secrets</AlertTitle>
 							<AlertDescription>
-								Parameter values are written to <code>.kilo/kilo.json</code>. Keep that file out of
-								version control if it contains secrets.
+								Parameter values are written to{" "}
+								{preview.data ? <code>{preview.data.config}</code> : "the workspace’s Kilo config"}.
+								Keep that file out of version control if it contains secrets.
 							</AlertDescription>
 						</Alert>
 					) : null}
 
 					{configPreview ? <McpConfigReview preview={configPreview} /> : null}
+					{item.kind === "mcp" && !parametersValid ? (
+						<FieldDescription data-qa-id="marketplace-install-config-pending">
+							Fill in the required fields to review what Kilo will run.
+						</FieldDescription>
+					) : null}
+					{preview.error ? (
+						<FieldError data-qa-id="marketplace-install-preview-error">
+							Could not prepare this MCP’s configuration: {preview.error.message}
+						</FieldError>
+					) : null}
 
 					{outcome ? (
 						<FieldError className="grid gap-1" data-qa-id="marketplace-install-error">
@@ -1742,12 +1745,12 @@ export function MarketplaceSettings() {
 	const activeWorkspaceId = useActiveWorkspaceId();
 	const [search, setSearch] = useState("");
 	const [mode, setMode] = useState<MarketplaceMode>("installed");
-	const [types, setTypes] = useState<Record<MarketplaceMode, ReadonlySet<MarketplaceType>>>({
+	const [types, setTypes] = useState<Record<MarketplaceMode, ReadonlySet<MarketplaceKind>>>({
 		installed: new Set(),
 		browse: new Set(),
 	});
 	const selectedTypes = types[mode];
-	const toggleType = (value: MarketplaceType) => {
+	const toggleType = (value: MarketplaceKind) => {
 		setTypes((current) => ({ ...current, [mode]: toggled(current[mode], value) }));
 	};
 	const clearTypes = () => {
@@ -1775,7 +1778,9 @@ export function MarketplaceSettings() {
 	const remove = useMarketplaceMutation("remove", { invalidates: ["list"] });
 	const authenticateMcp = useMarketplaceMutation("authenticateMcp", { invalidates: ["list"] });
 	const snapshot = query.data;
-	const categoryOptions = [...new Set(snapshot?.items.map((item) => item.category))].toSorted();
+	const categoryOptions = [
+		...new Set(snapshot?.items.map((item) => item.category ?? UNCATEGORIZED)),
+	].toSorted();
 	const typeOption =
 		selectedTypes.size === 1
 			? TYPE_OPTIONS.find((option) => option.value === [...selectedTypes][0])
@@ -1791,8 +1796,8 @@ export function MarketplaceSettings() {
 	const visible =
 		selectedTypes.size === 0
 			? filtered
-			: filtered.filter((row) => selectedTypes.has(row.item.type));
-	const installedKeys = new Set(snapshot?.installed.map((entry) => `${entry.type}:${entry.id}`));
+			: filtered.filter((row) => selectedTypes.has(row.item.kind));
+	const installedKeys = new Set(snapshot?.installed.map((entry) => `${entry.kind}:${entry.id}`));
 	if (revealKey) {
 		if (visible.some((row) => row.key === revealKey)) {
 			setOpenDetails((current) => new Set(current).add(revealKey));
@@ -1814,7 +1819,7 @@ export function MarketplaceSettings() {
 	}, [catalogOpen, track]);
 	const installedSections = TYPE_OPTIONS.map((option) => ({
 		...option,
-		rows: visible.filter((row) => row.item.type === option.value),
+		rows: visible.filter((row) => row.item.kind === option.value),
 	}));
 	const catalogSections = catalogSectionsOf(visible);
 	const installedFiltersCustomized =
@@ -1856,7 +1861,11 @@ export function MarketplaceSettings() {
 		if (!removing) return;
 		remove.mutate(
 			{
-				item: { type: removing.item.type, id: removing.item.id },
+				item: {
+					registry: removing.installed.registry,
+					kind: removing.installed.kind,
+					id: removing.installed.id,
+				},
 				scope: removing.installed.scope,
 				...(removing.installed.workspaceId ? { workspaceId: removing.installed.workspaceId } : {}),
 			},
@@ -2009,13 +2018,12 @@ export function MarketplaceSettings() {
 														installations={installations}
 														targets={snapshot?.targets ?? []}
 														detailsOpen={openDetails.has(key)}
-														mcpInstallationStatuses={snapshot?.mcpInstallationStatuses ?? {}}
-														selectedMcpStatus={
-															item.type === "mcp" ? snapshot?.mcpStatuses[item.id] : undefined
-														}
-														selectedWorkspaceId={activeWorkspaceId}
 														authenticatingWorkspaceId={
-															authenticateMcp.isPending && authenticateMcp.variables?.id === item.id
+															authenticateMcp.isPending &&
+															installations.some(
+																(entry) =>
+																	(entry.server ?? entry.id) === authenticateMcp.variables?.server,
+															)
 																? (authenticateMcp.variables.workspaceId ?? null)
 																: undefined
 														}
@@ -2023,9 +2031,9 @@ export function MarketplaceSettings() {
 															setOpenDetails((current) => toggled(current, key))
 														}
 														onAddLocation={setInstalling}
-														onAuthenticate={(id, workspaceId) =>
+														onAuthenticate={(server, workspaceId) =>
 															authenticateMcp.mutate({
-																id,
+																server,
 																...(workspaceId ? { workspaceId } : {}),
 															})
 														}
@@ -2238,13 +2246,13 @@ export function MarketplaceSettings() {
 
 			{installing ? (
 				<InstallDialog
-					key={`${installing.type}:${installing.id}`}
+					key={`${installing.kind}:${installing.id}`}
 					item={currentCatalogItem(installing, snapshot?.items ?? [])}
 					installed={installedScopes(installing, snapshot?.installed ?? [])}
 					targets={snapshot?.targets ?? []}
 					defaultWorkspaceId={activeWorkspaceId}
 					onInstalled={() => {
-						setRevealKey(`${installing.type}:${installing.id}`);
+						setRevealKey(`${installing.kind}:${installing.id}`);
 						selectMode("installed");
 					}}
 					onClose={() => setInstalling(null)}
@@ -2261,7 +2269,7 @@ export function MarketplaceSettings() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Remove {removing?.item.name}?</AlertDialogTitle>
 						<AlertDialogDescription>
-							{removing?.installed.scope === "workspace"
+							{removing?.installed.scope === "project"
 								? "This removes the item from this workspace’s Kilo configuration."
 								: "This removes the item from the shared configuration used by all Kilo clients."}
 						</AlertDialogDescription>

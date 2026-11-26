@@ -6,6 +6,7 @@ export {
 	startStandInKiloApi,
 	type Kilo2,
 	type StandInKiloApi,
+	type StandInMarketplace,
 } from "./kilo2";
 export {
 	STAND_IN_MODEL,

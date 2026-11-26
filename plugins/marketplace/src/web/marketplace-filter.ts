@@ -13,10 +13,10 @@ export function matchesSearch(search: string, values: ReadonlyArray<string | und
 }
 
 export function installedScopes(
-	item: Pick<MarketplaceItem, "id" | "type">,
+	item: Pick<MarketplaceItem, "id" | "kind">,
 	installed: readonly MarketplaceInstalled[],
 ): MarketplaceInstalled[] {
-	return installed.filter((entry) => entry.id === item.id && entry.type === item.type);
+	return installed.filter((entry) => entry.id === item.id && entry.kind === item.kind);
 }
 
 export function filterMarketplaceItems(
@@ -29,7 +29,7 @@ export function filterMarketplaceItems(
 	},
 ): MarketplaceItem[] {
 	return items.filter((item) => {
-		if (!matchesSelection(item.category, input.category)) return false;
+		if (!matchesSelection(item.category ?? "", input.category)) return false;
 		if (input.status === "installed" && installedScopes(item, installed).length === 0) {
 			return false;
 		}

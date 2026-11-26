@@ -5,14 +5,16 @@ import { defineDomainObject, method, type PluginDefinitions } from "@kilo-deskto
 import {
 	marketplaceCheckCommandsInputSchema,
 	marketplaceCheckCommandsResultSchema,
+	marketplaceInstallInputSchema,
 	marketplaceListInputSchema,
 	marketplaceMcpAuthenticateInputSchema,
-	marketplaceMutationInputSchema,
 	marketplaceMutationResultSchema,
+	marketplacePreviewInputSchema,
+	marketplacePreviewSchema,
+	marketplaceRemoveInputSchema,
 	marketplaceSnapshotSchema,
 } from "./schemas";
 
-export * from "./mcp-config";
 export * from "./runtimes";
 export * from "./schemas";
 
@@ -36,28 +38,22 @@ export const MARKETPLACE_TELEMETRY_EVENTS = {
 } as const;
 
 /**
- * Kilo's Marketplace across the app's workspaces (origin's contract, one
- * method per channel). Reads go through Kilo's server; installs and removals
- * write Kilo's config for the chosen scope. Its id keeps origin's name.
+ * Kilo's Marketplace across the app's workspaces, over Kilo v2's
+ * `kilocode.marketplace` RPC. Reads go through Kilo's server; installs and
+ * removals write Kilo's config for the chosen scope. Its id keeps origin's name.
  */
 export const Marketplace = defineDomainObject({
 	id: "kilo.marketplace/marketplace",
 	home: "main",
 	description:
-		"Kilo's Marketplace across the app's workspaces: list, install, remove, MCP sign-in and launch-command checks.",
+		"Kilo's Marketplace across the app's workspaces: list, preview, install, remove, MCP sign-in and launch-command checks.",
 	state: z.object({}),
 	methods: {
 		list: method(marketplaceListInputSchema, marketplaceSnapshotSchema),
 		refresh: method(marketplaceListInputSchema, marketplaceSnapshotSchema),
-		install: method(marketplaceMutationInputSchema, marketplaceMutationResultSchema),
-		remove: method(
-			marketplaceMutationInputSchema.omit({
-				method: true,
-				parameters: true,
-				reviewedContent: true,
-			}),
-			marketplaceMutationResultSchema,
-		),
+		preview: method(marketplacePreviewInputSchema, marketplacePreviewSchema),
+		install: method(marketplaceInstallInputSchema, marketplaceMutationResultSchema),
+		remove: method(marketplaceRemoveInputSchema, marketplaceMutationResultSchema),
 		authenticateMcp: method(marketplaceMcpAuthenticateInputSchema, marketplaceMutationResultSchema),
 		checkCommands: method(
 			marketplaceCheckCommandsInputSchema,

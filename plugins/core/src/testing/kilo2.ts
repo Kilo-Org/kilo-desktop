@@ -92,8 +92,18 @@ const MODEL = {
 	preferredIndex: 0,
 };
 
-/** Enough of Kilo's API for device sign-in, the profile, balance and an organisation switch. */
-export async function startStandInKiloApi(): Promise<StandInKiloApi> {
+/** Raw catalog entries the stand-in Kilo API serves as Kilo's Marketplace, by kind. */
+export type StandInMarketplace = Partial<
+	Record<"agents" | "skills" | "mcps" | "plugins", readonly Record<string, unknown>[]>
+>;
+
+/**
+ * Enough of Kilo's API for device sign-in, the profile, balance, an
+ * organisation switch and Kilo's Marketplace catalog (empty unless given).
+ */
+export async function startStandInKiloApi(
+	options: { readonly marketplace?: StandInMarketplace } = {},
+): Promise<StandInKiloApi> {
 	let approved = false;
 	const organizationsSeen: string[] = [];
 	const json = (response: ServerResponse, body: unknown, status = 200) => {
@@ -126,6 +136,12 @@ export async function startStandInKiloApi(): Promise<StandInKiloApi> {
 			});
 		}
 		if (url.pathname === "/api/profile/balance") return json(response, { balance: 12.5 });
+		const marketplace = url.pathname.match(/^\/api\/marketplace\/(agents|skills|mcps|plugins)$/);
+		if (marketplace) {
+			// Kilo reads the catalog as YAML, of which JSON is a subset.
+			const kind = marketplace[1] as keyof StandInMarketplace;
+			return json(response, { items: options.marketplace?.[kind] ?? [] });
+		}
 		if (/^\/api\/(?:gateway\/|openrouter\/|v1\/|gateway\/v1\/)?models$/.test(url.pathname)) {
 			return json(response, { data: [MODEL] });
 		}

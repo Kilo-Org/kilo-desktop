@@ -14,7 +14,7 @@ import { mcpCommandSchema } from "../contracts/schemas";
 
 const MISSING_COMMAND_ERRORS = [/Executable not found in \$PATH: "([^"]+)"/, /spawn (\S+) ENOENT/];
 
-/** Bare command a catalog MCP method launches, or `undefined` for remote or unresolvable entries. */
+/** Bare command the MCP entry Kilo previewed launches, or `undefined` for remote or unresolvable entries. */
 export function mcpLaunchCommand(content: string): string | undefined {
 	let parsed: unknown;
 	try {

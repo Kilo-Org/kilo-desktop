@@ -2,6 +2,7 @@ import {
 	definePlugin,
 	environmentReady,
 	KernelError,
+	KernelOs,
 	mainHost,
 	type PluginEntry,
 } from "@kilo-desktop/kernel";
@@ -11,15 +12,18 @@ import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Marketplace } from "../contracts/index";
 import { createMarketplaceApi, type MarketplaceDependencies } from "./marketplace";
 
-export type MarketplaceMainOptions = Pick<MarketplaceDependencies, "which" | "platform">;
+export type MarketplaceMainOptions = Pick<
+	MarketplaceDependencies,
+	"which" | "platform" | "signInPollMs" | "pluginsWaitMs"
+>;
 
 /**
- * kilo.marketplace in main: `kilo.marketplace/marketplace` over Kilo's
- * Marketplace API, reaching the server through `kilo.core/server`, the
+ * kilo.marketplace in main: `kilo.marketplace/marketplace` over Kilo v2's
+ * Marketplace RPC, reaching the server through `kilo.core/server`, the
  * workspaces through `kilo.work-sessions/workspaces`, and the MCP servers the
  * app adds to Kilo through `kilo.core/mcp-server` contributions (shown as
  * built in, not as user installs). kilo.core writes each one into Kilo's
- * `mcp` config under its bare contribution id.
+ * `mcp.servers` config under its bare contribution id.
  */
 export function createMarketplaceMainEntry(options: MarketplaceMainOptions = {}): PluginEntry {
 	return definePlugin({
@@ -41,6 +45,8 @@ export function createMarketplaceMainEntry(options: MarketplaceMainOptions = {})
 						)
 						.map((contribution) => ({ id: contribution.id })),
 				fetch: mainHost(sdk).net.fetch,
+				openExternal: async (url) =>
+					(await sdk.domainObjects.get(KernelOs)?.methods.openExternal({ url })) ?? false,
 				logger: sdk.logger,
 				...options,
 			});

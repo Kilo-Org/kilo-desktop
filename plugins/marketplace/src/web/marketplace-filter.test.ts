@@ -3,27 +3,23 @@ import { describe, expect, it } from "vitest";
 import type { MarketplaceItem } from "../contracts/schemas";
 import { filterMarketplaceItems } from "./marketplace-filter";
 
+const base = { registry: "kilo", tags: [], prerequisites: [], parameters: [], options: [] };
 const items: MarketplaceItem[] = [
 	{
-		type: "agent",
+		...base,
+		kind: "agent",
 		id: "reviewer",
 		name: "Reviewer",
 		description: "Reviews pull requests",
 		category: "engineering",
-		content: {
-			mode: "subagent",
-			description: "Reviews code",
-			prompt: "Review.",
-		},
 	},
 	{
-		type: "skill",
+		...base,
+		kind: "skill",
 		id: "notebooks",
 		name: "Notebooks",
 		description: "Builds data science notebooks",
 		category: "data",
-		content: "https://example.com/notebooks.tar.gz",
-		githubUrl: "https://github.com/example/notebooks",
 	},
 ];
 
@@ -31,7 +27,7 @@ describe("filterMarketplaceItems", () => {
 	it("combines text, category, and installation filters", () => {
 		const visible = filterMarketplaceItems(
 			items,
-			[{ type: "agent", id: "reviewer", scope: "global" }],
+			[{ registry: "kilo", kind: "agent", id: "reviewer", scope: "global" }],
 			{
 				search: "pull",
 				category: ["engineering"],
@@ -57,11 +53,12 @@ describe("filterMarketplaceItems", () => {
 
 	it("keeps catalog items discoverable even when every destination is installed", () => {
 		const installedEverywhere = [
-			{ type: "agent" as const, id: "reviewer", scope: "global" as const },
+			{ registry: "kilo", kind: "agent" as const, id: "reviewer", scope: "global" as const },
 			{
-				type: "agent" as const,
+				registry: "kilo",
+				kind: "agent" as const,
 				id: "reviewer",
-				scope: "workspace" as const,
+				scope: "project" as const,
 				workspaceId: "workspace-a",
 			},
 		];

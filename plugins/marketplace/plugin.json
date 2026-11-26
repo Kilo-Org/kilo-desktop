@@ -20,7 +20,7 @@
 		{
 			"id": "marketplace",
 			"home": "main",
-			"description": "Kilo's Marketplace across the app's workspaces: list, install, remove, MCP sign-in and launch-command checks."
+			"description": "Kilo's Marketplace across the app's workspaces: list, preview, install, remove, MCP sign-in and launch-command checks."
 		}
 	],
 	"contributes": {

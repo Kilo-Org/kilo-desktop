@@ -35,6 +35,7 @@ describe("kilo.marketplace's renderer entry", () => {
 			handlers: {
 				list: unused,
 				refresh: unused,
+				preview: unused,
 				install: unused,
 				remove: unused,
 				authenticateMcp: unused,

@@ -451,6 +451,53 @@ MCP tools are named `<server>_<tool>`.
 | `GET /mcp`                           | `mcp.list` (`pending` new; `needs_client_registration` gone)                                         | changed |
 | `POST /mcp/:id/auth/authenticate`    | `integration.oauth.connect({ integrationID: server.integrationID, methodID })`, poll status          | changed |
 
+### What kilo.marketplace does on v2 (step 13)
+
+- **Contracts** (`schemas.ts`) carry v2's shapes: an item is
+  `KiloMarketplaceRpc.Item` without its agent and plugin payloads (`registry`,
+  `kind`, `options[]` with their own `parameters`, one `url`, `category`
+  optional); scope is `global` / `project`; an installation is v2's record
+  (`registry`, `option`, `server`, `status`, `recovering`, `warnings`) placed in
+  a workspace with its MCP server's `mcpStatus` (`mcp.list`'s union:
+  `connected`, `pending`, `disabled`, `failed`, `needs_auth`). v2's `plugin`
+  kind is not offered.
+- **Calls** (`main/kilo-marketplace-client.ts`, its own `@kilocode/client`):
+  the catalog is three `kilocode.marketplace.list({ kind, refresh })` calls in
+  Kilo's global location (a failed kind is reported, all three failing fails the
+  read; registry `failures` beside items mean Kilo's saved catalog, shown as
+  stale). `installed({})` lists one project's records plus the global ones, so
+  global records come from the global location and each workspace's project
+  records from its primary folder. `install`, `uninstall` and `preview` run in
+  the destination's location. An `rpc.unavailable` answer waits for the
+  location's plugins (`plugin.list`) and calls once more.
+- **MCP review:** the install dialog shows Kilo's own `preview` of the entry
+  (secrets already redacted); `install` previews again and refuses unless it
+  equals the reviewed text. The dialog no longer substitutes templates itself;
+  the preview appears once the required parameters are filled, and the
+  workspace secret warning names the file Kilo writes.
+- **What Kilo already has:** `agent.list` / `skill.list` in the selected
+  location, split by `kilocode.agent.removable` / `kilocode.skill.removable`
+  (a file in a config directory means "Custom", otherwise "Built-in"; hidden
+  agents and `.claude`/`.agents` skills are left out). MCP servers in
+  `mcp.list` that no record wrote and Desktop didn't add are "Custom"; Desktop's
+  own (`kilo.core/mcp-server`) stay "Provided by Anaconda Desktop". All of them
+  are included items: listed, not removable from the Marketplace.
+- **MCP sign-in:** `authenticateMcp({ server, workspaceId? })` finds the
+  server's `integrationID` in `mcp.list`, the integration's OAuth method in
+  `integration.list`, starts `integration.oauth.connect`, opens the URL through
+  the kernel's `KernelOs`, and polls `integration.oauth.status` until
+  `complete`, `failed` or `expired` (a `code`-mode attempt, or a browser that
+  won't open, is cancelled).
+- **Observed on kilo2:** an install writes `<config>/kilo2/kilo2.json` and the
+  server appears in `mcp.list` a moment later, then cycles `pending` /
+  `failed` while it can't start; RPC failures throw `{ type, message }`
+  (`not_found`: "No skill nowhere in kilo"); the catalog is read from
+  `<KILO_API_URL>/api/marketplace/{agents,skills,mcps,plugins}` as YAML.
+- **Tests:** `src/test/fake-kilo2-marketplace.ts` is an in-memory v2 server
+  behind `@kilocode/client` (RPCs, lists, OAuth, starting locations);
+  `marketplace.kilo2.integration.test.ts` runs the bundled kilo2 against
+  kilo.core's stand-in Kilo API, which now serves a Marketplace catalog.
+
 ## Desktop server plugins (notebook, tool-gateway caller context)
 
 | v1                                                     | v2                                                                                                                     |
@@ -468,19 +515,20 @@ MCP tools are named `<server>_<tool>`.
 Per the plan, Desktop features with no v2 equivalent are hidden and recorded
 until v2 supports them. Gaps with a v2 workaround are adapted instead.
 
-| Gap                                                        | Desktop impact                                                  | Handling                                                                                                                                                                       |
-| ---------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| MCP resource read and tool call routes                     | MCP Apps widgets (`mcp-apps/*`)                                 | **Hide.** v2 also never sets `metadata.mcpApp` on tool calls.                                                                                                                  |
-| `kilocode.sessionModelUsage`                               | Per-model usage breakdown                                       | **Hide.** Totals remain (`SessionInfo.cost` / `tokens`, `session.usage.updated`).                                                                                              |
-| CLI telemetry                                              | Telemetry toggle's effect on the server                         | **Hide** the server side; Desktop's own telemetry is unaffected.                                                                                                               |
-| Structured output on `session.prompt`                      | `generation.ts` (git commit and PR text, other JSON generation) | **Adapted (step 6):** `kilocode.commit-message.generate` for commit messages; otherwise `experimental.generate.text` with the schema in the prompt, zod validation, one retry. |
-| Per-prompt `system`                                        | Per-chat workspace context sent with each prompt                | **Adapt (step 14):** a Desktop server plugin edits `system` in a session request hook. Until then it is stored on the user message's metadata and the model doesn't see it.    |
-| `snapshotInitialization: "wait"`                           | Snapshot readiness before a turn                                | **Dropped (step 6):** v2 always captures a step's start snapshot before its local tools run (`core/src/session/runner/step.ts`); generation no longer uses a chat at all.      |
-| Retry in place (`promptAsync({ messageID, parts: [] })`)   | Retry a failed turn                                             | **Adapt:** resend the user's text as a new prompt (optionally after `revert.stage` + `commit`).                                                                                |
-| `interactive` on permission replies                        | Auto-approve tracking                                           | **Drop** the flag.                                                                                                                                                             |
-| Plugin `config` hook                                       | Notebook plugin's permission edits                              | **Adapt:** permission rules in Desktop's config or `ctx.permission.hook("evaluate")`.                                                                                          |
-| `AgentInfo.native` / `source`, skill builtin marker        | Marketplace's "installed vs built-in"                           | **Adapt:** derive from `kilocode.marketplace.installed`.                                                                                                                       |
-| `KILO_PARENT_PID`, `x-kilo-sse-skip-fork-sync`, SSE replay | Process and stream plumbing                                     | Replaced by stdin lifetime and reload-on-reconnect.                                                                                                                            |
+| Gap                                                        | Desktop impact                                                  | Handling                                                                                                                                                                        |
+| ---------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP resource read and tool call routes                     | MCP Apps widgets (`mcp-apps/*`)                                 | **Hide.** v2 also never sets `metadata.mcpApp` on tool calls.                                                                                                                   |
+| `kilocode.sessionModelUsage`                               | Per-model usage breakdown                                       | **Hide.** Totals remain (`SessionInfo.cost` / `tokens`, `session.usage.updated`).                                                                                               |
+| CLI telemetry                                              | Telemetry toggle's effect on the server                         | **Hide** the server side; Desktop's own telemetry is unaffected.                                                                                                                |
+| Structured output on `session.prompt`                      | `generation.ts` (git commit and PR text, other JSON generation) | **Adapted (step 6):** `kilocode.commit-message.generate` for commit messages; otherwise `experimental.generate.text` with the schema in the prompt, zod validation, one retry.  |
+| Per-prompt `system`                                        | Per-chat workspace context sent with each prompt                | **Adapt (step 14):** a Desktop server plugin edits `system` in a session request hook. Until then it is stored on the user message's metadata and the model doesn't see it.     |
+| `snapshotInitialization: "wait"`                           | Snapshot readiness before a turn                                | **Dropped (step 6):** v2 always captures a step's start snapshot before its local tools run (`core/src/session/runner/step.ts`); generation no longer uses a chat at all.       |
+| Retry in place (`promptAsync({ messageID, parts: [] })`)   | Retry a failed turn                                             | **Adapt:** resend the user's text as a new prompt (optionally after `revert.stage` + `commit`).                                                                                 |
+| `interactive` on permission replies                        | Auto-approve tracking                                           | **Drop** the flag.                                                                                                                                                              |
+| Plugin `config` hook                                       | Notebook plugin's permission edits                              | **Adapt:** permission rules in Desktop's config or `ctx.permission.hook("evaluate")`.                                                                                           |
+| `AgentInfo.native` / `source`, skill builtin marker        | Marketplace's "installed vs built-in"                           | **Adapted (step 13):** installs from `kilocode.marketplace.installed`; custom vs built-in from `kilocode.agent.removable` / `kilocode.skill.removable`; no organisation marker. |
+| Detecting installs by config key                           | v1 counted any config entry named like a catalog item installed | **Dropped (step 13):** only v2 records are installs (removable); other agents, skills and MCP servers are listed as included items.                                             |
+| `KILO_PARENT_PID`, `x-kilo-sse-skip-fork-sync`, SSE replay | Process and stream plumbing                                     | Replaced by stdin lifetime and reload-on-reconnect.                                                                                                                             |
 
 ## Prompt queue vs the v2 session inbox
 

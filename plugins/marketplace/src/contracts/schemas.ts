@@ -1,76 +1,57 @@
 import { z } from "zod";
 
-export const marketplaceTypeSchema = z.enum(["agent", "skill", "mcp"]);
-export type MarketplaceType = z.infer<typeof marketplaceTypeSchema>;
+/**
+ * kilo.marketplace's UI model, in the shapes Kilo v2's Marketplace RPC
+ * (`kilocode.marketplace`) reports. Desktop offers agents, skills and MCP
+ * servers; v2's `plugin` kind is not offered.
+ */
+export const marketplaceKindSchema = z.enum(["agent", "skill", "mcp"]);
+export type MarketplaceKind = z.infer<typeof marketplaceKindSchema>;
 
-export const marketplaceScopeSchema = z.enum(["global", "workspace"]);
+/** Where an item is installed: Kilo's global config, or one project (a workspace's primary folder). */
+export const marketplaceScopeSchema = z.enum(["global", "project"]);
 export type MarketplaceScope = z.infer<typeof marketplaceScopeSchema>;
 
-export const mcpParameterSchema = z.object({
-	name: z.string().min(1),
+export const marketplaceParameterSchema = z.object({
 	key: z.string().min(1),
-	placeholder: z.string().optional(),
-	optional: z.boolean().optional(),
-});
-export type McpParameter = z.infer<typeof mcpParameterSchema>;
-
-export const mcpMethodSchema = z.object({
 	name: z.string().min(1),
-	content: z.string().min(1),
-	parameters: z.array(mcpParameterSchema).optional(),
-	prerequisites: z.array(z.string()).optional(),
+	placeholder: z.string().optional(),
+	optional: z.boolean(),
+	/** Mask entry; Kilo still writes the value into the MCP config in plaintext. */
+	secret: z.boolean().optional(),
 });
-export type McpMethod = z.infer<typeof mcpMethodSchema>;
+export type MarketplaceParameter = z.infer<typeof marketplaceParameterSchema>;
 
-const itemBase = {
+/** One way to install an MCP server (v2's `InstallOption`); its parameters override the item's. */
+export const marketplaceOptionSchema = z.object({
+	name: z.string().min(1),
+	description: z.string().optional(),
+	prerequisites: z.array(z.string()),
+	parameters: z.array(marketplaceParameterSchema),
+});
+export type MarketplaceOption = z.infer<typeof marketplaceOptionSchema>;
+
+/** A catalog item (v2's `KiloMarketplaceRpc.Item`, without the agent and plugin payloads). */
+export const marketplaceItemSchema = z.object({
+	registry: z.string().min(1),
+	kind: marketplaceKindSchema,
 	id: z.string().min(1),
 	name: z.string().min(1),
 	description: z.string(),
-	category: z.string().min(1),
+	category: z.string().optional(),
 	author: z.string().optional(),
-	authorUrl: z.url().optional(),
-	prerequisites: z.array(z.string()).optional(),
-};
-
-export const agentMarketplaceItemSchema = z.object({
-	...itemBase,
-	type: z.literal("agent"),
-	content: z.object({
-		mode: z.enum(["primary", "subagent", "all"]),
-		description: z.string(),
-		prompt: z.string(),
-		options: z.record(z.string(), z.unknown()).optional(),
-		permission: z.record(z.string(), z.unknown()).optional(),
-	}),
+	url: z.string().optional(),
+	tags: z.array(z.string()),
+	prerequisites: z.array(z.string()),
+	parameters: z.array(marketplaceParameterSchema),
+	options: z.array(marketplaceOptionSchema),
 });
-export type AgentMarketplaceItem = z.infer<typeof agentMarketplaceItemSchema>;
-
-export const skillMarketplaceItemSchema = z.object({
-	...itemBase,
-	type: z.literal("skill"),
-	content: z.url(),
-	githubUrl: z.url(),
-});
-export type SkillMarketplaceItem = z.infer<typeof skillMarketplaceItemSchema>;
-
-export const mcpMarketplaceItemSchema = z.object({
-	...itemBase,
-	type: z.literal("mcp"),
-	url: z.url(),
-	content: z.union([z.string().min(1), z.array(mcpMethodSchema).min(1)]),
-	parameters: z.array(mcpParameterSchema).optional(),
-});
-export type McpMarketplaceItem = z.infer<typeof mcpMarketplaceItemSchema>;
-
-export const marketplaceItemSchema = z.discriminatedUnion("type", [
-	agentMarketplaceItemSchema,
-	skillMarketplaceItemSchema,
-	mcpMarketplaceItemSchema,
-]);
 export type MarketplaceItem = z.infer<typeof marketplaceItemSchema>;
 
+/** Names a catalog item for install and preview. */
 export const marketplaceItemRefSchema = z.object({
-	type: marketplaceTypeSchema,
+	registry: z.string().min(1),
+	kind: marketplaceKindSchema,
 	id: z.string().min(1),
 });
 export type MarketplaceItemRef = z.infer<typeof marketplaceItemRefSchema>;
@@ -83,19 +64,45 @@ export const marketplaceTargetSchema = z.object({
 });
 export type MarketplaceTarget = z.infer<typeof marketplaceTargetSchema>;
 
-export const marketplaceInstalledSchema = marketplaceItemRefSchema.extend({
+/** An MCP server's state as v2's `mcp.list` reports it. */
+export const marketplaceMcpStatusSchema = z.discriminatedUnion("status", [
+	z.object({ status: z.literal("connected") }),
+	z.object({ status: z.literal("pending") }),
+	z.object({ status: z.literal("disabled") }),
+	z.object({ status: z.literal("failed"), error: z.string() }),
+	z.object({ status: z.literal("needs_auth"), error: z.string() }),
+]);
+export type MarketplaceMcpStatus = z.infer<typeof marketplaceMcpStatusSchema>;
+
+/**
+ * One place an item is installed from the Marketplace: v2's installation record
+ * (`kilocode.marketplace.installed`), placed in a workspace and given its MCP
+ * server's state. Agents, skills and MCP servers configured in Kilo by other
+ * means are {@link MarketplaceIncludedItem}s.
+ */
+export const marketplaceInstalledSchema = z.object({
+	registry: z.string().min(1),
+	kind: marketplaceKindSchema,
+	id: z.string().min(1),
 	scope: marketplaceScopeSchema,
+	/** The workspace a `project` installation belongs to. */
 	workspaceId: z.string().optional(),
+	option: z.string().optional(),
+	/** The `mcp.servers` key an MCP installation wrote. */
+	server: z.string().optional(),
+	/** The record's health; anything but `ready` (or a `recovering` record) needs a reinstall or removal. */
+	status: z.enum(["ready", "missing", "modified", "incomplete"]).optional(),
+	recovering: z.boolean().optional(),
+	warnings: z.array(z.string()).optional(),
+	mcpStatus: marketplaceMcpStatusSchema.optional(),
+	/** What Kilo calls the item, for a record whose catalog item is gone. */
 	name: z.string().optional(),
 	description: z.string().optional(),
-	category: z.string().optional(),
-	installedIn: z.string().optional(),
-	url: z.url().optional(),
 });
 export type MarketplaceInstalled = z.infer<typeof marketplaceInstalledSchema>;
 
 export const marketplaceIncludedItemSchema = z.object({
-	type: marketplaceTypeSchema,
+	kind: marketplaceKindSchema,
 	id: z.string().min(1),
 	name: z.string().min(1),
 	description: z.string(),
@@ -104,23 +111,13 @@ export const marketplaceIncludedItemSchema = z.object({
 });
 export type MarketplaceIncludedItem = z.infer<typeof marketplaceIncludedItemSchema>;
 
-export const marketplaceMcpStatusSchema = z.discriminatedUnion("status", [
-	z.object({ status: z.literal("connected") }),
-	z.object({ status: z.literal("disabled") }),
-	z.object({ status: z.literal("needs_auth") }),
-	z.object({ status: z.literal("failed"), error: z.string() }),
-	z.object({ status: z.literal("needs_client_registration"), error: z.string() }),
-]);
-export type MarketplaceMcpStatus = z.infer<typeof marketplaceMcpStatusSchema>;
-
 export const marketplaceSnapshotSchema = z.object({
 	items: z.array(marketplaceItemSchema),
 	targets: z.array(marketplaceTargetSchema),
 	installed: z.array(marketplaceInstalledSchema),
 	included: z.array(marketplaceIncludedItemSchema),
-	mcpStatuses: z.record(z.string(), marketplaceMcpStatusSchema),
-	mcpInstallationStatuses: z.record(z.string(), marketplaceMcpStatusSchema).default({}),
 	errors: z.array(z.string()),
+	/** The catalog is Kilo's saved copy because a registry couldn't be reached. */
 	stale: z.boolean(),
 	fetchedAt: z.number().int().nonnegative().nullable(),
 });
@@ -130,27 +127,53 @@ export const marketplaceListInputSchema = z.object({
 	workspaceId: z.string().optional(),
 });
 
-export const marketplaceMutationInputSchema = z.object({
-	item: marketplaceItemRefSchema,
+const destination = {
 	scope: marketplaceScopeSchema,
+	/** The workspace a `project` install or removal targets. */
 	workspaceId: z.string().optional(),
-	method: z.string().optional(),
-	parameters: z.record(z.string(), z.string()).optional(),
-	/**
-	 * The MCP configuration template shown to the user when they confirmed. Required for MCP
-	 * installs: main refuses to install if the catalog no longer holds exactly this template.
-	 */
-	reviewedContent: z.string().optional(),
+};
+
+export const marketplacePreviewInputSchema = z.object({
+	item: marketplaceItemRefSchema,
+	...destination,
+	option: z.string().optional(),
+	params: z.record(z.string(), z.string()).optional(),
 });
-export type MarketplaceMutationInput = z.infer<typeof marketplaceMutationInputSchema>;
+export type MarketplacePreviewInput = z.infer<typeof marketplacePreviewInputSchema>;
+
+/** What an MCP install will write (v2's `preview`), secrets redacted. */
+export const marketplacePreviewSchema = z.object({
+	/** The `mcp.servers` entry, as JSON. */
+	server: z.string(),
+	/** The config file it is written to. */
+	config: z.string(),
+	/** Names of supplied secret parameters that will be stored in plaintext. */
+	secrets: z.array(z.string()),
+});
+export type MarketplacePreview = z.infer<typeof marketplacePreviewSchema>;
+
+export const marketplaceInstallInputSchema = marketplacePreviewInputSchema.extend({
+	/**
+	 * The MCP entry (`preview.server`) shown to the user when they confirmed. Required for MCP
+	 * installs: main refuses to install if Kilo would now write anything else.
+	 */
+	reviewed: z.string().optional(),
+});
+export type MarketplaceInstallInput = z.infer<typeof marketplaceInstallInputSchema>;
+
+export const marketplaceRemoveInputSchema = z.object({
+	item: marketplaceItemRefSchema,
+	...destination,
+});
+export type MarketplaceRemoveInput = z.infer<typeof marketplaceRemoveInputSchema>;
 
 export const marketplaceMutationResultSchema = z.object({
 	ok: z.literal(true),
-	path: z.string().optional(),
 });
 
 export const marketplaceMcpAuthenticateInputSchema = z.object({
-	id: z.string().min(1),
+	/** The `mcp.servers` key. */
+	server: z.string().min(1),
 	workspaceId: z.string().optional(),
 });
 

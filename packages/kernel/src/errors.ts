@@ -11,14 +11,25 @@ export type KernelErrorCode =
 /**
  * An expected failure whose code and message survive process boundaries.
  * Anything else thrown across a boundary is scrubbed to a generic INTERNAL error.
+ *
+ * `detail` is local diagnostic text, such as a child process's own output. It
+ * stays in this process: it is never serialized with the error, it is not
+ * enumerable (so `JSON.stringify` and error-data collectors skip it), and a
+ * failed service shows it on its `kernel/services` record.
  */
 export class KernelError extends Error {
 	readonly code: KernelErrorCode;
+	declare readonly detail: string | undefined;
 
-	constructor(code: KernelErrorCode, message: string, options?: { readonly cause?: unknown }) {
+	constructor(
+		code: KernelErrorCode,
+		message: string,
+		options?: { readonly cause?: unknown; readonly detail?: string },
+	) {
 		super(message, options);
 		this.name = "KernelError";
 		this.code = code;
+		Object.defineProperty(this, "detail", { value: options?.detail, enumerable: false });
 	}
 }
 

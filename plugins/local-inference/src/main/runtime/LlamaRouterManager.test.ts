@@ -412,6 +412,31 @@ describe("LlamaRouterManager", () => {
 		});
 	});
 
+	it("keeps llama-server output out of the startup error", async () => {
+		// Built at runtime, so no token-shaped literal sits in the source.
+		const fakeToken = `fake${"TOKEN0".repeat(4)}`;
+		const llama = child();
+		const ctx = await setup(llama);
+		ctx.fetch.mockImplementation(async (url: string | URL | Request) => {
+			if (String(url).endsWith("/health")) throw new Error("ECONNREFUSED");
+			return new Response("{}", { status: 200 });
+		});
+
+		const start = ctx.manager.ensureRunning([model()]);
+		await vi.waitFor(() => expect(ctx.spawn).toHaveBeenCalledOnce());
+		(llama.stderr as PassThrough).write(
+			`error: failed to fetch model: Authorization: Bearer ${fakeToken}\n`,
+		);
+		llama.crash();
+
+		const failure = await start.then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+		expect((failure as Error).message).toBe("llama-server exited before becoming healthy.");
+		expect(JSON.stringify(ctx.manager.status)).not.toContain(fakeToken);
+	});
+
 	it("keeps a router that is still alive after a detach exit report", async () => {
 		vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
 			if (pid === 123 && signal === 0) return true;

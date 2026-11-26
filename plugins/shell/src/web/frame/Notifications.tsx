@@ -1,8 +1,20 @@
 import { useEffect } from "react";
-import { CircleAlertIcon, CircleCheckIcon, InfoIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import {
+	ChevronDownIcon,
+	CircleAlertIcon,
+	CircleCheckIcon,
+	InfoIcon,
+	TriangleAlertIcon,
+	XIcon,
+} from "lucide-react";
 
 import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@kilo-desktop/ui/components/collapsible";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -83,6 +95,26 @@ export function SidebarNotices() {
 					<span className="font-medium">{notice.title}</span>
 					{notice.description ? (
 						<span className="text-muted-foreground">{notice.description}</span>
+					) : null}
+					{notice.detail ? (
+						<Collapsible>
+							<CollapsibleTrigger
+								type="button"
+								className="group text-muted-foreground hover:text-foreground flex items-center gap-1 self-start"
+								data-qa-id={`shell-notice-detail-toggle-${notice.id}`}
+							>
+								Details
+								<ChevronDownIcon className="size-3 transition-transform group-aria-expanded:rotate-180" />
+							</CollapsibleTrigger>
+							<CollapsibleContent>
+								<pre
+									data-qa-id={`shell-notice-detail-${notice.id}`}
+									className="text-muted-foreground mt-1 max-h-40 overflow-auto font-mono text-[11px] break-words whitespace-pre-wrap"
+								>
+									{notice.detail}
+								</pre>
+							</CollapsibleContent>
+						</Collapsible>
 					) : null}
 					{notice.action ? (
 						<Button

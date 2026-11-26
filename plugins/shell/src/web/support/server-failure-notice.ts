@@ -37,6 +37,7 @@ export function noticeServerFailures(sdk: PluginSdk): void {
 				level: "error",
 				title: "Kilo isn't running",
 				...(status.message ? { description: status.message } : {}),
+				...(status.detail ? { detail: status.detail } : {}),
 				action: { label: "Restart", command: RESTART_SERVER_COMMAND },
 			}),
 		);

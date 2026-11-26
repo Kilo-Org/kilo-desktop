@@ -1,6 +1,7 @@
 import type { KernelServices, ServiceRecord, ServiceStatus } from "../builtins/domain-objects";
 import { KernelService, type ServiceImplementation } from "../builtins/extension-points";
 import type { DomainObjectProvider } from "../domain-object-registry";
+import { KernelError } from "../errors";
 import type { MetadataOf } from "../extension-point";
 import type { Contribution, ExtensionRegistry } from "../extension-registry";
 import type { QualifiedId } from "../ids";
@@ -21,6 +22,12 @@ interface Run {
 	timer: ReturnType<typeof setTimeout> | undefined;
 	attempt: Promise<void> | undefined;
 }
+
+type RecordPatch = {
+	progress?: string | undefined;
+	error?: string | undefined;
+	detail?: string | undefined;
+};
 
 function deferred(): { readonly promise: Promise<void>; resolve(): void } {
 	let resolve = () => {};
@@ -107,7 +114,7 @@ export class ServiceSupervisor {
 		run.restarts = 0;
 		// A service that gave up (or finished) is otherwise never started again.
 		if (run.status === "failed" || run.status === "completed") {
-			this.#setStatus(run, "idle", { progress: undefined, error: undefined });
+			this.#setStatus(run, "idle", { progress: undefined, error: undefined, detail: undefined });
 		}
 		this.#requested.add(key);
 		this.#reconcile();
@@ -215,7 +222,7 @@ export class ServiceSupervisor {
 	#start(run: Run): void {
 		const controller = new AbortController();
 		run.controller = controller;
-		this.#setStatus(run, "starting", { progress: undefined, error: undefined });
+		this.#setStatus(run, "starting", { progress: undefined, error: undefined, detail: undefined });
 		const attempt = (async () => {
 			try {
 				await run.implementation.start({
@@ -245,6 +252,7 @@ export class ServiceSupervisor {
 
 	#onFailure(run: Run, error: unknown): void {
 		const message = error instanceof Error ? error.message : String(error);
+		const detail = error instanceof KernelError ? error.detail : undefined;
 		this.#options.logger.error(`Service "${run.key}" failed: ${message}`);
 		const { restart } = run.metadata;
 		if (
@@ -254,14 +262,14 @@ export class ServiceSupervisor {
 		) {
 			const delay = Math.min(restart.initialDelayMs * 2 ** run.restarts, restart.maxDelayMs);
 			run.restarts += 1;
-			this.#setStatus(run, "restarting", { error: message });
+			this.#setStatus(run, "restarting", { error: message, detail });
 			run.timer = setTimeout(() => {
 				run.timer = undefined;
 				if (run.status === "restarting") this.#start(run);
 			}, delay);
 			return;
 		}
-		this.#setStatus(run, "failed", { error: message });
+		this.#setStatus(run, "failed", { error: message, detail });
 	}
 
 	async #stop(run: Run): Promise<void> {
@@ -304,24 +312,18 @@ export class ServiceSupervisor {
 		void promise.finally(() => this.#pending.delete(promise));
 	}
 
-	#setStatus(
-		run: Run,
-		status: ServiceStatus,
-		patch: { progress?: string | undefined; error?: string | undefined } = {},
-	): void {
+	#setStatus(run: Run, status: ServiceStatus, patch: RecordPatch = {}): void {
 		const changed = run.status !== status;
 		run.status = status;
 		this.#publish(run, patch);
 		if (changed) this.#options.provider.emit("status-changed", { key: run.key, status });
 	}
 
-	#publish(
-		run: Run,
-		patch: { progress?: string | undefined; error?: string | undefined } = {},
-	): void {
+	#publish(run: Run, patch: RecordPatch = {}): void {
 		const previous = this.#options.provider.state.services[run.key];
 		const progress = "progress" in patch ? patch.progress : previous?.progress;
 		const error = "error" in patch ? patch.error : previous?.error;
+		const detail = "detail" in patch ? patch.detail : previous?.detail;
 		const record: ServiceRecord = {
 			pluginId: run.pluginId,
 			title: run.metadata.title,
@@ -330,6 +332,7 @@ export class ServiceSupervisor {
 			restarts: run.restarts,
 			...(progress === undefined ? {} : { progress }),
 			...(error === undefined ? {} : { error }),
+			...(detail === undefined ? {} : { detail }),
 		};
 		this.#options.provider.update((state) => ({
 			services: { ...state.services, [run.key]: record },

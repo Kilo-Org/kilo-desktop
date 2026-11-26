@@ -184,6 +184,25 @@ describe("Kilo server failures", () => {
 		await vi.waitFor(() => expect(notices()).toEqual({}));
 	});
 
+	it("shows the server's own output with the failure, so the user can fix its cause", async () => {
+		const { setStatus, notices } = await bootSupport({ status: { status: "starting" } });
+
+		setStatus({
+			status: "error",
+			message: "Kilo server exited before becoming ready (code 1).",
+			detail: "Configuration is invalid\n↳ Unrecognized key: reasoning_display",
+		});
+
+		await vi.waitFor(() =>
+			expect(Object.values(notices())).toEqual([
+				expect.objectContaining({
+					description: "Kilo server exited before becoming ready (code 1).",
+					detail: "Configuration is invalid\n↳ Unrecognized key: reasoning_display",
+				}),
+			]),
+		);
+	});
+
 	it("reports a server that already failed when the window opens", async () => {
 		const { notices } = await bootSupport({ status: { status: "error" } });
 		await vi.waitFor(() =>

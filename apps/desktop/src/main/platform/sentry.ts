@@ -3,14 +3,15 @@ import { app } from "electron";
 
 import { createLogger } from "./logger.js";
 import type { PreferencesStore } from "./PreferencesStore.js";
-import { scrubEnvelope, scrubSentryEvent } from "./sentry-scrub.js";
+import { scrubEnvelope, scrubSentryBreadcrumb, scrubSentryEvent } from "./sentry-scrub.js";
 
 const log = createLogger("sentry");
 
 /**
  * SDK v11 replaced `sendDefaultPii` with `dataCollection`, whose unset default
  * collects everything (user info/IP, cookies, bodies, …). Pin the v10
- * `sendDefaultPii: false` baseline from Sentry's migration guide.
+ * `sendDefaultPii: false` baseline from Sentry's migration guide, and keep
+ * stack frame variables out: a frame's locals can hold a credential.
  */
 const HEADER_DENYLIST = ["forwarded", "-ip", "remote-", "via", "-user"];
 const DATA_COLLECTION: NonNullable<Sentry.ElectronMainOptions["dataCollection"]> = {
@@ -22,6 +23,7 @@ const DATA_COLLECTION: NonNullable<Sentry.ElectronMainOptions["dataCollection"]>
 	genAI: { inputs: false, outputs: false },
 	databaseQueryData: false,
 	graphQL: { document: false, variables: false },
+	stackFrameVariables: false,
 };
 
 /**
@@ -30,9 +32,10 @@ const DATA_COLLECTION: NonNullable<Sentry.ElectronMainOptions["dataCollection"]>
  * crash dumps, and reports replayed from disk: while collection is off they are
  * dropped rather than stored for later.
  *
- * Spans, logs and metrics are scrubbed here rather than in `beforeSendSpan` /
- * `beforeSendLog` / `beforeSendMetric`, because renderers forward them straight
- * to the transport and they never reach main's hooks.
+ * Every envelope item is scrubbed here too (deny by default), because
+ * renderers forward spans, logs and metrics straight to the transport and
+ * they never reach main's `beforeSendSpan` / `beforeSendLog` /
+ * `beforeSendMetric`.
  */
 function makeConsentGatedTransport(preferences: PreferencesStore) {
 	return Sentry.makeElectronOfflineTransport((options) => {
@@ -65,12 +68,16 @@ export function initSentry(preferences: PreferencesStore): void {
 		environment: RELEASE_TRACK,
 		tracesSampleRate: 0.1,
 		dataCollection: DATA_COLLECTION,
-		// Redact user-identifying data (OS username in file paths, machine
-		// hostname) from every error before it leaves the process. Renderer
-		// errors are forwarded to this main client (IPCMode.Classic), so this
-		// covers them too; spans are scrubbed by the transport. Data
-		// minimization only — consent is enforced by the transport.
+		// Redact credentials and user-identifying data (OS username in file
+		// paths, machine hostname) from every error and breadcrumb before it
+		// leaves the process. Renderer errors are forwarded to this main client
+		// (IPCMode.Classic), so this covers them too. The transport scrubs every
+		// envelope item again, which covers transactions and the streamed spans,
+		// logs and metrics that renderers forward past these hooks; with streamed
+		// spans the SDK ignores `beforeSendTransaction`. Data minimization only —
+		// consent is enforced by the transport.
 		beforeSend: (event) => scrubSentryEvent(event),
+		beforeBreadcrumb: (breadcrumb) => scrubSentryBreadcrumb(breadcrumb),
 		transport: makeConsentGatedTransport(preferences),
 		// Route renderer→main events over the `ipcRenderer` bridge (wired by
 		// `@sentry/electron/preload`, imported in the renderer preload) instead of

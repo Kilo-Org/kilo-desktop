@@ -159,8 +159,12 @@ const STDERR_MAX_BYTES = 8_192;
 /**
  * Captures a bounded amount of stderr output from the child process during
  * startup. When the server exits early (e.g. due to a config validation
- * error), the collected output is included in the error message so the user
- * sees the root cause instead of a generic "failed to start" string.
+ * error), the collected output becomes the error status `detail` (shown with
+ * the failure notice), the thrown error's local `detail` (shown on the
+ * service record in Diagnostics) and a local log line, so the user sees the
+ * root cause instead of a generic "failed to start" string. The thrown
+ * error's message stays the short public message: child process output is
+ * kept out of messages, which cross process boundaries.
  */
 class StderrCollector {
 	readonly #lines: string[] = [];
@@ -201,17 +205,6 @@ class StderrCollector {
 	text(): string {
 		return stripVTControlCharacters(this.#lines.join("\n")).trim();
 	}
-}
-
-/**
- * Append diagnostic stderr output to a startup error message. When the kilo
- * CLI prints a config-validation or other early failure to stderr, this
- * surfaces the root cause alongside the generic "failed to start" line so
- * the user can fix their config without hunting through log files.
- */
-function appendStderrContext(baseMessage: string, stderr: string): string {
-	if (!stderr) return baseMessage;
-	return `${baseMessage}\n${stderr}`;
 }
 
 /**
@@ -635,7 +628,11 @@ export class KiloServerManager {
 			});
 			if (stderrOutput) this.#options.logger.error(stderrOutput);
 			this.#options.logger.error(internalMessage);
-			throw new KernelError("BUSINESS", appendStderrContext(publicMessage, stderrOutput));
+			throw new KernelError(
+				"BUSINESS",
+				publicMessage,
+				stderrOutput ? { detail: stderrOutput } : undefined,
+			);
 		}
 	}
 

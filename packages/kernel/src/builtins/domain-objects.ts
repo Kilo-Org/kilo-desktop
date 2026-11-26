@@ -106,6 +106,8 @@ export const serviceRecordSchema = z.object({
 	status: z.enum(SERVICE_STATUSES),
 	progress: z.string().optional(),
 	error: z.string().optional(),
+	/** Local diagnostic text from the last failure (`KernelError.detail`), such as a process's output. */
+	detail: z.string().optional(),
 	restarts: z.number().int().min(0),
 });
 export type ServiceRecord = z.output<typeof serviceRecordSchema>;

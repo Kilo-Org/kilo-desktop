@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { KernelApp, KernelService, KernelServices, type ServiceImplementation } from "../builtins";
+import { KernelError } from "../errors";
 import type { PluginSdk } from "../sdk";
 import { testPlugin } from "../test-fixtures";
 import { createMainKernel } from "./main-kernel";
@@ -399,6 +400,42 @@ describe("service supervision — failures", () => {
 		expect(statuses).toEqual(["idle", "starting", "ready"]);
 		expect(statusOf(kernel, "acme.svc/svc")).toMatchObject({ status: "ready", restarts: 0 });
 		expect(statusOf(kernel, "acme.svc/svc")).not.toHaveProperty("error");
+	});
+
+	it("keeps a failure's local detail on the record, apart from its message, until the next start", async () => {
+		let healthy = false;
+		const start = vi.fn(async () => {
+			if (!healthy) {
+				throw new KernelError("BUSINESS", "Server exited before becoming ready (code 1).", {
+					detail: "Configuration is invalid\n↳ Unrecognized key: reasoning_display",
+				});
+			}
+		});
+		const kernel = createMainKernel({
+			host: host(),
+			registrations: [
+				servicePlugin(
+					"acme.svc",
+					{ title: "Server", kind: "daemon", restart: { policy: "never" } },
+					{ start },
+				),
+			],
+		});
+		await kernel.start();
+		await kernel.windowShown();
+
+		expect(statusOf(kernel, "acme.svc/svc")).toMatchObject({
+			status: "failed",
+			error: "Server exited before becoming ready (code 1).",
+			detail: "Configuration is invalid\n↳ Unrecognized key: reasoning_display",
+		});
+
+		healthy = true;
+		await kernel.kernelSdk.domainObjects
+			.get(KernelServices)!
+			.methods.restart({ key: "acme.svc/svc" });
+		expect(statusOf(kernel, "acme.svc/svc")).toMatchObject({ status: "ready" });
+		expect(statusOf(kernel, "acme.svc/svc")).not.toHaveProperty("detail");
 	});
 
 	it("restarts a daemon that reports a crash after becoming ready", async () => {

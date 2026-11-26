@@ -444,7 +444,7 @@ Feature-flag evaluation is separate from analytics and is not governed by the da
 
 ### 10.2 Logging safety
 
-Application logging conventions exclude tokens, credentials, and authentication material. Crash reporting scrubs home paths, operating-system user names, and host names before sending, and excludes AI inputs and outputs, request bodies, cookies, and user information. Local logs remain on the user's machine.
+Application logging conventions exclude tokens, credentials, and authentication material. Kilo Desktop's own crash reporting (main and renderer processes) scrubs home paths, operating-system user names, host names, and credentials found in text (API keys, bearer tokens, JWTs, URL credentials, private keys, and values of credential-named fields) before sending; drops console breadcrumbs and stack frame variables; and excludes AI inputs and outputs, request bodies, cookies, and user information. The conda bridge sidecar reports its own errors under its own settings. The Kilo server's startup output stays out of thrown error messages; the app shows it locally, in the failure notice and in Diagnostics. Local logs remain on the user's machine.
 
 ### 10.3 Data residency and retention
 

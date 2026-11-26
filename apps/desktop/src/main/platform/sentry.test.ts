@@ -34,6 +34,9 @@ import { identifySentryUser, initSentry } from "./sentry.js";
 import type { SentryEnvelope } from "./sentry-scrub.js";
 import type { PreferencesStore } from "./PreferencesStore.js";
 
+// Built at runtime, so no token-shaped literal sits in the source.
+const fakeToken = `fake${"TOKEN0".repeat(4)}`;
+
 function fakePreferences(overrides: Partial<PreferencesStore> = {}): PreferencesStore {
 	return {
 		allowDataCollection: true,
@@ -149,7 +152,18 @@ describe("initSentry", () => {
 			httpBodies: [],
 			genAI: { inputs: false, outputs: false },
 			databaseQueryData: false,
+			stackFrameVariables: false,
 		});
+	});
+
+	it("redacts credentials from streamed spans before sending", async () => {
+		const gated = gatedSend(fakePreferences());
+
+		await gated(spanEnvelope(`https://api.example.test/v1/models?api_key=${fakeToken}`));
+
+		expect(send.mock.calls).toEqual([
+			[spanEnvelope("https://api.example.test/v1/models?api_key=[Filtered]")],
+		]);
 	});
 });
 
@@ -196,6 +210,52 @@ describe("initSentry beforeSend", () => {
 		);
 
 		expect(event).toMatchObject({ message: "failed to open /Users/<redacted>/notebook.ipynb" });
+	});
+
+	it("redacts credentials from error events", () => {
+		const { beforeSend } = initWithPreferences(fakePreferences());
+
+		const event = beforeSend!(
+			{
+				exception: {
+					values: [{ type: "KernelError", value: `server said: Bearer ${fakeToken}` }],
+				},
+			} as Parameters<NonNullable<ElectronMainOptions["beforeSend"]>>[0],
+			{},
+		);
+
+		expect(event).toMatchObject({
+			exception: { values: [{ value: "server said: Bearer [Filtered]" }] },
+		});
+	});
+
+	it("redacts credentials from transaction items in the transport", async () => {
+		const gated = gatedSend(fakePreferences());
+		const transactionEnvelope = (path: string) => [
+			{ trace: { transaction: `GET ${path}` } },
+			[[{ type: "transaction" }, { type: "transaction", transaction: `GET ${path}` }]],
+		];
+
+		await gated(transactionEnvelope(`/v1/models?api_key=${fakeToken}`));
+
+		expect(send.mock.calls).toEqual([[transactionEnvelope("/v1/models?api_key=[Filtered]")]]);
+	});
+});
+
+describe("initSentry beforeBreadcrumb", () => {
+	it("drops console breadcrumbs and redacts credentials in the others", () => {
+		const { beforeBreadcrumb } = initWithPreferences(fakePreferences());
+
+		expect(beforeBreadcrumb!({ category: "console", message: "server output" })).toBeNull();
+		expect(
+			beforeBreadcrumb!({
+				category: "electron.net",
+				data: { url: `https://api.example.test/v1?token=${fakeToken}` },
+			}),
+		).toEqual({
+			category: "electron.net",
+			data: { url: "https://api.example.test/v1?token=[Filtered]" },
+		});
 	});
 });
 

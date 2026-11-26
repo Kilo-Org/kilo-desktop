@@ -1,4 +1,12 @@
 # e2e — agent notes
 
-Electron e2e tests for Kilo Desktop. Follow `.agents/skills/write-e2e-test/SKILL.md` for page
-objects, fixtures, and `@smoke` specs, and `docs/TESTING.md` for how the suite runs.
+Electron e2e tests for Kilo Desktop. Thin pointer for agent CLIs (Codex, Copilot, and others). The canonical documents live elsewhere — read them; do not duplicate their rules here.
+
+- Writing e2e tests (page objects, fixtures, `@smoke` specs) — `.agents/skills/write-e2e-test/SKILL.md`.
+- How the suite runs — `docs/TESTING.md`.
+- Project conventions (POM rules, locator priority, imports, commands) — [`CLAUDE.md`](CLAUDE.md).
+- QA review checklist — `.claude/skills/qa-automation-quality/references/qa-automation-guidelines.md` (installed by `npx anaconda-pw-setup`).
+- Library API for all test code — `.claude/skills/anaconda-playwright-utils/SKILL.md`. Always use `@anaconda/playwright-utils` functions instead of the raw Playwright API.
+- For local pre-push reviews, run `/pr-review` (Claude Code and Kilo).
+
+Never commit, push, or tag unless the maintainer explicitly asks.

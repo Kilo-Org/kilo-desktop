@@ -88,7 +88,7 @@ describe("KiloConfiguration", () => {
 			command: everything.commands,
 		});
 		await expect(
-			readFile(path.join(pluginDirectory, "anaconda-notebooks.js"), "utf8"),
+			readFile(path.join(pluginDirectory, "anaconda-notebooks", "index.js"), "utf8"),
 		).resolves.toContain("export default {};");
 		await expect(
 			readFile(path.join(skillDirectory, "review", "SKILL.md"), "utf8"),
@@ -114,7 +114,7 @@ describe("KiloConfiguration", () => {
 			agent: { other: { description: "Other", system: "Other.", mode: "all" } },
 			command: {},
 		});
-		expect(await exists(path.join(pluginDirectory, "anaconda-notebooks.js"))).toBe(false);
+		expect(await exists(path.join(pluginDirectory, "anaconda-notebooks", "index.js"))).toBe(false);
 		expect(await exists(path.join(skillDirectory, "review"))).toBe(false);
 		expect(await exists(skillFolder)).toBe(true);
 		expect(onChanged).toHaveBeenCalledOnce();

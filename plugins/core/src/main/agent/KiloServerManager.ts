@@ -15,7 +15,7 @@ import type { KiloServerConnection, KiloServerStatus } from "./types.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { DESKTOP_KILO_CONFIG_FILE } from "./desktop-config-file.js";
 import { kiloInlineConfigContent } from "./kilo-inline-config.js";
-import { listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
+import { listManagedKiloPlugins } from "./managed-kilo-plugins.js";
 import { WEBMCP_ENDPOINT_TOKEN_ENV, WEBMCP_ENDPOINT_URL_ENV } from "./webmcp-relay-config.js";
 
 const execFile = promisify(execFileCallback);
@@ -74,7 +74,7 @@ export interface KiloServerManagerOptions {
 	 */
 	readonly configDirectory: string;
 	/**
-	 * Desktop-owned Kilo plugin files, passed to Kilo as inline config
+	 * Desktop-owned Kilo plugin directories, passed to Kilo as inline config
 	 * (`KILO_CONFIG_CONTENT`) rather than placed in `configDirectory`. See
 	 * `managed-kilo-plugins.ts`.
 	 */
@@ -654,8 +654,8 @@ export class KiloServerManager {
 	}
 
 	async #inlineConfigContent(): Promise<string> {
-		const files = await listManagedKiloPluginFiles(this.#options.managedPluginDirectory);
-		return kiloInlineConfigContent(files, this.#kiloBaseUrl());
+		const plugins = await listManagedKiloPlugins(this.#options.managedPluginDirectory);
+		return kiloInlineConfigContent(plugins, this.#kiloBaseUrl());
 	}
 
 	#createEnvironment(password: string, configContent: string): NodeJS.ProcessEnv {

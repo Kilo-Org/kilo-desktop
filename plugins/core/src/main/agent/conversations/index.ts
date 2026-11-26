@@ -693,9 +693,9 @@ export function provideConversations(
 }
 
 /**
- * Where a prompt's `system` text goes until Desktop's Kilo plugin adds it to
- * the turn's system prompt (v2 prompts have no `system`): the user message's
- * metadata, which the server shows to no model.
+ * Where a prompt's `system` text rides: v2 prompts have no `system`, so it goes
+ * on the user message's metadata, and Desktop's chat system prompt plugin
+ * (`chat-system-plugin.ts`) adds it to the model request's system prompt.
  */
 export function promptMetadata(system: string): Record<string, unknown> {
 	return { [KILO_DESKTOP_METADATA_KEY]: { system } };

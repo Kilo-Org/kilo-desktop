@@ -21,6 +21,8 @@ const EXPECTED_ENTRY: WebMcpRelayEntry = {
 	url: "{env:KILO_DESKTOP_WEBMCP_URL}",
 	oauth: false,
 	headers: { Authorization: "Bearer {env:KILO_DESKTOP_WEBMCP_TOKEN}" },
+	// Desktop's tools stay direct, named calls rather than Kilo's Code Mode.
+	codemode: false,
 };
 
 describe("reconcileWebMcpRelayConfig", () => {

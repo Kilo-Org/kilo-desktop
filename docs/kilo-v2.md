@@ -130,7 +130,9 @@ v1 shapes any more.
   `commands`; `provider` → `providers`; `plugin` → `plugins` (strings or
   `{ package, options }`); `mcp.<id>` → `mcp.servers.<id>`.
 - Remote MCP entry (the `mcp.desktop` WebMCP relay):
-  `{ type: "remote", url, headers, oauth: false, disabled? }` (no `enabled`).
+  `{ type: "remote", url, headers, oauth: false, codemode: false, disabled? }`
+  (no `enabled`). `codemode: false` keeps its tools out of v2's Code Mode
+  (step 14).
 - Reads: `kilocode.settings.read({ scope })` → `{ document }`;
   `config.get` returns per-document entries, not one merged object.
   Writes: `kilocode.settings.write({ scope, set, unset, expected })`.
@@ -243,8 +245,8 @@ on `provider.updated` / `model.updated`.
 - Prompts: `switchAgent` (only when it changes) and `switchModel`, then
   `session.prompt` with text parts joined and files as `{ uri, name }`.
   kilo.chat's per-prompt `system` is stored on the user message's metadata
-  (`metadata["kilo-desktop"].system`) until step 14's server plugin feeds it
-  to the model.
+  (`metadata["kilo-desktop"].system`), and kilo.core's chat system prompt
+  plugin adds it to the model request's system prompt (step 14).
 - `kilo.core/chats` gains `findMissing({ ids })` and a `listed` event after
   every full read. kilo.work-sessions (work sessions' `chatIds` and chat
   panes) and kilo.git (branch-namer progress) drop the ids the server lacks on
@@ -365,7 +367,8 @@ pnpm patch applied as source. The patch, the `@opencode-ai/sdk` override and the
   differ from the session's (each switch is a transcript message), then
   `session.prompt({ id, text, files, metadata })` or `session.command` for a
   known `/name`. The chat's system text rides on
-  `metadata["kilo-desktop"].system` (commands carry none) until step 14.
+  `metadata["kilo-desktop"].system` (commands carry none), which kilo.core's
+  chat system prompt plugin feeds to the model (step 14).
 - Live text (`live-parts.ts`): kilo2 stores text only when a part ends, so a
   history read mid-stream is filled in from streamed deltas, keyed by session,
   step, kind and ordinal.
@@ -438,7 +441,10 @@ dropped.
 | `grep`, `glob`, `websearch`, `webfetch`, `question`, `plan_exit`, `semantic_search`, `todowrite` | same           | `grep` adds `literal`, `caseSensitive`, `limit`                                                        |
 | `list`, `todoread`, `codebase_search`                                                            | none           |                                                                                                        |
 
-MCP tools are named `<server>_<tool>`.
+MCP tools are named `<server>_<tool>`. v2's Code Mode (on by default for MCP
+servers, `opencode.mcp.codemode.defaults`) hides them behind one `execute`
+tool unless the server entry or tool sets `codemode: false`; Desktop sets it on
+`mcp.desktop` and on the notebook plugin's tools.
 
 ## Marketplace (kilo.marketplace)
 
@@ -502,13 +508,60 @@ MCP tools are named `<server>_<tool>`.
 
 | v1                                                     | v2                                                                                                                     |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `export default { id, server }`                        | `export default { id, setup(ctx) }`, loaded through config `plugins: ["file:///…"]`                                    |
+| `export default { id, server }`                        | `export default { id, setup(ctx) }`, loaded from a **directory** in config `plugins` (a file path is skipped)          |
 | hook `tool.execute.before(input, output)`              | `ctx.tool.hook("execute.before", e => …)`; `e` has `tool`, `sessionID`, `agent`, `messageID`, `id`, mutable `input`    |
 | `{ tool: { name: { description, args, execute } } }`   | `ctx.tool.transform(ed => ed.add({ name, description, input, execute }))`; result `{ content, metadata }` (no `title`) |
 | tool context `ask`, `abort`, `directory`, `metadata()` | `ctx.permission.assert({ sessionID, action, resources, save, metadata })`, `signal`, `ctx.location`, `progress()`      |
 | `event` hook                                           | `ctx.event.subscribe({ types })`                                                                                       |
 | `config` hook                                          | none; `ctx.permission.hook("evaluate")` or `ctx.agent.transform` instead                                               |
 | —                                                      | session request hooks can edit `system` per request (`packages/plugin/src/promise/session.ts`)                         |
+
+### What Desktop's server plugins do on v2 (step 14)
+
+- **Layout** (`managed-kilo-plugins.ts`): each managed plugin is
+  `<runtime>/kilo-plugins/<name>/` holding `index.js` and a `package.json`
+  (`{ private, type: "module" }`, no name, so Kilo resolves `index.js` and
+  installs nothing). `KILO_CONFIG_CONTENT.plugins` lists those directories by
+  path. v1's single-file `anaconda-*.js` plugins (marker or the old
+  caller-context file) are removed at startup. `KiloPluginConfig` keeps its
+  ownership marker, now at the top of the directory's `index.js`.
+- **Caller context** (`anaconda-desktop-caller-context`):
+  `tool.hook("execute.before")` adds `__anacondaDesktopKiloCaller
+  { version: 1, sessionId, callId }` to the input of `desktop_*` calls; Kilo
+  passes the hook's input on, and the gateway lists the key in its schemas.
+- **Chat system prompt** (`anaconda-desktop-chat-system`, kilo.core
+  `conversations/chat-system-plugin.ts`): `session.hook("context")` pushes the
+  latest Desktop-stamped user message's `metadata["kilo-desktop"].system` onto
+  `event.system`. `context` runs before every agent-loop model request, not
+  titles or compactions; Kilo's own user-role notices carry no stamp.
+- **Notebook tools** (kilo.notebook `src/kilo-plugin`, one instance per
+  location): `tool.transform` adds the nine `notebooks_*` tools with zod
+  inputs (Standard Schema; Kilo validates before `execute`) and
+  `options.codemode: false`. Results are `{ content, metadata }`: text, plus a
+  `{ type: "file", mime, uri }` part per image; the v1 `title` rides in
+  `metadata.title`. Approvals use `permission.assert` bound to the call
+  (`source: { type: "tool", messageID, id }`), with v1's `permission` /
+  `patterns` / `always` renamed `action` / `resources` / `save`. The workspace
+  is `ctx.location.directory` and `.project.directory`; `session.deleted`
+  (from `event.subscribe`) releases a session's notebook peers.
+- **Notebook prompts:** v2 has no config hook, so `permission.hook("evaluate")`
+  turns an `allow` for `notebooks_execute` / `notebooks_trust` into `ask`
+  unless, for every resource, the last matching rule in the event's `rules`
+  (Kilo's evaluated rules, saved "Always allow" rules last) is an allow naming
+  the action itself. Kilo's built-in agents end in `{ action: "*", effect:
+  "allow" }`, which no longer lets notebook code run unasked.
+- **Observed on kilo2:** `plugin.list` reports a loaded plugin as
+  `{ id, source: { type: "local", path }, state: { status: "active" } }`; the
+  stand-in model's request lists `desktop_<tool>` and `notebooks_*` directly
+  (Code Mode's `execute` is still offered for other MCP servers); the system
+  text reaches the request's system message and not the user message.
+- **Tests:** `managed-kilo-plugins.kilo2.integration.test.ts` (kilo.core:
+  system text and caller context through a real `desktop` relay) and
+  `kilo-plugin.kilo2.integration.test.ts` (kilo.notebook: built and installed
+  as shipped, tools offered, a read, and a run that asks first) run on the
+  bundled kilo2; `test-host.ts` runs the plugin's `setup` in memory for the
+  unit suite. `@kilo-desktop/plugin-core/testing` gains `installKiloPlugin`
+  and `startKilo2({ environment, webMcpEndpoint })`.
 
 ## Gaps
 
@@ -521,11 +574,11 @@ until v2 supports them. Gaps with a v2 workaround are adapted instead.
 | `kilocode.sessionModelUsage`                               | Per-model usage breakdown                                       | **Hide.** Totals remain (`SessionInfo.cost` / `tokens`, `session.usage.updated`).                                                                                               |
 | CLI telemetry                                              | Telemetry toggle's effect on the server                         | **Hide** the server side; Desktop's own telemetry is unaffected.                                                                                                                |
 | Structured output on `session.prompt`                      | `generation.ts` (git commit and PR text, other JSON generation) | **Adapted (step 6):** `kilocode.commit-message.generate` for commit messages; otherwise `experimental.generate.text` with the schema in the prompt, zod validation, one retry.  |
-| Per-prompt `system`                                        | Per-chat workspace context sent with each prompt                | **Adapt (step 14):** a Desktop server plugin edits `system` in a session request hook. Until then it is stored on the user message's metadata and the model doesn't see it.     |
+| Per-prompt `system`                                        | Per-chat workspace context sent with each prompt                | **Adapted (step 14):** stored on the user message's metadata; kilo.core's chat system prompt plugin adds it to each model request's system prompt (`session.hook("context")`).  |
 | `snapshotInitialization: "wait"`                           | Snapshot readiness before a turn                                | **Dropped (step 6):** v2 always captures a step's start snapshot before its local tools run (`core/src/session/runner/step.ts`); generation no longer uses a chat at all.       |
 | Retry in place (`promptAsync({ messageID, parts: [] })`)   | Retry a failed turn                                             | **Adapt:** resend the user's text as a new prompt (optionally after `revert.stage` + `commit`).                                                                                 |
 | `interactive` on permission replies                        | Auto-approve tracking                                           | **Drop** the flag.                                                                                                                                                              |
-| Plugin `config` hook                                       | Notebook plugin's permission edits                              | **Adapt:** permission rules in Desktop's config or `ctx.permission.hook("evaluate")`.                                                                                           |
+| Plugin `config` hook                                       | Notebook plugin's permission edits                              | **Adapted (step 14):** the notebook plugin's `permission.hook("evaluate")` keeps its two actions asking under allow-all agent defaults.                                         |
 | `AgentInfo.native` / `source`, skill builtin marker        | Marketplace's "installed vs built-in"                           | **Adapted (step 13):** installs from `kilocode.marketplace.installed`; custom vs built-in from `kilocode.agent.removable` / `kilocode.skill.removable`; no organisation marker. |
 | Detecting installs by config key                           | v1 counted any config entry named like a catalog item installed | **Dropped (step 13):** only v2 records are installs (removable); other agents, skills and MCP servers are listed as included items.                                             |
 | `KILO_PARENT_PID`, `x-kilo-sse-skip-fork-sync`, SSE replay | Process and stream plumbing                                     | Replaced by stdin lifetime and reload-on-reconnect.                                                                                                                             |

@@ -1,40 +1,42 @@
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
-
-import { writeFile as atomicWriteFile } from "atomically";
+import { writeManagedKiloPlugin } from "../managed-kilo-plugins.js";
 
 export const KILO_CALLER_CONTEXT_KEY = "__anacondaDesktopKiloCaller";
-export const KILO_CALLER_CONTEXT_PLUGIN_FILENAME = "anaconda-desktop-caller-context.js";
+/** The plugin's directory in Desktop's managed plugin directory. */
+export const KILO_CALLER_CONTEXT_PLUGIN_NAME = "anaconda-desktop-caller-context";
 
 /**
- * Generates the dependency-free Kilo plugin installed in Desktop's managed
- * plugin directory. Kilo is the authority for session/call identity; the
- * generic MCP transport does not pass either value to the tool gateway.
+ * Generates the dependency-free Kilo v2 server plugin installed in Desktop's
+ * managed plugin directory. Kilo is the authority for session and call
+ * identity, and the generic MCP transport passes neither to the tool gateway,
+ * so an `execute.before` tool hook adds them to the arguments of every call to
+ * Desktop's `desktop` MCP server (tools named `desktop_<tool>`). Kilo hands
+ * the hook's `input` on to the tool, and the gateway lists the key in the
+ * tools' schemas (`catalog-view.ts`), so Kilo's input validation keeps it.
  */
 export function createKiloCallerContextPluginSource(): string {
 	return `const CONTEXT_KEY = ${JSON.stringify(KILO_CALLER_CONTEXT_KEY)};
 const DESKTOP_TOOL_PREFIX = "desktop_";
 
-export const AnacondaDesktopCallerContext = async () => ({
-  "tool.execute.before": async (input, output) => {
-    if (!input.tool.startsWith(DESKTOP_TOOL_PREFIX)) return;
-    output.args[CONTEXT_KEY] = {
-      version: 1,
-      sessionId: input.sessionID,
-      callId: input.callID,
-    };
+export default {
+  id: "anaconda-desktop-caller-context",
+  setup: async (ctx) => {
+    await ctx.tool.hook("execute.before", (event) => {
+      if (!event.tool.startsWith(DESKTOP_TOOL_PREFIX)) return;
+      if (typeof event.input !== "object" || event.input === null || Array.isArray(event.input)) return;
+      event.input = {
+        ...event.input,
+        [CONTEXT_KEY]: { version: 1, sessionId: event.sessionID, callId: event.id },
+      };
+    });
   },
-});
-
-export default { id: "anaconda-desktop-caller-context", server: AnacondaDesktopCallerContext };
+};
 `;
 }
 
 export async function reconcileKiloCallerContextPlugin(pluginDirectory: string): Promise<void> {
-	await mkdir(pluginDirectory, { recursive: true });
-	await atomicWriteFile(
-		path.join(pluginDirectory, KILO_CALLER_CONTEXT_PLUGIN_FILENAME),
+	await writeManagedKiloPlugin(
+		pluginDirectory,
+		KILO_CALLER_CONTEXT_PLUGIN_NAME,
 		createKiloCallerContextPluginSource(),
-		{ encoding: "utf8" },
 	);
 }

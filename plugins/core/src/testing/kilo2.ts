@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { ServerConnection } from "../contracts";
+import { KiloPluginConfig } from "../main/agent/KiloPluginConfig.js";
 import { KiloServerManager } from "../main/agent/KiloServerManager.js";
 import { bundledKiloExecutable } from "./kilo-executable.js";
 
@@ -26,8 +27,16 @@ export interface Kilo2 {
 export async function startKilo2(
 	options: {
 		readonly apiUrl?: string;
-		/** Prepares the home before the server starts (Desktop's config directory is `<home>/runtime/config/kilo2`). */
+		/**
+		 * Prepares the home before the server starts (Desktop's config directory
+		 * is `<home>/runtime/config/kilo2`, its managed plugins live in
+		 * `<home>/runtime/kilo-plugins`).
+		 */
 		readonly before?: (home: string) => Promise<void>;
+		/** Extra variables in Kilo's environment, as a plugin's `kilo.core/server-env` contribution adds them. */
+		readonly environment?: Readonly<Record<string, string>>;
+		/** Desktop's agent tool endpoint, served to Kilo through the `desktop` MCP entry. */
+		readonly webMcpEndpoint?: () => { readonly url: string; readonly token: string } | undefined;
 	} = {},
 ): Promise<Kilo2> {
 	const home = await mkdtemp(path.join(tmpdir(), "kilo2-"));
@@ -45,6 +54,7 @@ export async function startKilo2(
 		managedPluginDirectory: path.join(runtimeDirectory, "kilo-plugins"),
 		stateDirectory: path.join(home, "state"),
 		corsOrigins: [],
+		...(options.webMcpEndpoint ? { webMcpEndpoint: options.webMcpEndpoint } : {}),
 		environment: {
 			PATH: process.env.PATH,
 			SystemRoot: process.env.SystemRoot,
@@ -56,6 +66,7 @@ export async function startKilo2(
 			KILO_DISABLE_AUTOUPDATE: "true",
 			KILO_DISABLE_MODELS_FETCH: "true",
 			...(options.apiUrl ? { KILO_API_URL: options.apiUrl } : {}),
+			...options.environment,
 		},
 		fetch,
 		logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
@@ -167,4 +178,23 @@ export async function startStandInKiloApi(
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		},
 	};
+}
+
+/**
+ * Installs a kernel plugin's Kilo server plugin bundle into a `startKilo2`
+ * home the way kilo.core does for a `kilo-plugin` agent extension
+ * (`KiloPluginConfig`), so Kilo loads it on start. Call it from `before`.
+ */
+export async function installKiloPlugin(
+	home: string,
+	sourceId: string,
+	pluginId: string,
+	bundlePath: string,
+): Promise<void> {
+	const outcome = await new KiloPluginConfig(path.join(home, "runtime", "kilo-plugins")).install(
+		sourceId,
+		pluginId,
+		bundlePath,
+	);
+	if (outcome.kind === "skipped-error") throw new Error(outcome.reason);
 }

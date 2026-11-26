@@ -1,5 +1,3 @@
-import { pathToFileURL } from "node:url";
-
 interface PermissionRule {
 	readonly action: string;
 	readonly resource: string;
@@ -31,10 +29,14 @@ const ARCHIVE_COMMAND_RULES: readonly PermissionRule[] = ["tar", "unzip", "gzip"
  * - Pins the embedder origin, so a project `.kilo2/kilo2.json` cannot repoint
  *   it. The chat/model-list origin is steered by `KILO_API_URL`, not pinned
  *   here.
- * - Loads Desktop's managed plugins (see `managed-kilo-plugins.ts`).
+ * - Loads Desktop's managed plugins, each a directory given by its absolute
+ *   path (see `managed-kilo-plugins.ts`).
  * - Makes archive commands ask (see `ARCHIVE_COMMAND_RULES`).
  */
-export function kiloInlineConfigContent(pluginFiles: readonly string[], baseUrl: string): string {
+export function kiloInlineConfigContent(
+	pluginDirectories: readonly string[],
+	baseUrl: string,
+): string {
 	const config: {
 		indexing: { kilo: { baseUrl: string } };
 		permissions: readonly PermissionRule[];
@@ -43,8 +45,6 @@ export function kiloInlineConfigContent(pluginFiles: readonly string[], baseUrl:
 		indexing: { kilo: { baseUrl } },
 		permissions: ARCHIVE_COMMAND_RULES,
 	};
-	if (pluginFiles.length > 0) {
-		config.plugins = pluginFiles.map((file) => pathToFileURL(file).href);
-	}
+	if (pluginDirectories.length > 0) config.plugins = [...pluginDirectories];
 	return JSON.stringify(config);
 }

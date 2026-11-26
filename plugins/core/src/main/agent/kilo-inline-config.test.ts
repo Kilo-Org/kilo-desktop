@@ -1,5 +1,4 @@
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -13,13 +12,13 @@ const ARCHIVE_COMMANDS_ASK = [
 ];
 
 describe("Kilo inline config", () => {
-	it("passes plugins to Kilo as file URLs alongside the pinned indexing base", () => {
-		const file = path.join("/tmp", "kilo plugins", "anaconda-notebooks.js");
+	it("passes plugin directories to Kilo by path alongside the pinned indexing base", () => {
+		const directory = path.join("/tmp", "kilo plugins", "anaconda-notebooks");
 
-		expect(JSON.parse(kiloInlineConfigContent([file], "https://api.kilo.ai"))).toEqual({
+		expect(JSON.parse(kiloInlineConfigContent([directory], "https://api.kilo.ai"))).toEqual({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
 			permissions: ARCHIVE_COMMANDS_ASK,
-			plugins: [pathToFileURL(file).href],
+			plugins: [directory],
 		});
 	});
 

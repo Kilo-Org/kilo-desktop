@@ -1,9 +1,8 @@
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
-import { pathToFileURL } from "node:url";
 
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 
@@ -15,6 +14,7 @@ import {
 	type KiloServerManagerOptions,
 } from "./KiloServerManager.js";
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
+import { writeManagedKiloPlugin } from "./managed-kilo-plugins.js";
 
 const KILO_VERSION = "0.0.0-v2-239";
 
@@ -958,9 +958,11 @@ describe("owned config environment", () => {
 	it("passes Desktop's managed plugins as inline config, re-read on every spawn", async () => {
 		const managedPluginDirectory = await mkdtemp(path.join(tmpdir(), "kilo-managed-plugins-"));
 		onTestFinished(() => rm(managedPluginDirectory, { recursive: true, force: true }));
-		const callerContext = path.join(managedPluginDirectory, "anaconda-desktop-caller-context.js");
-		const notebooks = path.join(managedPluginDirectory, "anaconda-notebooks.js");
-		await writeFile(callerContext, "export default {};\n");
+		await writeManagedKiloPlugin(
+			managedPluginDirectory,
+			"anaconda-desktop-caller-context",
+			"export default {};\n",
+		);
 		const { manager, spawn } = createHarness({
 			managedPluginDirectory,
 			environment: {
@@ -974,15 +976,22 @@ describe("owned config environment", () => {
 		const firstEnv = spawn.mock.calls[0]![2].env;
 		expect(JSON.parse(firstEnv.KILO_CONFIG_CONTENT!)).toMatchObject({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
-			plugins: [pathToFileURL(callerContext).href],
+			plugins: [path.join(managedPluginDirectory, "anaconda-desktop-caller-context")],
 		});
 		expect(firstEnv.kilo_config_content).toBeUndefined();
 
-		await writeFile(notebooks, "export default {};\n");
+		await writeManagedKiloPlugin(
+			managedPluginDirectory,
+			"anaconda-notebooks",
+			"export default {};\n",
+		);
 		await manager.restart();
 		expect(JSON.parse(spawn.mock.calls[1]![2].env.KILO_CONFIG_CONTENT!)).toMatchObject({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
-			plugins: [pathToFileURL(callerContext).href, pathToFileURL(notebooks).href],
+			plugins: [
+				path.join(managedPluginDirectory, "anaconda-desktop-caller-context"),
+				path.join(managedPluginDirectory, "anaconda-notebooks"),
+			],
 		});
 	});
 

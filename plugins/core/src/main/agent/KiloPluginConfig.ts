@@ -1,7 +1,12 @@
-import { mkdir, readdir, readFile, unlink } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { writeFile as atomicWriteFile } from "atomically";
+import {
+	listManagedKiloPlugins,
+	readManagedKiloPlugin,
+	removeManagedKiloPlugin,
+	writeManagedKiloPlugin,
+} from "./managed-kilo-plugins.js";
 
 export type KiloPluginMutationOutcome =
 	| { readonly kind: "written"; readonly reason: "created" | "updated" }
@@ -14,6 +19,10 @@ const SAFE_ID = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
 function validateId(label: string, value: string): string | undefined {
 	if (!SAFE_ID.test(value)) return `${label} must be a lowercase filesystem-safe id`;
 	return undefined;
+}
+
+function pluginDirectoryName(pluginId: string): string {
+	return `anaconda-${pluginId}`;
 }
 
 function ownershipMarker(sourceId: string, pluginId: string): string {
@@ -36,25 +45,16 @@ function isOwnedBy(contents: Buffer, sourceId: string, pluginId: string): boolea
 	});
 }
 
-async function readIfPresent(filePath: string): Promise<Buffer | undefined> {
-	try {
-		return await readFile(filePath);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-		throw error;
-	}
-}
-
 /**
  * Owns serialized installation of Desktop-provided Kilo plugins. Ownership is
  * embedded in each generated file rather than kept in a second file, so a
  * crash cannot leave the plugin and its ownership record out of sync. Only an
  * exact source marker permits updates, removal, or source-scoped discovery;
- * user-created files are never claimed. Writes are atomic so Kilo cannot import
- * a partially copied bundle. The directory is Desktop's managed plugin
- * directory (see `managed-kilo-plugins.ts`), never a Kilo config `plugin/`
- * folder, and bundles are copied out of the app so Kilo can read them outside
- * asar.
+ * user-created files are never claimed. Each plugin is the directory
+ * `anaconda-<pluginId>/` in Desktop's managed plugin directory (see
+ * `managed-kilo-plugins.ts`), written atomically so Kilo cannot import a
+ * partially copied bundle; bundles are copied out of the app so Kilo can read
+ * them outside asar.
  */
 export class KiloPluginConfig {
 	readonly #pluginDirectory: string;
@@ -78,8 +78,8 @@ export class KiloPluginConfig {
 			}
 
 			const marker = ownershipMarker(sourceId, pluginId);
-			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.js`);
-			const existing = await readIfPresent(destinationPath);
+			const name = pluginDirectoryName(pluginId);
+			const existing = await readManagedKiloPlugin(this.#pluginDirectory, name);
 			if (existing && !isOwnedBy(existing, sourceId, pluginId)) {
 				return {
 					kind: "skipped-error",
@@ -88,10 +88,9 @@ export class KiloPluginConfig {
 			}
 			const source = await readFile(sourcePath);
 			const next = Buffer.concat([Buffer.from(marker), source]);
-			if (existing?.equals(next)) return { kind: "skipped", reason: "up-to-date" };
-
-			await mkdir(this.#pluginDirectory, { recursive: true });
-			await atomicWriteFile(destinationPath, next);
+			if (!(await writeManagedKiloPlugin(this.#pluginDirectory, name, next))) {
+				return { kind: "skipped", reason: "up-to-date" };
+			}
 			return { kind: "written", reason: existing ? "updated" : "created" };
 		});
 	}
@@ -102,13 +101,13 @@ export class KiloPluginConfig {
 				validateId("source id", sourceId) ?? validateId("plugin id", pluginId);
 			if (validationError) return { kind: "skipped-error", reason: validationError };
 
-			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.js`);
-			const existing = await readIfPresent(destinationPath);
+			const name = pluginDirectoryName(pluginId);
+			const existing = await readManagedKiloPlugin(this.#pluginDirectory, name);
 			if (!existing) return { kind: "skipped", reason: "nothing-to-remove" };
 			if (!isOwnedBy(existing, sourceId, pluginId)) {
 				return { kind: "skipped", reason: "not-owned" };
 			}
-			await unlink(destinationPath);
+			await removeManagedKiloPlugin(this.#pluginDirectory, name);
 			return { kind: "removed", reason: "explicit" };
 		});
 	}
@@ -117,24 +116,18 @@ export class KiloPluginConfig {
 		return this.#enqueue(async () => {
 			const validationError = validateId("source id", sourceId);
 			if (validationError) throw new Error(validationError);
-			let filenames: string[];
-			try {
-				filenames = await readdir(this.#pluginDirectory);
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-				throw error;
-			}
-
 			const ownedPluginIds: string[] = [];
-			for (const filename of filenames.sort()) {
-				const match = /^anaconda-(.+)\.js$/.exec(filename);
+			for (const directory of await listManagedKiloPlugins(this.#pluginDirectory)) {
+				const match = /^anaconda-(.+)$/.exec(directory.slice(this.#pluginDirectory.length + 1));
 				const pluginId = match?.[1];
 				if (!pluginId || validateId("plugin id", pluginId)) continue;
-				const contents = await readIfPresent(path.join(this.#pluginDirectory, filename));
-				if (!contents) continue;
-				if (isOwnedBy(contents, sourceId, pluginId)) {
-					ownedPluginIds.push(pluginId);
-				}
+				// Ownership is checked one plugin at a time; there are only a handful.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
+				const contents = await readManagedKiloPlugin(
+					this.#pluginDirectory,
+					pluginDirectoryName(pluginId),
+				);
+				if (contents && isOwnedBy(contents, sourceId, pluginId)) ownedPluginIds.push(pluginId);
 			}
 			return ownedPluginIds;
 		});

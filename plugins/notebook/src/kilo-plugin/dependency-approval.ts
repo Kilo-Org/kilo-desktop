@@ -36,11 +36,12 @@ interface DeclaredDependency {
 	readonly spec: string;
 }
 
+/** Kilo v2's `permission.assert`, bound to the tool call: prompts when needed and rejects on a decline. */
 export interface ApprovalContext {
-	ask(input: {
-		permission: string;
-		patterns: string[];
-		always: string[];
+	assert(input: {
+		action: string;
+		resources: string[];
+		save: string[];
 		metadata: Record<string, unknown>;
 	}): Promise<void>;
 }
@@ -279,10 +280,10 @@ export async function requireDependencyApproval(
 	const items = planApproval(status, change);
 	if (items.length === 0) return false;
 
-	await context.ask({
-		permission: "notebooks_trust",
-		patterns: items.map(itemLabel),
-		always: items.filter((item) => item.rememberable).map(itemLabel),
+	await context.assert({
+		action: "notebooks_trust",
+		resources: items.map(itemLabel),
+		save: items.filter((item) => item.rememberable).map(itemLabel),
 		metadata: {
 			// `toolName`, `title`, and `description` are what the chat permission card displays.
 			toolName: PROMPT_LABEL,

@@ -5,20 +5,20 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { createNteractKiloPlugin } from "./index";
+import { requireNotebookPrompt } from "./index";
+import { bootPlugin, textOf, type PermissionCheck } from "./test-host";
 
 const NOTEBOOK_ID = "669d39ec-39d6-4160-815c-b46e170cde8d";
 
-function toolContext(overrides: Partial<{ abort: AbortSignal; worktree: string }> = {}) {
+function toolContext(overrides: Partial<{ signal: AbortSignal; worktree: string }> = {}) {
 	return {
 		sessionID: "kilo-session-1",
 		messageID: "message-1",
-		agent: "build",
+		agent: "code",
 		directory: "/projects/demo",
 		worktree: overrides.worktree ?? "/projects/demo",
-		abort: overrides.abort ?? new AbortController().signal,
-		metadata: vi.fn(),
-		ask: vi.fn(async () => undefined),
+		signal: overrides.signal ?? new AbortController().signal,
+		assert: vi.fn(async () => undefined),
 	};
 }
 
@@ -38,7 +38,7 @@ describe("nteract Kilo plugin", () => {
 			})),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -57,12 +57,11 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
@@ -73,9 +72,9 @@ describe("nteract Kilo plugin", () => {
 		});
 		expect(session.executeCell).toHaveBeenCalledWith("cell-created", { timeoutMs: 30_000 });
 		expect(result).toEqual({
-			title: "Notebook cell created and executed",
-			output: "cell cell-created [4] done\ncreated",
+			content: "cell cell-created [4] done\ncreated",
 			metadata: {
+				title: "Notebook cell created and executed",
 				notebook_id: NOTEBOOK_ID,
 				cell_id: "cell-created",
 				execution_id: "execution-created",
@@ -109,7 +108,7 @@ describe("nteract Kilo plugin", () => {
 			close: vi.fn(async () => undefined),
 		};
 		const openNotebook = vi.fn(async () => session);
-		const plugin = createNteractKiloPlugin({
+		const plugin = bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook }),
 		});
 		const hooks = await plugin();
@@ -119,19 +118,21 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
 		expect(result).toEqual({
-			title: "Notebook cell 7",
-			output: "cell cell-7 [7] done\nanswer: 42",
+			content: [
+				{ type: "text", text: "cell cell-7 [7] done\nanswer: 42" },
+				{ type: "file", mime: "image/png", uri: "data:image/png;base64,AAAA" },
+			],
 			metadata: {
+				title: "Notebook cell 7",
 				notebook_id: NOTEBOOK_ID,
 				cell_id: "cell-7",
 				execution_id: "execution-7",
@@ -139,7 +140,6 @@ describe("nteract Kilo plugin", () => {
 				status: "done",
 				success: true,
 			},
-			attachments: [{ type: "file", mime: "image/png", url: "data:image/png;base64,AAAA" }],
 		});
 		expect(openNotebook).toHaveBeenCalledWith(NOTEBOOK_ID, {
 			description: "Kilo Desktop notebook tools",
@@ -182,7 +182,7 @@ describe("nteract Kilo plugin", () => {
 			success: true,
 			outputs: [{ outputType: "execute_result", dataJson: "{}" }],
 		}));
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult,
@@ -194,16 +194,15 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
-		expect(JSON.parse(result.output)).toEqual({
+		expect(JSON.parse(textOf(result))).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			cells: [
 				{
@@ -222,7 +221,7 @@ describe("nteract Kilo plugin", () => {
 				},
 			],
 		});
-		expect(result.title).toBe("Notebook contents");
+		expect(result.metadata?.title).toBe("Notebook contents");
 		expect(getExecutionResult).toHaveBeenCalledWith("execution-1");
 	});
 
@@ -235,7 +234,7 @@ describe("nteract Kilo plugin", () => {
 			moveCell: vi.fn(async () => "a2"),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -254,16 +253,15 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
-		expect(JSON.parse(result.output)).toEqual({
+		expect(JSON.parse(textOf(result))).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			results: [
 				{ action: "update", cell_id: "cell-2" },
@@ -274,21 +272,25 @@ describe("nteract Kilo plugin", () => {
 		expect(session.setCell).toHaveBeenCalledWith("cell-2", { source: "value = 42" });
 		expect(session.moveCell).toHaveBeenCalledWith("cell-2", "cell-1");
 		expect(
-			z.safeParse(hooks.tool.notebooks_edit_cells.args.operations!, [
-				{ action: "create", source: "# Analysis", cell_type: "markdown" },
-			]).success,
+			z.safeParse(hooks.tool.notebooks_edit_cells.input, {
+				notebook_id: NOTEBOOK_ID,
+				operations: [{ action: "create", source: "# Analysis", cell_type: "markdown" }],
+			}).success,
 		).toBe(false);
 	});
 
 	it("rejects edit operations with misspelled keys instead of dropping them", async () => {
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn() }),
 		})();
 
 		expect(
-			z.safeParse(hooks.tool.notebooks_edit_cells.args.operations!, [
-				{ action: "update", cell_id: "cell-1", "source/remove the kernel line": "x = 1" },
-			]).success,
+			z.safeParse(hooks.tool.notebooks_edit_cells.input, {
+				notebook_id: NOTEBOOK_ID,
+				operations: [
+					{ action: "update", cell_id: "cell-1", "source/remove the kernel line": "x = 1" },
+				],
+			}).success,
 		).toBe(false);
 	});
 
@@ -299,7 +301,7 @@ describe("nteract Kilo plugin", () => {
 			deleteCell: vi.fn(async () => true),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -325,7 +327,7 @@ describe("nteract Kilo plugin", () => {
 			deleteCell: vi.fn(async () => true),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -358,7 +360,7 @@ describe("nteract Kilo plugin", () => {
 			createCell: vi.fn(async () => "cell-new"),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 		const moveTo = (cellId: string, afterCellId: string) =>
@@ -404,7 +406,7 @@ describe("nteract Kilo plugin", () => {
 		const first = createSession();
 		const second = createSession();
 		const openNotebook = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook }),
 		})();
 		const edit = {
@@ -454,7 +456,7 @@ describe("nteract Kilo plugin", () => {
 				}),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -466,17 +468,16 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
-		expect(result.output).toBe("cell cell-1 [1] done\none\n\ncell cell-2 [2] done\ntwo");
-		expect(result.metadata).toEqual({
+		expect(textOf(result)).toBe("cell cell-1 [1] done\none\n\ncell cell-2 [2] done\ntwo");
+		expect(result.metadata).toMatchObject({
 			notebook_id: NOTEBOOK_ID,
 			cell_ids: ["cell-1", "cell-2"],
 			execution_ids: ["execution-1", "execution-2"],
@@ -497,7 +498,7 @@ describe("nteract Kilo plugin", () => {
 			})),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -514,12 +515,11 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
@@ -527,7 +527,7 @@ describe("nteract Kilo plugin", () => {
 			packageManager: "uv",
 		});
 		expect(session.syncEnvironment).toHaveBeenCalledOnce();
-		expect(JSON.parse(result.output)).toEqual({
+		expect(JSON.parse(textOf(result))).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			action: "add",
 			status: { uv: { dependencies: ["polars>=1"] }, fingerprint: "environment-2" },
@@ -549,7 +549,7 @@ describe("nteract Kilo plugin", () => {
 			})),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -561,17 +561,16 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
 		expect(session.restartKernel).toHaveBeenCalledOnce();
-		expect(JSON.parse(result.output)).toEqual({
+		expect(JSON.parse(textOf(result))).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			action: "restart",
 			status: {
@@ -591,7 +590,7 @@ describe("nteract Kilo plugin", () => {
 			"Failed to create conda env 'notebook-test' from environment.yml: Failed to fetch package metadata: HTTP status client error (403 Forbidden)";
 
 		function diagnoseHooks(session: Record<string, unknown>) {
-			return createNteractKiloPlugin({
+			return bootPlugin({
 				loadRuntimedNode: () => ({
 					openNotebook: vi.fn(async () => ({
 						notebookId: NOTEBOOK_ID,
@@ -626,9 +625,9 @@ describe("nteract Kilo plugin", () => {
 				toolContext(),
 			);
 
-			expect(result.title).toBe("Notebook error diagnosed");
-			expect(result.metadata).toEqual({ notebook_id: NOTEBOOK_ID, has_error: true });
-			expect(JSON.parse(result.output)).toEqual({
+			expect(result.metadata?.title).toBe("Notebook error diagnosed");
+			expect(result.metadata).toMatchObject({ notebook_id: NOTEBOOK_ID, has_error: true });
+			expect(JSON.parse(textOf(result))).toEqual({
 				notebook_id: NOTEBOOK_ID,
 				summary: `Kernel failed to start: conda_env_build_failed: ${CONDA_ERROR}`,
 				kernel_error: { reason: "conda_env_build_failed", details: CONDA_ERROR },
@@ -668,8 +667,8 @@ describe("nteract Kilo plugin", () => {
 				toolContext(),
 			);
 
-			expect(result.metadata).toEqual({ notebook_id: NOTEBOOK_ID, has_error: false });
-			expect(JSON.parse(result.output)).toMatchObject({
+			expect(result.metadata).toMatchObject({ notebook_id: NOTEBOOK_ID, has_error: false });
+			expect(JSON.parse(textOf(result))).toMatchObject({
 				summary: "Kernel is running (Idle).",
 				kernel_error: null,
 			});
@@ -693,7 +692,7 @@ describe("nteract Kilo plugin", () => {
 
 			const output = JSON.parse(
 				(await hooks.tool.notebooks_diagnose.execute({ notebook_id: NOTEBOOK_ID }, toolContext()))
-					.output,
+					.content as string,
 			);
 
 			expect(output.summary).toMatch(/approve the notebook dependencies/);
@@ -717,7 +716,7 @@ describe("nteract Kilo plugin", () => {
 				toolContext(),
 			);
 
-			expect(JSON.parse(result.output)).toEqual({
+			expect(JSON.parse(textOf(result))).toEqual({
 				notebook_id: NOTEBOOK_ID,
 				action: "status",
 				status: { fingerprint: "environment-1" },
@@ -736,12 +735,7 @@ describe("nteract Kilo plugin", () => {
 			trust: { status: "untrusted", needsApproval: true, approvedUvDependencies: ["numpy"] },
 		};
 
-		type AskRequest = {
-			permission: string;
-			patterns: string[];
-			always: string[];
-			metadata: Record<string, unknown>;
-		};
+		type AskRequest = PermissionCheck;
 
 		function approvalSession(
 			dependencyStatus: Record<string, unknown> = { fingerprint: "deps-1", trust: TRUSTED },
@@ -781,7 +775,7 @@ describe("nteract Kilo plugin", () => {
 		}
 
 		async function hooksFor(session: ReturnType<typeof approvalSession>) {
-			return createNteractKiloPlugin({
+			return bootPlugin({
 				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 			})();
 		}
@@ -790,71 +784,59 @@ describe("nteract Kilo plugin", () => {
 			return vi.fn(async (_request: AskRequest) => undefined);
 		}
 
-		function contextWithAsk(ask: ReturnType<typeof vi.fn>) {
-			return { ...toolContext(), ask: ask as never };
+		function contextWithAssert(ask: ReturnType<typeof vi.fn>) {
+			return { ...toolContext(), assert: ask as never };
 		}
 
 		it("makes dependency and execution approval prompt even when the agent allows every permission", async () => {
 			const hooks = await hooksFor(approvalSession());
-			const unconfigured: { permission?: unknown } = {};
-			const allowAll: { permission?: unknown } = { permission: { "*": "allow" } };
-			const userChoice: { permission?: unknown } = {
-				permission: { notebooks_trust: "allow", notebooks_execute: "deny" },
-			};
-			const allowExecute: { permission?: unknown } = {
-				permission: { notebooks_execute: "allow" },
-			};
-			const rememberedApproval: { permission?: unknown } = {
-				permission: { notebooks_execute: { [`ses_x:${NOTEBOOK_ID}`]: "allow" } },
-			};
-			const userPatterns = { "*": "allow", a: "deny" };
-			const userWildcard: { permission?: unknown } = {
-				permission: { notebooks_execute: userPatterns },
-			};
+			const allowAll = { action: "*", resource: "*", effect: "allow" };
+			const evaluate = (
+				action: string,
+				rules: { action: string; resource: string; effect: string }[] | undefined,
+				resources = [`ses_x:${NOTEBOOK_ID}`],
+			) =>
+				hooks.evaluate({ action, resources, effect: "allow", ...(rules ? { rules } : {}) }).effect;
 
-			for (const config of [
-				unconfigured,
-				allowAll,
-				userChoice,
-				allowExecute,
-				rememberedApproval,
-				userWildcard,
-			]) {
-				await hooks.config?.(config);
-			}
-
-			expect(unconfigured.permission).toEqual({
-				notebooks_trust: "ask",
-				notebooks_execute: "ask",
-			});
-			// Kilo evaluates the last matching rule, so the later entries override the catch-all.
-			expect(Object.entries(allowAll.permission as object)).toEqual([
-				["*", "allow"],
-				["notebooks_trust", "ask"],
-				["notebooks_execute", "ask"],
-			]);
-			expect(userChoice.permission).toEqual({
-				notebooks_trust: "allow",
-				notebooks_execute: "deny",
-			});
-			expect(allowExecute.permission).toEqual({
-				notebooks_execute: "allow",
-				notebooks_trust: "ask",
-			});
-			// Remembered "Always allow" rules must not drop the gate for everything else;
-			// the catch-all comes first so the later, specific allows still win.
-			const { notebooks_execute: remembered } = rememberedApproval.permission as {
-				notebooks_execute: object;
-			};
-			expect(Object.entries(remembered)).toEqual([
-				["*", "ask"],
-				[`ses_x:${NOTEBOOK_ID}`, "allow"],
-			]);
-			expect((userWildcard.permission as Record<string, unknown>).notebooks_execute).toEqual({
-				"*": "allow",
-				a: "deny",
-			});
-			expect(Object.keys(userPatterns)).toEqual(["*", "a"]);
+			// Kilo's built-in agents allow every action.
+			expect(evaluate("notebooks_execute", [allowAll])).toBe("ask");
+			expect(evaluate("notebooks_trust", [allowAll], ["uv: evil-pkg"])).toBe("ask");
+			// Without the rules Kilo evaluated, an allow can't be trusted.
+			expect(evaluate("notebooks_execute", undefined)).toBe("ask");
+			// The user's own rule, and Kilo's saved "Always allow" for this scope, stand.
+			expect(
+				evaluate("notebooks_execute", [
+					allowAll,
+					{ action: "notebooks_execute", resource: "*", effect: "allow" },
+				]),
+			).toBe("allow");
+			expect(
+				evaluate("notebooks_execute", [
+					allowAll,
+					{ action: "notebooks_execute", resource: `ses_x:${NOTEBOOK_ID}`, effect: "allow" },
+				]),
+			).toBe("allow");
+			// A saved allow for another notebook doesn't cover this one.
+			expect(
+				evaluate("notebooks_execute", [
+					allowAll,
+					{ action: "notebooks_execute", resource: "ses_x:other", effect: "allow" },
+				]),
+			).toBe("ask");
+			// Every resource must be covered.
+			expect(
+				evaluate(
+					"notebooks_trust",
+					[allowAll, { action: "notebooks_trust", resource: "uv: numpy", effect: "allow" }],
+					["uv: numpy", "uv: evil-pkg"],
+				),
+			).toBe("ask");
+			// Other actions, and decisions other than allow, are left alone.
+			expect(evaluate("shell", [allowAll], ["ls"])).toBe("allow");
+			expect(
+				hooks.evaluate({ action: "notebooks_execute", resources: ["x"], effect: "deny" }).effect,
+			).toBe("deny");
+			expect(requireNotebookPrompt).toBeTypeOf("function");
 		});
 
 		it("adds default-approved packages to a trusted notebook without asking", async () => {
@@ -865,7 +847,7 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["pandas>=2", "conda-forge::numpy"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).not.toHaveBeenCalled();
@@ -888,13 +870,13 @@ describe("nteract Kilo plugin", () => {
 					packages: ["requests>=2"],
 					package_manager: "uv",
 				},
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).toHaveBeenCalledWith({
-				permission: "notebooks_trust",
-				patterns: ["requests"],
-				always: ["requests"],
+				action: "notebooks_trust",
+				resources: ["requests"],
+				save: ["requests"],
 				metadata: {
 					toolName: "Notebook packages",
 					title: "Allow the agent to install requests in this notebook?",
@@ -919,12 +901,12 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["requests"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask.mock.calls[0]?.[0]).toMatchObject({
-				patterns: ["uv: evil-pkg", "requests"],
-				always: ["requests"],
+				resources: ["uv: evil-pkg", "requests"],
+				save: ["requests"],
 			});
 			expect(session.addDependencies).toHaveBeenCalledOnce();
 		});
@@ -939,7 +921,7 @@ describe("nteract Kilo plugin", () => {
 					await hooksFor(approvalSession(status))
 				).tool.notebooks_dependencies.execute(
 					{ notebook_id: NOTEBOOK_ID, ...args },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				);
 				return ask.mock.calls[0]?.[0].metadata["title"];
 			};
@@ -974,12 +956,12 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["numppy>=1"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask.mock.calls[0]?.[0]).toMatchObject({
-				patterns: ["numppy (similar to numpy)"],
-				always: [],
+				resources: ["numppy (similar to numpy)"],
+				save: [],
 				metadata: {
 					typosquat_warnings: [{ package: "numppy", similar_to: "numpy", distance: 1 }],
 				},
@@ -996,13 +978,13 @@ describe("nteract Kilo plugin", () => {
 			await expect(
 				hooks.tool.notebooks_dependencies.execute(
 					{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["reqeusts"] },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				),
 			).rejects.toThrow(/rejected/);
 			await expect(
 				hooks.tool.notebooks_run_cell.execute(
 					{ notebook_id: NOTEBOOK_ID, code: "import requests", dependencies: ["requests"] },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				),
 			).rejects.toThrow(/rejected/);
 
@@ -1017,7 +999,7 @@ describe("nteract Kilo plugin", () => {
 			await expect(
 				(await hooksFor(session)).tool.notebooks_dependencies.execute(
 					{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
-					contextWithAsk(approving()),
+					contextWithAssert(approving()),
 				),
 			).rejects.toThrow(/changed while approval was pending/);
 			expect(session.approveTrust).not.toHaveBeenCalled();
@@ -1033,15 +1015,15 @@ describe("nteract Kilo plugin", () => {
 
 			await hooks.tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "remove", packages: ["evil-pkg"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 			await hooks.tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "remove", packages: ["evil-pkg", "other-pkg"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).toHaveBeenCalledOnce();
-			expect(ask.mock.calls[0]?.[0]).toMatchObject({ patterns: ["uv: other-pkg"], always: [] });
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({ resources: ["uv: other-pkg"], save: [] });
 			expect(session.removeDependencies).toHaveBeenCalledTimes(2);
 		});
 
@@ -1063,13 +1045,13 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).toHaveBeenCalledWith({
-				permission: "notebooks_trust",
-				patterns: ["uv: numppy (similar to numpy)", "pixi-pypi: polars"],
-				always: [],
+				action: "notebooks_trust",
+				resources: ["uv: numppy (similar to numpy)", "pixi-pypi: polars"],
+				save: [],
 				metadata: {
 					toolName: "Notebook packages",
 					title: "Check package names: some look like misspellings of popular packages",
@@ -1090,19 +1072,19 @@ describe("nteract Kilo plugin", () => {
 
 			await hooks.tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["evil-pkg"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 			await hooks.tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["evil-pkg>=1"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			// The exact spec is listed once, as the notebook's own dependency.
-			expect(ask.mock.calls[0]?.[0]).toMatchObject({ patterns: ["uv: evil-pkg"], always: [] });
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({ resources: ["uv: evil-pkg"], save: [] });
 			// A different spec for the same package is shown but still not rememberable.
 			expect(ask.mock.calls[1]?.[0]).toMatchObject({
-				patterns: ["uv: evil-pkg", "evil-pkg"],
-				always: [],
+				resources: ["uv: evil-pkg", "evil-pkg"],
+				save: [],
 			});
 		});
 
@@ -1118,12 +1100,12 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "remove", packages: ["evil-pkg"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask.mock.calls[0]?.[0]).toMatchObject({
-				patterns: ["conda channel: my-org"],
-				always: [],
+				resources: ["conda channel: my-org"],
+				save: [],
 			});
 			expect(session.removeDependencies).toHaveBeenCalledOnce();
 		});
@@ -1140,10 +1122,10 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
-			expect(ask.mock.calls[0]?.[0]).toMatchObject({ patterns: ["conda channel: my-org"] });
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({ resources: ["conda channel: my-org"] });
 			expect(session.approveTrust).toHaveBeenCalledOnce();
 		});
 
@@ -1155,12 +1137,12 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_dependencies.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).not.toHaveBeenCalled();
 			expect(session.approveTrust).not.toHaveBeenCalled();
-			expect(JSON.parse(result.output)).not.toHaveProperty("approval");
+			expect(JSON.parse(textOf(result))).not.toHaveProperty("approval");
 		});
 
 		it("reports what needs approval in dependency status and diagnosis", async () => {
@@ -1172,11 +1154,11 @@ describe("nteract Kilo plugin", () => {
 						{ notebook_id: NOTEBOOK_ID, action: "status" },
 						toolContext(),
 					)
-				).output,
+				).content as string,
 			);
 			const diagnosis = JSON.parse(
 				(await hooks.tool.notebooks_diagnose.execute({ notebook_id: NOTEBOOK_ID }, toolContext()))
-					.output,
+					.content as string,
 			);
 
 			expect(status.approval).toEqual({ needs_approval: true, unapproved: ["uv: evil-pkg"] });
@@ -1198,12 +1180,7 @@ describe("nteract Kilo plugin", () => {
 	});
 
 	describe("execution approval", () => {
-		type AskRequest = {
-			permission: string;
-			patterns: string[];
-			always: string[];
-			metadata: Record<string, unknown>;
-		};
+		type AskRequest = PermissionCheck;
 
 		const RUN_DESCRIPTION =
 			"The code runs on your computer with your permissions. Only allow code you expect.";
@@ -1246,7 +1223,7 @@ describe("nteract Kilo plugin", () => {
 		}
 
 		async function hooksFor(session: ReturnType<typeof executionSession>) {
-			return createNteractKiloPlugin({
+			return bootPlugin({
 				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 			})();
 		}
@@ -1261,8 +1238,8 @@ describe("nteract Kilo plugin", () => {
 			});
 		}
 
-		function contextWithAsk(ask: ReturnType<typeof vi.fn>) {
-			return { ...toolContext(), ask: ask as never };
+		function contextWithAssert(ask: ReturnType<typeof vi.fn>) {
+			return { ...toolContext(), assert: ask as never };
 		}
 
 		it("asks once, per notebook, before run_cell executes code", async () => {
@@ -1273,13 +1250,13 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_run_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, code: "print('hi')" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).toHaveBeenCalledExactlyOnceWith({
-				permission: "notebooks_execute",
-				patterns: [SESSION_SCOPE],
-				always: [SESSION_SCOPE],
+				action: "notebooks_execute",
+				resources: [SESSION_SCOPE],
+				save: [SESSION_SCOPE],
 				metadata: {
 					toolName: "Run notebook code",
 					title: "Run code in this notebook?",
@@ -1300,10 +1277,10 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_run_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, code: "import requests", dependencies: ["requests"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
-			expect(ask.mock.calls.map(([request]) => request.permission)).toEqual([
+			expect(ask.mock.calls.map(([request]) => request.action)).toEqual([
 				"notebooks_execute",
 				"notebooks_trust",
 			]);
@@ -1317,30 +1294,30 @@ describe("nteract Kilo plugin", () => {
 			await expect(
 				hooks.tool.notebooks_run_cell.execute(
 					{ notebook_id: NOTEBOOK_ID, code: "1", dependencies: ["requests"] },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				),
 			).rejects.toThrow(/rejected/);
 			await expect(
 				hooks.tool.notebooks_create_cell.execute(
 					{ notebook_id: NOTEBOOK_ID, source: "1", and_run: true },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				),
 			).rejects.toThrow(/rejected/);
 			await expect(
 				hooks.tool.notebooks_execute.execute(
 					{ notebook_id: NOTEBOOK_ID, cell_ids: ["cell-1"] },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				),
 			).rejects.toThrow(/rejected/);
 			await expect(
 				hooks.tool.notebooks_kernel.execute(
 					{ notebook_id: NOTEBOOK_ID, action: "restart" },
-					contextWithAsk(ask),
+					contextWithAssert(ask),
 				),
 			).rejects.toThrow(/rejected/);
 
 			expect(ask).toHaveBeenCalledTimes(4);
-			expect(ask.mock.calls.every(([request]) => request.permission === "notebooks_execute")).toBe(
+			expect(ask.mock.calls.every(([request]) => request.action === "notebooks_execute")).toBe(
 				true,
 			);
 			expect(session.addDependencies).not.toHaveBeenCalled();
@@ -1358,12 +1335,12 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_create_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, source: "x = 1", and_run: true },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).toHaveBeenCalledExactlyOnceWith(
 				expect.objectContaining({
-					permission: "notebooks_execute",
+					action: "notebooks_execute",
 					metadata: expect.objectContaining({
 						title: "Run code in this notebook?",
 						action: "run",
@@ -1381,11 +1358,11 @@ describe("nteract Kilo plugin", () => {
 
 			await hooks.tool.notebooks_create_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, source: "x = 1" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 			await hooks.tool.notebooks_create_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, source: "# t", cell_type: "markdown", and_run: true },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).not.toHaveBeenCalled();
@@ -1408,13 +1385,13 @@ describe("nteract Kilo plugin", () => {
 				await hooksFor(session)
 			).tool.notebooks_execute.execute(
 				{ notebook_id: NOTEBOOK_ID, cell_ids: ["cell-3", "cell-1", "cell-2"] },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 
 			expect(ask).toHaveBeenCalledExactlyOnceWith({
-				permission: "notebooks_execute",
-				patterns: [SESSION_SCOPE],
-				always: [SESSION_SCOPE],
+				action: "notebooks_execute",
+				resources: [SESSION_SCOPE],
+				save: [SESSION_SCOPE],
 				metadata: {
 					toolName: "Run notebook code",
 					title: "Run 3 notebook cells?",
@@ -1434,7 +1411,10 @@ describe("nteract Kilo plugin", () => {
 			const hooks = await hooksFor(session);
 			const ask = approving();
 
-			await hooks.tool.notebooks_execute.execute({ notebook_id: NOTEBOOK_ID }, contextWithAsk(ask));
+			await hooks.tool.notebooks_execute.execute(
+				{ notebook_id: NOTEBOOK_ID },
+				contextWithAssert(ask),
+			);
 			expect(ask.mock.calls[0]?.[0].metadata).toMatchObject({
 				title: "Run all code cells?",
 				cell_ids: ["cell-1"],
@@ -1443,7 +1423,10 @@ describe("nteract Kilo plugin", () => {
 			});
 
 			session.listCells.mockResolvedValueOnce([]);
-			await hooks.tool.notebooks_execute.execute({ notebook_id: NOTEBOOK_ID }, contextWithAsk(ask));
+			await hooks.tool.notebooks_execute.execute(
+				{ notebook_id: NOTEBOOK_ID },
+				contextWithAssert(ask),
+			);
 			expect(ask).toHaveBeenCalledOnce();
 		});
 
@@ -1454,23 +1437,23 @@ describe("nteract Kilo plugin", () => {
 
 			await hooks.tool.notebooks_kernel.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "status" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 			await hooks.tool.notebooks_kernel.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "interrupt" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 			expect(ask).not.toHaveBeenCalled();
 
 			await hooks.tool.notebooks_kernel.execute(
 				{ notebook_id: NOTEBOOK_ID, action: "restart" },
-				contextWithAsk(ask),
+				contextWithAssert(ask),
 			);
 			expect(ask).toHaveBeenCalledExactlyOnceWith(
 				expect.objectContaining({
-					permission: "notebooks_execute",
-					patterns: [SESSION_SCOPE],
-					always: [SESSION_SCOPE],
+					action: "notebooks_execute",
+					resources: [SESSION_SCOPE],
+					save: [SESSION_SCOPE],
 					metadata: expect.objectContaining({
 						title: "Restart the notebook kernel?",
 						action: "restart",
@@ -1482,7 +1465,7 @@ describe("nteract Kilo plugin", () => {
 
 		const OTHER_NOTEBOOK_ID = "0b7f3a52-8c1e-4d6a-9f2b-3e4d5c6b7a81";
 		type Hooks = Awaited<ReturnType<typeof hooksFor>>;
-		type Context = ReturnType<typeof contextWithAsk>;
+		type Context = ReturnType<typeof contextWithAssert>;
 		const executingCalls: [
 			string,
 			(hooks: Hooks, notebookId: string, context: Context) => unknown,
@@ -1520,13 +1503,13 @@ describe("nteract Kilo plugin", () => {
 			async (_name, run) => {
 				const hooks = await hooksFor(executionSession());
 				const ask = approving();
-				const inSession = (sessionID: string) => ({ ...contextWithAsk(ask), sessionID });
+				const inSession = (sessionID: string) => ({ ...contextWithAssert(ask), sessionID });
 
 				await run(hooks, NOTEBOOK_ID, inSession("kilo-session-1"));
 				await run(hooks, NOTEBOOK_ID, inSession("kilo-session-2"));
 				await run(hooks, OTHER_NOTEBOOK_ID, inSession("kilo-session-1"));
 
-				expect(ask.mock.calls.map(([request]) => [request.patterns, request.always])).toEqual([
+				expect(ask.mock.calls.map(([request]) => [request.resources, request.save])).toEqual([
 					[[`kilo-session-1:${NOTEBOOK_ID}`], [`kilo-session-1:${NOTEBOOK_ID}`]],
 					[[`kilo-session-2:${NOTEBOOK_ID}`], [`kilo-session-2:${NOTEBOOK_ID}`]],
 					[[`kilo-session-1:${OTHER_NOTEBOOK_ID}`], [`kilo-session-1:${OTHER_NOTEBOOK_ID}`]],
@@ -1545,7 +1528,7 @@ describe("nteract Kilo plugin", () => {
 			const ask = approving();
 			const aborted = new AbortController();
 			aborted.abort();
-			const cancelled = { ...contextWithAsk(ask), abort: aborted.signal };
+			const cancelled = { ...contextWithAssert(ask), signal: aborted.signal };
 
 			await expect(
 				hooks.tool.notebooks_run_cell.execute({ notebook_id: NOTEBOOK_ID, code: "1" }, cancelled),
@@ -1557,7 +1540,10 @@ describe("nteract Kilo plugin", () => {
 				),
 			).rejects.toThrow(/cancelled/);
 			await expect(
-				hooks.tool.notebooks_run_cell.execute({ notebook_id: "?", code: "1" }, contextWithAsk(ask)),
+				hooks.tool.notebooks_run_cell.execute(
+					{ notebook_id: "?", code: "1" },
+					contextWithAssert(ask),
+				),
 			).rejects.toThrow(/notebook_id must be a notebook UUID/);
 
 			expect(ask).not.toHaveBeenCalled();
@@ -1570,7 +1556,7 @@ describe("nteract Kilo plugin", () => {
 			saveNotebook: vi.fn(async () => undefined),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -1583,12 +1569,11 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask,
+				signal: new AbortController().signal,
+				assert: ask,
 			},
 		);
 
@@ -1596,9 +1581,9 @@ describe("nteract Kilo plugin", () => {
 		expect(session.saveNotebook).toHaveBeenCalledWith(savedPath);
 		expect(ask).not.toHaveBeenCalled();
 		expect(result).toEqual({
-			title: "Notebook saved",
-			output: savedPath,
+			content: savedPath,
 			metadata: {
+				title: "Notebook saved",
 				notebook_id: NOTEBOOK_ID,
 				path: savedPath,
 			},
@@ -1611,7 +1596,7 @@ describe("nteract Kilo plugin", () => {
 			saveNotebook: vi.fn(async () => undefined),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -1624,20 +1609,19 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask,
+				signal: new AbortController().signal,
+				assert: ask,
 			},
 		);
 
 		const externalPath = path.resolve("/exports/analysis.ipynb");
 		expect(ask).toHaveBeenCalledWith({
-			permission: "external_directory",
-			patterns: [externalPath],
-			always: [],
+			action: "external_directory",
+			resources: [externalPath],
+			save: [],
 			metadata: { notebook_id: NOTEBOOK_ID, path: externalPath },
 		});
 		expect(session.saveNotebook).toHaveBeenCalledWith(externalPath);
@@ -1666,7 +1650,7 @@ describe("nteract Kilo plugin", () => {
 				saveNotebook: vi.fn(async () => undefined),
 				close: vi.fn(async () => undefined),
 			};
-			const hooks = await createNteractKiloPlugin({
+			const hooks = await bootPlugin({
 				loadRuntimedNode: () => ({
 					openNotebook: vi.fn(async () => session),
 					listActiveNotebooks: vi.fn(async () => [{ notebookId: NOTEBOOK_ID, notebookPath }]),
@@ -1676,7 +1660,7 @@ describe("nteract Kilo plugin", () => {
 		}
 
 		function contextIn(workspace: string, ask: () => Promise<void>) {
-			return { ...toolContext({ worktree: workspace }), directory: workspace, ask };
+			return { ...toolContext({ worktree: workspace }), directory: workspace, assert: ask };
 		}
 
 		it("reads a workspace notebook without asking", async () => {
@@ -1710,9 +1694,9 @@ describe("nteract Kilo plugin", () => {
 
 			expect(ask).toHaveBeenCalledTimes(2);
 			expect(ask).toHaveBeenLastCalledWith({
-				permission: "external_directory",
-				patterns: [path.join(outside, "*")],
-				always: [path.join(outside, "*")],
+				action: "external_directory",
+				resources: [path.join(outside, "*")],
+				save: [path.join(outside, "*")],
 				metadata: expect.objectContaining({
 					filepath: path.join(outside, "notes.ipynb"),
 					parentDir: outside,
@@ -1743,8 +1727,8 @@ describe("nteract Kilo plugin", () => {
 			expect(ask).toHaveBeenCalledOnce();
 			expect(ask).toHaveBeenCalledWith(
 				expect.objectContaining({
-					permission: "external_directory",
-					patterns: [path.join(outside, ...outsideParts)],
+					action: "external_directory",
+					resources: [path.join(outside, ...outsideParts)],
 				}),
 			);
 			expect(session.saveNotebook).toHaveBeenCalledTimes(2);
@@ -1763,7 +1747,7 @@ describe("nteract Kilo plugin", () => {
 			})),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({
 				openNotebook: vi.fn(async () => session),
 				getExecutionResult: vi.fn(),
@@ -1774,27 +1758,24 @@ describe("nteract Kilo plugin", () => {
 			{
 				sessionID: "kilo-session-1",
 				messageID: "message-1",
-				agent: "build",
+				agent: "code",
 				directory: "/projects/demo",
 				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask: vi.fn(async () => undefined),
+				signal: new AbortController().signal,
+				assert: vi.fn(async () => undefined),
 			},
 		);
 
-		await hooks.event?.({
-			event: { type: "session.deleted", properties: { sessionID: "kilo-session-1" } },
-		});
+		await hooks.emit({ type: "session.deleted", data: { sessionID: "kilo-session-1" } });
 
 		expect(session.close).toHaveBeenCalledOnce();
 	});
 
 	it("rejects a runtimed module that does not export openNotebook", async () => {
-		await expect(createNteractKiloPlugin({ loadRuntimedNode: () => ({}) })()).rejects.toThrow(
+		await expect(bootPlugin({ loadRuntimedNode: () => ({}) })()).rejects.toThrow(
 			/does not export openNotebook/,
 		);
-		await expect(createNteractKiloPlugin({ loadRuntimedNode: () => null })()).rejects.toThrow(
+		await expect(bootPlugin({ loadRuntimedNode: () => null })()).rejects.toThrow(
 			/did not export a module object/,
 		);
 	});
@@ -1815,7 +1796,7 @@ describe("nteract Kilo plugin", () => {
 			.fn()
 			.mockRejectedValueOnce(new Error("daemon unavailable"))
 			.mockResolvedValue(session);
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook }),
 		})();
 
@@ -1840,7 +1821,7 @@ describe("nteract Kilo plugin", () => {
 			})),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 		await hooks.tool.notebooks_run_cell.execute(
@@ -1852,15 +1833,11 @@ describe("nteract Kilo plugin", () => {
 			{ ...toolContext(), sessionID: "kilo-session-2" },
 		);
 
-		await hooks.event?.({
-			event: { type: "session.deleted", properties: { sessionID: "kilo-session-1" } },
-		});
+		await hooks.emit({ type: "session.deleted", data: { sessionID: "kilo-session-1" } });
 		expect(session.close).not.toHaveBeenCalled();
 
-		await hooks.event?.({ event: { type: "file.edited" } });
-		await hooks.event?.({
-			event: { type: "session.deleted", properties: { sessionID: "kilo-session-2" } },
-		});
+		await hooks.emit({ type: "file.edited" });
+		await hooks.emit({ type: "session.deleted", data: { sessionID: "kilo-session-2" } });
 		expect(session.close).toHaveBeenCalledOnce();
 	});
 
@@ -1886,7 +1863,7 @@ describe("nteract Kilo plugin", () => {
 			})),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -1895,9 +1872,9 @@ describe("nteract Kilo plugin", () => {
 			toolContext(),
 		);
 
-		expect(result.output).toContain("[stderr] warn");
-		expect(result.output).toContain("Traceback (most recent call last):");
-		expect(result.output).toContain("[update_display_data output]");
+		expect(textOf(result)).toContain("[stderr] warn");
+		expect(textOf(result)).toContain("Traceback (most recent call last):");
+		expect(textOf(result)).toContain("[update_display_data output]");
 	});
 
 	it("refuses cancelled run and create calls and missing cells", async () => {
@@ -1908,7 +1885,7 @@ describe("nteract Kilo plugin", () => {
 			runCell: vi.fn(),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 		const aborted = new AbortController();
@@ -1917,13 +1894,13 @@ describe("nteract Kilo plugin", () => {
 		await expect(
 			hooks.tool.notebooks_run_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, code: "1" },
-				toolContext({ abort: aborted.signal }),
+				toolContext({ signal: aborted.signal }),
 			),
 		).rejects.toThrow(/cancelled/);
 		await expect(
 			hooks.tool.notebooks_create_cell.execute(
 				{ notebook_id: NOTEBOOK_ID, source: "1" },
-				toolContext({ abort: aborted.signal }),
+				toolContext({ signal: aborted.signal }),
 			),
 		).rejects.toThrow(/cancelled/);
 		await expect(
@@ -1943,7 +1920,7 @@ describe("nteract Kilo plugin", () => {
 			executeCell: vi.fn(),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -1959,7 +1936,7 @@ describe("nteract Kilo plugin", () => {
 
 		expect(session.createCell).toHaveBeenCalledWith("# Intro", { cellType: "markdown", index: 0 });
 		expect(session.executeCell).not.toHaveBeenCalled();
-		expect(JSON.parse(result.output)).toEqual({
+		expect(JSON.parse(textOf(result))).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			cell_id: "cell-md",
 			cell_type: "markdown",
@@ -1992,7 +1969,7 @@ describe("nteract Kilo plugin", () => {
 				}),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -2013,7 +1990,7 @@ describe("nteract Kilo plugin", () => {
 			getDependencyStatus: vi.fn(async () => ({ fingerprint: "environment-0" })),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -2038,7 +2015,7 @@ describe("nteract Kilo plugin", () => {
 
 		expect(session.removeDependencies).toHaveBeenCalledWith(["pandas"], undefined);
 		expect(session.syncEnvironment).toHaveBeenCalledTimes(2);
-		expect(JSON.parse(status.output).action).toBe("status");
+		expect(JSON.parse(textOf(status)).action).toBe("status");
 	});
 
 	it("interrupts the kernel and saves to the notebook's current path", async () => {
@@ -2049,7 +2026,7 @@ describe("nteract Kilo plugin", () => {
 			saveNotebook: vi.fn(async () => undefined),
 			close: vi.fn(async () => undefined),
 		};
-		const hooks = await createNteractKiloPlugin({
+		const hooks = await bootPlugin({
 			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
 		})();
 
@@ -2070,7 +2047,7 @@ describe("nteract Kilo plugin", () => {
 
 		expect(session.interruptKernel).toHaveBeenCalledOnce();
 		expect(session.saveNotebook).toHaveBeenCalledWith();
-		expect(saved.output).toBe("Saved to the notebook's current path.");
+		expect(textOf(saved)).toBe("Saved to the notebook's current path.");
 	});
 });
 
@@ -2081,7 +2058,7 @@ describe("notebook_id contract", () => {
 
 	async function pluginWithSpy() {
 		const openNotebook = vi.fn();
-		const hooks = await createNteractKiloPlugin({ loadRuntimedNode: () => ({ openNotebook }) })();
+		const hooks = await bootPlugin({ loadRuntimedNode: () => ({ openNotebook }) })();
 		const tool = (name: keyof typeof hooks.tool) => hooks.tool[name] as AnyTool;
 		return { openNotebook, tool };
 	}

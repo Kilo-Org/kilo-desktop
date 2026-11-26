@@ -30,7 +30,8 @@ import { KiloConfigManager } from "./KiloConfigManager";
 import { KiloConfiguration } from "./KiloConfiguration";
 import { KiloPluginConfig } from "./KiloPluginConfig";
 import { KiloSkillConfig, kiloSkillDirectory } from "./KiloSkillConfig";
-import { removeLegacyKiloConfigPlugins } from "./managed-kilo-plugins";
+import { reconcileChatSystemPlugin } from "./conversations/chat-system-plugin";
+import { removeLegacyKiloConfigPlugins, removeLegacyKiloPluginFiles } from "./managed-kilo-plugins";
 import { followSignedIn } from "./signed-in";
 import {
 	adoptKiloAgentStorage,
@@ -315,6 +316,12 @@ export async function activateAgent(sdk: PluginSdk, options: AgentOptions): Prom
 			try {
 				await step("Removing legacy Kilo config plugins", () =>
 					removeLegacyKiloConfigPlugins(directories.configDirectory),
+				);
+				await step("Removing Kilo v1 plugin files", () =>
+					removeLegacyKiloPluginFiles(directories.managedPluginDirectory),
+				);
+				await step("Installing the chat system prompt plugin", () =>
+					reconcileChatSystemPlugin(directories.managedPluginDirectory),
 				);
 				await step("Applying MCP servers", () => mcpServers.reconcile());
 				await step("Applying agent extensions", () => agentExtensions.reconcile());

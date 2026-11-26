@@ -19,6 +19,7 @@ export default defineConfig({
 				"src/main/index.ts",
 				"src/test/**",
 				"src/main/test-*.ts",
+				"src/kilo-plugin/test-host.ts",
 				// Binary and notebook UI staging are exercised by prepare-assets,
 				// not by unit coverage.
 				"src/packaging/staging/**",

@@ -2,9 +2,10 @@
  * User approval before agent notebook tools run code on the user's machine.
  *
  * Notebook kernels execute arbitrary Python with the user's permissions, so
- * without this gate the notebook tools would bypass the `bash` ask rule. Kilo
- * only prompts for a plugin tool when the tool calls `context.ask`; the plugin
- * `config` hook makes `notebooks_execute` default to `"ask"`.
+ * without this gate the notebook tools would bypass the `shell` ask rule. Kilo
+ * only prompts for a plugin tool when the tool calls `permission.assert`; the
+ * plugin's `permission.evaluate` hook keeps `notebooks_execute` asking under
+ * Kilo's allow-everything agent defaults (`requireNotebookPrompt`).
  *
  * Invariants:
  * - One prompt per tool call, however many cells it runs.
@@ -12,9 +13,9 @@
  *   session asks again. "Allow once" covers one call.
  * - Callers ask before any mutation, so a rejection leaves the notebook unchanged.
  *
- * Kilo remembers "Always allow" globally (and persists it to the user's
- * config), and `context.ask` resolves the same for "once" and "always", so the
- * session scope has to live in the pattern Kilo stores: see `executionScope`.
+ * Kilo saves "Always allow" for the project, and `permission.assert` resolves
+ * the same for "once" and "always", so the session scope has to live in the
+ * pattern Kilo saves: see `executionScope`.
  */
 import type { ApprovalContext } from "./dependency-approval";
 
@@ -81,10 +82,10 @@ export async function requireExecutionApproval(
 ): Promise<void> {
 	const { title, description, details } = promptFor(execution);
 	const scope = executionScope(context.sessionID, notebookId);
-	await context.ask({
-		permission: EXECUTE_PERMISSION,
-		patterns: [scope],
-		always: [scope],
+	await context.assert({
+		action: EXECUTE_PERMISSION,
+		resources: [scope],
+		save: [scope],
 		metadata: {
 			// `toolName`, `title`, and `description` are what the chat permission card displays.
 			toolName: PROMPT_LABEL,

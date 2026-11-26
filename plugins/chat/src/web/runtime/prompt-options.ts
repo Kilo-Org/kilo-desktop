@@ -39,7 +39,9 @@ export interface PromptOptions {
 
 /**
  * Where a prompt's system prompt rides: v2 prompts take no system prompt, so
- * the chat's goes on the prompt message's metadata under Desktop's key.
+ * the chat's goes on the prompt message's metadata under Desktop's key, and
+ * kilo.core's chat system prompt plugin adds it to the model request's system
+ * prompt.
  */
 export const PROMPT_METADATA_KEY = "kilo-desktop";
 

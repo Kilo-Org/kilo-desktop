@@ -1,6 +1,7 @@
 // Test fixtures other plugins' tests may use (`@kilo-desktop/plugin-core/testing`):
 // the bundled kilo2 in an isolated home, a stand-in Kilo API and a stand-in model.
 export {
+	installKiloPlugin,
 	kilo2Executable,
 	startKilo2,
 	startStandInKiloApi,

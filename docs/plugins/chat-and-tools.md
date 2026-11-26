@@ -121,7 +121,7 @@ A `permission-renderer` with `tools` (contribution keys) applies its
 permission parts only to requests from those desktop tools — matched on
 kilo.core's `PermissionRequest.toolKey`, never on wire names. `permissions`
 limits them to requests for those Kilo permissions, for ones no desktop tool
-raises (a Kilo plugin's `context.ask`). A request matching either applies;
+raises (a Kilo plugin's `permission.assert`). A request matching either applies;
 with neither, they apply to every request.
 
 ## The composer

@@ -32,7 +32,7 @@ describe("KiloPluginConfig", () => {
 			reason: "updated",
 		});
 		await expect(
-			readFile(path.join(pluginDirectory, "anaconda-notebooks.js"), "utf8"),
+			readFile(path.join(pluginDirectory, "anaconda-notebooks", "index.js"), "utf8"),
 		).resolves.toMatch(/^\/\/ Kilo Desktop managed plugin: kilo\.notebook\/notebooks\n/);
 		await expect(config.install("kilo.other", "notebooks", sourcePath)).resolves.toMatchObject({
 			kind: "skipped-error",
@@ -50,7 +50,7 @@ describe("KiloPluginConfig", () => {
 			kind: "written",
 			reason: "created",
 		});
-		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.js");
+		const installedPath = path.join(pluginDirectory, "anaconda-notebooks", "index.js");
 		expect(await readFile(installedPath, "utf8")).toBe(
 			"// Kilo Desktop managed plugin: notebook/notebooks\n" +
 				"export default { id: 'notebooks' };\n",
@@ -84,8 +84,8 @@ describe("KiloPluginConfig", () => {
 	});
 
 	it("refuses to overwrite or remove a plugin file it does not own", async () => {
-		await mkdir(pluginDirectory, { recursive: true });
-		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.js");
+		await mkdir(path.join(pluginDirectory, "anaconda-notebooks"), { recursive: true });
+		const installedPath = path.join(pluginDirectory, "anaconda-notebooks", "index.js");
 		await writeFile(installedPath, "export default { id: 'user-plugin' };\n");
 		const config = new KiloPluginConfig(pluginDirectory);
 

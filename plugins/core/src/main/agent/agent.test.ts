@@ -470,7 +470,7 @@ describe("agent extensions", () => {
 		});
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
 		const configFile = path.join(storage, CONFIG_FILE);
-		const pluginFile = path.join(storage, "agent/runtime/kilo-plugins/anaconda-notebooks.js");
+		const pluginFile = path.join(storage, "agent/runtime/kilo-plugins/anaconda-notebooks/index.js");
 		const skillLink = path.join(storage, "agent/runtime/config/kilo2/skills/review");
 
 		expect(await readJsonc(configFile)).toMatchObject({
@@ -541,7 +541,7 @@ describe("agent extensions", () => {
 			testPlugin("acme.dynamic", { entry: { activate: () => {} } }),
 		]);
 		await eventually(() => expect(serviceStatus(kernel)).toBe("ready"));
-		const file = path.join(storage, "agent/runtime/kilo-plugins/anaconda-extra.js");
+		const file = path.join(storage, "agent/runtime/kilo-plugins/anaconda-extra/index.js");
 
 		const contribution = kernel.sdkFor("acme.dynamic").extensions.add(AgentExtension, {
 			id: "extra",

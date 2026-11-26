@@ -35,6 +35,7 @@ export type WebMcpRelayEntry = Readonly<{
 	url: string;
 	oauth: false;
 	headers: Readonly<Record<string, string>>;
+	codemode: false;
 }>;
 
 const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
@@ -43,6 +44,10 @@ const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
 	// A loopback endpoint with a bearer token; skip Kilo's OAuth discovery.
 	oauth: false,
 	headers: { Authorization: `Bearer {env:${WEBMCP_ENDPOINT_TOKEN_ENV}}` },
+	// Kilo v2 offers MCP tools through its Code Mode `execute` tool unless told
+	// otherwise. Desktop's tools stay direct calls named `desktop_<tool>`: chat
+	// renderers, permission rules and the caller-context plugin key on them.
+	codemode: false,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

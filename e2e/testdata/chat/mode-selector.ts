@@ -7,15 +7,16 @@ export type KiloConnection = {
 
 export type ChatModeSession = {
 	id: string;
-	directory?: string;
+	directory: string;
 	agent?: string;
 };
 
+/** An agent as Kilo v2's `GET /api/agent` lists it. */
 export type KiloAgent = {
+	id: string;
 	name: string;
 	mode: "subagent" | "primary" | "all";
 	hidden?: boolean;
-	deprecated?: boolean;
 };
 
 export const chatModeSelectorData = {

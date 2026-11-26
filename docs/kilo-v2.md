@@ -563,6 +563,43 @@ tool unless the server entry or tool sets `codemode: false`; Desktop sets it on
   unit suite. `@kilo-desktop/plugin-core/testing` gains `installKiloPlugin`
   and `startKilo2({ environment, webMcpEndpoint })`.
 
+## e2e and CI on v2 (step 15)
+
+- **Harness:** global setup pre-warms `<Resources>/kilo/<target>/bin/kilo2`
+  with `kilo2 models --standalone` (a private server, so nothing outlives
+  it). Launches add `KILO_DISABLE_AUTOUPDATE=1`; the server's log is
+  `<XDG_DATA_HOME>/kilo2/log/opencode.log`; the global config the About row
+  shows is `<XDG_CONFIG_HOME>/kilo2/kilo2.jsonc`.
+- **Spec reads** use the v2 API with Basic auth: root sessions from
+  `GET /api/session?parentID=null` (cursor-paged, `location.directory`),
+  agents from `GET /api/agent?location[directory]=…` (`{ data }`, ids),
+  MCP state from `GET /api/mcp`. v2 has no direct MCP tool call, so the
+  Desktop tools spec runs a real turn: the chat-completions stub answers its
+  marker with a `desktop_chat_html_render` tool call and the spec checks that
+  Kilo offered the tool by name (Code Mode off) and that kilo.chat answered as
+  for a Kilo chat (caller context reached the gateway).
+- **Stubs:** the chat-completions stub recognises v2's title agent (its system
+  prompt opens "You name conversations"), records offered tools and tool
+  results, and can answer a marker with one tool call. The gateway stub is
+  unchanged: v2 reads the same `/api/openrouter/models` on a custom
+  `KILO_API_URL`, and also its Marketplace catalog
+  (`/api/marketplace/{agents,skills,mcps,plugins}`), so the Marketplace spec
+  points its app at its own catalog server in front of the stub.
+- **Signed-out Kilo:** without a Kilo token v2 lists only the gateway's free
+  models (`isFree`), unlike v1, so the model selector specs pick free,
+  tool-calling models from the run's catalog snapshot.
+- **Starting locations:** while a location's plugins load, kilo2 lists only
+  core entries (the Code agent, no commands). kilo.chat's agent and command
+  catalogs are cached for the session, so they now wait for `plugin.list`
+  first (`runtime/location-ready.ts`, at most 30 s); this was the mode
+  selector and slash command e2e failures.
+- **CI:** `plugins/core/actions/setup-cli` caches the staged `kilo2` (step 3);
+  the real-kilo2 integration tests run in `test-linux` (every Vitest tier,
+  the platform CLI package installs as an optional dependency) and, for
+  kilo.core and kilo.notebook, in the Windows and macOS `test:platform` legs.
+- **Verified:** the full e2e suite (155 tests) passes on a packaged v2 e2e
+  build on macOS arm64.
+
 ## Gaps
 
 Per the plan, Desktop features with no v2 equivalent are hidden and recorded

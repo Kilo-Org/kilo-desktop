@@ -18,6 +18,7 @@ import {
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 import {
+	kiloRootSessions,
 	kiloServerConnection,
 	removeWorkSession,
 	renameWorkSession,
@@ -209,11 +210,9 @@ export class ChatModeSelectorPage {
 		const kilo = await this.getConnection();
 		const result = await getPage().evaluate(async (connection) => {
 			const authorization = `Basic ${btoa(`${connection.username}:${connection.password}`)}`;
-			const agentResponse = await fetch(`${connection.baseUrl}/agent`, {
-				headers: {
-					Authorization: authorization,
-					"x-kilo-directory": encodeURIComponent(connection.globalDirectory),
-				},
+			const location = `location[directory]=${encodeURIComponent(connection.globalDirectory)}`;
+			const agentResponse = await fetch(`${connection.baseUrl}/api/agent?${location}`, {
+				headers: { Authorization: authorization },
 				cache: "no-store",
 			});
 			if (!agentResponse.ok) {
@@ -222,35 +221,24 @@ export class ChatModeSelectorPage {
 					error: `Kilo agent catalog failed with ${agentResponse.status}.`,
 				};
 			}
-			return { ok: true as const, agents: (await agentResponse.json()) as KiloAgent[] };
+			const listed = (await agentResponse.json()) as { data: KiloAgent[] };
+			return { ok: true as const, agents: listed.data };
 		}, kilo);
 
 		await expect(result.ok, result.ok ? "" : result.error).toBe(true);
 		if (!result.ok) return [];
 		const selectable = result.agents.filter(
-			(agent) =>
-				!agent.hidden && !agent.deprecated && (agent.mode === "primary" || agent.mode === "all"),
+			(agent) => !agent.hidden && (agent.mode === "primary" || agent.mode === "all"),
 		);
-		return [...new Set(selectable.map((agent) => canonicalizeAgentName(agent.name)))];
+		return [...new Set(selectable.map((agent) => canonicalizeAgentName(agent.id)))];
 	}
 
 	private async getConnection(): Promise<KiloConnection> {
 		return (await kiloServerConnection()) as KiloConnection;
 	}
 
-	private async listSessions(connection: KiloConnection): Promise<ChatModeSession[]> {
-		const result = await getPage().evaluate(async (currentConnection) => {
-			const authorization = `Basic ${btoa(`${currentConnection.username}:${currentConnection.password}`)}`;
-			const response = await fetch(
-				`${currentConnection.baseUrl}/experimental/session?roots=true&archived=true`,
-				{ headers: { Authorization: authorization }, cache: "no-store" },
-			);
-			return response.ok
-				? { ok: true as const, sessions: (await response.json()) as ChatModeSession[] }
-				: { ok: false as const, error: `Global session list failed with ${response.status}.` };
-		}, connection);
-		await expect(result.ok, result.ok ? "" : result.error).toBe(true);
-		return result.ok ? result.sessions : [];
+	private listSessions(connection: KiloConnection): Promise<ChatModeSession[]> {
+		return kiloRootSessions(connection);
 	}
 
 	private async awaitCreatedSession(connection: KiloConnection): Promise<ChatModeSession> {

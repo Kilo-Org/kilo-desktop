@@ -16,7 +16,9 @@ export const aboutData = {
 	logFilePathPattern: /^(?:\/|[A-Za-z]:\\).*main\.log$/,
 	kiloConfigTitle: "Kilo config",
 	kiloConfigMissingDescription: "No global config file has been created yet.",
-	kiloConfigFileName: "kilo.jsonc",
+	/** Kilo v2's global config directory and file (`<XDG_CONFIG_HOME>/kilo2/kilo2.jsonc`). */
+	kiloConfigDirectoryName: "kilo2",
+	kiloConfigFileName: "kilo2.jsonc",
 	kiloConfigFileContents: "{}\n",
 	kiloConfigRevealMessage:
 		"Show in file manager should reveal the Kilo config path shown in the row",

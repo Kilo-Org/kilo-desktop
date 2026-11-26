@@ -70,8 +70,9 @@ loads it first, so pools differ between processes and Playwright fails with
 "inconsistent test.use() options".
 
 E2E builds (`package:e2e`) report a fixed signed-in Kilo account
-(`e2e@kilo.dev`, kilo.core's e2e identity; the Kilo CLI itself stays
-signed out), read once the Kilo server is up — page objects that show it wait
+(`e2e@kilo.dev`, kilo.core's e2e identity; the Kilo server itself stays
+signed out, so Kilo v2 offers only the Kilo Gateway's free models and specs
+pick their gateway models from the free ones), read once the Kilo server is up — page objects that show it wait
 for the server's cold start. Launches skip first-run onboarding and treat the
 terms as accepted (`KILO_SKIP_ONBOARDING=1`); specs that walk onboarding launch
 with `SHOW_ONBOARDING_LAUNCH_ENV` (`e2e/testdata/onboarding.ts`). A spec that needs a signed-out app runs those
@@ -79,18 +80,25 @@ tests in a `describe` with `test.use({ appLaunchEnv: SIGNED_OUT_LAUNCH_ENV })`
 (from `e2e/testdata/account.ts`), which gives them their own worker app.
 
 E2E apps are hermetic. Each worker's profile owns its own XDG data, cache,
-config, and state directories, so Kilo CLI sessions, databases, and cache locks
-never cross workers (or reach a developer's real Kilo data). Provider loading
-does not touch the public internet: models.dev fetches are disabled, and
-`KILO_API_URL` points at a local Kilo Gateway stub that global setup starts
-with a one-time snapshot of the gateway model catalog. npm runs offline with an
-empty per-profile cache, so the CLI's first-start install of `@kilocode/plugin`
-into Desktop's config directory (62 MB, blocking instance bootstrap) fails fast;
-Desktop's managed plugins are dependency-free. `KILO_TEST_HOME` isolates the
-CLI's `~/.kilo` / `~/.kilocode` lookups, and `KILO_LOG_LEVEL=DEBUG` makes the
-attached `kilo-cli.log` record bootstrap steps. Global setup also pre-warms the
-packaged Kilo CLI once so first-execution costs stay outside the sidecar's
-startup window.
+config, and state directories, so Kilo sessions, databases, and cache locks
+(all under `<XDG base>/kilo2`) never cross workers (or reach a developer's real
+Kilo data). Provider loading does not touch the public internet: models.dev
+fetches and self-update checks are disabled, and `KILO_API_URL` points at a
+local Kilo Gateway stub that global setup starts with a one-time snapshot of
+the gateway model catalog (Kilo v2 also reads the Marketplace catalog there,
+so the Marketplace spec puts its own catalog server in front of the stub).
+npm runs offline with an empty per-profile cache; Desktop's managed Kilo
+plugins are dependency-free directories. `KILO_TEST_HOME` isolates Kilo's
+home-directory lookups (`~/.kilo2`, `~/.claude`, `~/.agents`), and the attached
+`kilo-cli.log` is the server's own log. Global setup also pre-warms the
+packaged `kilo2` once (`kilo2 models --standalone`) so first-execution costs
+stay outside the sidecar's startup window.
+
+Specs read Kilo state through the v2 API only (`/api/session`, `/api/agent`,
+`/api/mcp`, with the server's Basic auth); Kilo v2 has no route that calls an
+MCP tool directly, so the Desktop tools spec runs a real turn against the
+chat-completions stub, which can answer a marker with a tool call
+(`startChatCompletionsStub`'s `toolCalls`).
 
 ## Rules that keep flakes out
 

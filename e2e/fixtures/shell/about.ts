@@ -28,7 +28,11 @@ export const test = shellTest.extend<{ aboutPage: AboutPage; globalKiloConfigPat
 	globalKiloConfigPath: async ({ electronApp }, use) => {
 		const xdgConfigHome = await electronApp.evaluate(() => process.env.XDG_CONFIG_HOME);
 		if (!xdgConfigHome) throw new Error("Packaged app should launch with XDG_CONFIG_HOME set");
-		const configPath = path.join(xdgConfigHome, "kilo", aboutData.kiloConfigFileName);
+		const configPath = path.join(
+			xdgConfigHome,
+			aboutData.kiloConfigDirectoryName,
+			aboutData.kiloConfigFileName,
+		);
 		await mkdir(path.dirname(configPath), { recursive: true });
 		await writeFile(configPath, aboutData.kiloConfigFileContents);
 		await reloadAtHome();

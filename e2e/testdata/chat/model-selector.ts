@@ -39,36 +39,6 @@ export const chatModelSelectorData = {
 		activeClass: /^(?=.*\bfill-current\b)(?=.*\btext-yellow-500\b).*$/,
 	},
 	/**
-	 * Provider-family search terms rather than exact model ids or versions:
-	 * the live Kilo Gateway catalog renames/replaces individual model
-	 * versions (e.g. "gpt-5" -> "gpt-5.6") between runs, but a publisher
-	 * family match stays stable. `query` can match any connected provider's
-	 * model by id, name, description, or keywords (`model-search.ts`), so
-	 * `publisherPrefix` pins the result to the intended family: it is the
-	 * raw gateway id prefix (e.g. "anthropic/") a matching model's
-	 * `kilo/<publisherPrefix>...` id must start with, since a query like
-	 * "llama" can otherwise match an unrelated model whose description
-	 * merely mentions Llama.
-	 */
-	gatewayInfoSearchTerms: [
-		{ label: "Anthropic", query: "anthropic", publisherPrefix: "anthropic/" },
-		{ label: "OpenAI", query: "openai", publisherPrefix: "openai/" },
-		{ label: "DeepSeek", query: "deepseek", publisherPrefix: "deepseek/" },
-		{ label: "xAI Grok", query: "grok", publisherPrefix: "x-ai/" },
-		{ label: "Qwen", query: "qwen", publisherPrefix: "qwen/" },
-		{ label: "Mistral", query: "mistral", publisherPrefix: "mistralai/" },
-		{ label: "Moonshot Kimi", query: "kimi", publisherPrefix: "moonshotai/" },
-		{ label: "Zhipu GLM", query: "glm", publisherPrefix: "z-ai/" },
-		{ label: "Google Gemini", query: "gemini", publisherPrefix: "google/" },
-		{ label: "Meta Llama", query: "llama", publisherPrefix: "meta-llama/" },
-	],
-	/** One representative term from the list above, for the @smoke case. */
-	gatewayInfoSmokeSearchTerm: {
-		label: "Anthropic",
-		query: "anthropic",
-		publisherPrefix: "anthropic/",
-	},
-	/**
 	 * Fixed UI copy the tooltip renders around dynamic, API-sourced model
 	 * data. Spelling coverage is scoped to this static copy only — model
 	 * names/descriptions come from the live Kilo Gateway catalog and are not

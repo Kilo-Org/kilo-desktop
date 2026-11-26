@@ -11,10 +11,10 @@ import {
 	getLocatorByRole,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
-import { getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect, type Locator } from "@playwright/test";
 
 import {
+	kiloRootSessions,
 	kiloServerConnection,
 	openNewSession,
 	openNewSessionInNewWorkspace,
@@ -22,6 +22,7 @@ import {
 	sessionListRow,
 	shownAgentSessionId,
 	verifyNewSessionIn,
+	type KiloRootSession,
 	type KiloServerConnection,
 } from "../chat/agent-session.js";
 import { sessionListData } from "../../testdata/work-sessions/session-list.js";
@@ -33,7 +34,7 @@ const execFile = promisify(execFileCallback);
 /** Worktree creation, git's own bookkeeping and the Kilo server's session list, on a cold CI runner. */
 const WORKTREE_TIMEOUT_MS = 30_000;
 
-type KiloSession = { id: string; directory?: string };
+type KiloSession = KiloRootSession;
 
 /** The Work Session a first send started, and the folder its chat works in. */
 export interface StartedWorktreeSession {
@@ -262,19 +263,8 @@ export class WorktreesPage {
 			.toBe(false);
 	}
 
-	private async kiloSessions(connection: KiloServerConnection): Promise<KiloSession[]> {
-		return getPage().evaluate(async (current) => {
-			const authorization = `Basic ${btoa(`${current.username}:${current.password}`)}`;
-			const response = await fetch(
-				`${current.baseUrl}/experimental/session?roots=true&archived=true`,
-				{
-					headers: { Authorization: authorization },
-					cache: "no-store",
-				},
-			);
-			if (!response.ok) throw new Error(`Global session list failed with ${response.status}.`);
-			return (await response.json()) as KiloSession[];
-		}, connection);
+	private kiloSessions(connection: KiloServerConnection): Promise<KiloSession[]> {
+		return kiloRootSessions(connection);
 	}
 
 	/** Git for Windows writes forward-slash paths; normalized to compare with OS-native ones. */

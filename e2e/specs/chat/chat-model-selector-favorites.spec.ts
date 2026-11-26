@@ -1,5 +1,4 @@
 import { test } from "../../fixtures/chat.js";
-import { chatModelSelectorData } from "../../testdata/chat/model-selector.js";
 
 /**
  * Favoriting Kilo Gateway models from the model selector. Split from
@@ -19,14 +18,10 @@ test.describe("Chat model selector", () => {
 		await appShellPage.verifyShellIsLoaded();
 		await chatComposerPage.openDraft();
 		const favoritedNames: string[] = [];
-		for (const { query, publisherPrefix } of chatModelSelectorData.gatewayInfoSearchTerms.slice(
-			0,
-			2,
-		)) {
+		for (const index of [0, 1]) {
 			await chatModelSelectorPage.openModelSelector();
 			await chatModelSelectorPage.selectKiloGateway();
-			await chatModelSelectorPage.searchModels(query);
-			const modelId = await chatModelSelectorPage.getPublisherModelId(publisherPrefix);
+			const modelId = await chatModelSelectorPage.getGatewayModelId(index);
 			const modelName = await chatModelSelectorPage.getPublisherModelName(modelId);
 
 			await chatModelSelectorPage.favorite(modelId);

@@ -10,7 +10,7 @@ test.describe("About settings: Kilo config", () => {
 		await aboutPage.waitForAboutSettled();
 	});
 
-	test("verifies kilo config row when the global kilo.jsonc does not exist", async ({
+	test("verifies kilo config row when the global kilo2.jsonc does not exist", async ({
 		aboutPage,
 	}) => {
 		await aboutPage.verifyKiloConfigTitle();
@@ -18,7 +18,7 @@ test.describe("About settings: Kilo config", () => {
 		await aboutPage.verifyShowKiloConfigButtonDisabled();
 	});
 
-	test("shows the existing global kilo.jsonc path, enables show in file manager, and reveals that exact file", async ({
+	test("shows the existing global kilo2.jsonc path, enables show in file manager, and reveals that exact file", async ({
 		appShellPage,
 		aboutPage,
 		globalKiloConfigPath,

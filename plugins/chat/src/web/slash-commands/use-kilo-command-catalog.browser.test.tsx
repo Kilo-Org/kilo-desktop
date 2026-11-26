@@ -20,7 +20,9 @@ function serveCommands(commands: unknown) {
 	const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
 		const request = input instanceof Request ? input : new Request(input);
 		const url = new URL(request.url);
-		directories.push(url.searchParams.get("location[directory]"));
+		// The catalog first waits for the location's plugins (`plugin.list`).
+		if (url.pathname === "/api/command")
+			directories.push(url.searchParams.get("location[directory]"));
 		const location = { directory: url.searchParams.get("location[directory]") };
 		return new Response(JSON.stringify({ location, data: commands }), {
 			headers: { "content-type": "application/json" },

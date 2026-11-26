@@ -26,9 +26,9 @@ export function profileXdgDirectories(userDataDir: string): {
 	};
 }
 
-/** Where the Kilo CLI of a profile writes its log files (`<XDG_DATA_HOME>/kilo/log`). */
+/** Where the Kilo server of a profile writes its log files (`<XDG_DATA_HOME>/kilo2/log`). */
 export function profileKiloLogDirectory(userDataDir: string): string {
-	return path.join(profileXdgDirectories(userDataDir).data, "kilo", "log");
+	return path.join(profileXdgDirectories(userDataDir).data, "kilo2", "log");
 }
 
 /**
@@ -43,23 +43,23 @@ export function profileKiloLogDirectory(userDataDir: string): string {
  * disabled (`GIT_SSH_COMMAND: "false"` fails fast instead of prompting) —
  * git can never reach the runner's or developer's real gitconfig or agent.
  *
- * The Kilo CLI deliberately inherits XDG data/cache/config so real users share
- * sessions and credentials with the standalone CLI. In e2e that sharing leaked
+ * Kilo's server (`kilo2`) deliberately inherits XDG data/cache/config so real
+ * users share sessions and credentials with the standalone `kilo2` CLI (all
+ * under `<XDG base>/kilo2`). In e2e that sharing leaked
  * sessions, SQLite databases, and cache locks between workers (and into a
  * developer's real Kilo data), so every profile gets its own XDG directories.
  * Consequently, on Linux the notebook plugin looks for its daemon socket in
  * the profile cache and never attaches to a host daemon.
  *
  * Provider loading must not depend on the public internet: models.dev fetches
- * are disabled (the CLI falls back to its bundled catalog) and, once global
- * setup has started it, the Kilo Gateway base URL points at a local stub.
+ * are disabled (`KILO_DISABLE_MODELS_FETCH`; Kilo falls back to its bundled
+ * catalog), self-update checks are off, and, once global setup has started it,
+ * the Kilo Gateway base URL points at a local stub.
  *
- * On first start the CLI also npm-installs `@kilocode/plugin` (62 MB) into
- * every config directory that holds plugins, including Desktop's managed
- * `KILO_CONFIG_DIR`, and instance bootstrap — so `/provider` — waits for it.
- * On Windows CI that exceeded the providers page's 15s request bound. Desktop's
- * managed plugins are dependency-free, so npm runs offline against an empty
- * per-profile cache: the install fails in milliseconds and plugins still load.
+ * Desktop's managed Kilo plugins are dependency-free directories Kilo never
+ * installs anything for; npm still runs offline against an empty per-profile
+ * cache, so a stray install attempt fails in milliseconds rather than reaching
+ * the network.
  *
  * The notebook plugin normally starts runtimed at boot, and on a cold cache
  * the daemon builds Conda, Pixi, and UV kernel environments (about 90 CPU-s
@@ -68,10 +68,10 @@ export function profileKiloLogDirectory(userDataDir: string): string {
  * providers page's 15s bound. No spec opens a notebook, so runtimed starts
  * only on first notebook use.
  *
- * The CLI reads `~/.kilo` / `~/.kilocode` config and rules from its home
- * directory, not XDG; `KILO_TEST_HOME` gives each profile its own. Its log
- * level (shared with Desktop's main-process logger) is DEBUG so the attached
- * `kilo-cli.log` records instance bootstrap steps with timestamps.
+ * Kilo reads rules and skills from its home directory (`~/.kilo2`,
+ * `~/.claude`, `~/.agents`), not XDG; `KILO_TEST_HOME` gives each profile its
+ * own. Desktop's main-process logger runs at DEBUG; the attached
+ * `kilo-cli.log` is the server's own log (`opencode.log`).
  *
  * `HOME`/`USERPROFILE` stay intact: the app resolves `~/` for workspace
  * folder suggestions. These keys win over anything inherited or added to CI
@@ -98,6 +98,7 @@ export function packagedAppLaunchEnv(
 		XDG_CONFIG_HOME: xdg.config,
 		XDG_STATE_HOME: xdg.state,
 		KILO_DISABLE_MODELS_FETCH: "1",
+		KILO_DISABLE_AUTOUPDATE: "1",
 		// Never inherit a gateway URL when setup has not started the stub.
 		KILO_API_URL: gatewayUrl || "http://127.0.0.1:1",
 		KILO_TEST_HOME: path.join(userDataDir, "kilo-home"),

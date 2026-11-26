@@ -127,6 +127,14 @@ export class FakeKilo2Server {
 	}));
 	commands: CommandInfo[] = [{ name: "review", description: "Review the changes", template: "" }];
 	skills: SkillInfo[] = [];
+	/**
+	 * Polls of `plugin.list` that a location answers before its plugins load:
+	 * meanwhile it lists no plugins, and its agents and commands are Kilo's
+	 * core ones only (`startingAgents`, no commands), as kilo2's are.
+	 */
+	startingPolls = 0;
+	/** The agents a starting location lists before Kilo's own plugin adds Plan, Ask and Debug. */
+	startingAgents = ["code"];
 	/** Files `/api/fs/read` serves, by the path asked for. */
 	files: Record<string, string | Uint8Array> = {};
 	/** Answers prompts, in turn; once empty a prompt's turn runs until the test ends it. */
@@ -457,8 +465,22 @@ export class FakeKilo2Server {
 		const location = { directory: query.get("location[directory]") ?? "/projects/app" };
 		const listed = <T>(data: readonly T[]) => json({ location, data });
 
-		if (method === "GET" && path === "/api/agent") return listed(this.agents);
-		if (method === "GET" && path === "/api/command") return listed(this.commands);
+		const starting = this.startingPolls > 0;
+		if (method === "GET" && path === "/api/plugin") {
+			if (starting) {
+				this.startingPolls -= 1;
+				return listed([]);
+			}
+			return listed([{ id: "kilocode", state: { status: "active" } }]);
+		}
+		if (method === "GET" && path === "/api/agent") {
+			return listed(
+				starting
+					? this.agents.filter((agent) => this.startingAgents.includes(agent.id))
+					: this.agents,
+			);
+		}
+		if (method === "GET" && path === "/api/command") return listed(starting ? [] : this.commands);
 		if (method === "GET" && path === "/api/skill") return listed(this.skills);
 		if (method === "GET" && path === "/api/permission/request") return listed(this.permissions);
 		if (method === "GET" && path === "/api/form") return listed(this.forms);

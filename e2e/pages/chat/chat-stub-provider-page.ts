@@ -79,13 +79,16 @@ export class ChatStubProviderPage {
 	 * whose typed message text contains `promptMarker`, so a spec can assert
 	 * on exactly what the model request carried for its own send.
 	 */
-	async waitForCapturedRequest(promptMarker: string): Promise<CapturedCompletionRequest> {
+	async waitForCapturedRequest(
+		promptMarker: string,
+		accept: (captured: CapturedCompletionRequest) => boolean = () => true,
+	): Promise<CapturedCompletionRequest> {
 		const url = `${this.stubUrl()}${CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH}?marker=${encodeURIComponent(promptMarker)}`;
 		const deadline = Date.now() + REQUEST_POLL_TIMEOUT_MS;
 		for (;;) {
 			const response = await getRequest(url);
 			const payload = (await response.json()) as { request: CapturedCompletionRequest | null };
-			if (payload.request) return payload.request;
+			if (payload.request && accept(payload.request)) return payload.request;
 			if (Date.now() >= deadline) {
 				throw new Error(
 					`Chat completions stub never received a request matching "${promptMarker}"`,
@@ -93,6 +96,11 @@ export class ChatStubProviderPage {
 			}
 			await getPage().waitForTimeout(REQUEST_POLL_INTERVAL_MS);
 		}
+	}
+
+	/** The request for `promptMarker` that carried a tool result back to the model. */
+	waitForCapturedToolResult(promptMarker: string): Promise<CapturedCompletionRequest> {
+		return this.waitForCapturedRequest(promptMarker, (captured) => captured.toolResults.length > 0);
 	}
 
 	/**

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import { kiloClient } from "../runtime/kilo-client";
+import { locationReady } from "../runtime/location-ready";
 import type { SlashSourceCategory } from "./kilo-slash-command";
 
 /** A server slash command as the `/` menu lists it (v2 lists skills apart, so these are commands). */
@@ -19,7 +20,9 @@ export async function fetchCommandCatalogForConnection(
 		throw new Error("Cannot fetch commands before Kilo is connected");
 	}
 	const resolvedDirectory = directory ?? connection.globalDirectory;
-	const { data } = await kiloClient(connection).command.list({
+	const client = kiloClient(connection);
+	await locationReady(client, resolvedDirectory);
+	const { data } = await client.command.list({
 		location: { directory: resolvedDirectory },
 	});
 	return data.map(({ name, description }) => ({

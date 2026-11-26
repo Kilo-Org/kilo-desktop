@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import { kiloClient } from "../runtime/kilo-client";
+import { locationReady } from "../runtime/location-ready";
 import { buildAgentCatalog, type KiloAgentCatalog } from "./agent-catalog";
 import { useKiloAccountKey } from "./kilo-account-key";
 
@@ -16,7 +17,9 @@ export async function fetchAgentCatalogForConnection(
 	if (!connection) {
 		throw new Error("Cannot fetch agents before Kilo is connected");
 	}
-	const { data } = await kiloClient(connection).agent.list({
+	const client = kiloClient(connection);
+	await locationReady(client, connection.globalDirectory);
+	const { data } = await client.agent.list({
 		location: { directory: connection.globalDirectory },
 	});
 	return buildAgentCatalog(data);

@@ -11,6 +11,10 @@ import { assertSharedHarnessDependencies } from "./utils/harness-dependencies.js
 import { prewarmKiloCli } from "./utils/kilo-cli-prewarm.js";
 import { startKiloGatewayStub } from "./utils/kilo-gateway-stub.js";
 import { chatAttachmentStubReplies } from "./testdata/chat/attachments.js";
+import {
+	desktopToolsStubReplies,
+	desktopToolsStubToolCalls,
+} from "./testdata/chat/desktop-tools.js";
 import { chatFileMentionStubReplies } from "./testdata/chat/file-mentions.js";
 import { chatSendKeysStubReplies } from "./testdata/chat/send-keys.js";
 import { chatSmokeStubReplies, chatSmokeStubTitles } from "./testdata/chat/smoke.js";
@@ -47,8 +51,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 			...chatSendKeysStubReplies,
 			...chatSmokeStubReplies,
 			...chatFileMentionStubReplies,
+			...desktopToolsStubReplies,
 		},
 		chatSmokeStubTitles,
+		desktopToolsStubToolCalls,
 	);
 	process.env[CHAT_COMPLETIONS_STUB_URL_ENV] = chatCompletions.url;
 	const teardown = async () => {

@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 const PREWARM_TIMEOUT_MS = 180_000;
 
 /**
- * The packaged CLI lives at `<Resources>/kilo/<target>/bin/kilo[.exe]`.
+ * The packaged CLI lives at `<Resources>/kilo/<target>/bin/kilo2[.exe]`.
  *
  * Packaging copies the whole staging root, which can also hold an interrupted
  * `.staging-*` directory or a `<target>.previous` backup with the same
@@ -24,7 +24,7 @@ const PREWARM_TIMEOUT_MS = 180_000;
 export function packagedKiloCliExecutable(): string | undefined {
 	const kiloRoot = path.join(packagedResourcesDirectory(), "kilo");
 	if (!existsSync(kiloRoot)) return undefined;
-	const executable = process.platform === "win32" ? "kilo.exe" : "kilo";
+	const executable = process.platform === "win32" ? "kilo2.exe" : "kilo2";
 	for (const directory of readdirSync(kiloRoot)) {
 		const candidate = path.join(kiloRoot, directory, "bin", executable);
 		if (stagedTarget(path.join(kiloRoot, directory)) === directory && existsSync(candidate)) {
@@ -51,9 +51,10 @@ function stagedTarget(stagingDirectory: string): string | undefined {
  * A freshly packaged binary pays one-time costs on its first execution
  * (macOS executable assessment, Windows Defender scanning, runtime
  * extraction). In CI that landed inside a worker's 30s "listening URL"
- * startup window and failed the first Kilo spec of a run. Listing the Kilo
- * provider's models exercises provider initialization against the same
- * hermetic launch env the app uses, in a throwaway profile.
+ * startup window and failed the first Kilo spec of a run. Listing the models
+ * with a private server (`--standalone`, so no background service outlives
+ * it) exercises provider initialization against the same hermetic launch env
+ * the app uses, in a throwaway profile.
  *
  * Failure is reported but not fatal: specs that need the CLI will fail with
  * their own sidecar diagnostics, and shell-only specs can still run.
@@ -67,7 +68,7 @@ export async function prewarmKiloCli(): Promise<void> {
 	const profile = await mkdtemp(path.join(os.tmpdir(), "kilo-e2e-prewarm-"));
 	const started = Date.now();
 	try {
-		await execFileAsync(executable, ["models", "kilo"], {
+		await execFileAsync(executable, ["models", "--standalone"], {
 			env: packagedAppLaunchEnv(profile),
 			timeout: PREWARM_TIMEOUT_MS,
 			windowsHide: true,

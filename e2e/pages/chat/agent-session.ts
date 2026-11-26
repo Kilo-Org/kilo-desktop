@@ -5,6 +5,8 @@ import {
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
 
+import { getPage } from "@anaconda/playwright-utils/page-utils";
+
 import { callDomainObject } from "../../utils/kernel-bridge.js";
 import { runFromCommandPalette } from "../shell/command-palette.js";
 import {
@@ -125,6 +127,53 @@ export interface KiloServerConnection {
 	readonly username: string;
 	readonly password: string;
 	readonly globalDirectory: string;
+}
+
+/** A root Kilo session as the page objects read it back: its folder, title and agent. */
+export interface KiloRootSession {
+	readonly id: string;
+	readonly directory: string;
+	readonly title?: string;
+	readonly agent?: string;
+}
+
+/**
+ * Every root session on the Kilo v2 server, archived included and newest
+ * first (`GET /api/session?parentID=null`, paged by cursor), read from the
+ * renderer with the server's Basic auth. Spec reads only: the app itself goes
+ * through kilo.core and `@kilocode/client`.
+ */
+export async function kiloRootSessions(
+	connection: KiloServerConnection,
+): Promise<KiloRootSession[]> {
+	return getPage().evaluate(async (current) => {
+		type Page = {
+			data: Array<{ id: string; title?: string; agent?: string; location: { directory: string } }>;
+			cursor: { next?: string | null };
+		};
+		const authorization = `Basic ${btoa(`${current.username}:${current.password}`)}`;
+		const sessions: Array<{ id: string; directory: string; title?: string; agent?: string }> = [];
+		let query = "parentID=null&order=desc&limit=200";
+		for (;;) {
+			const response = await fetch(`${current.baseUrl}/api/session?${query}`, {
+				headers: { Authorization: authorization },
+				cache: "no-store",
+			});
+			if (!response.ok) throw new Error(`Kilo session list failed with ${response.status}.`);
+			const page = (await response.json()) as Page;
+			for (const row of page.data) {
+				sessions.push({
+					id: row.id,
+					directory: row.location.directory,
+					...(row.title ? { title: row.title } : {}),
+					...(row.agent ? { agent: row.agent } : {}),
+				});
+			}
+			const next = page.cursor.next;
+			if (page.data.length < 200 || !next) return sessions;
+			query = `cursor=${encodeURIComponent(next)}&limit=200`;
+		}
+	}, connection);
 }
 
 export async function kiloServerConnection(): Promise<KiloServerConnection> {

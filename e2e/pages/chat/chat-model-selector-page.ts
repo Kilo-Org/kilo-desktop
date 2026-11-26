@@ -71,7 +71,7 @@ function formatTokenLimit(value: number): string {
  * catalog. The Kilo Gateway model-info tooltip coverage below instead relies
  * on the e2e Kilo Gateway stub's one-time snapshot of the real catalog
  * (`utils/kilo-gateway-stub.ts`), so it searches by provider-family term
- * (see `chatModelSelectorData.gatewayInfoSearchTerms`) rather than asserting
+ * (see `getGatewayModelId`) rather than asserting
  * on a specific model id, which the live catalog can rename or retire.
  * Selecting a model, favorites toggling, and persistence remain out of scope.
  */
@@ -178,14 +178,14 @@ export class ChatModelSelectorPage {
 	}
 
 	/**
-	 * Resolves a publisher model from the catalog, then narrows search so its
-	 * virtualized row mounts. Requires `"tools"` in `supported_parameters`:
-	 * the Kilo CLI's own provider list drops non-tool-calling models (e.g.
-	 * `meta-llama/llama-guard-4-12b`, a content-safety classifier) before
-	 * this app ever sees them, so the raw gateway catalog's first
-	 * publisher-prefix match is not always one the picker actually renders.
+	 * Resolves the `index`-th model Kilo offers a signed-out profile from the
+	 * gateway catalog, then narrows search so its virtualized row mounts. The
+	 * e2e build signs the app in but not Kilo, and Kilo v2 lists only the
+	 * gateway's free models (`isFree`) without a Kilo token; it also drops
+	 * models without tool calling. Individual free models come and go, so the
+	 * spec takes whichever the run's catalog snapshot lists.
 	 */
-	async getPublisherModelId(publisherPrefix: string): Promise<string> {
+	async getGatewayModelId(index = 0): Promise<string> {
 		const gatewayUrl = process.env[KILO_GATEWAY_STUB_URL_ENV];
 		if (!gatewayUrl) {
 			throw new Error("Kilo Gateway stub URL is unavailable in the e2e environment");
@@ -193,16 +193,17 @@ export class ChatModelSelectorPage {
 		const response = await getRequest(`${gatewayUrl}${GATEWAY_MODEL_CATALOG_PATH}`);
 		expect(response.ok(), "Kilo Gateway catalog endpoint should respond with 2xx").toBeTruthy();
 		const payload = (await response.json()) as { data: ReadonlyArray<Record<string, unknown>> };
-		const model = payload.data.find(
+		const offered = payload.data.filter(
 			(candidate) =>
 				typeof candidate.id === "string" &&
-				candidate.id.startsWith(publisherPrefix) &&
+				candidate.isFree === true &&
 				Array.isArray(candidate.supported_parameters) &&
 				candidate.supported_parameters.includes("tools"),
 		);
+		const model = offered[index];
 		if (!model || typeof model.id !== "string") {
 			throw new Error(
-				`Kilo Gateway catalog has no tool-calling model for publisher "${publisherPrefix}"`,
+				`Kilo Gateway catalog lists ${offered.length} free tool-calling models; the spec needs ${index + 1}`,
 			);
 		}
 		const modelId = `${KILO_PROVIDER_PREFIX}${model.id}`;
@@ -210,7 +211,7 @@ export class ChatModelSelectorPage {
 		const option = this.modelOption(modelId);
 		await expectElementToBeVisible(
 			option,
-			`Model search should mount the "${publisherPrefix}" Kilo Gateway model "${model.id}"`,
+			`Model search should mount the Kilo Gateway model "${model.id}"`,
 		);
 		const testId = await getAttribute(option, "data-qa-id");
 		if (!testId?.startsWith(MODEL_OPTION_TEST_ID_PREFIX)) {
@@ -244,7 +245,7 @@ export class ChatModelSelectorPage {
 	 * Independently fetches the same Kilo Gateway enrichment endpoint the app
 	 * reads (kilo.core's `gateway-catalog.ts`) and returns the fields the info
 	 * tooltip should show for `modelId` (a `kilo/<rawGatewayId>` id, as read
-	 * from `getPublisherModelId`). This is the test's own oracle, so
+	 * from `getGatewayModelId`). This is the test's own oracle, so
 	 * tooltip assertions compare against a real expected value instead of
 	 * only checking that a description/fact is present.
 	 */

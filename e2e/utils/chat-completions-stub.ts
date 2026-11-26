@@ -9,8 +9,8 @@ const COMPLETIONS_PATH = "/chat/completions";
 /** Introspection route workers query over HTTP — the stub runs in the global-setup process, a separate process from every worker, so only HTTP (not an in-process method) crosses that boundary. Same pattern as the Kilo Gateway stub's catalog route, queried via `getRequest` in `chat-model-selector-page.ts`. */
 export const CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH = "/__e2e__/requests";
 const DEFAULT_REPLY = "MOCK_REPLY_NO_MATCH";
-/** Kilo's title agent opens its system prompt with this (case-insensitive). */
-const TITLE_REQUEST_PATTERN = /title generator/i;
+/** Kilo v2's title agent opens its system prompt with this (case-insensitive). */
+const TITLE_REQUEST_PATTERN = /^You name conversations/i;
 const REQUEST_LOG_LIMIT = 20;
 
 /**
@@ -24,6 +24,7 @@ const REQUEST_LOG_LIMIT = 20;
  */
 type ChatCompletionsRequestBody = {
 	stream?: boolean;
+	tools?: ReadonlyArray<{ function?: { name?: string } }>;
 	messages?: ReadonlyArray<{
 		role: string;
 		content?:
@@ -50,7 +51,14 @@ export type CapturedCompletionRequest = {
 	isTitleRequest: boolean;
 	images: CapturedImagePart[];
 	files: CapturedFilePart[];
+	/** The tool names Kilo offered the model. */
+	tools: string[];
+	/** The text of each tool result Kilo sent back (`role: "tool"` messages), in order. */
+	toolResults: string[];
 };
+
+/** A tool call the stub makes once for a marker, before replying with the marker's text. */
+export type StubToolCall = { name: string; arguments: Record<string, unknown> };
 
 export type ChatCompletionsStub = {
 	url: string;
@@ -91,6 +99,7 @@ export type ChatCompletionsStub = {
 export async function startChatCompletionsStub(
 	replies: Record<string, string>,
 	titles: Record<string, string> = {},
+	toolCalls: Record<string, StubToolCall> = {},
 ): Promise<ChatCompletionsStub> {
 	const requests: CapturedCompletionRequest[] = [];
 
@@ -98,6 +107,11 @@ export async function startChatCompletionsStub(
 		handle(request, response, {
 			getReply: (captured) =>
 				resolveReply(captured.promptText, captured.isTitleRequest ? titles : replies),
+			// A marker's tool call comes first; once its result is in, the marker's reply.
+			getToolCall: (captured) =>
+				captured.isTitleRequest || captured.toolResults.length > 0
+					? undefined
+					: resolveMarker(captured.promptText, toolCalls),
 			getRequests: () => requests,
 			onRequest: (captured) => {
 				if (captured.isTitleRequest) return;
@@ -127,10 +141,14 @@ export async function startChatCompletionsStub(
 }
 
 function resolveReply(promptText: string, replies: Record<string, string>): string {
-	for (const [marker, reply] of Object.entries(replies)) {
-		if (promptText.includes(marker)) return reply;
+	return resolveMarker(promptText, replies) ?? DEFAULT_REPLY;
+}
+
+function resolveMarker<T>(promptText: string, byMarker: Record<string, T>): T | undefined {
+	for (const [marker, value] of Object.entries(byMarker)) {
+		if (promptText.includes(marker)) return value;
 	}
-	return DEFAULT_REPLY;
+	return undefined;
 }
 
 async function handle(
@@ -138,6 +156,7 @@ async function handle(
 	response: ServerResponse,
 	options: {
 		getReply: (captured: CapturedCompletionRequest) => string;
+		getToolCall: (captured: CapturedCompletionRequest) => StubToolCall | undefined;
 		getRequests: () => readonly CapturedCompletionRequest[];
 		onRequest: (captured: CapturedCompletionRequest) => void;
 	},
@@ -160,6 +179,11 @@ async function handle(
 	const captured = extractCaptured(parsed);
 	options.onRequest(captured);
 
+	const toolCall = options.getToolCall(captured);
+	if (toolCall) {
+		writeToolCall(response, toolCall, parsed?.stream === true);
+		return;
+	}
 	const reply = options.getReply(captured);
 	if (parsed?.stream) {
 		writeStreamedReply(response, reply);
@@ -207,11 +231,16 @@ function extractCaptured(body: ChatCompletionsRequestBody | undefined): Captured
 	const promptChunks: string[] = [];
 	const images: CapturedImagePart[] = [];
 	const files: CapturedFilePart[] = [];
+	const toolResults: string[] = [];
 	let isTitleRequest = false;
 
 	for (const message of body?.messages ?? []) {
 		if (message.role === "system" && TITLE_REQUEST_PATTERN.test(messageText(message.content))) {
 			isTitleRequest = true;
+		}
+		if (message.role === "tool") {
+			toolResults.push(messageText(message.content));
+			continue;
 		}
 		if (typeof message.content === "string") {
 			promptChunks.push(message.content);
@@ -234,7 +263,10 @@ function extractCaptured(body: ChatCompletionsRequestBody | undefined): Captured
 		}
 	}
 
-	return { promptText: promptChunks.join(" "), isTitleRequest, images, files };
+	const tools = (body?.tools ?? []).flatMap((tool) =>
+		tool.function?.name ? [tool.function.name] : [],
+	);
+	return { promptText: promptChunks.join(" "), isTitleRequest, images, files, tools, toolResults };
 }
 
 type MessageContent = NonNullable<ChatCompletionsRequestBody["messages"]>[number]["content"];
@@ -278,6 +310,50 @@ function writeStreamedReply(response: ServerResponse, reply: string): void {
 	response.write(`data: ${chunk({ role: "assistant", content: "" }, null)}\n\n`);
 	response.write(`data: ${chunk({ content: reply }, null)}\n\n`);
 	response.write(`data: ${chunk({}, "stop")}\n\n`);
+	response.write("data: [DONE]\n\n");
+	response.end();
+}
+
+/** One OpenAI tool call, streamed or not, finishing the step on `tool_calls`. */
+function writeToolCall(response: ServerResponse, call: StubToolCall, stream: boolean): void {
+	const toolCall = {
+		index: 0,
+		id: "call_e2e_stub",
+		type: "function",
+		function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+	};
+	const base = { id: "chatcmpl-e2e-stub", created: 0, model: "e2e-stub-model" };
+	if (!stream) {
+		response.writeHead(200, { "content-type": "application/json" });
+		response.end(
+			JSON.stringify({
+				...base,
+				object: "chat.completion",
+				choices: [
+					{
+						index: 0,
+						message: { role: "assistant", content: null, tool_calls: [toolCall] },
+						finish_reason: "tool_calls",
+					},
+				],
+				usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+			}),
+		);
+		return;
+	}
+	response.writeHead(200, {
+		"content-type": "text/event-stream",
+		"cache-control": "no-cache",
+		connection: "keep-alive",
+	});
+	const chunk = (delta: Record<string, unknown>, finishReason: string | null) =>
+		JSON.stringify({
+			...base,
+			object: "chat.completion.chunk",
+			choices: [{ index: 0, delta, finish_reason: finishReason }],
+		});
+	response.write(`data: ${chunk({ role: "assistant", tool_calls: [toolCall] }, null)}\n\n`);
+	response.write(`data: ${chunk({}, "tool_calls")}\n\n`);
 	response.write("data: [DONE]\n\n");
 	response.end();
 }

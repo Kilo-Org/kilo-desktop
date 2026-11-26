@@ -720,9 +720,9 @@ describe("KiloServerManager", () => {
 			logger,
 		});
 
-		// The thrown KernelError concatenates the base message and stderr.
+		// The thrown KernelError carries only the base message; stderr stays local.
 		await expect(manager.ensureRunning()).rejects.toMatchObject({
-			message: expect.stringContaining("Configuration is invalid"),
+			message: "Kilo server exited before becoming ready (code 1).",
 		});
 		const lastStatus = statuses.at(-1) as {
 			status: string;
@@ -756,7 +756,7 @@ describe("KiloServerManager", () => {
 		});
 
 		await expect(manager.ensureRunning()).rejects.toMatchObject({
-			message: expect.stringContaining("fatal: unable to read config"),
+			message: "Kilo server exited before becoming ready (code 2).",
 		});
 		const lastStatus = statuses.at(-1) as {
 			status: string;
@@ -765,6 +765,53 @@ describe("KiloServerManager", () => {
 		};
 		expect(lastStatus.status).toBe("error");
 		expect(lastStatus.detail).toBe("fatal: unable to read config");
+		manager.dispose();
+	});
+
+	it("keeps child process output out of the thrown error's message and passes it on as local detail", async () => {
+		// Built at runtime so the fixture source holds no key-shaped literal.
+		const fakeProviderKey = ["sk", "proj", "FAKE".repeat(6)].join("-");
+		const fakeBearer = ["fake", "bearer", "token", "0000000000"].join("-");
+		const { manager, statuses } = createHarness({
+			spawn: () => {
+				const child = new FakeChild();
+				queueMicrotask(() => {
+					child.stderr.write(
+						`Error: provider "openai" rejected options {"apiKey":"${fakeProviderKey}"}\n`,
+					);
+					child.stderr.write(`request failed: Authorization: Bearer ${fakeBearer}\n`);
+					// Assembled so no URL with a password sits in the source.
+					child.stderr.write(
+						[
+							"mcp server env DATABASE_URL=postgres://app",
+							"fake-password@db.example.test:5432/main\n",
+						].join(":"),
+					);
+					child.exit(1);
+				});
+				return child;
+			},
+		});
+
+		const failure = await manager.ensureRunning().then(
+			() => undefined,
+			(error: unknown) => error,
+		);
+
+		expect(failure).toBeInstanceOf(Error);
+		const message = (failure as Error).message;
+		expect(message).toBe("Kilo server exited before becoming ready (code 1).");
+		expect(message).not.toContain(fakeProviderKey);
+		expect(message).not.toContain(fakeBearer);
+		expect(message).not.toContain("fake-password");
+		// The CLI's own output reaches the failure notice and Diagnostics locally.
+		expect(failure).toMatchObject({
+			detail: expect.stringContaining('provider "openai" rejected options'),
+		});
+		expect(statuses.at(-1)).toMatchObject({
+			status: "error",
+			detail: expect.stringContaining('provider "openai" rejected options'),
+		});
 		manager.dispose();
 	});
 

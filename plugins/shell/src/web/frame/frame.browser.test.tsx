@@ -596,4 +596,23 @@ describe("notifications", () => {
 		await expect.element(page.getByTestId("settings-page")).toBeVisible();
 		await expect.poll(() => notifications.getState().notices).toEqual({});
 	});
+
+	it("shows a notice's detail when the user opens it", async () => {
+		const { main } = await renderShell([product()]);
+		const notifications = main.kernelSdk.domainObjects.get(Notifications)!;
+
+		await notifications.methods.post({
+			id: "server",
+			title: "Kilo isn't running",
+			description: "Kilo server exited before becoming ready (code 1).",
+			detail: "Configuration is invalid\n↳ Unrecognized key: reasoning_display",
+			level: "error",
+		});
+
+		const detail = page.getByTestId("shell-notice-detail-kernel/server");
+		await expect.element(detail).not.toBeInTheDocument();
+		await page.getByTestId("shell-notice-detail-toggle-kernel/server").click();
+		await expect.element(detail).toBeVisible();
+		expect(detail.element().textContent).toContain("Unrecognized key: reasoning_display");
+	});
 });

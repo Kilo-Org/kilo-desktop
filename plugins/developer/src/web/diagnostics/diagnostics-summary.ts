@@ -186,6 +186,7 @@ export function summarizeService(
 		readonly restarts: number;
 		readonly progress?: string | undefined;
 		readonly error?: string | undefined;
+		readonly detail?: string | undefined;
 	},
 ): readonly DetailItem[] {
 	const contribution = kernel.discovery.contributions.find(
@@ -214,5 +215,6 @@ export function summarizeService(
 		{ label: "Restarts", values: [text(String(record.restarts))] },
 		...item("Progress", record.progress ? [text(record.progress)] : []),
 		...item("Error", record.error ? [text(record.error)] : []),
+		...item("Detail", record.detail ? [{ block: record.detail }] : []),
 	];
 }

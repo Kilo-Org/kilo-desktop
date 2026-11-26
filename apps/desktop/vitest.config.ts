@@ -34,6 +34,9 @@ export default defineConfig({
 					include: ["config/**/*.test.ts", "src/**/*.test.ts"],
 					exclude: ["**/*.integration.test.ts"],
 					environment: "node",
+					// Transform the Sentry Electron SDK so a test's `electron` mock
+					// reaches its imports (sentry.sdk.test.ts runs the real SDK).
+					server: { deps: { inline: ["@sentry/electron"] } },
 				},
 			},
 			{

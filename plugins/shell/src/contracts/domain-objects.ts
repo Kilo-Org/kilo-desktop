@@ -137,7 +137,10 @@ const notificationContentSchema = z.object({
 });
 export type NotificationContent = z.input<typeof notificationContentSchema>;
 
-export const noticeSchema = notificationContentSchema.extend({
+/** Longer text a notice shows collapsed under its description, such as a process's own output. */
+const noticeDetailSchema = z.object({ detail: z.string().optional() });
+
+export const noticeSchema = notificationContentSchema.extend(noticeDetailSchema.shape).extend({
 	id: z.string(),
 	/** The plugin that posted it. */
 	pluginId: z.string(),
@@ -160,7 +163,9 @@ export const Notifications = defineDomainObject({
 		toast: method(notificationContentSchema.extend(windowTarget), nothing),
 		/** Posts a notice, or replaces the caller's notice with the same `id`; returns its id. */
 		post: method(
-			notificationContentSchema.extend({ id: z.string().min(1).optional() }),
+			notificationContentSchema
+				.extend(noticeDetailSchema.shape)
+				.extend({ id: z.string().min(1).optional() }),
 			z.string(),
 		),
 		dismiss: method(z.object({ id: z.string().min(1) }), nothing),

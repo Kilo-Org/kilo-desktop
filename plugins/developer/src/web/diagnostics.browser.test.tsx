@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelFlags, KernelOs, KernelService } from "@kilo-desktop/kernel";
+import { KernelError, KernelFlags, KernelOs, KernelService } from "@kilo-desktop/kernel";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 import { renderShell } from "@kilo-desktop/plugin-shell/testing";
 
@@ -371,6 +371,26 @@ describe("diagnostics settings — services and logs", () => {
 		await expect.element(details.getByText("Task")).toBeVisible();
 		await expect.element(details.getByText("On first use")).toBeVisible();
 		await expect.element(details.getByText("Never restarted")).toBeVisible();
+	});
+
+	it("shows a failed service's local detail next to its error", async () => {
+		const { main } = await openDiagnostics();
+		main.sdkFor("acme.server").extensions.implement(KernelService, "daemon", {
+			start: async () => {
+				throw new KernelError("BUSINESS", "Server exited before becoming ready (code 1).", {
+					detail: "Configuration is invalid\n↳ Unrecognized key: reasoning_display",
+				});
+			},
+		});
+		await page.getByTestId("diagnostics-tab-services").click();
+
+		await page.getByRole("button", { name: "Show details for Agent server" }).click();
+
+		const details = page.getByTestId("diagnostics-service-details-acme.server/daemon");
+		await expect
+			.element(details.getByText("Server exited before becoming ready (code 1)."))
+			.toBeVisible();
+		await expect.element(details.getByText(/Unrecognized key: reasoning_display/)).toBeVisible();
 	});
 });
 

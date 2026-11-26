@@ -20,6 +20,30 @@
 	},
 	// Dependency health is reviewed when packages change, not on every scan.
 	"supplyChain": { "enabled": false },
+	// `--staged` does no workspace discovery: without this list it treats the repo
+	// root as a single project, which has no React dependency, and fails the
+	// pre-commit scan. These are every workspace package that depends on React.
+	"projects": [
+		"apps/web",
+		"packages/kernel",
+		"packages/ui",
+		"plugins/anaconda",
+		"plugins/browser",
+		"plugins/chat",
+		"plugins/developer",
+		"plugins/environments",
+		"plugins/files",
+		"plugins/git",
+		"plugins/local-inference",
+		"plugins/marketplace",
+		"plugins/notebook",
+		"plugins/shell",
+		"plugins/terminal",
+		"plugins/work-sessions",
+		"plugins/workspace-board",
+		"examples/hello-plugin",
+		"examples/right-panel-plugin",
+	],
 	"ignore": {
 		// Vitest's dependency cache is gitignored, but React Doctor still scans it.
 		"files": ["**/.vitest/**"],

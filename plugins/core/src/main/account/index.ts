@@ -167,7 +167,10 @@ export function activateAccount(sdk: PluginSdk, options: AccountOptions): void {
 	}
 
 	// The server is provided by another kilo.core area, usually after this one,
-	// so the account stays `pending` until it appears.
+	// so the account stays `pending` until it appears. For the same reason it is
+	// withdrawn first when kilo.core deactivates, after the plugin is already
+	// inactive and before this area's own disposers run: losing the server
+	// means kilo.core is going away, so the account stops publishing then.
 	let stopServer: (() => void) | undefined;
 	sdk.domainObjects.track(KiloServer, {
 		added(server) {
@@ -190,11 +193,11 @@ export function activateAccount(sdk: PluginSdk, options: AccountOptions): void {
 			stopServer?.();
 			stopServer = undefined;
 			client = undefined;
-			service.setConnection("unavailable");
+			service.dispose();
 		},
 	});
 	sdk.onDispose(() => {
 		stopServer?.();
-		service.cancelSignIn();
+		service.dispose();
 	});
 }

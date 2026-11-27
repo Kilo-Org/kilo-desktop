@@ -31,15 +31,20 @@ export function getDmgVolumeTitle(track: ReleaseTrack): string {
 	return track === "preview" ? "Kilo Preview" : "Kilo";
 }
 
+// Preview is the same app as Stable on another update track, so it shares the
+// product name: an update or a downloaded Preview replaces the one macOS bundle
+// instead of adding a second with the same bundle ID.
 const PRODUCT_NAMES = {
 	development: "Kilo Dev",
-	preview: "Kilo Preview",
+	preview: "Kilo",
 	stable: "Kilo",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 
+// Preview and Stable share a profile so workspaces and preferences follow a
+// track switch. Data in an earlier Preview-only profile is not migrated.
 const USER_DATA_NAMES = {
 	development: "Kilo Desktop Dev",
-	preview: "Kilo Desktop Preview",
+	preview: "Kilo Desktop",
 	stable: "Kilo Desktop",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 

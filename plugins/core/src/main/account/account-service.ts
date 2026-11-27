@@ -74,11 +74,13 @@ export interface AccountServiceOptions {
  * lands. Signing out always ends signed out — the CLI may already have
  * dropped the credentials (a 401), which is the same outcome. A failed
  * organisation switch stays in `organizationError` until the next switch (or
- * until the server goes away).
+ * until the server goes away). Once disposed it never publishes again: reads
+ * still in flight finish into nothing, because their owner has deactivated.
  */
 export class AccountService {
 	readonly #options: AccountServiceOptions;
 	#state: AccountState = INITIAL_ACCOUNT;
+	#disposed = false;
 	#attempt = 0;
 	#abort: AbortController | undefined;
 	#signingIn: Promise<{ signedIn: boolean }> | undefined;
@@ -93,7 +95,7 @@ export class AccountService {
 
 	/** Follows the server: read the account once it is ready. */
 	setConnection(connection: AccountState["connection"]): void {
-		if (connection === this.#state.connection) return;
+		if (this.#disposed || connection === this.#state.connection) return;
 		if (connection !== "connected") this.#abandonSignIn();
 		this.#set({
 			connection,
@@ -119,6 +121,12 @@ export class AccountService {
 	}
 
 	cancelSignIn(): void {
+		this.#abandonSignIn();
+	}
+
+	/** Ends any sign-in and stops publishing state. */
+	dispose(): void {
+		this.#disposed = true;
 		this.#abandonSignIn();
 	}
 
@@ -227,6 +235,7 @@ export class AccountService {
 	}
 
 	#set(patch: Partial<AccountState>): void {
+		if (this.#disposed) return;
 		this.#state = { ...this.#state, ...patch };
 		this.#options.onChange(this.#state);
 	}

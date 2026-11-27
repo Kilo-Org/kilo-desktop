@@ -1,9 +1,10 @@
-import { app } from "electron";
+import { app, dialog, shell } from "electron";
 
 import { BUNDLED_PLUGINS, protocolSchemes } from "@kilo-desktop/bundled-plugins";
 
 import { KernelApplication } from "./kernel/KernelApplication.js";
 import { hasForbiddenDebugArgs } from "./platform/debug-args.js";
+import { checkDataFolder, refuseNewerData } from "./platform/dataVersion.js";
 import { configureAppProfile } from "./platform/ElectronApp.js";
 import {
 	configureLogging,
@@ -33,6 +34,25 @@ if (electronSquirrelStartup) {
 	app.exit(1);
 } else {
 	configureAppProfile();
+	startUnlessDataIsNewer();
+}
+
+/** Checks the data version before the preferences store or any plugin opens the folder. */
+function startUnlessDataIsNewer(): void {
+	const dataFolder = checkDataFolder(app.getPath("userData"));
+	if (dataFolder.kind === "newer") {
+		void refuseNewerData(dataFolder, {
+			whenReady: () => app.whenReady(),
+			showMessageBox: (options) => dialog.showMessageBox(options),
+			openExternal: (url) =>
+				shell.openExternal(url).then(
+					() => true,
+					() => false,
+				),
+			quit: () => app.quit(),
+		});
+		return;
+	}
 
 	// E2E runs must never reach PostHog, Sentry, or subprocess telemetry.
 	const preferences = new PreferencesStore(undefined, { forceDataCollectionOff: isE2eBuild() });

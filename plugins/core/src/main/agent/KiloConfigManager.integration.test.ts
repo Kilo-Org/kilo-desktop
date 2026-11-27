@@ -13,6 +13,10 @@ import {
 
 const SOURCE_ONE = "feature-one";
 const SOURCE_TWO = "feature-two";
+const NEWER_FORMAT = {
+	kind: "skipped-error",
+	reason: "a newer Kilo Desktop wrote the ownership file",
+} as const;
 const LEGACY_OWNERSHIP_SIDECAR_FILENAME = ".anaconda-desktop-ownership.json";
 
 describe("KiloConfigManager", () => {
@@ -524,5 +528,56 @@ describe("KiloConfigManager", () => {
 				"provider:shared": SOURCE_TWO,
 			},
 		});
+	});
+
+	it("leaves an ownership file a newer build wrote untouched, and changes nothing it owns", async () => {
+		const configFile = path.join(configDirectory, KILO_CONFIG_FILENAME);
+		const sidecarFile = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
+		const config = `${JSON.stringify({ mcp: { shared: { type: "remote", url: "https://one.test/mcp" } } })}\n`;
+		const newer = `${JSON.stringify({
+			version: 5,
+			ownedEntryKeys: ["mcp:shared", "skill:review"],
+			owners: { "mcp:shared": SOURCE_ONE, "skill:review": SOURCE_TWO },
+			addedLater: { "mcp:shared": "kept" },
+		})}\n`;
+		await writeFile(configFile, config);
+		await writeFile(sidecarFile, newer);
+		await writeFile(
+			path.join(configDirectory, ".anaconda-desktop-ownership.json"),
+			`${JSON.stringify({ ownedEntryIds: ["old"] })}\n`,
+		);
+		const manager = new KiloConfigManager(configDirectory);
+
+		await expect(manager.listOwnedEntryIds("mcp", SOURCE_ONE)).resolves.toEqual(["shared"]);
+		await expect(
+			manager.setMcpEntry(SOURCE_ONE, "shared", { type: "remote", url: "https://two.test/mcp" }),
+		).resolves.toEqual(NEWER_FORMAT);
+		await expect(manager.setProviderEntry(SOURCE_TWO, "local", { name: "Local" })).resolves.toEqual(
+			NEWER_FORMAT,
+		);
+
+		expect(await readFile(sidecarFile, "utf8")).toBe(newer);
+		expect(await readFile(configFile, "utf8")).toBe(config);
+	});
+
+	it("treats a newer ownership file it can't read as off limits instead of owning nothing", async () => {
+		const configFile = path.join(configDirectory, KILO_CONFIG_FILENAME);
+		const sidecarFile = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
+		const config = `${JSON.stringify({ mcp: { shared: { type: "remote", url: "https://one.test/mcp" } } })}\n`;
+		const newer = `${JSON.stringify({
+			version: 5,
+			entries: [{ section: "mcp", name: "shared", owner: SOURCE_ONE }],
+		})}\n`;
+		await writeFile(configFile, config);
+		await writeFile(sidecarFile, newer);
+		const manager = new KiloConfigManager(configDirectory);
+
+		await expect(
+			manager.setMcpEntry(SOURCE_TWO, "added", { type: "remote", url: "https://two.test/mcp" }),
+		).resolves.toEqual(NEWER_FORMAT);
+		await expect(manager.removeMcpEntry(SOURCE_ONE, "shared")).resolves.toEqual(NEWER_FORMAT);
+
+		expect(await readFile(sidecarFile, "utf8")).toBe(newer);
+		expect(await readFile(configFile, "utf8")).toBe(config);
 	});
 });

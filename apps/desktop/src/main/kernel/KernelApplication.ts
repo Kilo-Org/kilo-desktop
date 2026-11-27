@@ -38,6 +38,7 @@ import {
 	repaintOnSystemColorSchemeChange,
 	restoreNativeThemeFromPreferences,
 } from "../platform/native-theme.js";
+import { upgradeDataFolder } from "../platform/dataVersion.js";
 import { ElectronApp } from "../platform/ElectronApp.js";
 import { buildFallbackMenuTemplate } from "../platform/ElectronAppMenu.js";
 import { ElectronBrowserHost } from "../platform/ElectronBrowserHost.js";
@@ -186,6 +187,9 @@ export class KernelApplication {
 			this.#app.quit();
 			return;
 		}
+		upgradeDataFolder(this.#app.getPath("userData"), {
+			appVersion: this.#app.metadata.appVersion,
+		});
 		this.#isDevelopment = !this.#app.metadata.isPackaged;
 		configureTrustedSchemes(this.#isDevelopment);
 		restoreNativeThemeFromPreferences(this.preferences);

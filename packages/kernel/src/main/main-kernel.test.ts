@@ -587,6 +587,7 @@ describe("main kernel — local plugins", () => {
 			approve: vi.fn(async () => true),
 			revoke: vi.fn(),
 			refresh: vi.fn(async () => {}),
+			importArchive: vi.fn(async () => ({ imported: true, pluginId: "acme.zipped" })),
 			emit(next) {
 				state = next;
 				for (const listener of listeners) listener();
@@ -630,6 +631,10 @@ describe("main kernel — local plugins", () => {
 		).resolves.toEqual({ approved: true });
 		await plugins.methods.revokeExternal({ pluginId: "acme.local" });
 		await plugins.methods.refreshExternal(undefined);
+		await expect(plugins.methods.importExternal(undefined)).resolves.toEqual({
+			imported: true,
+			pluginId: "acme.zipped",
+		});
 		externalPlugins.emit({
 			enabled: true,
 			directory: "/plugins",

@@ -59,6 +59,11 @@ function fakeExternalPlugins(initial: Partial<ExternalPluginsState> = {}) {
 		}),
 		revoke: vi.fn(),
 		refresh: vi.fn(async () => {}),
+		importArchive: vi.fn(async () => ({
+			imported: true,
+			pluginId: "acme.zipped",
+			displayName: "Zipped",
+		})),
 	} satisfies ExternalPluginsHost;
 	return host;
 }
@@ -95,7 +100,7 @@ describe("Local plugins settings", () => {
 		await openLocalPlugins(host);
 		await expect
 			.element(
-				page.getByTestId("local-plugins-warning").getByText("Only use plugins you wrote or trust"),
+				page.getByTestId("local-plugins-warning").getByText("Only use plugins you wrote or trust!"),
 			)
 			.toBeInTheDocument();
 
@@ -228,5 +233,28 @@ describe("Local plugins settings", () => {
 			.toHaveTextContent(
 				"Its node_modules folder isn't loaded. Bundle its dependencies into its JavaScript.",
 			);
+	});
+	it("imports a plugin from a zip through the host", async () => {
+		const host = fakeExternalPlugins();
+		await openLocalPlugins(host);
+
+		await page.getByTestId("local-plugins-import").click();
+
+		expect(host.importArchive).toHaveBeenCalled();
+		await expect.element(page.getByText("Imported Zipped")).toBeInTheDocument();
+	});
+
+	it("explains why an archive couldn't be imported", async () => {
+		const host = fakeExternalPlugins();
+		host.importArchive.mockRejectedValueOnce(
+			new KernelError("VALIDATION", "The archive has no plugin.json at its top."),
+		);
+		await openLocalPlugins(host);
+
+		await page.getByTestId("local-plugins-import").click();
+
+		await expect
+			.element(page.getByTestId("local-plugins-error"))
+			.toHaveTextContent("The archive has no plugin.json at its top.");
 	});
 });

@@ -145,6 +145,19 @@ export const KernelPlugins = defineDomainObject({
 		revokeExternal: method(z.object({ pluginId: z.string() }), nothing),
 		/** Rescans the local plugins directory (it is read at launch only while local plugins are on). */
 		refreshExternal: method(nothing, nothing),
+		/**
+		 * Imports a local plugin from a zip the user picks in the host's own UI,
+		 * replacing an installed one with the same id once they confirm. The
+		 * imported plugin is disabled until the user enables it.
+		 */
+		importExternal: method(
+			nothing,
+			z.object({
+				imported: z.boolean(),
+				pluginId: z.string().optional(),
+				displayName: z.string().optional(),
+			}),
+		),
 	},
 	events: {
 		"state-changed": z.object({ pluginId: z.string(), state: z.enum(PLUGIN_STATES) }),

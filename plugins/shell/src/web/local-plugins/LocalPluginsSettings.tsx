@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+	FileArchiveIcon,
 	FolderOpenIcon,
 	InfoIcon,
 	PuzzleIcon,
@@ -133,6 +134,7 @@ export function LocalPluginsSettings() {
 	const { busy, error, run } = usePluginsActions();
 	const reveal = useReveal();
 	const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+	const [refreshing, setRefreshing] = useState(false);
 
 	if (external === undefined) {
 		return (
@@ -153,6 +155,19 @@ export function LocalPluginsSettings() {
 		);
 	}
 
+	// Only a rescan spins the Refresh icon; other actions just disable the buttons.
+	const refresh = () => {
+		setRefreshing(true);
+		return run((methods) => methods.refreshExternal(undefined)).finally(() => setRefreshing(false));
+	};
+
+	const importArchive = () =>
+		run(async (methods) => {
+			const result = await methods.importExternal(undefined);
+			if (!result.imported) return;
+			toast.success(`Imported ${result.displayName ?? result.pluginId ?? "the plugin"}`);
+		});
+
 	const setEnabled = async (enabled: boolean) => {
 		setPendingEnabled(enabled);
 		await run((methods) => methods.setExternalEnabled({ enabled }));
@@ -163,16 +178,31 @@ export function LocalPluginsSettings() {
 		<div className="flex min-w-0 flex-col gap-6" data-qa-id="local-plugins-settings">
 			<SettingsPageHeader
 				actions={
-					<Button
-						variant="outline"
-						size="sm"
-						disabled={busy}
-						data-qa-id="local-plugins-refresh"
-						onClick={() => void run((methods) => methods.refreshExternal(undefined))}
-					>
-						<RefreshCwIcon data-icon="inline-start" className={busy ? "animate-spin" : undefined} />
-						Refresh
-					</Button>
+					<>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={busy}
+							data-qa-id="local-plugins-import"
+							onClick={() => void importArchive()}
+						>
+							<FileArchiveIcon data-icon="inline-start" />
+							Import from zip
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={busy}
+							data-qa-id="local-plugins-refresh"
+							onClick={() => void refresh()}
+						>
+							<RefreshCwIcon
+								data-icon="inline-start"
+								className={refreshing ? "animate-spin" : undefined}
+							/>
+							Refresh
+						</Button>
+					</>
 				}
 			/>
 			{/*
@@ -184,13 +214,13 @@ export function LocalPluginsSettings() {
 			 */}
 			<div className="grid min-w-0 *:col-start-1 *:row-start-1">
 				<Alert
-					variant="warning"
+					variant="danger"
 					className={external.restartNeeded ? "invisible" : undefined}
 					aria-hidden={external.restartNeeded}
 					data-qa-id="local-plugins-warning"
 				>
 					<TriangleAlertIcon aria-hidden="true" />
-					<AlertTitle>Only use plugins you wrote or trust</AlertTitle>
+					<AlertTitle>Only use plugins you wrote or trust!</AlertTitle>
 					<AlertDescription>
 						Local plugins have the same access to this computer as Kilo Desktop: your files, the
 						network, and the accounts you're signed in to here. A plugin is only loaded once you

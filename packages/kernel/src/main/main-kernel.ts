@@ -88,6 +88,12 @@ export interface ExternalPluginsHost {
 	approve(pluginId: string, hash: string): Promise<boolean>;
 	revoke(pluginId: string): void;
 	refresh(): Promise<void>;
+	/** Asks the user for a plugin zip and installs it; `imported` is false when they cancel. */
+	importArchive(): Promise<{
+		readonly imported: boolean;
+		readonly pluginId?: string;
+		readonly displayName?: string;
+	}>;
 }
 
 export interface MainKernelOptions extends Omit<
@@ -355,6 +361,7 @@ function providePlugins(core: Kernel, host: MainKernelHost, disabledAtLaunch: st
 				}),
 				revokeExternal: ({ pluginId }) => external().revoke(pluginId),
 				refreshExternal: () => external().refresh(),
+				importExternal: () => external().importArchive(),
 			},
 		},
 	);

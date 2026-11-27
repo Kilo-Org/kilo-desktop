@@ -82,6 +82,7 @@ import {
 	LOCAL_PLUGINS_FLAG,
 	localPluginsFlagAtLaunch,
 	type ApprovalRequest,
+	type ReplaceRequest,
 	type ExternalPluginsSettings,
 } from "./external-plugins.js";
 import { parseFlagOverrides } from "./flag-overrides.js";
@@ -165,6 +166,8 @@ export class KernelApplication {
 		),
 		apiVersion: KERNEL_API_VERSION,
 		confirmApproval: (request) => this.#confirmPluginApproval(request),
+		chooseArchive: () => this.#choosePluginArchive(),
+		confirmReplace: (request) => this.#confirmPluginReplace(request),
 		beforeImport: loadPluginModulesFrom,
 		logger: createLogger("external-plugins"),
 	});
@@ -751,6 +754,39 @@ export class KernelApplication {
 				"ONLY ENABLE PLUGINS YOU WROTE OR TRUST.",
 			].join("\n\n"),
 			buttons: ["Enable", "Cancel"],
+			defaultId: 1,
+			cancelId: 1,
+			noLink: true,
+		};
+		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
+		const { response } = window
+			? await dialog.showMessageBox(window, options)
+			: await dialog.showMessageBox(options);
+		return response === 0;
+	}
+
+	async #choosePluginArchive(): Promise<string | undefined> {
+		const options: Electron.OpenDialogOptions = {
+			title: "Import a plugin",
+			buttonLabel: "Import",
+			properties: ["openFile"],
+			filters: [{ name: "Plugin archive", extensions: ["zip"] }],
+		};
+		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
+		const { canceled, filePaths } = window
+			? await dialog.showOpenDialog(window, options)
+			: await dialog.showOpenDialog(options);
+		return canceled ? undefined : filePaths[0];
+	}
+
+	async #confirmPluginReplace(request: ReplaceRequest): Promise<boolean> {
+		const options: Electron.MessageBoxOptions = {
+			type: "question",
+			message: `Replace \u201c${request.displayName}\u201d?`,
+			detail: request.installedVersion
+				? `Version ${request.installedVersion} is installed. Replace it with ${request.version}? You'll need to enable it again.`
+				: `Replace it with ${request.version}? You'll need to enable it again.`,
+			buttons: ["Replace", "Cancel"],
 			defaultId: 1,
 			cancelId: 1,
 			noLink: true,

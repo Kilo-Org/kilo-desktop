@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, realpath, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -19,6 +19,8 @@ import {
 	type WindowExternalPlugin,
 } from "@kilo-desktop/kernel";
 import type { ExternalPluginsHost } from "@kilo-desktop/kernel/main";
+
+import { readPluginArchive } from "./external-plugin-archive.js";
 
 /**
  * The user's local plugins: trusted code they wrote or chose, loaded from
@@ -70,6 +72,15 @@ export interface ApprovalRequest {
 	readonly hash: string;
 }
 
+export interface ReplaceRequest {
+	readonly id: string;
+	readonly displayName: string;
+	/** The imported plugin's version. */
+	readonly version: string;
+	/** The installed plugin's version. */
+	readonly installedVersion?: string;
+}
+
 export interface ExternalPluginsOptions {
 	readonly directory: string;
 	readonly store: KvStore<ExternalPluginsSettings>;
@@ -82,6 +93,10 @@ export interface ExternalPluginsOptions {
 	 * {@link localPluginsFlagAtLaunch}); it decides ahead of the remembered value.
 	 */
 	readonly featureAtLaunch?: boolean;
+	/** Asks the user, in the host's own UI, for a plugin archive (.zip) to import; undefined when they cancel. */
+	chooseArchive(): Promise<string | undefined>;
+	/** Asks the user, in the host's own UI, whether an import may replace an installed plugin. */
+	confirmReplace(request: ReplaceRequest): Promise<boolean>;
 	/** Asks the user, in the host's own UI, whether this plugin may run. */
 	confirmApproval(request: ApprovalRequest): Promise<boolean>;
 	readonly logger: {
@@ -329,6 +344,83 @@ export class ExternalPlugins implements ExternalPluginsHost {
 		const { [pluginId]: _revoked, ...rest } = this.#approvals();
 		this.#options.store.set({ approvals: rest });
 		this.#notify();
+	}
+
+	/**
+	 * Imports a plugin from a zip the user picks. The archive is read in
+	 * memory, written to a staging folder (a dot folder, so scans ignore it)
+	 * and validated like any plugin before it is moved in: into the folder of
+	 * the installed plugin with the same id (after the user confirms
+	 * replacing it), or a folder named after its id. It is never enabled:
+	 * new files always need the user's approval.
+	 */
+	async importArchive(): Promise<{
+		readonly imported: boolean;
+		readonly pluginId?: string;
+		readonly displayName?: string;
+	}> {
+		this.#requireAvailable();
+		const file = await this.#options.chooseArchive();
+		if (file === undefined) return { imported: false };
+		if ((await stat(file)).size > MAX_BYTES) {
+			throw new KernelError("VALIDATION", "The archive is too large for a local plugin.");
+		}
+		const files = readPluginArchive(Uint8Array.from(await readFile(file)), {
+			maxFiles: MAX_FILES,
+			maxBytes: MAX_BYTES,
+		});
+
+		const { directory } = this.#options;
+		await mkdir(directory, { recursive: true });
+		const staging = path.join(directory, `.import-${randomUUID()}`);
+		try {
+			for (const [relative, content] of files) {
+				const target = path.join(staging, relative);
+				// One file at a time: plugins are small, and ordering keeps parents created first.
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
+				await mkdir(path.dirname(target), { recursive: true });
+				// react-doctor-disable-next-line react-doctor/async-await-in-loop
+				await writeFile(target, content);
+			}
+			const imported = await scanPlugin(
+				path.basename(staging),
+				await realpath(staging),
+				this.#options,
+			);
+			if (imported.error || !imported.manifest) {
+				throw new KernelError("VALIDATION", imported.error ?? "The plugin is invalid.");
+			}
+			const { manifest } = imported;
+
+			await this.#scan();
+			const installed = this.#scanned.find((scanned) => scanned.manifest?.id === manifest.id);
+			const folder = installed?.folder ?? manifest.id;
+			const target = path.join(directory, folder);
+			const occupied = await stat(target).then(
+				() => true,
+				() => false,
+			);
+			if (occupied) {
+				const replace = await this.#options.confirmReplace({
+					id: manifest.id,
+					displayName: manifest.displayName,
+					version: manifest.version,
+					...(installed?.manifest ? { installedVersion: installed.manifest.version } : {}),
+				});
+				if (!replace) return { imported: false };
+				const replaced = path.join(directory, `.replaced-${randomUUID()}`);
+				await rename(target, replaced);
+				await rename(staging, target);
+				// Removes a linked folder's link, never what it points to.
+				await rm(replaced, { recursive: true, force: true });
+			} else {
+				await rename(staging, target);
+			}
+			await this.refresh();
+			return { imported: true, pluginId: manifest.id, displayName: manifest.displayName };
+		} finally {
+			await rm(staging, { recursive: true, force: true });
+		}
 	}
 
 	async refresh(): Promise<void> {

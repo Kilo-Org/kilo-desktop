@@ -46,6 +46,17 @@ plugins/
     └── web.js         ← export default definePlugin({ activate(sdk) { … } })
 ```
 
+## Sharing a plugin
+
+Zip the plugin's folder (from inside it, or the folder itself, as Finder's
+**Compress** does) and send it. The recipient uses **Import from zip** in
+Settings → Plugins: the archive is checked like any plugin (a valid
+manifest, built JavaScript entries, no files outside its folder, the same
+size limits) and installed in a folder named after its id, or in place of an
+installed plugin with the same id once they confirm. An imported plugin
+always starts **disabled**; the recipient enables it like any other. Leave
+out `node_modules`: it isn't loaded.
+
 ## The manifest
 
 A v1 manifest, as for any plugin ([README.md](./README.md#the-manifest)), plus:

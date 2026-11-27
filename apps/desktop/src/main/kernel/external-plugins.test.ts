@@ -1,7 +1,19 @@
-import { mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	realpath,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { strToU8, zipSync, type Zippable } from "fflate";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -83,6 +95,8 @@ function create(overrides: Partial<ExternalPluginsOptions> = {}) {
 		reservedIds: new Set(["kilo.shell"]),
 		apiVersion: "1.0.0",
 		confirmApproval: vi.fn(async () => true),
+		chooseArchive: vi.fn(async () => undefined),
+		confirmReplace: vi.fn(async () => true),
 		logger: silent,
 		...overrides,
 	});
@@ -556,6 +570,98 @@ describe("ExternalPlugins — feature flag", () => {
 		expect(plugins.state()).toBeNull();
 		expect(listener).toHaveBeenCalled();
 		expect(create({ store }).state()).toBeNull();
+	});
+});
+
+describe("ExternalPlugins — importing a zip", () => {
+	async function archive(files: Record<string, string>): Promise<string> {
+		const entries: Zippable = {};
+		for (const [name, content] of Object.entries(files)) entries[name] = strToU8(content);
+		const outside = await mkdtemp(path.join(os.tmpdir(), "kilo-plugin-zip-"));
+		const file = path.join(outside, "plugin.zip");
+		await writeFile(file, zipSync(entries));
+		return file;
+	}
+
+	const helloFiles = (version = "0.1.0") => ({
+		"hello/plugin.json": JSON.stringify(manifest("acme.hello", { version })),
+		"hello/main.js": "export default { activate() {} };",
+	});
+
+	it("installs the plugin into a folder named after its id, disabled, and lists it", async () => {
+		const file = await archive(helloFiles());
+		const plugins = create({ chooseArchive: vi.fn(async () => file) });
+
+		await expect(plugins.importArchive()).resolves.toEqual({
+			imported: true,
+			pluginId: "acme.hello",
+			displayName: "Plugin acme.hello",
+		});
+
+		expect((await readdir(directory)).filter((name) => !name.startsWith("."))).toEqual([
+			"acme.hello",
+		]);
+		expect(await readFile(path.join(directory, "acme.hello", "main.js"), "utf8")).toContain(
+			"activate",
+		);
+		expect(stateOf(plugins).plugins).toEqual([
+			expect.objectContaining({ id: "acme.hello", status: "ready", approved: false }),
+		]);
+	});
+
+	it("does nothing when the user cancels choosing a file", async () => {
+		const plugins = create();
+
+		await expect(plugins.importArchive()).resolves.toEqual({ imported: false });
+	});
+
+	it("refuses an invalid plugin and leaves nothing behind", async () => {
+		const file = await archive({
+			"plugin.json": JSON.stringify(manifest("acme.broken", { main: "./src/main.ts" })),
+			"src/main.ts": "",
+		});
+		const plugins = create({ chooseArchive: vi.fn(async () => file) });
+
+		await expect(plugins.importArchive()).rejects.toMatchObject({
+			code: "VALIDATION",
+			message: expect.stringMatching(/isn't JavaScript/),
+		});
+		expect(await readdir(directory)).toEqual([]);
+	});
+
+	it("replaces the folder of a plugin with the same id once the user confirms", async () => {
+		await writePlugin("my-hello", manifest("acme.hello"));
+		const file = await archive(helloFiles("0.2.0"));
+		const confirmReplace = vi.fn(async () => true);
+		const plugins = create({ chooseArchive: vi.fn(async () => file), confirmReplace });
+
+		await plugins.importArchive();
+
+		expect(confirmReplace).toHaveBeenCalledWith(
+			expect.objectContaining({ displayName: "Plugin acme.hello", version: "0.2.0" }),
+		);
+		expect(stateOf(plugins).plugins).toEqual([
+			expect.objectContaining({ folder: "my-hello", version: "0.2.0" }),
+		]);
+		expect((await readdir(directory)).filter((name) => name.startsWith("."))).toEqual([]);
+	});
+
+	it("keeps the existing plugin when the user declines replacing it", async () => {
+		await writePlugin("my-hello", manifest("acme.hello"));
+		const file = await archive(helloFiles("0.2.0"));
+		const plugins = create({
+			chooseArchive: vi.fn(async () => file),
+			confirmReplace: vi.fn(async () => false),
+		});
+
+		await expect(plugins.importArchive()).resolves.toEqual({ imported: false });
+		expect(stateOf(plugins).plugins).toEqual([expect.objectContaining({ version: "0.1.0" })]);
+	});
+
+	it("is unavailable while the feature is off", async () => {
+		const plugins = create({ store: memoryStore({ featureAvailable: false }) });
+
+		await expect(plugins.importArchive()).rejects.toMatchObject({ code: "UNAVAILABLE" });
 	});
 });
 

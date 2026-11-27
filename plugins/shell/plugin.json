@@ -325,7 +325,7 @@
 				{
 					"id": "local-plugins",
 					"title": "Plugins",
-					"description": "Use plugins you wrote or trust from your local plugins folder.",
+					"description": "Use plugins installed in your local plugins folder.",
 					"priority": 71,
 					"when": {
 						"all": ["kernel/desktop", "kernel/flag:local-plugins"]

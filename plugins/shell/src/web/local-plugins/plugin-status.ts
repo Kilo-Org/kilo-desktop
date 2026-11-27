@@ -25,7 +25,7 @@ export interface KernelPluginFacts {
 export function localPluginStatus(
 	plugin: ExternalPluginRecord,
 	kernel: KernelPluginFacts,
-	/** Whether local plugins load at the next launch ("Enable local plugins"). */
+	/** Whether local plugins load at the next launch ("Allow local plugins"). */
 	localPluginsEnabled: boolean,
 ): LocalPluginStatus {
 	// What loads at the next launch: only enabled plugins, and only while local plugins are on.

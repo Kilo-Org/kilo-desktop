@@ -72,7 +72,7 @@ describe("localPluginStatus", () => {
 		).toBe("Stops after restart");
 	});
 
-	it("follows the Enable local plugins switch", () => {
+	it("follows the Allow local plugins switch", () => {
 		expect(localPluginStatus(record({ loaded: false }), none, false).label).toBe("Disabled");
 		expect(localPluginStatus(record(), { state: "active", errors: [] }, false).label).toBe(
 			"Stops after restart",

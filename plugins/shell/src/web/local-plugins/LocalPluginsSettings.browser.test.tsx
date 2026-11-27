@@ -187,7 +187,7 @@ describe("Local plugins settings", () => {
 		expect(host.refresh).toHaveBeenCalled();
 	});
 
-	it("offers to open the folder when there are no plugins yet", async () => {
+	it("says there are no plugins yet", async () => {
 		await openLocalPlugins(fakeExternalPlugins());
 
 		await expect.element(page.getByTestId("local-plugins-empty")).toBeVisible();

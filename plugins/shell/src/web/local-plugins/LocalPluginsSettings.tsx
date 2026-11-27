@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
 	FileArchiveIcon,
-	FolderOpenIcon,
 	InfoIcon,
 	PuzzleIcon,
 	RefreshCwIcon,
@@ -20,21 +19,7 @@ import {
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
-import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "@kilo-desktop/ui/components/empty";
-import {
-	FieldContent,
-	FieldDescription,
-	FieldError,
-	FieldLegend,
-	FieldSet,
-} from "@kilo-desktop/ui/components/field";
+import { FieldError, FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -176,35 +161,7 @@ export function LocalPluginsSettings() {
 
 	return (
 		<div className="flex min-w-0 flex-col gap-6" data-qa-id="local-plugins-settings">
-			<SettingsPageHeader
-				actions={
-					<>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={busy}
-							data-qa-id="local-plugins-import"
-							onClick={() => void importArchive()}
-						>
-							<FileArchiveIcon data-icon="inline-start" />
-							Import from zip
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={busy}
-							data-qa-id="local-plugins-refresh"
-							onClick={() => void refresh()}
-						>
-							<RefreshCwIcon
-								data-icon="inline-start"
-								className={refreshing ? "animate-spin" : undefined}
-							/>
-							Refresh
-						</Button>
-					</>
-				}
-			/>
+			<SettingsPageHeader />
 			{/*
 			 * The restart prompt takes the warning's place in one grid cell, so the
 			 * slot keeps its height and the page doesn't jump when it appears. The
@@ -223,9 +180,8 @@ export function LocalPluginsSettings() {
 					<AlertTitle>Only use plugins you wrote or trust!</AlertTitle>
 					<AlertDescription>
 						Local plugins have the same access to this computer as Kilo Desktop: your files, the
-						network, and the accounts you're signed in to here. A plugin is only loaded once you
-						enable it below. If its files change, it's disabled from the next launch until you
-						enable it again.
+						network, and the accounts you're signed in to here. Manage your installed local plugins
+						below.
 					</AlertDescription>
 				</Alert>
 				<Alert
@@ -254,10 +210,10 @@ export function LocalPluginsSettings() {
 					<SummaryCard.Row>
 						<SummaryCard.Content>
 							<SummaryCard.Title>
-								<label htmlFor="local-plugins-enabled">Enable local plugins</label>
+								<label htmlFor="local-plugins-enabled">Allow local plugins</label>
 							</SummaryCard.Title>
 							<SummaryCard.Description className="line-clamp-none">
-								Load approved plugins from the plugins folder when Kilo Desktop opens.
+								Load enabled local plugins when Kilo Desktop opens.
 							</SummaryCard.Description>
 						</SummaryCard.Content>
 						<SummaryCard.Actions>
@@ -300,63 +256,68 @@ export function LocalPluginsSettings() {
 					{error}
 				</FieldError>
 			) : null}
-			{external.enabled || external.plugins.length > 0 ? (
-				<FieldSet
-					className="min-w-0"
-					aria-labelledby="local-plugins-list-heading"
-					data-qa-id="local-plugins-installed"
-				>
-					<FieldContent>
-						<FieldLegend id="local-plugins-list-heading" variant="label" className="mb-0">
-							Installed
-						</FieldLegend>
-						<FieldDescription>
-							One folder per plugin, each with its plugin.json and built JavaScript.
-						</FieldDescription>
-					</FieldContent>
-					{external.plugins.length === 0 ? (
-						<Empty className="border" data-qa-id="local-plugins-empty">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									<PuzzleIcon aria-hidden="true" />
-								</EmptyMedia>
-								<EmptyTitle>No local plugins</EmptyTitle>
-								<EmptyDescription>
-									Put a plugin's folder in the plugins folder, then refresh.
-								</EmptyDescription>
-							</EmptyHeader>
-							<EmptyContent>
-								<Button
-									variant="outline"
-									size="sm"
-									disabled={!reveal.available}
-									onClick={() => void reveal.reveal(external.directory)}
-								>
-									<FolderOpenIcon data-icon="inline-start" />
-									{revealInFileManagerLabel()}
-								</Button>
-							</EmptyContent>
-						</Empty>
-					) : (
-						<ul aria-label="Local plugins" className={CARD_CLASS} data-qa-id="local-plugins-list">
-							{external.plugins.map((plugin) => (
-								<li key={plugin.folder} data-qa-id={`local-plugin-${plugin.folder}`}>
-									<PluginRow
-										plugin={plugin}
-										status={localPluginStatus(
-											plugin,
-											kernelFacts(plugin.id, kernelPlugins, issues),
-											external.enabled,
-										)}
-										busy={busy}
-										run={run}
-									/>
-								</li>
-							))}
-						</ul>
-					)}
-				</FieldSet>
-			) : null}
+			<FieldSet
+				className="min-w-0"
+				aria-labelledby="local-plugins-list-heading"
+				data-qa-id="local-plugins-installed"
+			>
+				<div className="flex min-w-0 items-center justify-between gap-4">
+					<FieldLegend id="local-plugins-list-heading" variant="label" className="mb-0">
+						Installed
+					</FieldLegend>
+					<div className="flex shrink-0 items-center gap-2">
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={busy}
+							data-qa-id="local-plugins-import"
+							onClick={() => void importArchive()}
+						>
+							<FileArchiveIcon data-icon="inline-start" />
+							Import from zip
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={busy}
+							data-qa-id="local-plugins-refresh"
+							onClick={() => void refresh()}
+						>
+							<RefreshCwIcon
+								data-icon="inline-start"
+								className={refreshing ? "animate-spin" : undefined}
+							/>
+							Refresh
+						</Button>
+					</div>
+				</div>
+				{external.plugins.length === 0 ? (
+					<p
+						className="border-border text-muted-foreground rounded-lg border px-3 py-3 text-sm"
+						data-qa-id="local-plugins-empty"
+					>
+						No local plugins yet. Import one from a zip, or put its folder in the local plugins
+						folder and refresh.
+					</p>
+				) : (
+					<ul aria-label="Local plugins" className={CARD_CLASS} data-qa-id="local-plugins-list">
+						{external.plugins.map((plugin) => (
+							<li key={plugin.folder} data-qa-id={`local-plugin-${plugin.folder}`}>
+								<PluginRow
+									plugin={plugin}
+									status={localPluginStatus(
+										plugin,
+										kernelFacts(plugin.id, kernelPlugins, issues),
+										external.enabled,
+									)}
+									busy={busy}
+									run={run}
+								/>
+							</li>
+						))}
+					</ul>
+				)}
+			</FieldSet>
 		</div>
 	);
 }

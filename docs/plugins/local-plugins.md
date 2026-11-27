@@ -97,7 +97,7 @@ To contribute to another plugin's extension point, pass `{ id: "<point id>" }`
 
 1. Copy [`examples/local-plugin`](../../examples/local-plugin) into your
    plugins folder.
-2. Settings → Plugins → turn on **Enable local plugins**, turn on "Local
+2. Settings → Plugins → turn on **Allow local plugins**, turn on "Local
    Hello"'s switch (confirm with **Enable**), then **Restart**.
 3. Settings → **Local Hello**: the button counts in main and survives a
    restart. The command palette has **Local Hello: Count one more**.

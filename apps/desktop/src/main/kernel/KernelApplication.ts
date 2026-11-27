@@ -179,7 +179,23 @@ export class KernelApplication {
 		}
 	}
 
+	/**
+	 * Marks the start of a new application session in the main log with a
+	 * version/platform/pid banner, so session boundaries and build/OS context
+	 * are easy to spot when scanning or grepping a log file.
+	 */
+	#logAppSessionStart(): void {
+		const { appVersion, isPackaged } = this.#app.metadata;
+		const divider = "=".repeat(100);
+		this.#logger.info(
+			`New application session started\n${divider}\n` +
+				`version=${appVersion} | packaged=${isPackaged} | track=${RELEASE_TRACK} | platform=${process.platform} | arch=${process.arch} | pid=${process.pid}\n` +
+				divider,
+		);
+	}
+
 	async start(): Promise<void> {
+		this.#logAppSessionStart();
 		const identity = getAppIdentity(this.#app.metadata.isPackaged ? RELEASE_TRACK : "development");
 		this.#app.setIdentity(identity);
 		if (!this.#app.requestSingleInstanceLock()) {

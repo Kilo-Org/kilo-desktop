@@ -580,6 +580,7 @@ ones, are gone. Names are today's.
 | 73  | Contributions to Kilo itself are data: `kilo.core/agent-extension` and `kilo.core/mcp-server` carry agents, commands, skills, Kilo plugins and MCP servers in their metadata; `kilo.core/server-env` adds server environment variables                                        |
 | 74  | `kilo.local-inference` and `kilo.environments` stay their own plugins; Anaconda's model catalog and conda's llama.cpp runtime are contributions to `kilo.local-inference`'s `model-catalog` and `llama-runtime`                                                               |
 | 75  | Plugins own their shortcut UI on the Shortcuts page through `kilo.shell/shortcuts-panel`: a panel claims commands, Settings leaves them out of its list, and the ⌘/ list shows the panel's rows for them. kilo.shell has no knowledge of any plugin's commands                |
+| 76  | Saved data changes additively; a change an older build can't read raises the data folder's data version with a migration, and an older build refuses a folder from a higher data version                                                                                      |
 
 ---
 

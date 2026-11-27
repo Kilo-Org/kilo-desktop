@@ -15,6 +15,10 @@ const LEGACY_OWNERSHIP_SIDECAR_FILENAMES = [
 	".anaconda-desktop-managed.json",
 ] as const;
 const OBSOLETE_LOCAL_PROVIDER_ENTRY_NAME = "anaconda-local";
+// Released builds (v1.0.0 on) rewrite any other version as 4, keeping only
+// `ownedEntryKeys` and `owners`. Raise this only alongside the data version
+// (apps/desktop dataVersion.ts), which keeps those builds off newer data;
+// until then, add only fields they can safely drop.
 const SIDECAR_SCHEMA_VERSION = 4;
 
 export type KiloConfigEntry = Readonly<Record<string, unknown>>;
@@ -57,6 +61,8 @@ interface Sidecar {
 interface SidecarReadResult {
 	readonly sidecar: Sidecar;
 	readonly requiresMigration: boolean;
+	/** Written by a newer build: read it, but never migrate or write it. */
+	readonly newer?: boolean;
 }
 
 interface ExistingConfig {
@@ -103,17 +109,29 @@ function sidecarFromKeys(
 function parseSidecar(
 	raw: string,
 	flatKey: "ownedEntryIds" | "managed",
-): { sidecar: Sidecar; requiresMigration: boolean } | undefined {
+): SidecarReadResult | undefined {
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
 		const parsedRecord = parsed as Record<string, unknown>;
+		const version = typeof parsedRecord.version === "number" ? parsedRecord.version : 0;
 		const keysValue = parsedRecord.ownedEntryKeys;
-		if (Array.isArray(keysValue)) {
-			const keys = keysValue.filter((entry): entry is string => typeof entry === "string");
+		const keys = Array.isArray(keysValue)
+			? keysValue.filter((entry): entry is string => typeof entry === "string")
+			: undefined;
+		// Whatever shape a newer format has, it is never "owns nothing": that
+		// would let this build overwrite or delete it.
+		if (version > SIDECAR_SCHEMA_VERSION) {
+			return {
+				sidecar: sidecarFromKeys(keys ?? [], parsedRecord.owners, (key) => key),
+				requiresMigration: false,
+				newer: true,
+			};
+		}
+		if (keys) {
 			return {
 				sidecar: sidecarFromKeys(keys, parsedRecord.owners, (key) => key),
-				requiresMigration: parsedRecord.version !== SIDECAR_SCHEMA_VERSION,
+				requiresMigration: version < SIDECAR_SCHEMA_VERSION,
 			};
 		}
 		const entryIdsValue = parsedRecord[flatKey];
@@ -178,16 +196,18 @@ async function readSidecar(configDirectory: string): Promise<SidecarReadResult> 
 	if (current.kind === "unusable") return noOwnership();
 
 	if (current.kind === "parsed") {
+		if (current.result.newer) return current.result;
 		// A legacy sidecar beside the current one comes from an older build that
 		// ran after the rename (e.g. switching branches that share a profile).
 		// Its entries were still written by Desktop, so fold them in; ignoring
 		// them orphans those entries in kilo.jsonc forever.
 		let { sidecar, requiresMigration } = current.result;
-		for (const filename of LEGACY_OWNERSHIP_SIDECAR_FILENAMES) {
-			const legacy = await readSidecarFile(
-				path.join(configDirectory, filename),
-				legacyFlatKey(filename),
-			);
+		const legacies = await Promise.all(
+			LEGACY_OWNERSHIP_SIDECAR_FILENAMES.map((filename) =>
+				readSidecarFile(path.join(configDirectory, filename), legacyFlatKey(filename)),
+			),
+		);
+		for (const legacy of legacies) {
 			if (legacy.kind !== "parsed") continue;
 			sidecar = mergeLegacyOwnership(sidecar, legacy.result.sidecar);
 			requiresMigration = true;
@@ -491,6 +511,7 @@ export class KiloConfigManager {
 		}
 
 		const sidecarResult = await readSidecar(this.#configDirectory);
+		if (sidecarResult.newer) return this.#skipNewerFormat(section, entryName);
 		const sidecar = sidecarResult.sidecar;
 		if (sidecarResult.requiresMigration) {
 			await migrateSidecar(this.#configDirectory, sidecar);
@@ -552,6 +573,13 @@ export class KiloConfigManager {
 		};
 	}
 
+	/** This build could drop what a newer one added to the ownership file, so it leaves it be. */
+	#skipNewerFormat(section: string, entryName: string): KiloConfigMutationOutcome {
+		const reason = "a newer Kilo Desktop wrote the ownership file";
+		this.#logger.warn(`Leaving ${section}["${entryName}"] alone: ${reason}.`);
+		return { kind: "skipped-error", reason };
+	}
+
 	async #replaceProviderEntry(
 		sourceId: string,
 		entryName: string,
@@ -571,6 +599,7 @@ export class KiloConfigManager {
 		}
 
 		const sidecarResult = await readSidecar(this.#configDirectory);
+		if (sidecarResult.newer) return this.#skipNewerFormat("provider", entryName);
 		let sidecar = sidecarResult.sidecar;
 		if (sidecarResult.requiresMigration) await migrateSidecar(this.#configDirectory, sidecar);
 

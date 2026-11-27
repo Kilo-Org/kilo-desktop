@@ -44,6 +44,25 @@ directory when that target does not already exist. Existing canonical profiles a
 overwritten or merged. Chat reads also recognize the pre-rename ownership key so existing
 sessions remain visible; newly created sessions write only `kilo-desktop` metadata.
 
+### Data version
+
+An older build can open data a newer build wrote: an older release can be installed over a newer
+one by hand, and Preview and Stable share data. Saved data therefore changes additively by default
+(new fields and files only). A change an older build can't read safely (a field renamed,
+repurposed or reformatted) raises `DATA_VERSION` in `apps/desktop/src/main/platform/dataVersion.ts`
+and adds a `DataMigration`, which backs up the files it changes to `backups/` in the data folder
+before migrating. The folder records the version in `data-version.json`. On launch, before anything
+opens the folder, a build whose data version is lower than the folder's refuses to start and offers
+the latest download instead. Builds released before the guard can't check, so the first raise
+should ship at least one Stable release after it. The Kilo CLI's own database (chats, sign-in) is
+outside the data folder and not covered.
+
+Desktop's Kilo config ownership file (`.kilo-desktop-ownership.json`) follows the same rule. A
+build treats an ownership file with a higher version as read-only and reports changes to its
+entries as errors instead of rewriting it. Released builds (v1.0.0 on) rewrite any other version
+as 4 and drop fields they don't know, so its version only goes up together with the data version;
+until then, new fields must be safe for those builds to drop.
+
 ## Distribution matrix
 
 Forge uses only official makers:

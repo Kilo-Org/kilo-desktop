@@ -49,6 +49,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	},
 	{ id: "notifications", title: "Notifications" },
 	{ id: "privacy", title: "Privacy" },
+	// kilo.shell's `local-plugins` flag; `package:e2e` forces it on.
+	{ id: "local-plugins", title: "Plugins" },
 	{ id: "ai-providers", title: "AI Providers" },
 	{ id: "kilo-marketplace", title: "Agent Behavior" },
 	{

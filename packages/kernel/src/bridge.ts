@@ -15,6 +15,12 @@ import type { RendererWindow } from "./window";
 export interface KernelBridge {
 	readonly window: RendererWindow;
 	readonly platform: KeyboardPlatform;
+	/**
+	 * Main loaded local plugins this launch, so the window asks for them
+	 * (EXTERNAL_PLUGINS_CHANNEL) before its kernel starts; when false or absent
+	 * it skips that round trip.
+	 */
+	readonly externalPlugins?: boolean;
 	request(channel: string, payload: unknown): Promise<TransportResult>;
 	send(channel: string, payload: unknown): void;
 	on(listener: (channel: string, payload: unknown) => void): () => void;

@@ -22,6 +22,7 @@ import {
 	type ServiceRecord,
 } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { PaneTabsList, PaneTabsTrigger } from "@kilo-desktop/ui/components/pane-tabs";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
@@ -84,7 +85,20 @@ function PluginRow({
 		<ExpandableRow
 			name={id}
 			testId={`diagnostics-plugin-${id}`}
-			columns={[plugin.displayName, <code>{id}</code>, plugin.version]}
+			columns={[
+				plugin.source === "external" ? (
+					<span className="flex items-center gap-1.5">
+						{plugin.displayName}
+						<Badge variant="outline" data-qa-id={`diagnostics-plugin-external-${id}`}>
+							local
+						</Badge>
+					</span>
+				) : (
+					plugin.displayName
+				),
+				<code>{id}</code>,
+				plugin.version,
+			]}
 			columnsClassName={PLUGIN_COLUMNS}
 			status={<StatusBadge status={plugin.state} />}
 			leading={

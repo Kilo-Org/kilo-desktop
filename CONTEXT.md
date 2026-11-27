@@ -27,7 +27,8 @@ packages/
 e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda and kilo.workspace-board specs)
 examples/
 ├── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
-└── right-panel-plugin/ @kilo-desktop/example-right-panel example.right-panel: example panels in the shell's right sidebar rail — never bundled
+├── right-panel-plugin/ @kilo-desktop/example-right-panel example.right-panel: example panels in the shell's right sidebar rail — never bundled
+└── local-plugin/ example.local-hello: a local plugin in plain JavaScript, loaded from the user's plugins folder (not a workspace package)
 plugins/          Bundled plugins, in layers: kernel → kilo.core → kilo.shell → kilo.work-sessions → kilo.chat → features
 ├── anaconda/     @kilo-desktop/plugin-anaconda kilo.anaconda: the Anaconda account — browser sign-in, the Anaconda API key in the shared Anaconda keyring, its Account settings row — and Anaconda's model catalog for the Local Model Server
 ├── browser/      @kilo-desktop/plugin-browser kilo.browser: Browser panes — web pages, and a workspace's HTML files, in an embedded guest driven through the host's browser
@@ -55,7 +56,7 @@ The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in s
 - **Identity, flags and telemetry are kernel vocabulary.** `kernel/identity`, `kernel/flags` (and `kernel/flag:<id>` context keys) and `kernel/telemetry` name these concepts; vendors (the Kilo account, LaunchDarkly, PostHog) plug in from above through `kernel/identity-provider`, `kernel/linked-account`, `kernel/flag-source` and `kernel/telemetry-sink`. Plugins declare flags and events as `kernel/flag` and `kernel/telemetry-event` contributions.
 - **Plugins talk through the kernel.** A plugin's `plugin.json` (v1 manifest) declares what it provides and uses; another plugin is reached only through the kernel, and its `./contracts` export (types, domain object, extension point and object type definitions) is the one allowed import. `pnpm lint` runs `scripts/check-boundaries.mjs`.
 - **The host provides primitives, not features.** `apps/desktop/src/main/kernel` and `apps/web/src/kernel` boot the kernels and provide `kernel/*` primitives (windows, storage and kv, files, notifications, protocols, embedded hosts, OS open/reveal, updater…) behind manifest permissions. Plugins never import Electron or app code.
-- **Registration.** Bundled plugins are listed once in `packages/bundled-plugins` and mapped to their entries in `apps/desktop/src/main/kernel/plugins.ts` and `apps/web/src/kernel/plugins.ts`.
+- **Registration.** Bundled plugins are listed once in `packages/bundled-plugins` and mapped to their entries in `apps/desktop/src/main/kernel/plugins.ts` and `apps/web/src/kernel/plugins.ts`. Local plugins (the user's own, trusted and approved per plugin) are loaded from disk at launch by the desktop host ([docs/plugins/local-plugins.md](./docs/plugins/local-plugins.md)).
 - **Storage.** Each plugin owns its data under its own storage directory (kv stores, files); nothing shares a database. A plugin that replaced older code imports its saved data once (decision 37).
 
 ### Dependency ownership (host vs plugin)

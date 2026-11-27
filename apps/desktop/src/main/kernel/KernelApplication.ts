@@ -15,11 +15,15 @@ import {
 
 import { protocolSchemes, BUNDLED_PLUGINS } from "@kilo-desktop/bundled-plugins";
 import {
+	EXTERNAL_PLUGINS_CHANNEL,
+	KERNEL_API_VERSION,
 	KernelCommand,
 	KernelError,
+	KernelFlags,
 	KernelKeybindings,
 	resolveKeybindings,
 	type AppMenuNode,
+	type DomainObjectState,
 	type EmbeddedHostRegistration,
 	type KernelLogger,
 	type KeyboardPlatform,
@@ -53,7 +57,11 @@ import { ElectronShell } from "../platform/ElectronShell.js";
 import { ElectronShortcuts } from "../platform/ElectronShortcuts.js";
 import { ElectronWindow } from "../platform/ElectronWindow.js";
 import { createFeatureKvStoreFactory } from "../platform/featureKvStore.js";
-import { featureFsSandboxDir, featureStorageDir } from "../platform/featureStorage.js";
+import {
+	featureFsSandboxDir,
+	featureStorageDir,
+	localPluginsDir,
+} from "../platform/featureStorage.js";
 import { HttpClient } from "../platform/HttpClient.js";
 import { createLogger, getLogFilePath } from "../platform/logger.js";
 import type { PreferencesStore } from "../platform/PreferencesStore.js";
@@ -67,6 +75,16 @@ import { WindowsUpdateFeed } from "../platform/WindowsUpdateFeed.js";
 import { windowArguments } from "../../preload/window-arguments.js";
 import { buildMenuTemplate, WindowMenus, type MenuCommands } from "./app-menu.js";
 import { ElectronKernelTransport } from "./ElectronKernelTransport.js";
+import { loadPluginModulesFrom } from "./external-plugin-modules.js";
+import {
+	EXTERNAL_PLUGINS_PATH,
+	ExternalPlugins,
+	LOCAL_PLUGINS_FLAG,
+	localPluginsFlagAtLaunch,
+	type ApprovalRequest,
+	type ReplaceRequest,
+	type ExternalPluginsSettings,
+} from "./external-plugins.js";
 import { parseFlagOverrides } from "./flag-overrides.js";
 import { provideHostPrimitives, type NativeChrome } from "./host-primitives.js";
 import { createHostServices } from "./host-services.js";
@@ -129,6 +147,30 @@ export class KernelApplication {
 	);
 	readonly #embeddedHosts = new Map<string, EmbeddedWebHost>();
 	readonly #storageRoot = app.getPath("userData");
+	readonly #flagOverrides = parseFlagOverrides(import.meta.env.VITE_FEATURE_FLAG_OVERRIDES);
+	readonly #externalPlugins = new ExternalPlugins({
+		directory: localPluginsDir(this.#storageRoot),
+		store: this.#kernelStore<ExternalPluginsSettings>({
+			defaults: { enabled: false, approvals: {}, featureAvailable: false },
+			namespace: "external-plugins",
+		}),
+		...optionalFeatureAtLaunch(
+			localPluginsFlagAtLaunch({
+				override: this.#flagOverrides[LOCAL_PLUGINS_FLAG],
+				flagSourceConfigured: Boolean(import.meta.env.VITE_LAUNCHDARKLY_CLIENT_SIDE_ID),
+				declaredDefault: declaredFlagDefault(LOCAL_PLUGINS_FLAG),
+			}),
+		),
+		reservedIds: new Set(
+			BUNDLED_PLUGINS.map((plugin) => (plugin.manifest as { readonly id: string }).id),
+		),
+		apiVersion: KERNEL_API_VERSION,
+		confirmApproval: (request) => this.#confirmPluginApproval(request),
+		chooseArchive: () => this.#choosePluginArchive(),
+		confirmReplace: (request) => this.#confirmPluginReplace(request),
+		beforeImport: loadPluginModulesFrom,
+		logger: createLogger("external-plugins"),
+	});
 	readonly #disposers: (() => void)[] = [];
 	readonly #updaterListeners = new Set<(state: unknown) => void>();
 	readonly #menus = new WindowMenus({
@@ -196,8 +238,14 @@ export class KernelApplication {
 		const loginEnvironment = this.#isDevelopment ? Promise.resolve() : this.#syncLoginEnvironment();
 		this.#loginEnvironment = loginEnvironment;
 
-		const kernel = this.#createKernel(identity.squirrelName);
+		const safeMode = process.argv.includes(SAFE_MODE_SWITCH);
+		// Local plugins are imported before the kernels exist, so main and every
+		// window run the same set for the whole launch. Safe mode runs no plugin
+		// code at all, so it imports none.
+		if (!safeMode) await this.#externalPlugins.load();
+		const kernel = this.#createKernel(identity.squirrelName, safeMode);
 		this.#kernel = kernel;
+		this.#followLocalPluginsFlag(kernel);
 		this.#watchAppUrls(kernel);
 		this.#disposers.push(
 			this.#app.on("before-quit", (event: { preventDefault(): void }) => this.#onBeforeQuit(event)),
@@ -219,6 +267,10 @@ export class KernelApplication {
 			...(developmentOrigin ? { developmentOrigin } : {}),
 			embeddedHosts: () => [...this.#embeddedHosts.values()],
 			pluginSchemes,
+			appHostFiles: {
+				prefix: EXTERNAL_PLUGINS_PATH,
+				file: (pathname) => this.#externalPlugins.file(pathname),
+			},
 		});
 		installProxyAgent();
 		this.#disposers.push(
@@ -229,6 +281,7 @@ export class KernelApplication {
 			this.#transport.on(KEYBOARD_SYNC_CHANNEL, (payload, from) =>
 				this.#syncShortcuts(payload, from),
 			),
+			this.#transport.handle(EXTERNAL_PLUGINS_CHANNEL, () => this.#externalPlugins.windowPlugins()),
 		);
 
 		this.#mark("app ready");
@@ -259,7 +312,7 @@ export class KernelApplication {
 		);
 	}
 
-	#createKernel(squirrelName: string): MainKernel {
+	#createKernel(squirrelName: string, safeMode: boolean): MainKernel {
 		const updates = this.#createUpdater(squirrelName);
 		const keybindingsStore = this.#kernelStore({
 			defaults: { overrides: {} as Record<string, string | null> },
@@ -276,16 +329,16 @@ export class KernelApplication {
 		);
 
 		const kernel = createMainKernel({
-			registrations: mainRegistrations(),
-			webPlugins: bundledWebPluginIds(),
+			registrations: [...mainRegistrations(), ...this.#externalPlugins.registrations()],
+			webPlugins: [...bundledWebPluginIds(), ...this.#externalPlugins.webPluginIds()],
 			transport: this.#transport,
 			logger: kernelLogger(),
 			host: {
 				platform: keyboardPlatform(),
 				version: this.#app.metadata.appVersion,
 				rendererOrigins: [getDesktopOrigin(this.#isDevelopment)],
-				safeMode: process.argv.includes(SAFE_MODE_SWITCH),
-				flagOverrides: parseFlagOverrides(import.meta.env.VITE_FEATURE_FLAG_OVERRIDES),
+				safeMode,
+				flagOverrides: this.#flagOverrides,
 				initialSystem: {
 					appearance: nativeTheme.shouldUseDarkColors ? "dark" : "light",
 					online: net.isOnline(),
@@ -324,6 +377,7 @@ export class KernelApplication {
 					},
 					saveDisabled: (disabled) => void pluginsStore.set({ disabled: [...disabled] }),
 				},
+				externalPlugins: this.#externalPlugins,
 			},
 			hostServices: (pluginId, manifest) =>
 				createHostServices(
@@ -472,11 +526,35 @@ export class KernelApplication {
 			deferShow: true,
 			options: {
 				webPreferences: {
-					additionalArguments: windowArguments({ id: "main", role: "main", params: {} }),
+					additionalArguments: windowArguments(
+						{ id: "main", role: "main", params: {} },
+						this.#windowArgumentOptions(),
+					),
 				},
 			},
 		});
 		this.#trackWindow(kernel, "main", window, { role: "main" });
+	}
+
+	/**
+	 * Remembers the `local-plugins` flag once the flag source has answered, for
+	 * the next launch's decision (plugins load before flags are known).
+	 */
+	#followLocalPluginsFlag(kernel: MainKernel): void {
+		const flags = kernel.kernelSdk.domainObjects.get(KernelFlags);
+		if (!flags) return;
+		const apply = (state: DomainObjectState<typeof KernelFlags>) => {
+			if (state.ready) {
+				this.#externalPlugins.setFeatureAvailable(state.flags[LOCAL_PLUGINS_FLAG]?.value === true);
+			}
+		};
+		apply(flags.getState());
+		this.#disposers.push(flags.subscribe(apply));
+	}
+
+	/** Lets a window skip asking for local plugins when main loaded none this launch. */
+	#windowArgumentOptions(): { readonly externalPlugins: boolean } {
+		return { externalPlugins: this.#externalPlugins.windowPlugins().length > 0 };
 	}
 
 	async #openSecondaryWindow(request: WindowOpenRequest): Promise<string> {
@@ -488,12 +566,15 @@ export class KernelApplication {
 			title: request.title,
 			...(request.width === undefined ? {} : { width: request.width }),
 			...(request.height === undefined ? {} : { height: request.height }),
-			additionalArguments: windowArguments({
-				id: windowId,
-				role: "secondary",
-				view: request.view,
-				params: request.params,
-			}),
+			additionalArguments: windowArguments(
+				{
+					id: windowId,
+					role: "secondary",
+					view: request.view,
+					params: request.params,
+				},
+				this.#windowArgumentOptions(),
+			),
 		});
 		this.#trackWindow(kernel, windowId, window, { role: "secondary", view: request.view });
 		return windowId;
@@ -660,6 +741,63 @@ export class KernelApplication {
 		return response === 0;
 	}
 
+	/**
+	 * Asks in a native dialog, which no plugin can draw or click, whether a
+	 * local plugin may run with the app's access.
+	 */
+	async #confirmPluginApproval(request: ApprovalRequest): Promise<boolean> {
+		const options: Electron.MessageBoxOptions = {
+			type: "warning",
+			message: `Enable \u201c${request.displayName}\u201d?`,
+			detail: [
+				"It will have the same access to your files, network and accounts as Kilo Desktop.",
+				"ONLY ENABLE PLUGINS YOU WROTE OR TRUST.",
+			].join("\n\n"),
+			buttons: ["Enable", "Cancel"],
+			defaultId: 1,
+			cancelId: 1,
+			noLink: true,
+		};
+		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
+		const { response } = window
+			? await dialog.showMessageBox(window, options)
+			: await dialog.showMessageBox(options);
+		return response === 0;
+	}
+
+	async #choosePluginArchive(): Promise<string | undefined> {
+		const options: Electron.OpenDialogOptions = {
+			title: "Import a plugin",
+			buttonLabel: "Import",
+			properties: ["openFile"],
+			filters: [{ name: "Plugin archive", extensions: ["zip"] }],
+		};
+		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
+		const { canceled, filePaths } = window
+			? await dialog.showOpenDialog(window, options)
+			: await dialog.showOpenDialog(options);
+		return canceled ? undefined : filePaths[0];
+	}
+
+	async #confirmPluginReplace(request: ReplaceRequest): Promise<boolean> {
+		const options: Electron.MessageBoxOptions = {
+			type: "question",
+			message: `Replace \u201c${request.displayName}\u201d?`,
+			detail: request.installedVersion
+				? `Version ${request.installedVersion} is installed. Replace it with ${request.version}? You'll need to enable it again.`
+				: `Replace it with ${request.version}? You'll need to enable it again.`,
+			buttons: ["Replace", "Cancel"],
+			defaultId: 1,
+			cancelId: 1,
+			noLink: true,
+		};
+		const window = BrowserWindow.getFocusedWindow() ?? this.#windows.main;
+		const { response } = window
+			? await dialog.showMessageBox(window, options)
+			: await dialog.showMessageBox(options);
+		return response === 0;
+	}
+
 	#onBeforeQuit(event: { preventDefault(): void }): void {
 		if (this.#quitting) return;
 		event.preventDefault();
@@ -704,4 +842,26 @@ export class KernelApplication {
 		}
 		this.#protocol.dispose();
 	}
+}
+
+function optionalFeatureAtLaunch(value: boolean | undefined): {
+	readonly featureAtLaunch?: boolean;
+} {
+	return value === undefined ? {} : { featureAtLaunch: value };
+}
+
+/** A bundled plugin's declared default for a boolean flag (false when undeclared). */
+function declaredFlagDefault(flagId: string): boolean {
+	for (const { manifest } of BUNDLED_PLUGINS) {
+		const flags = (
+			manifest as {
+				readonly contributes?: {
+					readonly extensions?: Record<string, readonly { id?: unknown; default?: unknown }[]>;
+				};
+			}
+		).contributes?.extensions?.["kernel/flag"];
+		const flag = flags?.find((candidate) => candidate.id === flagId);
+		if (flag) return flag.default === true;
+	}
+	return false;
 }

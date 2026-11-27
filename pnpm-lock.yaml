@@ -425,6 +425,9 @@ importers:
       execa:
         specifier: 'catalog:'
         version: 10.2.1
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       koffi:
         specifier: 3.3.8
         version: 3.3.8

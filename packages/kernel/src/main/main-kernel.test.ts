@@ -15,13 +15,19 @@ import {
 	KernelWindowClose,
 	KernelWindows,
 	type AppPhase,
+	type ExternalPluginsState,
 } from "../builtins";
 import { defineDomainObject } from "../domain-object";
 import type { DecisionAnswer } from "../extension-point";
 import type { PluginEntry, PluginRegistration } from "../plugin";
 import { testPlugin } from "../test-fixtures";
 import { createTestKernelPair } from "../testing";
-import { createMainKernel, DEFAULT_STOP_CAP_MS, type MainKernelHost } from "./main-kernel";
+import {
+	createMainKernel,
+	DEFAULT_STOP_CAP_MS,
+	type ExternalPluginsHost,
+	type MainKernelHost,
+} from "./main-kernel";
 
 function fakeHost(overrides: Partial<MainKernelHost> = {}): MainKernelHost {
 	return {
@@ -559,6 +565,102 @@ describe("main kernel — disabled plugins", () => {
 				.get(KernelPlugins)!
 				.methods.setDisabled({ pluginIds: ["acme.ghost"] }),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+});
+
+describe("main kernel — local plugins", () => {
+	function externalHost(): ExternalPluginsHost & { emit(next: ExternalPluginsState): void } {
+		let state: ExternalPluginsState = {
+			enabled: false,
+			directory: "/plugins",
+			plugins: [],
+			restartNeeded: false,
+		};
+		const listeners = new Set<() => void>();
+		return {
+			state: () => state,
+			onChange: (listener) => {
+				listeners.add(listener);
+				return () => listeners.delete(listener);
+			},
+			setEnabled: vi.fn(),
+			approve: vi.fn(async () => true),
+			revoke: vi.fn(),
+			refresh: vi.fn(async () => {}),
+			importArchive: vi.fn(async () => ({ imported: true, pluginId: "acme.zipped" })),
+			emit(next) {
+				state = next;
+				for (const listener of listeners) listener();
+			},
+		};
+	}
+
+	it("tells bundled plugins from external ones", async () => {
+		const kernel = boot([
+			testPlugin("acme.bundled"),
+			{ ...testPlugin("acme.local"), source: "external" },
+		]);
+		await kernel.start();
+
+		expect(kernel.kernelSdk.domainObjects.get(KernelPlugins)!.getState().plugins).toMatchObject({
+			"acme.bundled": { source: "bundled" },
+			"acme.local": { source: "external" },
+		});
+	});
+
+	it("reports no local plugins where the host can't load them", async () => {
+		const kernel = boot([]);
+		await kernel.start();
+		const plugins = kernel.kernelSdk.domainObjects.get(KernelPlugins)!;
+
+		expect(plugins.getState().external).toBeNull();
+		await expect(plugins.methods.setExternalEnabled({ enabled: true })).rejects.toMatchObject({
+			code: "UNAVAILABLE",
+		});
+	});
+
+	it("relays local plugin changes to the host and follows its state", async () => {
+		const externalPlugins = externalHost();
+		const kernel = boot([], fakeHost({ externalPlugins }));
+		await kernel.start();
+		const plugins = kernel.kernelSdk.domainObjects.get(KernelPlugins)!;
+
+		await plugins.methods.setExternalEnabled({ enabled: true });
+		await expect(
+			plugins.methods.approveExternal({ pluginId: "acme.local", hash: "abc" }),
+		).resolves.toEqual({ approved: true });
+		await plugins.methods.revokeExternal({ pluginId: "acme.local" });
+		await plugins.methods.refreshExternal(undefined);
+		await expect(plugins.methods.importExternal(undefined)).resolves.toEqual({
+			imported: true,
+			pluginId: "acme.zipped",
+		});
+		externalPlugins.emit({
+			enabled: true,
+			directory: "/plugins",
+			plugins: [],
+			restartNeeded: true,
+		});
+
+		expect(externalPlugins.setEnabled).toHaveBeenCalledWith(true);
+		expect(externalPlugins.approve).toHaveBeenCalledWith("acme.local", "abc");
+		expect(externalPlugins.revoke).toHaveBeenCalledWith("acme.local");
+		expect(externalPlugins.refresh).toHaveBeenCalled();
+		expect(plugins.getState().external).toMatchObject({ enabled: true, restartNeeded: true });
+	});
+
+	it("needs the plugins permission to change local plugins", async () => {
+		const externalPlugins = externalHost();
+		const kernel = boot([testPlugin("acme.nosy")], fakeHost({ externalPlugins }));
+		await kernel.start();
+
+		await expect(
+			kernel
+				.sdkFor("acme.nosy")
+				.domainObjects.get(KernelPlugins)!
+				.methods.approveExternal({ pluginId: "acme.evil", hash: "abc" }),
+		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+		expect(externalPlugins.approve).not.toHaveBeenCalled();
 	});
 });
 

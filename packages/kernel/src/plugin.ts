@@ -24,6 +24,22 @@ export interface PluginDefinitions {
 	readonly objectTypes?: readonly ObjectTypeDefinition[];
 }
 
+/**
+ * The request a window makes to main before its kernel starts: the local
+ * plugins main loaded this launch, which the window loads too so both
+ * kernels run the same set.
+ */
+export const EXTERNAL_PLUGINS_CHANNEL = "kernel:external-plugins";
+
+/** One local plugin as a window loads it: same-origin URLs of its modules. */
+export interface WindowExternalPlugin {
+	readonly manifest: unknown;
+	/** Module exporting its `definitions`. */
+	readonly contracts?: string;
+	/** Module default-exporting its window entry. */
+	readonly web?: string;
+}
+
 export interface PluginRegistration {
 	readonly manifest: unknown;
 	readonly definitions?: PluginDefinitions;

@@ -69,6 +69,8 @@ export interface ShellHostOptions {
 	readonly windows?: MainKernelHost["windows"];
 	/** Where the host keeps the plugins the user turned off. */
 	readonly plugins?: MainKernelHost["plugins"];
+	/** The user's local plugins, where the host loads them. */
+	readonly externalPlugins?: MainKernelHost["externalPlugins"];
 	readonly relaunch?: MainKernelHost["relaunch"];
 }
 
@@ -148,6 +150,7 @@ export async function renderShell(
 			...(options.flags ? { flagOverrides: options.flags } : {}),
 			...(options.windows ? { windows: options.windows } : {}),
 			...(options.plugins ? { plugins: options.plugins } : {}),
+			...(options.externalPlugins ? { externalPlugins: options.externalPlugins } : {}),
 			...(options.relaunch ? { relaunch: options.relaunch } : {}),
 		}),
 		main: [

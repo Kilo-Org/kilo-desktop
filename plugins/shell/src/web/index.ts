@@ -4,6 +4,7 @@ import { activateAccount } from "./account";
 import { activateAiProviders } from "./ai-providers";
 import { activateExternalApps } from "./external-apps";
 import { activateFrame } from "./frame";
+import { activateLocalPlugins } from "./local-plugins";
 import { activateSettings } from "./settings";
 import { activateSupport } from "./support";
 import { activateUpdates } from "./updates";
@@ -22,6 +23,7 @@ export const shellWebEntry = definePlugin({
 		activateAccount(sdk);
 		activateAiProviders(sdk);
 		activateExternalApps(sdk);
+		activateLocalPlugins(sdk);
 		activateWorkStyleStep(sdk);
 		activateSupport(sdk);
 	},

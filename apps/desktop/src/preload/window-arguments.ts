@@ -6,15 +6,25 @@ export const WINDOW_ARGUMENTS = {
 	role: "--kilo-window-role",
 	view: "--kilo-window-view",
 	params: "--kilo-window-params",
+	externalPlugins: "--kilo-external-plugins",
 } as const;
 
-export function windowArguments(window: RendererWindow): string[] {
+export function windowArguments(
+	window: RendererWindow,
+	options: { readonly externalPlugins?: boolean } = {},
+): string[] {
 	return [
 		`${WINDOW_ARGUMENTS.id}=${window.id}`,
 		`${WINDOW_ARGUMENTS.role}=${window.role}`,
 		...(window.view ? [`${WINDOW_ARGUMENTS.view}=${window.view}`] : []),
 		`${WINDOW_ARGUMENTS.params}=${encodeURIComponent(JSON.stringify(window.params))}`,
+		...(options.externalPlugins ? [WINDOW_ARGUMENTS.externalPlugins] : []),
 	];
+}
+
+/** Whether main loaded local plugins this launch, so the window should load them too. */
+export function readExternalPluginsArgument(argv: readonly string[]): boolean {
+	return argv.includes(WINDOW_ARGUMENTS.externalPlugins);
 }
 
 export function readWindowArguments(argv: readonly string[]): RendererWindow {

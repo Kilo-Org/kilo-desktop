@@ -52,11 +52,59 @@ const issueSchema = z.object({
 	pluginId: z.string().optional(),
 });
 
+export const EXTERNAL_PLUGIN_STATUSES = [
+	/** Valid: it loads once approved (and local plugins are on). */
+	"ready",
+	/** Rejected before running: unreadable, an invalid manifest, an unsupported engine… */
+	"invalid",
+	/** Approved, but loading its code failed this launch. */
+	"failed",
+] as const;
+export type ExternalPluginStatus = (typeof EXTERNAL_PLUGIN_STATUSES)[number];
+
+export const externalPluginRecordSchema = z.object({
+	/** Its folder's name in the local plugins directory. */
+	folder: z.string(),
+	id: z.string().optional(),
+	displayName: z.string().optional(),
+	version: z.string().optional(),
+	description: z.string().optional(),
+	/** Digest of its files; approval is pinned to it, so any change asks again. */
+	hash: z.string().optional(),
+	status: z.enum(EXTERNAL_PLUGIN_STATUSES),
+	/** Why it is `invalid` or `failed`. */
+	message: z.string().optional(),
+	/** Advice that doesn't stop it loading, e.g. that its node_modules folder is ignored. */
+	hint: z.string().optional(),
+	/** The user approved exactly these files. */
+	approved: z.boolean(),
+	/** Running this launch. */
+	loaded: z.boolean(),
+});
+export type ExternalPluginRecord = z.output<typeof externalPluginRecordSchema>;
+
+export const externalPluginsStateSchema = z.object({
+	/** Whether local plugins load, from the next launch. Off until the user turns it on. */
+	enabled: z.boolean(),
+	/** Where local plugins live: one folder per plugin. */
+	directory: z.string(),
+	/** By folder, sorted. Empty until the directory is scanned (at launch when on, or on refresh). */
+	plugins: z.array(externalPluginRecordSchema),
+	/** What loads at the next launch differs from what runs now. */
+	restartNeeded: z.boolean(),
+});
+export type ExternalPluginsState = z.output<typeof externalPluginsStateSchema>;
+
 /**
  * Plugin states and issues in the main process, and which plugins the user
  * turned off. Turning a plugin on or off applies from the next launch (a
  * plugin off for this launch has state `disabled`) and needs the `plugins`
  * permission.
+ *
+ * `external` is the user's local plugins, where the host can load them
+ * (`null` elsewhere): trusted code from the local plugins directory, off by
+ * default, each approved by the user for its exact files. Like turning
+ * plugins on or off, every change applies from the next launch.
  */
 export const KernelPlugins = defineDomainObject({
 	id: "kernel/plugins",
@@ -70,16 +118,46 @@ export const KernelPlugins = defineDomainObject({
 				displayName: z.string(),
 				version: z.string(),
 				state: z.enum(PLUGIN_STATES),
+				source: z.enum(["bundled", "external"]),
 			}),
 		),
 		issues: z.array(issueSchema),
 		/** Plugins turned off from the next launch. */
 		disabled: z.array(z.string()),
+		external: externalPluginsStateSchema.nullable(),
 	}),
 	methods: {
 		setEnabled: method(z.object({ pluginId: z.string(), enabled: z.boolean() }), nothing),
 		/** Replaces the whole list, e.g. `[]` turns every plugin on. */
 		setDisabled: method(z.object({ pluginIds: z.array(z.string()) }), nothing),
+		/** Turns local plugins on or off from the next launch. */
+		setExternalEnabled: method(z.object({ enabled: z.boolean() }), nothing),
+		/**
+		 * Approves a local plugin's files (`hash`, as last scanned) to load from
+		 * the next launch. The host asks the user to confirm in its own UI;
+		 * resolves false when they decline.
+		 */
+		approveExternal: method(
+			z.object({ pluginId: z.string(), hash: z.string() }),
+			z.object({ approved: z.boolean() }),
+		),
+		/** Withdraws a local plugin's approval; it stops loading from the next launch. */
+		revokeExternal: method(z.object({ pluginId: z.string() }), nothing),
+		/** Rescans the local plugins directory (it is read at launch only while local plugins are on). */
+		refreshExternal: method(nothing, nothing),
+		/**
+		 * Imports a local plugin from a zip the user picks in the host's own UI,
+		 * replacing an installed one with the same id once they confirm. The
+		 * imported plugin is disabled until the user enables it.
+		 */
+		importExternal: method(
+			nothing,
+			z.object({
+				imported: z.boolean(),
+				pluginId: z.string().optional(),
+				displayName: z.string().optional(),
+			}),
+		),
 	},
 	events: {
 		"state-changed": z.object({ pluginId: z.string(), state: z.enum(PLUGIN_STATES) }),

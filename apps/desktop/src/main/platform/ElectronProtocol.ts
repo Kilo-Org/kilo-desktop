@@ -348,6 +348,16 @@ export class ElectronProtocol {
 		 * the same manifest-derived list `main.ts` registers pre-ready.
 		 */
 		readonly pluginSchemes?: readonly string[];
+		/**
+		 * Files the host serves on the app host itself under `prefix`, ahead of
+		 * the renderer's (local plugins' approved modules): same origin, so
+		 * `script-src 'self'` admits them without widening the policy. A miss
+		 * under the prefix is a 404, never the renderer's file.
+		 */
+		readonly appHostFiles?: {
+			readonly prefix: string;
+			file(pathname: string): { readonly body: Uint8Array; readonly filePath: string } | undefined;
+		};
 	}): void {
 		const scheme = getDesktopScheme(input.isDevelopment);
 		if (this.#registeredScheme === scheme) return;
@@ -387,6 +397,19 @@ export class ElectronProtocol {
 				return withSecurityHeaders(
 					await serveEmbeddedHost(embedded, requestUrl),
 					embeddedPolicyFor(embedded.securityProfiles?.[requestUrl.pathname], appOrigin),
+				);
+			}
+
+			const { appHostFiles } = input;
+			if (appHostFiles && requestUrl.pathname.startsWith(appHostFiles.prefix)) {
+				const file = appHostFiles.file(requestUrl.pathname);
+				return withSecurityHeaders(
+					file
+						? new Response(Uint8Array.from(file.body), {
+								headers: { "Content-Type": contentTypeFor(file.filePath) },
+							})
+						: new Response(null, { status: 404 }),
+					appPolicyFor(embeddedHosts),
 				);
 			}
 

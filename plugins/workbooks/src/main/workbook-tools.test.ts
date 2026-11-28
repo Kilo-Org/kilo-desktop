@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 
-import { SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
+import { SECTION_CATALOGUE, SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
 import { bootWorkbooks } from "../test/hosts";
 import { withStatus } from "./inserts/plan";
 import { sectionMarkdown } from "./section-scope";
@@ -63,7 +63,7 @@ describe("workbook tools", () => {
 		const on = await boot();
 		await expect
 			.poll(() => on.tools().filter((tool) => tool.pluginId === "kilo.workbooks").length)
-			.toBe(13);
+			.toBe(16);
 
 		const off = await boot({ flag: false });
 		expect(off.tools().filter((tool) => tool.pluginId === "kilo.workbooks")).toEqual([]);
@@ -88,24 +88,26 @@ describe("workbook tools", () => {
 			["handoff", "handoff"],
 			["activity", "activity"],
 			["questions", "questions"],
-			["context", "notes"],
-			["constraints", "todo"],
-			["criteria", "todo"],
+			["context-and-links", "notes"],
+			["constraints-and-non-goals", "todo"],
+			["acceptance-criteria", "todo"],
 			["plan", "plan"],
 			["follow-ups", "todo"],
 			["decisions", "log"],
 			["findings", "log"],
-			["change-log", "log"],
+			["change-log", "change-log"],
 		]);
-		expect(sections.find((entry) => entry.id === "findings")).toMatchObject({
-			collects: expect.stringContaining("Facts learned"),
-			fields: ["evidence", "status?"],
+		expect(sections.find((entry) => entry.id === "decisions")).toMatchObject({
+			collects: expect.stringContaining("Choices the user made"),
+			usage: expect.stringMatching(
+				/Never edit or delete an entry[\s\S]*Record a decision only once/,
+			),
 		});
 		const plan = (await call("read_workbook", { section: "plan" })).markdown;
 		expect(plan).toContain("**1. Refine");
 		expect(plan).toContain("  - [ ] Confirm the Plan (you)");
 		expect((await call("read_workbook", { section: "questions" })).markdown).toBe(
-			"_Things only the user can decide. When one is answered, record the decision and the question goes._",
+			"_Things only the user can decide._",
 		);
 		expect((await call("read_workbook", { section: "guide" })).markdown).toContain(
 			"Extract, don't archive",
@@ -153,7 +155,7 @@ describe("workbook tools", () => {
 		).rejects.toThrow('No plan step matches "write notes"');
 	});
 
-	it("set a step's status under the plan's rules: tasks ticked, and a link or a reason", async () => {
+	it("set a step's status: done only once its tasks are ticked, with what it achieved", async () => {
 		const { call, section } = await boot();
 		await call("add_item", {
 			section: "plan",
@@ -171,11 +173,8 @@ describe("workbook tools", () => {
 		expect(section("plan")).toContain("**2. Build it**: make it work · blocked: waiting on review");
 
 		await expect(call("set_status", { item: "2", status: "done", link: "abc" })).rejects.toThrow(
-			"Say what was done",
+			"Say what it achieved",
 		);
-		await expect(
-			call("set_status", { item: "2", status: "done", result: "shipped" }),
-		).rejects.toThrow("needs a link to what it produced");
 		await expect(
 			call("set_status", { item: "2", status: "done", result: "shipped", link: "abc123" }),
 		).rejects.toThrow("Step 2 still has open tasks: Code");
@@ -193,16 +192,11 @@ describe("workbook tools", () => {
 		await call("set_status", { item: "2", status: "todo" });
 		expect(section("plan").split("\n")).toContain("- [ ] **2. Build it**: make it work");
 
-		await call("set_task_done", { step: "1", task: "propose" });
+		await call("set_task_done", { step: "1", task: "fill in" });
 		await call("set_task_done", { step: "1", task: "draft" });
 		await call("set_task_done", { step: "1", task: "confirm" });
-		await call("set_status", {
-			item: "1",
-			status: "done",
-			result: "Plan confirmed",
-			reason: "workbook only, no commit",
-		});
-		expect(section("plan")).toContain("· done: Plan confirmed (workbook only, no commit)");
+		await call("set_status", { item: "1", status: "done", result: "Plan confirmed" });
+		expect(section("plan")).toMatch(/· done: Plan confirmed$/m);
 		await expect(call("set_status", { item: "9", status: "in_progress" })).rejects.toThrow(
 			'No plan step matches "9"',
 		);
@@ -251,55 +245,42 @@ describe("workbook tools", () => {
 		expect(section("plan")).not.toContain("t2");
 		expect(section("plan")).toMatch(/\*\*2\. Third\*\*: see\n- \[ \] \*\*3\. Fourth\*\*/);
 
-		await call("set_task_done", { step: "1", task: "propose" });
+		await call("set_task_done", { step: "1", task: "fill in" });
 		await call("set_task_done", { step: "1", task: "draft" });
 		await call("set_task_done", { step: "1", task: "confirm" });
-		await call("set_status", { item: "1", status: "done", result: "ok", reason: "no commit" });
+		await call("set_status", { item: "1", status: "done", result: "ok" });
 		await expect(call("remove_item", { section: "plan", item: "1" })).rejects.toThrow(
 			"part of the record",
 		);
 	});
 
-	it("keep logs: entries with their fields, newest first where the section says, superseded never deleted", async () => {
+	it("keep logs: entries newest first, superseded never deleted", async () => {
 		const { call, section } = await boot();
 
-		await expect(call("add_item", { section: "decisions", text: "Use SSE" })).rejects.toThrow(
-			"needs why",
-		);
-		await expect(
-			call("add_item", {
-				section: "decisions",
-				text: "Use SSE",
-				fields: { why: "simpler", how: "x" },
-			}),
-		).rejects.toThrow("has no field how (its fields: why, rejected)");
 		await call("add_item", {
 			section: "decisions",
 			text: "Use a run-time flag",
-			fields: { why: "local testing", rejected: "build-time" },
+			detail: "Why: local testing. Rejected: build-time",
 		});
 		expect(section("decisions")).toContain(
 			`- **Use a run-time flag.** Why: local testing. Rejected: build-time. (${today()})`,
 		);
+		await expect(
+			call("add_item", { section: "decisions", text: "x", fields: { why: "y" } }),
+		).rejects.toThrow();
 
 		await call("add_item", {
 			section: "decisions",
 			text: "Reversal: choose the server line at build time",
-			fields: { why: "short-lived" },
+			detail: "Why: short-lived",
 			supersedes: "run-time flag",
 		});
 		expect(section("decisions")).toContain(
-			`- ~~**Use a run-time flag.** Why: local testing. Rejected: build-time. (${today()})~~ Superseded by: Reversal: choose the server line at build time. (${today()})\n- **Reversal: choose the server line at build time.** Why: short-lived. (${today()})`,
+			`- **Reversal: choose the server line at build time.** Why: short-lived. (${today()})\n- ~~**Use a run-time flag.** Why: local testing. Rejected: build-time. (${today()})~~ Superseded by: Reversal: choose the server line at build time. (${today()})`,
 		);
 
-		await call("add_item", {
-			section: "findings",
-			text: "v2 has no telemetry",
-			fields: { evidence: "no sink in kilo-plugin", status: "toggle is a no-op (step 7)" },
-		});
-		expect(section("findings")).toContain(
-			`- **v2 has no telemetry.** Evidence: no sink in kilo-plugin. Status: toggle is a no-op (step 7). (${today()})`,
-		);
+		await call("add_item", { section: "findings", text: "v2 has no telemetry", who: "agent" });
+		expect(section("findings")).toContain(`- **v2 has no telemetry.** (${today()}, agent)`);
 		await call("supersede", {
 			section: "findings",
 			item: "telemetry",
@@ -316,6 +297,9 @@ describe("workbook tools", () => {
 		);
 		await expect(call("remove_item", { section: "findings", item: "telemetry" })).rejects.toThrow(
 			"supersede it instead",
+		);
+		await expect(call("add_item", { section: "change-log", text: "x" })).rejects.toThrow(
+			"filled by hand_off",
 		);
 	});
 
@@ -335,8 +319,11 @@ describe("workbook tools", () => {
 		await call("remove_item", { section: "follow-ups", item: "later" });
 		expect(section("follow-ups")).not.toContain("Later thing");
 
-		await call("add_item", { section: "criteria", text: "A build variable picks v1 or v2" });
-		expect(section("criteria")).toContain("- [ ] A build variable picks v1 or v2");
+		await call("add_item", {
+			section: "acceptance-criteria",
+			text: "A build variable picks v1 or v2",
+		});
+		expect(section("acceptance-criteria")).toContain("- [ ] A build variable picks v1 or v2");
 
 		await call("add_item", { section: "questions", text: "Support Windows", detail: "CI cost" });
 		await call("add_item", { section: "questions", text: "Which branch is v2?" });
@@ -352,8 +339,9 @@ describe("workbook tools", () => {
 		await expect(
 			call("answer_question", {
 				question: "branch",
+				recordIn: "decisions",
 				text: "The v2 reference is origin/v2",
-				fields: { why: "its AGENTS.md says so" },
+				detail: "Why: its AGENTS.md says so",
 			}),
 		).resolves.toMatchObject({
 			removed: "- **Which branch is v2?**",
@@ -376,10 +364,10 @@ describe("workbook tools", () => {
 		const { call, section, brief } = await boot();
 
 		await call("write_section", {
-			section: "context",
+			section: "context-and-links",
 			markdown: "- Branch: kilo/v2\n- PR: none yet",
 		});
-		expect(section("context")).toBe(
+		expect(section("context-and-links")).toBe(
 			"_Where things are: the issue, upstream references, entry points in the code, the branch and PR once they exist, local tools and environments._\n\n- Branch: kilo/v2\n- PR: none yet",
 		);
 		expect(brief()).toMatch(/- PR: none yet\n\n## Constraints and non-goals/);
@@ -396,31 +384,22 @@ describe("workbook tools", () => {
 		await expect(call("write_section", { section: "plan", markdown: "x" })).rejects.toThrow(
 			"The plan holds steps",
 		);
-		await expect(call("add_item", { section: "context", text: "x" })).rejects.toThrow(
+		await expect(call("add_item", { section: "context-and-links", text: "x" })).rejects.toThrow(
 			"write_section",
 		);
 	});
 
-	it("build an output from parts: add, revise, rewrite, noting each change in its history log", async () => {
+	it("build an output from parts: add a part, revise one, rewrite the whole", async () => {
 		const { call, host, pages } = await boot();
-		const projectId = pages.addProject("Curry", "", ["Recipe", "Changes"]);
-		const [recipe, changes] = pages.pagesOf(projectId).map((entry) => entry.id);
+		const projectId = pages.addProject("Curry", "", ["Recipe"]);
+		const [recipe] = pages.pagesOf(projectId).map((entry) => entry.id);
 		const workbook = await host.invoke(Workbooks, "add", {
 			workspaceId: null,
 			name: "Curry",
 			templateId: "recipe",
 			backend: { kind: "pages-mcp", server: "pages" },
 			projectId,
-			sections: [
-				{
-					id: "recipe",
-					type: "output",
-					pageId: recipe!,
-					history: "changes",
-					collects: "The recipe.",
-				},
-				{ id: "changes", type: "log", pageId: changes!, order: "newest-first" },
-			],
+			sections: [{ id: "recipe", type: "output", pageId: recipe!, collects: "The recipe." }],
 		});
 		const own = { workbookId: workbook.id };
 
@@ -439,51 +418,25 @@ describe("workbook tools", () => {
 		await expect(
 			call("add_item", { section: "recipe", text: "method", detail: "x", ...own }),
 		).rejects.toThrow('already has "method"');
-		await expect(
-			call("write_section", {
-				section: "recipe",
-				part: "Ingredients",
-				markdown: "- 3 onions",
-				...own,
-			}),
-		).rejects.toThrow("Say what changed in recipe");
 		await call("write_section", {
 			section: "recipe",
 			part: "ingredients",
 			markdown: "- 3 onions\n- 1 chilli",
-			change: "More onion, added chilli",
 			...own,
 		});
-		await call("write_section", {
-			section: "recipe",
-			part: "Serves",
-			markdown: "4",
-			change: "Added servings",
-			...own,
-		});
+		await call("write_section", { section: "recipe", part: "Serves", markdown: "4", ...own });
 
 		expect(pages.markdown(recipe!)).toBe(
 			"## Ingredients\n\n- 3 onions\n- 1 chilli\n\n## Method\n\n1. Fry the onions.\n\n## Serves\n\n4",
 		);
-		expect(pages.markdown(changes!).split("\n")).toEqual([
-			`- **recipe updated.** Added servings. (${today()})`,
-			`- **recipe updated.** More onion, added chilli. (${today()})`,
-			`- **recipe updated.** Added Method. (${today()})`,
-			`- **recipe updated.** Added Ingredients. (${today()})`,
-		]);
-		await call("write_section", {
-			section: "recipe",
-			markdown: "## All\n\nNew",
-			change: "Reshaped",
-			...own,
-		});
+		await call("write_section", { section: "recipe", markdown: "## All\n\nNew", ...own });
 		expect(pages.markdown(recipe!)).toBe("## All\n\nNew");
 		const read = await call("read_workbook", own);
 		expect((read.sections as { id: string; usage: string }[])[0]!.usage).toContain(
 			"Build the result here",
 		);
 		await expect(
-			call("write_section", { section: "context", part: "x", markdown: "y" }),
+			call("write_section", { section: "context-and-links", part: "x", markdown: "y" }),
 		).rejects.toThrow("has no parts");
 	});
 
@@ -491,12 +444,11 @@ describe("workbook tools", () => {
 		const { call, section } = await boot();
 		const own = (doing?: string) => (doing ? { doing } : {});
 
-		expect(section("activity")).toBe(
-			"_Kept up to date by the workbook tools._\n\n- Nobody right now.",
-		);
+		const nobody = `_${SECTION_CATALOGUE.activity.collects}_\n\n- Nobody right now.`;
+		expect(section("activity")).toBe(nobody);
 		await call("set_status", { item: "1", status: "in_progress" });
 		expect(section("activity")).toMatch(
-			/^_Kept up to date by the workbook tools\._\n\n- \*\*Chat chat\*\*: working on step 1, Refine the Brief and draft this Plan \(since \d{4}-\d{2}-\d{2} \d{2}:\d{2}\)$/,
+			/^_Who is working[^\n]*_\n\n- \*\*Chat chat\*\*: working on step 1, Refine the Brief and draft this Plan \(since \d{4}-\d{2}-\d{2} \d{2}:\d{2}\)$/,
 		);
 		await call("set_status", { item: "1", status: "blocked", reason: "waiting on the user" });
 		expect(section("activity")).toContain(
@@ -505,9 +457,7 @@ describe("workbook tools", () => {
 		await call("set_activity", own("reviewing PR #42"));
 		expect(section("activity")).toContain("- **Chat chat**: reviewing PR #42 (since ");
 		await call("hand_off", { title: "Paused", text: "Next: step 1." });
-		expect(section("activity")).toBe(
-			"_Kept up to date by the workbook tools._\n\n- Nobody right now.",
-		);
+		expect(section("activity")).toBe(nobody);
 		await expect(call("add_item", { section: "activity", text: "x" })).rejects.toThrow(
 			"set_activity",
 		);
@@ -540,7 +490,7 @@ describe("workbook tools", () => {
 
 		expect(brief()).toMatch(
 			new RegExp(
-				`## Where we left off\\n\\n_The latest change only;[^\\n]*_\\n\\n- \\*\\*Step 3 done\\.\\*\\* Next: step 4\\. \\(${today()}\\)\\n\\n## Who's working on what`,
+				`## Where we left off\\n\\n_The latest handoff only:[^\\n]*_\\n\\n- \\*\\*Step 3 done\\.\\*\\* Next: step 4\\. \\(${today()}\\)\\n\\n## Who's working on what`,
 			),
 		);
 		expect(brief()).not.toContain("Nothing yet.");

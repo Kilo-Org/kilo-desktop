@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
-import { SECTION_TYPES, sectionRulesSchema } from "./templates";
+import { SECTION_TYPES } from "./templates";
 
 /**
  * Where a workbook's content lives. For now every workbook is a Pages Project
@@ -19,13 +19,17 @@ export type WorkbookBackend = z.output<typeof workbookBackendSchema>;
 /**
  * A workbook's section: where it lives (a page, `pageId`; without one, the
  * Brief; within it, the part under its `heading`, or the whole page) and how
- * it behaves (its insert and rules, copied from its template so the
+ * it behaves (its section type and words, copied from its template so the
  * tools need nothing else).
  */
-export const workbookSectionRefSchema = sectionRulesSchema.extend({
+export const workbookSectionRefSchema = z.object({
 	id: z.string().min(1),
-	title: z.string().min(1).optional(),
 	type: z.enum(SECTION_TYPES),
+	title: z.string().min(1).optional(),
+	/** What belongs in it, with its section type's default filled in. */
+	collects: z.string().min(1).optional(),
+	/** Its template's extra instructions for agents. */
+	instructions: z.string().min(1).optional(),
 	pageId: z.string().min(1).optional(),
 	heading: z.string().min(1).optional(),
 });

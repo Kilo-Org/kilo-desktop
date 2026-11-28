@@ -19,7 +19,6 @@ File information the moment it appears, in the section whose description fits. N
 
 Use the workbook tools (`desktop_workbooks_*`). Each section comes with what belongs in it and how to work with it; `read_workbook` lists them.
 
-- Record a decision only once the user has made or confirmed it.
 - Work that belongs to no step is either a new step (in scope, worth a commit) or a follow-up. A task is part of its step and has no commit of its own.
 
 ## Working on a plan step

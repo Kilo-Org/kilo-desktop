@@ -50,12 +50,6 @@ const sectionInput = z
 	.min(1)
 	.describe('A section id from read_workbook, e.g. "findings".');
 const stepInput = z.string().min(1).describe('The step number ("3") or words from its title.');
-const fieldsInput = z
-	.record(z.string(), z.string())
-	.optional()
-	.describe(
-		'Log sections: the section\'s labelled fields by name, e.g. { "why": "…", "rejected": "…" }.',
-	);
 
 /**
  * The agent tools that read and write the calling chat's workbook, in the
@@ -137,7 +131,7 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 
 	implement(
 		"read_workbook",
-		"Read the calling chat's workbook: its sections (id, title, insert type, what each collects, how to work with it, a log's fields) and the markdown of its Brief, of one section, or of its guide (\"How to work here\"). Read the Brief and guide at the start of a chat.",
+		'Read the calling chat\'s workbook: its sections (id, title, section type, what each collects, how to work with it) and the markdown of its Brief, of one section, or of its guide ("How to work here"). Read the Brief and guide at the start of a chat.',
 		z.object({
 			section: z.string().optional().describe('A section id, "guide", or omit for the Brief.'),
 			workbookId: workbookIdInput,
@@ -154,13 +148,12 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 						: {};
 			return {
 				workbook: { id: workbook.id, name: workbook.name, url: workbook.url ?? null },
-				sections: workbook.sections.map(({ id, title, type, collects, fields, instructions }) => ({
+				sections: workbook.sections.map(({ id, title, type, collects, instructions }) => ({
 					usage: sectionUsage({ type, instructions }),
 					id,
 					title: title ?? null,
 					type,
 					...(collects ? { collects } : {}),
-					...(fields ? { fields } : {}),
 				})),
 				showing: section ?? "brief",
 				markdown: await writer.read(target),
@@ -170,8 +163,8 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 
 	implement(
 		"add_item",
-		"Add an item to a workbook section the moment it comes up, in the section's format: a plan step (text = title, detail = one line of intent, tasks = what it needs; numbered for you), a todo item (detail = context), a log entry (text = headline, detail = body, fields = the section's fields; supersedes = words from an entry it replaces, such as a reversed decision) a question (detail = context), or a new part of an output (text = the part's title, detail = its content). Goal and notes sections use write_section; handoff uses hand_off; activity uses set_activity.",
-		z.object({
+		"Add an item to a workbook section the moment it comes up, in the section's format: a plan step (text = title, detail = one line of intent, tasks = what it needs; numbered for you), a todo item (detail = context), a log entry (text = headline, detail = the rest, with what the section's description asks for; supersedes = words from an entry it replaces, such as a reversed decision) a question (detail = context), or a new part of an output (text = the part's title, detail = its content). Goal and notes sections use write_section; handoff uses hand_off; activity uses set_activity.",
+		z.strictObject({
 			section: sectionInput,
 			text: z.string().min(1),
 			detail: z.string().optional(),
@@ -181,7 +174,6 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 				.describe(
 					'Steps: what the step needs, each a checkbox under it; end a job only the user can do with "(you)".',
 				),
-			fields: fieldsInput,
 			who: z.string().optional().describe("Log sections: who it's from, when that matters."),
 			supersedes: z
 				.string()
@@ -219,14 +211,14 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 
 	implement(
 		"set_status",
-		"Set a plan step's status, or tick a todo item. Steps: in_progress before starting (so others see it's taken); blocked with the reason; done with the result and, when the plan asks for one, a link to what it produced or the reason there is none, once the section's rules are met; todo resets it. Todo items: done or todo.",
+		"Set a plan step's status, or tick a todo item. Steps: in_progress before starting (so others see it's taken); blocked with the reason; done once its tasks are ticked, with what it achieved (result) and optionally a link to it; todo resets it. Todo items: done or todo.",
 		z.object({
 			section: z.string().min(1).optional().describe("Leave out for the plan's steps."),
 			item: z.string().min(1).describe("A step number, or words from the step or item."),
 			status: z.enum(STEP_STATUSES),
 			result: z.string().optional().describe("Done steps: what was done."),
 			link: z.string().optional().describe("Done steps: a link to what it produced."),
-			reason: z.string().optional().describe("Why it's blocked, or why a done step has no link."),
+			reason: z.string().optional().describe("Why it's blocked."),
 			workbookId: workbookIdInput,
 		}),
 		async ({ section, item, status, result, link, reason }, writer, _workbook, who) => {
@@ -317,55 +309,44 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 
 	implement(
 		"answer_question",
-		"When the user answers an open question: record the answer (text = the decision, fields = that log's fields) in the log the questions section names, or in recordIn, and remove the question.",
+		"When the user answers an open question: record the answer in a log (recordIn, e.g. decisions; text = the answer as a headline, detail = the rest), as the questions section's instructions say, and remove the question.",
 		z.object({
 			question: z.string().min(1).describe("Words from the question."),
-			recordIn: z
-				.string()
-				.optional()
-				.describe("The log section to record the answer in, when not the questions section's own."),
+			recordIn: z.string().optional().describe("The log section to record the answer in."),
 			text: z.string().optional().describe("The answer as an entry headline, e.g. the decision."),
 			detail: z.string().optional(),
-			fields: fieldsInput,
 			workbookId: workbookIdInput,
 		}),
-		async ({ question, recordIn, text, detail, fields }, writer) =>
+		async ({ question, recordIn, text, detail }, writer) =>
 			writer.answerQuestion(question, {
 				...(recordIn ? { recordIn } : {}),
-				...(text
-					? { entry: { text, ...(detail ? { detail } : {}), ...(fields ? { fields } : {}) } }
-					: {}),
+				...(text ? { entry: { text, ...(detail ? { detail } : {}) } } : {}),
 			}),
 	);
 
 	implement(
 		"write_section",
-		"Write a goal, notes or output section, keeping the line under its heading. Goal and notes are replaced whole. An output is the result being built: pass part to improve (or add) one part, or leave it out to rewrite the whole; say what changed. The goal, and any protected section, changes only when the user asks: then pass userConfirmed.",
+		"Write a goal, notes or output section, keeping the line under its heading. Goal and notes are replaced whole. An output is the result being built: pass part to improve (or add) one part, or leave it out to rewrite the whole. The goal changes only when the user asks: then pass userConfirmed.",
 		z.object({
 			section: sectionInput,
 			markdown: z.string().min(1),
 			part: z.string().optional().describe("Output sections: the title of the part to write."),
-			change: z
-				.string()
-				.optional()
-				.describe("What changed; required for an output section that keeps a history."),
 			userConfirmed: z.boolean().default(false),
 			workbookId: workbookIdInput,
 		}),
-		async ({ section, markdown, part, change, userConfirmed }, writer) => ({
+		async ({ section, markdown, part, userConfirmed }, writer) => ({
 			section,
 			written: true,
 			...(await writer.writeSection(section, markdown, {
 				userConfirmed,
 				...(part ? { part } : {}),
-				...(change ? { change } : {}),
 			})),
 		}),
 	);
 
 	implement(
 		"hand_off",
-		"Before stopping, or when the context is running out: replace Where we left off with where the work stands (what was just done, what's next, any (you) tasks, anything a fresh chat must know); the entry is also kept in the workbook's history.",
+		"Before stopping, or when the context is running out: replace Where we left off with where the work stands (what was just done, what's next, any (you) tasks, anything a fresh chat must know); the entry is also kept in the change log.",
 		z.object({
 			title: z.string().min(1).describe('A short headline, e.g. "Step 8 done".'),
 			text: z.string().min(1),

@@ -153,6 +153,28 @@
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
+				},
+				{
+					"id": "read_templates",
+					"title": "Read workbook templates",
+					"readOnly": true,
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "save_template",
+					"title": "Save a workbook template",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				},
+				{
+					"id": "delete_template",
+					"title": "Delete a workbook template",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
 				}
 			],
 			"kilo.work-sessions/work-session-action": [
@@ -180,7 +202,10 @@
 						"kilo.workbooks/answer_question",
 						"kilo.workbooks/write_section",
 						"kilo.workbooks/hand_off",
-						"kilo.workbooks/set_activity"
+						"kilo.workbooks/set_activity",
+						"kilo.workbooks/read_templates",
+						"kilo.workbooks/save_template",
+						"kilo.workbooks/delete_template"
 					],
 					"standalone": true,
 					"when": {

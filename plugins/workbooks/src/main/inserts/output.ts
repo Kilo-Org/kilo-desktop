@@ -2,16 +2,15 @@ import { KernelError } from "@kilo-desktop/kernel";
 
 import type { WorkbookSectionRef } from "../../contracts";
 import type { Line, SectionScope } from "../section-scope";
-import { replaceBodyEdits, sectionName, sentence } from "./helpers";
-import { addToLog } from "./log";
-import type { Insert, InsertContext } from "./types";
+import { replaceBodyEdits, sectionName } from "./helpers";
+import type { Insert } from "./types";
 
 /**
  * An output: what the work produces, built up over many chats and kept
  * organised as the finished thing should read. Its parts are subheadings
  * (`### Part` under the section's heading, `## Part` on a page of its own):
  * agents add a part, revise one, or rewrite the whole. Unlike a log it isn't
- * dated or append-only; with a `history` log, each change is noted there.
+ * dated or append-only.
  */
 
 const HEADING = /^(#{1,6}) +(.*?)\s*$/;
@@ -37,21 +36,6 @@ function findPart(scope: SectionScope, section: WorkbookSectionRef, title: strin
 	return { heading: lines[at]!, body };
 }
 
-async function noteChange(
-	context: InsertContext,
-	section: WorkbookSectionRef,
-	change: string,
-): Promise<{ history?: string }> {
-	const history = section.history ? context.section(section.history) : undefined;
-	if (!history) return {};
-	await addToLog(
-		context,
-		history,
-		`- **${sentence(`${sectionName(section)} updated`)}** ${sentence(change)} (${context.today()})`,
-	);
-	return { history: history.id };
-}
-
 export const output: Insert = {
 	/** Adds a new part: text = its title, detail = its content. */
 	async add(context, section, item) {
@@ -70,15 +54,11 @@ export const output: Insert = {
 			edits.insertParagraph(scope.end, text);
 			return text;
 		});
-		await noteChange(context, section, `Added ${title}`);
 		return { written };
 	},
 
 	/** Rewrites one part (`part`, added when missing) or, without one, the whole section. */
 	async write(context, section, markdown, options) {
-		if (section.history && !options.change?.trim()) {
-			throw new KernelError("VALIDATION", `Say what changed in ${sectionName(section)} (change).`);
-		}
 		const part = options.part?.trim();
 		if (part) {
 			const hashes = "#".repeat(partLevel(section));
@@ -97,7 +77,7 @@ export const output: Insert = {
 				result: undefined,
 			}));
 		}
-		return noteChange(context, section, options.change ?? (part ? `Revised ${part}` : "Rewritten"));
+		return {};
 	},
 
 	refusals: {

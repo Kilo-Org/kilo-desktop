@@ -6,38 +6,76 @@ The pre-rolled templates (Coding; Blank) live in `plugins/workbooks/templates/` 
 
 ## The model
 
-A workbook is made of **pages**, and pages hold **sections**. One page is **home**: the Project's own document (the Brief). Like stationery inserts in a binder, every section is a pre-printed **insert** (`type`) from a catalogue the app fixes; a template picks inserts, titles them, says what belongs in each, and groups them onto pages (the "Workbooks explained" page in Pages has the full picture). Each insert is implemented on its own in `plugins/workbooks/src/main/inserts/` (its format, rules and tool actions), so one can change without touching the others; inserts share only plain helpers.
+A workbook is made of **pages**, and pages hold **sections**. One page is **home**: the Project's own document (the Brief). Every section has a **section type** from a catalogue the app fixes (`SECTION_CATALOGUE` in `src/contracts/templates.ts`). Like a pre-printed stationery insert, a section type comes finished: its format, rules, behaviour, starting content, default title, default label and built-in instructions for agents are all fixed. A template only picks section types and arranges them on pages, and per section may set its words:
 
-| Insert      | Printed for                                                                                                                        | How many       | What the app does with it                                                                                                                                                                           |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `goal`      | what the work is for                                                                                                               | one (required) | shown with the workbook, first in every chat's instructions, filled from the wizard's required field; changed only with the user's say-so                                                           |
-| `plan`      | numbered steps with indented tasks; todo → in progress → blocked → done (with a result)                                            | one            | progress and the next step                                                                                                                                                                          |
-| `handoff`   | the latest handoff                                                                                                                 | one            | read first by every new chat; `history` names the log that keeps every earlier one (the Coding template's Change Log)                                                                               |
-| `activity`  | who is working right now and on what, one line per agent (named by its work session)                                               | one            | kept up to date by the tools: starting a plan step adds the agent, blocking updates it, finishing or handing off removes it; `set_activity` for other work; entries older than 12 hours are dropped |
-| `todo`      | tick boxes                                                                                                                         | any            | —                                                                                                                                                                                                   |
-| `log`       | dated entries with the section's labelled `fields`, newest or oldest first; a wrong or reversed entry is superseded, never deleted | any            | —                                                                                                                                                                                                   |
-| `questions` | things only the user can decide                                                                                                    | any            | an answer is recorded in the log named by `answersTo`, then the question goes                                                                                                                       |
-| `notes`     | free writing, replaced whole                                                                                                       | any            | —                                                                                                                                                                                                   |
-| `output`    | the result being built: parts under subheadings, added, revised or rewritten whole, organised as the finished thing reads          | any            | with `history`, each change is noted in that log                                                                                                                                                    |
+- **`title`:** its heading (defaults to the section type's own).
+- **`collects`:** what belongs in it, in plain words (defaults to the section type's label). It is shown under the heading and given to every chat, so agents file things where they belong; Decisions and Findings are both `log` sections with different `collects`.
+- **`instructions`:** how to work with it in this kind of work, added after the section type's own. The Coding template's plan adds "each step ends in one commit", which the plan section type never says.
 
-- **Collects** (`collects`): in plain words, what belongs in a section. It is shown under its heading and given to every chat, so agents file things where they belong. This is how a template gives sections their meaning without new code; Decisions and Findings are both `log` inserts with different words and fields.
-- **Usage**: every insert carries its own instructions for agents (how to work with it, whatever it's for), and every chat is given each section's `collects` (what) with its insert's usage (how), so a guide holds only what's specific to the kind of work. A template can add to an insert's instructions for one section (`instructions`): the Coding template's plan adds "each step ends in one commit", which the plan insert itself never says.
-- **Rules** the tools enforce: `requires` on a plan (`tasks-ticked`, `link-or-reason`), `fields` and `order` on logs, `history` on handoff and output, `answersTo` on questions, `protected` on notes. Behaviour the tools can't check (commit each step on its own) stays in the guide.
-- **A new insert** is added only when something needs its own format, its own app behaviour or its own instructions (a calendar, a table of editable rows).
+Nothing else is configurable. Each section type is implemented on its own in `src/main/inserts/` (its format, rules and tool actions), so one can change without touching the others.
+
+| Section type | Default title         | How many       | Fixed behaviour                                                                                                                                                                              |
+| ------------ | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `goal`       | Goal                  | one (required) | the wizard's required question; shown first in every chat; changed only with the user's say-so                                                                                               |
+| `plan`       | Plan                  | one            | numbered steps with tasks, starting with "Refine the Brief and draft this Plan"; done only once its tasks are ticked, with what it achieved (a link is optional); progress and the next step |
+| `handoff`    | Where we left off     | one            | the latest handoff, read first by every new chat; each entry is also added to the change log                                                                                                 |
+| `activity`   | Who's working on what | one            | who is working now, kept up to date by the tools; entries older than 12 hours are dropped                                                                                                    |
+| `change-log` | Change Log            | one            | every handoff, newest first                                                                                                                                                                  |
+| `todo`       | To do                 | any            | tick boxes                                                                                                                                                                                   |
+| `log`        | Log                   | any            | dated entries, newest first; a wrong or reversed entry is superseded, never deleted                                                                                                          |
+| `questions`  | Open questions        | any            | answering records the answer in a log the agent names, then the question goes                                                                                                                |
+| `notes`      | Notes                 | any            | free writing, replaced whole; the Brief's first notes section is the wizard's optional context question                                                                                      |
+| `output`     | Result                | any            | the result being built: parts under subheadings, added, revised or rewritten whole                                                                                                           |
+
+Every workbook's first move is the same: refine the Brief, draft the Plan, and stop for the user to confirm.
 
 ## Template format
 
 ```
 <id>/
-  workbook.json   # name, description, intake, first move, pages and their sections
+  workbook.json   # name, description, icon, pages and their sections
   AGENTS.md       # agent guide, copied to the workbook's "How to work here" page
 ```
 
-- **Pages and sections are data** in `workbook.json` (`schemaVersion: 2`). A section with a `title` is the part of its page under `## <title>`; a page's one untitled section is the whole page (the Coding template's Follow-ups and Change Log). A page can carry intro prose from a file (`introFile`).
-- **Intake fields** are the wizard's questions; each `fills` the goal, a notes or an output section, and a required one must fill the goal.
-- **Copied once.** Creating a workbook writes every page from its sections (each heading, its `collects` line, intake answers and any `starter` steps), with the home page as the Project document. After that the workbook owns its content; changing a template never changes existing workbooks. Each workbook records its sections (insert, rules and where they live), so the tools need nothing else.
-- **Templates are validated** against the vocabulary (one goal, at most one plan and one handoff, a known insert on every section, rules only where they apply); invalid ones are skipped and reported in `kilo.workbooks/templates`.
+```json
+{
+	"schemaVersion": 3,
+	"id": "coding",
+	"name": "Coding",
+	"description": "…",
+	"pages": [
+		{ "title": "Brief", "home": true, "sections": [{ "type": "goal" }, { "type": "handoff" }] },
+		{
+			"title": "Plan",
+			"sections": [{ "type": "plan", "instructions": "Each step ends in one commit…" }]
+		},
+		{
+			"title": "Decisions & findings",
+			"sections": [
+				{ "type": "log", "title": "Decisions", "collects": "Choices the user made or confirmed…" },
+				{ "type": "log", "title": "Findings", "collects": "Facts learned while working…" }
+			]
+		}
+	]
+}
+```
+
+- A page other than home with one section is that section: no heading, titled by the page. Otherwise each section lives under `## <title>`.
+- Section ids are automatic: the section type for one a workbook has once (`goal`, `plan`…), otherwise the title's slug (`decisions`, `acceptance-criteria`) or the page's.
+- **Copied once.** Creating a workbook writes every page from its sections, with the home page as the Project document. After that the workbook owns its content, and records each section's type, words and place, so the tools need nothing else.
+- **Templates are validated** (one home page, a goal, at most one of each one-per-workbook type, no two sections with the same id, no unknown keys); invalid ones are skipped and reported in `kilo.workbooks/templates`.
 - **The app reaches Pages through Kilo's Pages MCP connection** (the user signs in to the `pages` MCP entry), and every chat in a session on a workbook is given its sections, Brief and guide as instructions (`kilo.core/chat-config`, read from Pages on the chat's first send).
+
+## Where templates come from
+
+- **Built-in:** `plugins/workbooks/templates/<id>/` (Coding, Blank), shipped through kilo.workbooks' own `kilo.workbooks/template` point.
+- **Other plugins:** any plugin can implement `kilo.workbooks/template` with a `read()` returning a template.
+- **The person's own:** made by asking an agent, kept in kilo.workbooks' plugin data folder as `templates/<id>/workbook.json` and `AGENTS.md` (the same files as a built-in). They are read before the template list is provided at startup, and again after every save or delete; there is no file watcher, so edits made outside the app show after the next save or a restart. The agent tools:
+  - `read_templates`: lists every template on offer and any of the person's that can't be read; describes the section types and the format; or reads one template in full, to copy or change.
+  - `save_template`: checks a template (its `workbook.json` content plus the guide's markdown) against the schema, reporting every problem, then writes it; a built-in's id is refused, and the same id replaces the person's earlier version. The New workbook wizard offers it straight away.
+  - `delete_template`: removes one of the person's; workbooks made from it keep working, since a workbook is a copy.
+
+Contributions are taken first, in priority order, then the person's own; a repeated id is skipped and reported.
 
 ## In the app (prototype, behind the `workbooks` flag)
 

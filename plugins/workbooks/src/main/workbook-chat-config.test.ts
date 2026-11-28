@@ -60,10 +60,10 @@ describe("chats in a work session on a workbook", () => {
 		expect(text).toContain("Goal of Clock");
 		expect(text).toContain("## How to work here\n\nThis is the agent guide");
 		expect(text).toContain(
-			"- `findings` Findings (log): Facts learned while working, with how we know; for a gap or limitation, its status and the step that handles it. A wrong one is superseded, never deleted. How: Add an entry the moment",
+			"- `findings` Findings (log): Facts learned while working, each with how we know; for a gap or limitation, its status and the step that handles it. How: Add an entry the moment",
 		);
 		expect(text).toMatch(
-			/- `plan` Steps \(plan\): [^\n]* How: Mark a step in progress[^\n]* Each step ends in one commit/,
+			/- `plan` Plan \(plan\): [^\n]* How: Mark a step in progress[^\n]* Each step ends in one commit/,
 		);
 	});
 

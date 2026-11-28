@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { workbookTemplateSchema } from "../contracts";
+import { resolveSections, workbookTemplateSchema } from "../contracts";
 import { FakePages } from "../test/fake-pages";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
 import { createWorkbookContent, missingRequiredFields, renderPage } from "./create-workbook";
@@ -15,7 +15,7 @@ describe("createWorkbookContent", () => {
 		const created = await createWorkbookContent(pages, {
 			template: coding,
 			name: "Fix the server bug",
-			values: { goal: "Fix the bug in the Kilo server", context: "  " },
+			values: { goal: "Fix the bug in the Kilo server", "context-and-links": "  " },
 			description: "Workbook · Coding (coding)",
 		});
 
@@ -27,7 +27,7 @@ describe("createWorkbookContent", () => {
 		expect(created.url).toBe(`https://pages.test/project/${created.projectId}`);
 		const brief = pages.markdown(project.documentId);
 		expect(brief).toMatch(
-			/^## Goal\n\n_What should be true[^\n]*_\n\nFix the bug in the Kilo server\n\n## Where we left off\n\n_The latest change only;[^\n]*_\n\n- Nothing yet\.\n\n## Who's working on what\n\n_Kept up to date by the workbook tools\._\n\n- Nobody right now\.\n\n## Open questions/,
+			/^## Goal\n\n_What should be true[^\n]*_\n\nFix the bug in the Kilo server\n\n## Where we left off\n\n_The latest handoff only:[^\n]*_\n\n- Nothing yet\.\n\n## Who's working on what\n\n_Who is working[^\n]*_\n\n- Nobody right now\.\n\n## Open questions\n\n_Things only the user can decide\._\n\n## Context and links/,
 		);
 		expect(brief).toContain("## Context and links\n\n_Where things are:");
 		expect(brief).toContain("_Not given yet._");
@@ -51,38 +51,31 @@ describe("createWorkbookContent", () => {
 			["handoff", "handoff", undefined, "Where we left off"],
 			["activity", "activity", undefined, "Who's working on what"],
 			["questions", "questions", undefined, "Open questions"],
-			["context", "notes", undefined, "Context and links"],
-			["constraints", "todo", undefined, "Constraints and non-goals"],
-			["criteria", "todo", undefined, "Acceptance criteria"],
-			["plan", "plan", plan, "Steps"],
+			["context-and-links", "notes", undefined, "Context and links"],
+			["constraints-and-non-goals", "todo", undefined, "Constraints and non-goals"],
+			["acceptance-criteria", "todo", undefined, "Acceptance criteria"],
+			["plan", "plan", plan, undefined],
 			["follow-ups", "todo", followUps, undefined],
 			["decisions", "log", record, "Decisions"],
 			["findings", "log", record, "Findings"],
-			["change-log", "log", changeLog, undefined],
+			["change-log", "change-log", changeLog, undefined],
 		]);
-		expect(created.sections.find((section) => section.id === "questions")).toMatchObject({
-			answersTo: "decisions",
-		});
 		expect(created.sections.find((section) => section.id === "plan")).toMatchObject({
-			requires: ["tasks-ticked", "link-or-reason"],
+			collects: expect.stringContaining("The work, in order"),
 			instructions: expect.stringContaining("Each step ends in one commit"),
-		});
-		expect(created.sections.find((section) => section.id === "handoff")).toMatchObject({
-			history: "change-log",
 		});
 		expect(pages.markdown(plan!)).toBe(
 			[
-				"## Steps",
+				"_The work, in order, each step sized for one chat; the checkboxes under it are its tasks, and jobs only the user can do are marked (you)._",
 				"",
-				"_The work, in order, each step sized for one chat; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you)._",
-				"",
-				"- [ ] **1. Refine the Brief and draft this Plan**: the first agent's job.",
-				"  - [ ] Propose acceptance criteria and constraints in the Brief",
+				"- [ ] **1. Refine the Brief and draft this Plan**: the first chat's job.",
+				"  - [ ] Fill in what the Brief is missing, asking the user",
 				"  - [ ] Draft the steps, each with its tasks",
 				"  - [ ] Confirm the Plan (you)",
 			].join("\n"),
 		);
 		expect(pages.markdown(followUps!)).toMatch(/^_Out-of-scope work[^\n]*_$/);
+		expect(pages.markdown(changeLog!)).toBe("_Every handoff, newest first._");
 	});
 
 	it("refuses a Brief without its required fields, before touching Pages", async () => {
@@ -128,8 +121,8 @@ describe("createWorkbookContent", () => {
 });
 
 describe("renderPage and missingRequiredFields", () => {
-	it("fills intake answers and lists missing required fields", () => {
-		const home = coding.pages.find((page) => page.home)!;
+	it("fills the wizard's answers and lists missing required fields", () => {
+		const home = resolveSections(coding)[0]!.sections;
 		expect(renderPage(coding, home, { goal: " Ship it " })).toContain(
 			"_\n\nShip it\n\n## Where we left off",
 		);

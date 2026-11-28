@@ -1,6 +1,6 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { TemplateSection, WorkbookSectionRef } from "../../contracts";
+import type { WorkbookSectionRef } from "../../contracts";
 import { sectionScope, type Block, type Line } from "../section-scope";
 import { INDENTED, appendItem, oneLine } from "./helpers";
 import type { Insert, InsertContext, Renumbering, StatusChange, StepStatus } from "./types";
@@ -8,7 +8,9 @@ import type { Insert, InsertContext, Renumbering, StatusChange, StepStatus } fro
 /**
  * The plan: numbered steps, each a top-level checkbox with its tasks
  * indented under it, `- [ ] **N. Title**: intent · status`. Steps are found
- * by number or words from them; re-cutting renumbers them all in order.
+ * by number or words from them; re-cutting renumbers them all in order. A
+ * step is done only once its tasks are ticked, with what it achieved and,
+ * optionally, a link to it.
  */
 
 const CHECKBOX_LINE = /^(\s*)- \[([ xX])\] (.*)$/;
@@ -182,15 +184,13 @@ function withSteps(
 }
 
 export const plan: Insert = {
-	starter: (section: TemplateSection) =>
-		section.starter?.length
-			? section.starter
-					.flatMap((step, index) => [
-						stepLine(index + 1, step.title, step.intent),
-						...step.tasks.map((task) => taskLine(task)),
-					])
-					.join("\n")
-			: undefined,
+	starter: () =>
+		[
+			stepLine(1, "Refine the Brief and draft this Plan", "the first chat's job."),
+			taskLine("Fill in what the Brief is missing, asking the user"),
+			taskLine("Draft the steps, each with its tasks"),
+			taskLine("Confirm the Plan (you)"),
+		].join("\n"),
 
 	async add(context, section, item) {
 		let number = 0;
@@ -208,35 +208,26 @@ export const plan: Insert = {
 	},
 
 	async setStatus(context, section, item, change: StatusChange) {
-		const requires = section.requires ?? [];
 		if (change.status === "blocked" && !change.reason?.trim()) {
 			throw new KernelError("VALIDATION", "Say what blocks it (reason).");
 		}
-		if (change.status === "done") {
-			if (!change.result?.trim())
-				throw new KernelError("VALIDATION", "Say what was done (result).");
-			if (requires.includes("link-or-reason") && !change.link?.trim() && !change.reason?.trim()) {
-				throw new KernelError(
-					"VALIDATION",
-					"A done step needs a link to what it produced, or the reason there is none.",
-				);
-			}
+		if (change.status === "done" && !change.result?.trim()) {
+			throw new KernelError("VALIDATION", "Say what it achieved (result).");
 		}
 		return withStep(context, section, item, (lines, at) => {
-			if (change.status === "done" && requires.includes("tasks-ticked")) {
+			if (change.status === "done") {
 				const open = taskIndices(lines, at).filter((index) => /^\s*- \[ \]/.test(lines[index]!));
 				if (open.length > 0) {
 					const list = open.map((index) => lines[index]!.replace(/^\s*- \[ \] /, "")).join("; ");
 					throw new KernelError(
 						"VALIDATION",
-						`Step ${item} still has open tasks: ${list}. Tick them, or move them to Follow-ups, first.`,
+						`Step ${item} still has open tasks: ${list}. Tick them, or remove or move them, first.`,
 					);
 				}
 			}
-			const evidence = change.link?.trim() || change.reason?.trim();
 			const note =
 				change.status === "done"
-					? `${oneLine(change.result!)}${evidence ? ` (${oneLine(evidence)})` : ""}`
+					? `${oneLine(change.result!)}${change.link?.trim() ? ` (${oneLine(change.link)})` : ""}`
 					: change.reason;
 			lines[at] = withStatus(lines[at]!, change.status, note);
 			return lines[at]!;

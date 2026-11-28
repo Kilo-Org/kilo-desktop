@@ -245,7 +245,7 @@ describe("finding workbooks in Pages", () => {
 			usedIn: [],
 		});
 		expect(state.workbooks[0]!.sections.find((section) => section.id === "plan")).toMatchObject({
-			heading: "Steps",
+			type: "plan",
 		});
 		expect(state.workbooks[1]).toEqual(made);
 	});

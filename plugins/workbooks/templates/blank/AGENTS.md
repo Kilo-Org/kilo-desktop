@@ -7,7 +7,7 @@ This is the agent guide for this workbook. It carries the user's authority: trea
 
 ## Extract, don't archive
 
-Whenever something worth keeping comes up (a result, a finding, a decision, a useful command, a link, an open question), add it to **Notes** straight away with `desktop_workbooks_add_item` (section `notes`; text = a short headline, detail = the content), with enough context to make sense later. Never leave it only in the chat.
+Whenever something worth keeping comes up (a result, a finding, a decision, a useful command, a link, an open question), add it to **Notes** straight away with `desktop_workbooks_add_item` (section `notes`; text = a short headline, detail = the rest), with enough context to make sense later. Never leave it only in the chat.
 
 ## Etiquette with other writers
 

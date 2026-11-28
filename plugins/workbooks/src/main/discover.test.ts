@@ -64,19 +64,15 @@ describe("matchSections", () => {
 			["handoff", "handoff", undefined, "Where we left off"],
 			["activity", "activity", undefined, "Who's working on what"],
 			["questions", "questions", undefined, "Open questions"],
-			["context", "notes", undefined, "Context and links"],
-			["constraints", "todo", undefined, "Constraints and non-goals"],
-			["criteria", "todo", undefined, "Acceptance criteria"],
-			["plan", "plan", "p", "Steps"],
+			["context-and-links", "notes", undefined, "Context and links"],
+			["constraints-and-non-goals", "todo", undefined, "Constraints and non-goals"],
+			["acceptance-criteria", "todo", undefined, "Acceptance criteria"],
+			["plan", "plan", "p", undefined],
 			["follow-ups", "todo", "u", undefined],
 			["decisions", "log", "r", "Decisions"],
 			["findings", "log", "r", "Findings"],
-			["change-log", "log", "c", undefined],
+			["change-log", "change-log", "c", undefined],
 		]);
-		expect(matched.sections.find((section) => section.id === "handoff")).toMatchObject({
-			type: "handoff",
-			history: "change-log",
-		});
 	});
 
 	it("leaves out the sections of pages it can't find", () => {
@@ -87,9 +83,9 @@ describe("matchSections", () => {
 			"handoff",
 			"activity",
 			"questions",
-			"context",
-			"constraints",
-			"criteria",
+			"context-and-links",
+			"constraints-and-non-goals",
+			"acceptance-criteria",
 			"plan",
 		]);
 	});
@@ -137,7 +133,7 @@ describe("discoverWorkbooks", () => {
 			backend: { kind: "pages-mcp", server: "pages" },
 		});
 		expect(found[0]!.sections.slice(7)).toMatchObject([
-			{ id: "plan", heading: "Steps" },
+			{ id: "plan", type: "plan" },
 			{ id: "follow-ups", type: "todo" },
 		]);
 		expect(found[0]!.guidePageId).toEqual(expect.any(String));

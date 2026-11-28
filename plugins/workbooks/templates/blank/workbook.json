@@ -1,48 +1,19 @@
 {
-	"schemaVersion": 2,
+	"schemaVersion": 3,
 	"id": "blank",
 	"name": "Blank",
 	"description": "Just a Brief and a Notes page: for anything that doesn't fit another template.",
 	"icon": "notebook",
-	"guide": {
-		"file": "AGENTS.md",
-		"title": "How to work here"
-	},
-	"firstMove": "Ask about anything unclear in the Brief, then get going, adding anything worth keeping to Notes as you go.",
-	"intake": [
-		{
-			"fills": "goal",
-			"label": "What's this about?",
-			"required": true,
-			"hint": "In your own words; it's kept verbatim at the top of the Brief."
-		}
-	],
 	"pages": [
 		{
-			"id": "home",
 			"title": "Brief",
 			"home": true,
-			"sections": [
-				{
-					"id": "goal",
-					"title": "What this is about",
-					"type": "goal",
-					"collects": "What this workbook is for, in the user's words. Changed only with the user's say-so."
-				},
-				{
-					"id": "handoff",
-					"title": "Where we left off",
-					"type": "handoff",
-					"collects": "Where things stand: what was just done, what is next, and anything a fresh chat must know."
-				}
-			]
+			"sections": [{ "type": "goal", "title": "What this is about" }, { "type": "handoff" }]
 		},
 		{
-			"id": "notes",
 			"title": "Notes",
 			"sections": [
 				{
-					"id": "notes",
 					"type": "log",
 					"collects": "Anything worth keeping: results, findings, decisions, commands, links and open questions, each with enough context to make sense later."
 				}

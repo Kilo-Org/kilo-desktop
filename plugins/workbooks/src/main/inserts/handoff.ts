@@ -5,8 +5,8 @@ import type { Insert, InsertContext } from "./types";
 
 /**
  * Where we left off: one dated entry, `- **Headline.** Body. (date, who)`,
- * replaced at each handoff; every entry is also added to the log named by
- * `history`, so the latest is here and the record is there.
+ * replaced at each handoff; every entry is also added to the workbook's
+ * change log, when it has one, so the latest is here and the record is there.
  */
 
 export interface Handoff {
@@ -30,14 +30,14 @@ export function handoffEntries(markdown: string): string[] {
 		.filter((line) => line && line !== "Nothing yet.");
 }
 
-/** Replaces the entry (keeping its note) and adds the same entry to its history log. */
+/** Replaces the entry (keeping its note) and adds the same entry to the change log. */
 export async function handOff(
 	context: InsertContext,
 	section: WorkbookSectionRef,
 	handoff: Handoff,
 ): Promise<{ written: string; history?: string }> {
 	const written = handoffLine(handoff, context.today());
-	const history = section.history ? context.section(section.history) : undefined;
+	const history = context.workbook.sections.find((candidate) => candidate.type === "change-log");
 	if (history) await addToLog(context, history, written);
 	await context.rewrite(section, (blocks) => ({
 		operations: replaceBodyEdits(blocks, section.heading, written),

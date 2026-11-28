@@ -32,11 +32,9 @@ export function sentence(text: string): string {
 export const sectionName = (section: Pick<WorkbookSectionRef, "title" | "id">) =>
 	section.title ?? section.id;
 
-/** The line shown under a section's heading: its note, else what it collects. */
-export function sectionNote(
-	section: Pick<WorkbookSectionRef, "note" | "collects">,
-): string | undefined {
-	const text = section.note ?? section.collects;
+/** The line shown under a section's heading: what it collects. */
+export function sectionNote(section: Pick<WorkbookSectionRef, "collects">): string | undefined {
+	const text = section.collects;
 	return text ? `_${oneLine(text)}_` : undefined;
 }
 

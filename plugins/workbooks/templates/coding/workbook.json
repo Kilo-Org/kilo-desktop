@@ -1,148 +1,77 @@
 {
-	"schemaVersion": 2,
+	"schemaVersion": 3,
 	"id": "coding",
 	"name": "Coding",
-	"description": "Build or change software in small, verifiable increments: plan, decide, build, review.",
+	"description": "Build or change software in small, verifiable steps: plan, decide, build, review.",
 	"icon": "code",
-	"guide": {
-		"file": "AGENTS.md",
-		"title": "How to work here"
-	},
-	"firstMove": "Refine the Brief (ask about anything missing, propose acceptance criteria and constraints), then draft the Plan as small steps, and stop for the user to confirm before building.",
-	"intake": [
-		{
-			"fills": "goal",
-			"label": "Goal",
-			"required": true,
-			"hint": "What should be true when this is done? Your own words are kept verbatim."
-		},
-		{
-			"fills": "context",
-			"label": "Context and links",
-			"hint": "Issue, error output, related PRs, where in the code."
-		}
-	],
 	"pages": [
 		{
-			"id": "home",
 			"title": "Brief",
 			"home": true,
 			"sections": [
+				{ "type": "goal" },
+				{ "type": "handoff" },
+				{ "type": "activity" },
 				{
-					"id": "goal",
-					"title": "Goal",
-					"type": "goal",
-					"collects": "What should be true when this is done, in the user's words. Changed only with the user's say-so."
-				},
-				{
-					"id": "handoff",
-					"title": "Where we left off",
-					"type": "handoff",
-					"history": "change-log",
-					"note": "The latest change only; the full history, newest first, is on the Change Log page.",
-					"collects": "Where the work stands: what was just done, what is next, any (you) tasks waiting on the user, and anything a fresh chat must know."
-				},
-				{
-					"id": "activity",
-					"title": "Who's working on what",
-					"type": "activity",
-					"note": "Kept up to date by the workbook tools.",
-					"collects": "Who is working in this workbook right now, and on what."
-				},
-				{
-					"id": "questions",
-					"title": "Open questions",
 					"type": "questions",
-					"collects": "Things only the user can decide. When one is answered, record the decision and the question goes.",
-					"answersTo": "decisions"
+					"instructions": "Record each answer in Decisions (answer_question with recordIn: decisions)."
 				},
 				{
-					"id": "context",
-					"title": "Context and links",
 					"type": "notes",
+					"title": "Context and links",
 					"collects": "Where things are: the issue, upstream references, entry points in the code, the branch and PR once they exist, local tools and environments."
 				},
 				{
-					"id": "constraints",
-					"title": "Constraints and non-goals",
 					"type": "todo",
-					"collects": "Limits the work must respect, and what is deliberately out of scope. The agent proposes them; the user confirms."
+					"title": "Constraints and non-goals",
+					"collects": "Limits the work must respect, and what is deliberately out of scope.",
+					"instructions": "Propose them; the user confirms."
 				},
 				{
-					"id": "criteria",
-					"title": "Acceptance criteria",
 					"type": "todo",
-					"collects": "Conditions that prove the goal is met, written as what will be true. The agent proposes them; the user confirms."
+					"title": "Acceptance criteria",
+					"collects": "Conditions that prove the goal is met, written as what will be true.",
+					"instructions": "Propose them; the user confirms."
 				}
 			]
 		},
 		{
-			"id": "plan",
 			"title": "Plan",
 			"sections": [
 				{
-					"id": "plan",
-					"title": "Steps",
 					"type": "plan",
-					"requires": ["tasks-ticked", "link-or-reason"],
-					"collects": "The work, in order, each step sized for one chat; the checkboxes under it are its tasks: chores, review comments, and jobs only the user can do, marked (you).",
-					"instructions": "Each step ends in one commit: once its tasks are ticked, verify it (tests, lint, type checks), commit it on its own with the step in the message, and mark it done with the commit as its link.",
-					"starter": [
-						{
-							"title": "Refine the Brief and draft this Plan",
-							"intent": "the first agent's job.",
-							"tasks": [
-								"Propose acceptance criteria and constraints in the Brief",
-								"Draft the steps, each with its tasks",
-								"Confirm the Plan (you)"
-							]
-						}
-					]
+					"instructions": "Each step ends in one commit: once its tasks are ticked, verify it (tests, lint, type checks), commit it on its own with the step in the message, and mark it done with the commit as its link."
 				}
 			]
 		},
 		{
-			"id": "follow-ups",
 			"title": "Follow-ups",
 			"sections": [
 				{
-					"id": "follow-ups",
 					"type": "todo",
-					"collects": "Out-of-scope work noticed along the way, never done in the current change. You decide what happens to each one: make it a Plan step, move it to a tracker or another workbook, or drop it."
+					"collects": "Out-of-scope work noticed along the way, never done in the current change. The user decides what happens to each: a Plan step, a tracker or another workbook, or dropped."
 				}
 			]
 		},
 		{
-			"id": "record",
 			"title": "Decisions & findings",
 			"sections": [
 				{
-					"id": "decisions",
-					"title": "Decisions",
 					"type": "log",
-					"fields": ["why", "rejected?"],
-					"collects": "Choices the user made or confirmed, never the agent's own suggestion until confirmed. A reversal is a new decision that supersedes the old one."
+					"title": "Decisions",
+					"collects": "Choices the user made or confirmed, each with why and what was rejected.",
+					"instructions": "Record a decision only once the user has made or confirmed it."
 				},
 				{
-					"id": "findings",
-					"title": "Findings",
 					"type": "log",
-					"fields": ["evidence", "status?"],
-					"collects": "Facts learned while working, with how we know; for a gap or limitation, its status and the step that handles it. A wrong one is superseded, never deleted."
+					"title": "Findings",
+					"collects": "Facts learned while working, each with how we know; for a gap or limitation, its status and the step that handles it."
 				}
 			]
 		},
 		{
-			"id": "change-log",
 			"title": "Change Log",
-			"sections": [
-				{
-					"id": "change-log",
-					"type": "log",
-					"order": "newest-first",
-					"collects": "Every handoff, newest first: what was done, what is next, any (you) tasks."
-				}
-			]
+			"sections": [{ "type": "change-log" }]
 		}
 	]
 }

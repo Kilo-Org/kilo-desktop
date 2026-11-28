@@ -25,7 +25,7 @@ export function workbookInstructions(
 	const handoff = workbook.sections.find((section) => section.type === "handoff");
 	const sections = workbook.sections.map((section) => {
 		const collects = section.collects ? ` ${section.collects}` : "";
-		return `- \`${section.id}\` ${section.title ?? "(whole page)"} (${section.type}):${collects} How: ${sectionUsage(section)}`;
+		return `- \`${section.id}\` ${section.title ?? section.id} (${section.type}):${collects} How: ${sectionUsage(section)}`;
 	});
 	return [
 		`# Workbook: ${workbook.name}`,

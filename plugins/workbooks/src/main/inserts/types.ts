@@ -1,4 +1,4 @@
-import type { STEP_STATUSES, TemplateSection, Workbook, WorkbookSectionRef } from "../../contracts";
+import type { STEP_STATUSES, Workbook, WorkbookSectionRef } from "../../contracts";
 import type { Block, SectionScope } from "../section-scope";
 import type { LineEdits } from "./helpers";
 
@@ -12,8 +12,6 @@ export interface NewItem {
 	readonly detail?: string | undefined;
 	/** plan: the new step's tasks. */
 	readonly tasks?: readonly string[] | undefined;
-	/** log: the section's labelled fields. */
-	readonly fields?: Readonly<Record<string, string>> | undefined;
 	/** log, handoff: who wrote it, when it matters. */
 	readonly who?: string | undefined;
 	/** log: words from an entry in the same section that this one replaces. */
@@ -24,9 +22,9 @@ export interface StatusChange {
 	readonly status: StepStatus;
 	/** plan: what was done. */
 	readonly result?: string;
-	/** plan: a link to what the step produced. */
+	/** plan: a link to what the step produced (optional). */
 	readonly link?: string;
-	/** plan: why it's blocked, or why a done step has no link. */
+	/** plan: why it's blocked. */
 	readonly reason?: string;
 }
 
@@ -64,7 +62,7 @@ export interface InsertContext {
  */
 export interface Insert {
 	/** What a new workbook's page shows under the section's heading and note. */
-	starter?(section: TemplateSection): string | undefined;
+	starter?(): string | undefined;
 	add?(
 		context: InsertContext,
 		section: WorkbookSectionRef,
@@ -91,7 +89,7 @@ export interface Insert {
 		context: InsertContext,
 		section: WorkbookSectionRef,
 		markdown: string,
-		options: { userConfirmed?: boolean; change?: string; part?: string },
+		options: { userConfirmed?: boolean; part?: string },
 	): Promise<{ history?: string }>;
 	/** Why an unsupported action was refused, when there's something more useful to say than "can't". */
 	readonly refusals?: Partial<

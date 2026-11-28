@@ -51,6 +51,19 @@ export function receiptText(
 				: `Answered: ${text(args.question)}${args.recordIn ? ` → ${text(args.recordIn)}` : ""}`;
 		case "write_section":
 			return isError ? `Couldn't write ${text(args.section)}` : `Wrote ${text(args.section)}`;
+		case "read_templates":
+			if (isError) return "Couldn't read workbook templates";
+			return args.id ? `Read workbook template ${text(args.id)}` : "Listed workbook templates";
+		case "save_template": {
+			const id = (args.template as { id?: unknown } | undefined)?.id;
+			return isError
+				? "Couldn't save the workbook template"
+				: `Saved workbook template ${typeof id === "string" ? id : ""}`.trim();
+		}
+		case "delete_template":
+			return isError
+				? "Couldn't delete the workbook template"
+				: `Deleted workbook template ${text(args.id)}`;
 		case "set_activity":
 			if (isError) return "Couldn't update activity";
 			return args.doing ? `Activity: ${text(args.doing)}` : "Cleared activity";

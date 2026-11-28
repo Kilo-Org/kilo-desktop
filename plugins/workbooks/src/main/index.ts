@@ -13,6 +13,8 @@ import { BUILT_IN_TEMPLATES } from "./built-in-templates";
 import { kiloPagesCaller } from "./kilo-pages";
 import type { PagesToolCaller } from "./pages-tools";
 import { provideTemplates } from "./template-registry";
+import { implementTemplateTools } from "./template-tools";
+import { UserTemplates } from "./user-templates";
 import { provideSessionWorkbooks } from "./session-workbooks";
 import { implementWorkbookChatConfig } from "./workbook-chat-config";
 import { implementWorkbookTools } from "./workbook-tools";
@@ -25,17 +27,32 @@ export interface WorkbooksMainOptions {
 
 /**
  * kilo.workbooks in main: the workbook templates on offer (its built-ins
- * shipped through its own `template` point), the person's workbooks, each
+ * shipped through its own `template` point, and the person's own from its
+ * data folder), the person's workbooks, each
  * work session's active workbook, the workbook agent tools and the
  * instructions chats in a session on a workbook are given.
  */
 export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): PluginEntry {
 	return definePlugin({
-		activate(sdk) {
+		async activate(sdk) {
 			for (const [id, read] of Object.entries(BUILT_IN_TEMPLATES)) {
 				sdk.extensions.implement(WorkbookTemplatePoint, id, { read });
 			}
-			const templates = provideTemplates(sdk);
+			// Read before the templates are provided, so windows see them from the first snapshot.
+			const user = new UserTemplates(mainHost(sdk).fs);
+			await user.load().catch((error: unknown) => {
+				sdk.logger.warn(`Couldn't read your workbook templates: ${String(error)}`);
+			});
+			const templates = provideTemplates(sdk, () =>
+				user.list().map((entry) => ({
+					source: `your templates/${entry.folder}`,
+					read: () => {
+						if ("problem" in entry) throw new Error(entry.problem);
+						return entry.template;
+					},
+				})),
+			);
+			implementTemplateTools(sdk, { user, ...templates });
 			const pages = options.pages ?? kiloPages(sdk);
 			const workbooks = provideWorkbooks(sdk, {
 				template: templates.find,

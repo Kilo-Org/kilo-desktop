@@ -1,4 +1,4 @@
-import { definePlugin, KernelError } from "@kilo-desktop/kernel";
+import { definePlugin, KernelError, type PluginFs } from "@kilo-desktop/kernel";
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 import { createPluginHost, type PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
@@ -176,13 +176,49 @@ export interface WorkbooksHost {
 	readonly pages: FakePages;
 	/** The Kilo instance (by directory) each Pages call went to, when reached through Kilo. */
 	readonly directories: (string | undefined)[];
+	readonly fs: ReturnType<typeof memoryFs>;
 }
 
 /** kilo.workbooks with an in-memory Pages and workspaces, booted on real kernels. */
+/** An in-memory stand-in for a plugin's sandboxed `sdk.fs`: paths are file keys; folders are implied. */
+export function memoryFs(
+	files = new Map<string, string>(),
+): PluginFs & { files: Map<string, string> } {
+	const missing = (path: string) => new Error(`ENOENT: ${path}`);
+	const under = (path: string) => (path ? `${path.replace(/\/$/, "")}/` : "");
+	return {
+		files,
+		readFile: async (path) => {
+			const content = files.get(path);
+			if (content === undefined) throw missing(path);
+			return content;
+		},
+		writeFile: async (path, content) => void files.set(path, content),
+		exists: async (path) =>
+			files.has(path) || [...files.keys()].some((key) => key.startsWith(under(path))),
+		mkdir: async () => undefined,
+		readdir: async (path) => {
+			const prefix = under(path);
+			const names = [...files.keys()]
+				.filter((key) => key.startsWith(prefix))
+				.map((key) => key.slice(prefix.length).split("/")[0]!);
+			if (names.length === 0) throw missing(path);
+			return [...new Set(names)];
+		},
+		remove: async (path) => {
+			for (const key of [...files.keys()]) {
+				if (key === path || key.startsWith(under(path))) files.delete(key);
+			}
+		},
+	};
+}
+
 export async function bootWorkbooks(
 	options: {
 		readonly pages?: FakePages;
 		readonly storage?: ReturnType<typeof createMemoryStorage>;
+		/** kilo.workbooks' sandboxed files (its own templates live here). */
+		readonly fs?: ReturnType<typeof memoryFs>;
 		readonly others?: readonly GuestPlugin[];
 		/** Reach Pages the real way: through a (stand-in) Kilo server over HTTP. */
 		readonly viaKilo?: boolean;
@@ -198,6 +234,7 @@ export async function bootWorkbooks(
 	const pages = options.pages ?? new FakePages();
 	const directories: (string | undefined)[] = [];
 	const storage = options.storage ?? createMemoryStorage("/memory/kilo.workbooks");
+	const fs = options.fs ?? memoryFs();
 	const host = await createPluginHost(
 		[
 			options.viaKilo ? coreWithServer() : coreRegistration,
@@ -218,9 +255,10 @@ export async function bootWorkbooks(
 				({
 					storage:
 						pluginId === "kilo.workbooks" ? storage : createMemoryStorage(`/memory/${pluginId}`),
+					fs: pluginId === "kilo.workbooks" ? fs : memoryFs(),
 					net: { fetch: kiloFetch(pages, directories) },
 				}) as never,
 		},
 	);
-	return { host, pages, directories };
+	return { host, pages, directories, fs };
 }

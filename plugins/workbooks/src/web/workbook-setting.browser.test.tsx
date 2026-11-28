@@ -44,21 +44,10 @@ function manyTemplates(names: readonly string[]) {
 							id: id(name),
 							name,
 							description: `For ${name.toLowerCase()} work.`,
-							guide: { title: "How to work here", markdown: "Be good." },
-							firstMove: "Go.",
-							intake: [{ fills: "goal", label: "Goal", required: true }],
+							guide: "Be good.",
 							pages: [
-								{
-									id: "home",
-									title: "Brief",
-									home: true,
-									sections: [{ id: "goal", title: "Goal", type: "goal" }],
-								},
-								{
-									id: "notes",
-									title: "Notes",
-									sections: [{ id: "notes", type: "log", collects: "Notes." }],
-								},
+								{ title: "Brief", home: true, sections: [{ type: "goal" }] },
+								{ title: "Notes", sections: [{ type: "log", collects: "Notes." }] },
 							],
 						}),
 					});
@@ -250,7 +239,9 @@ describe("the Workbook setting on the New Session page", () => {
 		await expect.element(page.getByTestId("workbooks-template-filter")).not.toBeInTheDocument();
 		await userEvent.click(page.getByTestId("workbooks-template-coding"));
 		await expect.poll(() => moreDetails()).toMatch(/Context and links\W+optional$/);
-		await expect.element(page.getByTestId("workbooks-field-context")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("workbooks-field-context-and-links"))
+			.not.toBeInTheDocument();
 		await userEvent.click(page.getByTestId("workbooks-back"));
 		await userEvent.click(page.getByTestId("workbooks-template-blank"));
 		await expect.element(page.getByTestId("workbooks-more-details")).not.toBeInTheDocument();
@@ -316,7 +307,10 @@ describe("the Workbook setting on the New Session page", () => {
 
 		await newWorkbook();
 		await userEvent.click(page.getByTestId("workbooks-more-details"));
-		await userEvent.fill(page.getByTestId("workbooks-field-context").element(), "Issue #42");
+		await userEvent.fill(
+			page.getByTestId("workbooks-field-context-and-links").element(),
+			"Issue #42",
+		);
 		await expect.poll(() => moreDetails()).toMatch(/1 filled in$/);
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Clock");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Show the time");

@@ -1,8 +1,9 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
 import {
-	type TemplatePage,
-	type TemplateSection,
+	resolveSections,
+	templateQuestions,
+	type ResolvedSection,
 	type WorkbookSectionRef,
 	type WorkbookTemplate,
 } from "../contracts";
@@ -10,10 +11,13 @@ import { INSERT_IMPLEMENTATIONS } from "./inserts";
 import { sectionNote } from "./inserts/helpers";
 import type { PagesToolCaller } from "./pages-tools";
 
+/** The title of every workbook's guide page. */
+export const GUIDE_TITLE = "How to work here";
+
 export interface NewWorkbookContent {
 	readonly template: WorkbookTemplate;
 	readonly name: string;
-	/** Intake answers, by the section each fills. */
+	/** The wizard's answers, by the section each fills. */
 	readonly values: Readonly<Record<string, string>>;
 	/** The Project's description: the workbook marker, which is how the app finds it again. */
 	readonly description: string;
@@ -29,47 +33,51 @@ export interface CreatedWorkbookContent {
 
 const NOT_GIVEN = "_Not given yet._";
 
-/** Required intake fields left empty, by label. */
+/** Required wizard questions left empty, by label. */
 export function missingRequiredFields(
 	template: WorkbookTemplate,
 	values: Readonly<Record<string, string>>,
 ): string[] {
-	return template.intake
-		.filter((field) => field.required && !values[field.fills]?.trim())
+	return templateQuestions(template)
+		.filter((field) => field.required && !values[field.id]?.trim())
 		.map((field) => field.label);
 }
 
-/** A section as a workbook records it: its type resolved, its rules copied, where it is. */
+/** A section as a workbook records it: its id, type, words, and where it lives. */
 export function sectionRef(
-	section: TemplateSection,
+	section: ResolvedSection,
 	where: { pageId?: string },
 ): WorkbookSectionRef {
-	const { starter: _, ...rest } = section;
 	return {
-		...rest,
+		id: section.id,
+		type: section.type,
+		title: section.title,
+		collects: section.collects,
+		...(section.instructions ? { instructions: section.instructions } : {}),
 		...(where.pageId ? { pageId: where.pageId } : {}),
-		...(section.title ? { heading: section.title } : {}),
+		...(section.heading ? { heading: section.heading } : {}),
 	};
 }
 
 /**
- * A new page's markdown: its intro, then each section's heading (none for a
- * whole-page section), the line saying what belongs there, and what it starts
- * with: an intake answer, or what its insert starts with (a plan's starter steps, the handoff's placeholder).
+ * A new page's markdown: each section's heading (none for a whole-page
+ * section), the line saying what belongs there, and what it starts with: a
+ * wizard answer, or what its section type starts with (the plan's first
+ * step, the handoff's placeholder).
  */
 export function renderPage(
 	template: WorkbookTemplate,
-	page: TemplatePage,
+	sections: readonly ResolvedSection[],
 	values: Readonly<Record<string, string>>,
 ): string {
-	const parts: string[] = page.intro?.trim() ? [page.intro.trim()] : [];
-	const filled = new Set(template.intake.map((field) => field.fills));
-	for (const section of page.sections) {
-		if (section.title) parts.push(`## ${section.title}`);
+	const asked = new Set(templateQuestions(template).map((field) => field.id));
+	const parts: string[] = [];
+	for (const section of sections) {
+		if (section.heading) parts.push(`## ${section.heading}`);
 		const note = sectionNote(section);
 		if (note) parts.push(note);
-		if (filled.has(section.id)) parts.push(values[section.id]?.trim() || NOT_GIVEN);
-		const starter = INSERT_IMPLEMENTATIONS[section.type].starter?.(section);
+		if (asked.has(section.id)) parts.push(values[section.id]?.trim() || NOT_GIVEN);
+		const starter = INSERT_IMPLEMENTATIONS[section.type].starter?.();
 		if (starter) parts.push(starter);
 	}
 	return parts.join("\n\n");
@@ -101,18 +109,13 @@ export async function createWorkbookContent(
 	const projectId = project?.project_id;
 	if (!projectId) throw new KernelError("UNAVAILABLE", "Pages didn't return the new Project.");
 
-	const home = template.pages.find((page) => page.home)!;
-	await writeHome(pages, projectId, renderPage(template, home, values), nonce);
-	const guide = await createPage(
-		pages,
-		projectId,
-		template.guide.title,
-		template.guide.markdown,
-		nonce,
-	);
+	const resolved = resolveSections(template);
+	const home = resolved.find((entry) => entry.page.home)!;
+	await writeHome(pages, projectId, renderPage(template, home.sections, values), nonce);
+	const guide = await createPage(pages, projectId, GUIDE_TITLE, template.guide, nonce);
 
 	const sections: WorkbookSectionRef[] = home.sections.map((section) => sectionRef(section, {}));
-	for (const page of template.pages) {
+	for (const { page, sections: pageSections } of resolved) {
 		if (page.home) continue;
 		// One after another on purpose: Pages lists a Project's pages in the order they were made.
 		// react-doctor-disable-next-line react-doctor/async-await-in-loop
@@ -120,10 +123,10 @@ export async function createWorkbookContent(
 			pages,
 			projectId,
 			page.title,
-			renderPage(template, page, values),
+			renderPage(template, pageSections, values),
 			nonce,
 		);
-		sections.push(...page.sections.map((section) => sectionRef(section, { pageId })));
+		sections.push(...pageSections.map((section) => sectionRef(section, { pageId })));
 	}
 	return { projectId, ...(project.url ? { url: project.url } : {}), guidePageId: guide, sections };
 }

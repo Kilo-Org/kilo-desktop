@@ -8,218 +8,218 @@ import {
 } from "@kilo-desktop/kernel";
 
 /**
- * The pre-printed sections ("inserts") every workbook template is built from
- * (docs/workbooks), like stationery inserts in a binder. Each insert has
- * how many a workbook may have, the rules a template may set on it, and its
- * own instructions for agents (`usage`): how to work with it,
- * whatever it's for. Some also have a purpose the app acts on: the goal is
- * shown everywhere, the plan gives progress and the next step, the handoff is
- * read first by every new chat. A template picks inserts, titles them and
- * says in its own words (`collects`) what belongs in each, so it can describe
- * any kind of work without new code; every chat is given each section's
- * `collects` (what) and its insert's `usage` (how).
+ * The section types every workbook template is built from (docs/workbooks):
+ * like pre-printed stationery inserts, each comes finished, with its format,
+ * rules, behaviour and starting content fixed by the app; its own default
+ * title and label (what it collects); and its built-in instructions for
+ * agents (`usage`). A template only picks section types, arranges them on
+ * pages and, per section, may set its title, what it collects (`collects`)
+ * and extra instructions for this kind of work (`instructions`). Every chat
+ * is given each section's collects (what) and usage plus instructions (how).
+ * Section types marked `single` appear at most once in a workbook.
  */
-export const INSERTS = {
+export const SECTION_CATALOGUE = {
 	goal: {
-		rules: [],
 		single: true,
+		title: "Goal",
+		collects: "What should be true when this is done, in the user's words.",
 		usage:
 			"Never rewrite it yourself: propose a change and write it only once the user confirms (write_section with userConfirmed).",
 	},
 	plan: {
-		rules: ["requires", "starter"],
 		single: true,
+		title: "Plan",
+		collects:
+			"The work, in order, each step sized for one chat; the checkboxes under it are its tasks, and jobs only the user can do are marked (you).",
 		usage:
-			"Mark a step in progress before starting it, tick its tasks as you go, and mark it done only once its rules are met (set_status says what's missing). Re-cut the plan with edit_step, move_step, add_item and remove_item; steps renumber themselves.",
+			"Mark a step in progress before starting it, tick its tasks as you go, and mark it done once they're all ticked, saying what it achieved (set_status). Re-cut the plan with edit_step, move_step, add_item and remove_item; steps renumber themselves.",
 	},
 	handoff: {
-		rules: ["history"],
 		single: true,
+		title: "Where we left off",
+		collects:
+			"The latest handoff only: what was just done, what's next, any (you) tasks, and anything a fresh chat must know.",
 		usage:
-			"Before stopping, or when the context is running low, hand off (hand_off): what was done, what's next, any (you) tasks, anything a fresh chat must know. It replaces the latest entry; earlier ones are kept in its history.",
+			"Before stopping, or when the context is running low, hand off (hand_off). It replaces the latest entry; every entry is also kept in the change log, when the workbook has one.",
 	},
 	activity: {
-		rules: [],
 		single: true,
+		title: "Who's working on what",
+		collects:
+			"Who is working in this workbook right now, and on what. Kept up to date by the workbook tools.",
 		usage:
 			"Kept up to date for you: starting a plan step puts you here, finishing it or handing off takes you off. When you're working on something that isn't a plan step, say what with set_activity, and clear it when you stop.",
 	},
+	"change-log": {
+		single: true,
+		title: "Change Log",
+		collects: "Every handoff, newest first.",
+		usage: "Filled by hand_off; don't add to it directly.",
+	},
 	todo: {
-		rules: [],
 		single: false,
+		title: "To do",
+		collects: "Things to do, ticked when done.",
 		usage: "Add items as they come up (add_item) and tick them when done (set_status).",
 	},
 	log: {
-		rules: ["fields", "order"],
 		single: false,
+		title: "Log",
+		collects: "Things worth keeping, as they come up.",
 		usage:
-			"Add an entry the moment something worth keeping comes up (add_item, with the section's fields). Never edit or delete an entry: supersede a wrong one (supersede), and record a reversal as a new entry that supersedes the old (add_item with supersedes).",
+			"Add an entry the moment something worth keeping comes up (add_item: text = a headline, detail = the rest). Never edit or delete an entry: supersede a wrong one (supersede), and record a reversal as a new entry that supersedes the old (add_item with supersedes).",
 	},
 	questions: {
-		rules: ["answersTo"],
 		single: false,
+		title: "Open questions",
+		collects: "Things only the user can decide.",
 		usage:
-			"Put questions only the user can answer here, not only in the chat (add_item). When the user answers one, record the answer and remove it (answer_question).",
+			"Put questions only the user can answer here, not only in the chat (add_item). When the user answers one, record the answer in a log and remove the question (answer_question with recordIn).",
 	},
 	notes: {
-		rules: ["protected"],
 		single: false,
+		title: "Notes",
+		collects: "Anything worth writing down.",
 		usage: "Keep it current: rewrite it as a whole when it changes (write_section).",
 	},
 	output: {
-		rules: ["history"],
 		single: false,
+		title: "Result",
+		collects: "What the work produces, organised as the finished thing should read.",
 		usage:
-			"Build the result here as the chat produces it, organised as the finished thing should read: add a new part (add_item: text = its title, detail = its content), improve the part something belongs to (write_section with part), or rewrite the whole when it needs reshaping (write_section). Never notes or drafts about the chat; say what changed.",
+			"Build the result here as the chat produces it, organised as the finished thing should read: add a new part (add_item: text = its title, detail = its content), improve the part something belongs to (write_section with part), or rewrite the whole when it needs reshaping (write_section). Never notes or drafts about the chat.",
 	},
 } as const satisfies Record<
 	string,
-	{ rules: readonly SectionRule[]; single: boolean; usage: string }
+	{ single: boolean; title: string; collects: string; usage: string }
 >;
 
-/** The rules a template may set on a section, each accepted by some inserts. */
-export type SectionRule =
-	| "requires"
-	| "starter"
-	| "fields"
-	| "order"
-	| "history"
-	| "answersTo"
-	| "protected";
+export const SECTION_TYPES = Object.keys(SECTION_CATALOGUE) as [
+	keyof typeof SECTION_CATALOGUE,
+	...(keyof typeof SECTION_CATALOGUE)[],
+];
+export type SectionType = keyof typeof SECTION_CATALOGUE;
 
-/** The instructions for agents that come with an insert. */
-export function insertUsage(type: SectionType): string {
-	return INSERTS[type].usage;
-}
-
-/** How to work with a section: its insert's instructions, then any its template adds. */
+/** How to work with a section: its type's instructions, then any its template adds. */
 export function sectionUsage(section: {
 	type: SectionType;
 	instructions?: string | undefined;
 }): string {
-	return section.instructions
-		? `${insertUsage(section.type)} ${section.instructions}`
-		: insertUsage(section.type);
+	const usage = SECTION_CATALOGUE[section.type].usage;
+	return section.instructions ? `${usage} ${section.instructions}` : usage;
 }
 
-const RULES: readonly SectionRule[] = [
-	"requires",
-	"starter",
-	"fields",
-	"order",
-	"history",
-	"answersTo",
-	"protected",
-];
-
-export const SECTION_TYPES = Object.keys(INSERTS) as [
-	keyof typeof INSERTS,
-	...(keyof typeof INSERTS)[],
-];
-export type SectionType = keyof typeof INSERTS;
-
-/** What a done step must have: its tasks ticked; a link to what it produced, or a reason there is none. */
-export const STEP_REQUIREMENTS = ["tasks-ticked", "link-or-reason"] as const;
-
-export const JOURNAL_ORDERS = ["oldest-first", "newest-first"] as const;
+/** What the first chat in a new workbook does, whatever its template. */
+export const FIRST_MOVE =
+	"Refine the Brief (ask about anything missing), then draft the Plan, and stop for the user to confirm it before starting.";
 
 const slugSchema = z
 	.string()
 	.regex(/^[a-z][a-z0-9-]*$/, "use lowercase letters, digits and dashes, starting with a letter");
 
-/** A log field: a slug, ending in `?` when it may be left out. */
-const journalFieldSchema = z
-	.string()
-	.regex(/^[a-z][a-z0-9-]*\??$/, 'use a lowercase name, ending in "?" when optional');
+const slug = (text: string) =>
+	text
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.replace(/^(\d)/, "s-$1") || "section";
 
-const starterStepSchema = z.object({
-	title: z.string().min(1),
-	intent: z.string().min(1),
-	tasks: z.array(z.string().min(1)).default([]),
-});
-
-/**
- * How a section behaves beyond its insert: what the tools check and keep.
- * Each rule belongs to some inserts; the template schema says which when a
- * template gets it wrong.
- */
-export const sectionRulesSchema = z.object({
-	/** What belongs here, in plain words: shown under its heading and given to agents. */
-	collects: z.string().min(1).optional(),
-	/**
-	 * How to work with this section, added after its insert's own instructions:
-	 * what this kind of work asks beyond the insert's defaults (the Coding
-	 * template's plan: commit each step on its own).
-	 */
-	instructions: z.string().min(1).optional(),
-	/** The line shown under its heading instead of `collects`. */
-	note: z.string().min(1).optional(),
-	/** plan: what a done step must have. */
-	requires: z.array(z.enum(STEP_REQUIREMENTS)).optional(),
-	/** log: the labelled fields each entry has besides its headline. */
-	fields: z.array(journalFieldSchema).optional(),
-	/** log: where new entries go. */
-	order: z.enum(JOURNAL_ORDERS).optional(),
-	/** handoff, output: the log that keeps every earlier handoff, or a note of each replaced version. */
-	history: slugSchema.optional(),
-	/** questions: the log an answer is recorded in. */
-	answersTo: slugSchema.optional(),
-	/** notes: agents may change it only with the user's say-so (the goal always is). */
-	protected: z.boolean().optional(),
-});
-export type SectionRules = z.output<typeof sectionRulesSchema>;
-
-/**
- * A section of a template page: one insert, under a `## <title>` heading,
- * or, untitled, the whole of a page that has no other section.
- */
-export const templateSectionSchema = sectionRulesSchema.extend({
-	id: slugSchema,
-	title: z.string().min(1).optional(),
+/** A section of a template page: a section type, and optionally the words that make it this template's. */
+export const templateSectionSchema = z.strictObject({
 	type: z.enum(SECTION_TYPES),
-	/** plan: the steps a new workbook starts with. */
-	starter: z.array(starterStepSchema).optional(),
+	/** Its heading; defaults to the section type's own. */
+	title: z.string().min(1).optional(),
+	/** What belongs in it, in plain words; defaults to the section type's label. */
+	collects: z.string().min(1).optional(),
+	/** How to work with it in this kind of work, added after the section type's own instructions. */
+	instructions: z.string().min(1).optional(),
 });
 export type TemplateSection = z.output<typeof templateSectionSchema>;
 
 /** A page of the workbook; the `home` page is the Project's own document (the Brief). */
-export const templatePageSchema = z.object({
-	id: slugSchema,
+export const templatePageSchema = z.strictObject({
 	title: z.string().min(1),
 	home: z.boolean().default(false),
-	/** Prose before its sections. */
-	intro: z.string().optional(),
-	sections: z.array(templateSectionSchema).default([]),
+	sections: z.array(templateSectionSchema).min(1),
 });
 export type TemplatePage = z.output<typeof templatePageSchema>;
 
-/** A question the New workbook wizard asks; the answer becomes the goal's or a notes section's content. */
-export const intakeFieldSchema = z.object({
-	fills: slugSchema,
-	label: z.string().min(1),
-	required: z.boolean().default(false),
-	hint: z.string().optional(),
-});
-export type IntakeField = z.output<typeof intakeFieldSchema>;
-
-/** Every section of a template, with the page it is on. */
-export function templateSections(
-	template: Pick<WorkbookTemplate, "pages">,
-): { page: TemplatePage; section: TemplateSection }[] {
-	return template.pages.flatMap((page) => page.sections.map((section) => ({ page, section })));
+/**
+ * A template section as a workbook has it: a stable id, the heading it lives
+ * under (none when it is the whole of a page other than home), and its
+ * words with the section type's defaults filled in.
+ */
+export interface ResolvedSection {
+	readonly id: string;
+	readonly type: SectionType;
+	readonly title: string;
+	readonly heading: string | undefined;
+	readonly collects: string;
+	readonly instructions?: string;
 }
 
-/** A workbook template with its content resolved: what creating a workbook copies. */
+/**
+ * Every section of a template, page by page, resolved. A page other than
+ * home with a single section is that section (no heading). A section's id is
+ * its type for a section type a workbook has once (goal, plan…); otherwise its
+ * title's slug when it has a title, the page's when it is the whole page, or
+ * its type.
+ */
+export function resolveSections(
+	template: Pick<WorkbookTemplate, "pages">,
+): { page: TemplatePage; sections: ResolvedSection[] }[] {
+	return template.pages.map((page) => {
+		const whole = !page.home && page.sections.length === 1;
+		return {
+			page,
+			sections: page.sections.map((section) => {
+				const printed = SECTION_CATALOGUE[section.type];
+				const title = section.title ?? (whole ? page.title : printed.title);
+				const id = printed.single
+					? section.type
+					: section.title
+						? slug(section.title)
+						: whole
+							? slug(page.title)
+							: section.type;
+				return {
+					id,
+					type: section.type,
+					title,
+					heading: whole ? undefined : title,
+					collects: section.collects ?? printed.collects,
+					...(section.instructions ? { instructions: section.instructions } : {}),
+				};
+			}),
+		};
+	});
+}
+
+/** The wizard's questions: the goal (required), and context for the Brief's first notes section. */
+export function templateQuestions(template: Pick<WorkbookTemplate, "pages">): BriefField[] {
+	const resolved = resolveSections(template);
+	const all = resolved.flatMap((entry) => entry.sections);
+	const goal = all.find((section) => section.type === "goal");
+	const context = resolved
+		.find((entry) => entry.page.home)
+		?.sections.find((section) => section.type === "notes");
+	return [
+		...(goal ? [{ id: goal.id, label: goal.title, required: true, hint: goal.collects }] : []),
+		...(context
+			? [{ id: context.id, label: context.title, required: false, hint: context.collects }]
+			: []),
+	];
+}
+
+/** A workbook template: section types arranged on pages, plus a guide. */
 export const workbookTemplateSchema = z
-	.object({
+	.strictObject({
 		id: slugSchema,
 		name: z.string().min(1),
 		description: z.string().min(1),
 		icon: z.string().optional(),
-		guide: z.object({ title: z.string().min(1), markdown: z.string().min(1) }),
-		/** What the first agent in a new workbook does. */
-		firstMove: z.string().min(1),
-		intake: z.array(intakeFieldSchema).min(1),
+		/** The agent guide ("How to work here"): behaviour specific to this kind of work. */
+		guide: z.string().min(1),
 		pages: z.array(templatePageSchema).min(1),
 	})
 	.superRefine((template, context) => {
@@ -227,62 +227,25 @@ export const workbookTemplateSchema = z
 		const repeated = (ids: readonly string[]) => [
 			...new Set(ids.filter((id, index) => ids.indexOf(id) !== index)),
 		];
-		const all = templateSections(template);
-		const byId = new Map(all.map(({ section }) => [section.id, section]));
-
-		for (const id of repeated(template.pages.map((page) => page.id))) {
-			issue(`page "${id}" appears more than once`);
-		}
-		for (const id of repeated(all.map(({ section }) => section.id))) {
-			issue(`section "${id}" appears more than once`);
-		}
-		for (const id of repeated(template.intake.map((field) => field.fills))) {
-			issue(`intake field "${id}" appears more than once`);
-		}
 		if (template.pages.filter((page) => page.home).length !== 1) {
 			issue("exactly one page must be the home page");
 		}
-
-		for (const { page, section } of all) {
-			const name = `section "${section.id}"`;
-			if (!section.title && (page.home || page.sections.length > 1)) {
-				issue(
-					`${name} needs a title: only the one section of a page other than home can be the whole page`,
-				);
-			}
-			for (const rule of RULES) {
-				const inserts = SECTION_TYPES.filter((type) =>
-					(INSERTS[type].rules as readonly SectionRule[]).includes(rule),
-				);
-				if (section[rule] !== undefined && !inserts.includes(section.type)) {
-					issue(`${name}: "${rule}" is for ${inserts.join(", ")} sections`);
-				}
-			}
-			for (const rule of ["history", "answersTo"] as const) {
-				const target = section[rule] ? byId.get(section[rule]) : undefined;
-				if (section[rule] && target?.type !== "log") {
-					issue(`${name}: its ${rule} "${section[rule]}" must be a log section`);
-				}
-			}
+		for (const title of repeated(template.pages.map((page) => page.title.toLowerCase()))) {
+			issue(`two pages are titled "${title}"`);
 		}
-
-		for (const [type, insert] of Object.entries(INSERTS)) {
-			if (insert.single && all.filter(({ section }) => section.type === type).length > 1) {
+		const all = resolveSections(template).flatMap((entry) => entry.sections);
+		for (const id of repeated(all.map((section) => section.id))) {
+			issue(`two sections would both be "${id}": give them different titles`);
+		}
+		for (const type of SECTION_TYPES) {
+			if (
+				SECTION_CATALOGUE[type].single &&
+				all.filter((section) => section.type === type).length > 1
+			) {
 				issue(`only one section can be a ${type}`);
 			}
 		}
-		const goal = all.find(({ section }) => section.type === "goal")?.section;
-		if (!goal) issue("a template needs a goal section");
-
-		for (const field of template.intake) {
-			const target = byId.get(field.fills);
-			if (target?.type !== "goal" && target?.type !== "notes" && target?.type !== "output") {
-				issue(`intake field "${field.fills}" must fill the goal, a notes or an output section`);
-			}
-		}
-		if (goal && !template.intake.some((field) => field.fills === goal.id && field.required)) {
-			issue("a required intake field must fill the goal");
-		}
+		if (!all.some((section) => section.type === "goal")) issue("a template needs a goal section");
 	});
 export type WorkbookTemplate = z.output<typeof workbookTemplateSchema>;
 export type WorkbookTemplateInput = z.input<typeof workbookTemplateSchema>;

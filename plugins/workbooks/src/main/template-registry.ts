@@ -1,18 +1,25 @@
-import { KernelError, type Contribution, type PluginSdk } from "@kilo-desktop/kernel";
+import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 
 import {
 	WorkbookTemplatePoint,
 	WorkbookTemplates,
+	FIRST_MOVE,
+	templateQuestions,
 	workbookTemplateSchema,
 	type TemplateSummary,
 	type WorkbookTemplate,
 } from "../contracts";
 
-type TemplateContribution = Contribution<typeof WorkbookTemplatePoint>;
+/** Templates from outside the extension point: the person's own, by source label. */
+export interface ExtraTemplate {
+	readonly source: string;
+	read(): unknown;
+}
 
 /**
  * Provides `kilo.workbooks/templates` from every `template` contribution
- * implemented in main, re-read whenever the point changes.
+ * implemented in main, then any `extra` ones (the person's own templates),
+ * re-read whenever the point changes or `reread` is called.
  *
  * Each contribution's template is validated on every read; one that fails, or
  * that repeats an id a higher-priority contribution already offers, is left
@@ -20,10 +27,17 @@ type TemplateContribution = Contribution<typeof WorkbookTemplatePoint>;
  * hides the others. Contributions are taken in the registry's priority order;
  * the subscription is disposed with the plugin.
  */
-export function provideTemplates(sdk: PluginSdk): {
+export function provideTemplates(
+	sdk: PluginSdk,
+	extra: () => readonly ExtraTemplate[] = () => [],
+): {
 	find(id: string): WorkbookTemplate | undefined;
 	all(): WorkbookTemplate[];
+	/** Ids contributed through the extension point (built-ins and plugins'). */
+	contributedIds(): ReadonlySet<string>;
+	reread(): void;
 } {
+	let contributed = new Set<string>();
 	let templates = new Map<string, WorkbookTemplate>();
 	const warned = new Set<string>();
 
@@ -50,8 +64,17 @@ export function provideTemplates(sdk: PluginSdk): {
 				sdk.logger.warn(line);
 			}
 		};
-		for (const contribution of sdk.extensions.list(WorkbookTemplatePoint)) {
-			const outcome = readTemplate(contribution);
+		const sources = [
+			...sdk.extensions.list(WorkbookTemplatePoint).map((contribution) => ({
+				key: contribution.key,
+				read: contribution.implementation ? () => contribution.implementation!.read() : undefined,
+			})),
+			...extra().map((template) => ({ key: template.source, read: () => template.read() })),
+		];
+		const pointCount = sdk.extensions.list(WorkbookTemplatePoint).length;
+		const fromPoint = new Set<string>();
+		for (const [index, contribution] of sources.entries()) {
+			const outcome = readTemplate(contribution.read);
 			if ("problem" in outcome) {
 				if (outcome.problem) report(contribution.key, outcome.problem);
 				continue;
@@ -61,38 +84,40 @@ export function provideTemplates(sdk: PluginSdk): {
 				report(contribution.key, `the id "${template.id}" is already taken`);
 				continue;
 			}
+			if (index < pointCount) fromPoint.add(template.id);
 			next.set(template.id, template);
 			summaries.push({
 				id: template.id,
 				name: template.name,
 				description: template.description,
 				...(template.icon ? { icon: template.icon } : {}),
-				fields: template.intake.map(({ fills, label, required, hint }) => ({
-					id: fills,
-					label,
-					required,
-					...(hint ? { hint } : {}),
-				})),
-				firstMove: template.firstMove,
+				fields: templateQuestions(template),
+				firstMove: FIRST_MOVE,
 				source: contribution.key,
 			});
 		}
 		templates = next;
+		contributed = fromPoint;
 		templatesObject.setState({ templates: summaries, issues });
 	};
 
 	reread();
 	sdk.extensions.subscribe(WorkbookTemplatePoint, reread);
-	return { find: (id) => templates.get(id), all: () => [...templates.values()] };
+	return {
+		find: (id) => templates.get(id),
+		all: () => [...templates.values()],
+		contributedIds: () => contributed,
+		reread,
+	};
 }
 
 function readTemplate(
-	contribution: TemplateContribution,
+	read: (() => unknown) | undefined,
 ): { template: WorkbookTemplate } | { problem: string | null } {
 	// Implemented in another process (never, for a main point) or not yet bound.
-	if (!contribution.implementation) return { problem: null };
+	if (!read) return { problem: null };
 	try {
-		const result = workbookTemplateSchema.safeParse(contribution.implementation.read());
+		const result = workbookTemplateSchema.safeParse(read());
 		if (result.success) return { template: result.data };
 		return {
 			problem: result.error.issues

@@ -8,8 +8,7 @@ import type { Insert, InsertContext, NewItem } from "./types";
 
 /**
  * Questions only the user can decide: `- **Question?** context`. An answer is
- * recorded in the log named by `answersTo` (or one given), then the question
- * goes.
+ * recorded in a log the agent names, then the question goes.
  */
 
 /** An open question: a bold-led bullet ending in "?". */
@@ -49,9 +48,8 @@ export const questions: Insert = {
 };
 
 /**
- * Removes an answered question from whichever questions section holds it.
- * With an entry, first records the answer in a log: `recordIn`, else that
- * section's `answersTo`.
+ * Removes an answered question from whichever questions section holds it,
+ * first recording the answer in the log `recordIn` when one is given.
  */
 export async function answerQuestion(
 	context: InsertContext,
@@ -75,10 +73,10 @@ export async function answerQuestion(
 			throw new KernelError("NOT_FOUND", `No open question matches "${question}".`);
 		section = holding[0]!;
 	}
-	const recordIn = answer.recordIn ?? (answer.entry ? section.answersTo : undefined);
+	const { recordIn } = answer;
 	let recorded: string | undefined;
 	if (recordIn) {
-		if (!answer.entry) throw new KernelError("VALIDATION", "Say what to record.");
+		if (!answer.entry) throw new KernelError("VALIDATION", "Say what to record (text).");
 		const target = context.section(recordIn);
 		if (target.type !== "log") {
 			throw new KernelError("VALIDATION", "Record an answer in a log section, such as Decisions.");

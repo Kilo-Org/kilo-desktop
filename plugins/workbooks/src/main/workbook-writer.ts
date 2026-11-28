@@ -139,7 +139,7 @@ export class WorkbookWriter {
 	writeSection(
 		sectionId: string,
 		markdown: string,
-		options: { userConfirmed?: boolean; change?: string; part?: string } = {},
+		options: { userConfirmed?: boolean; part?: string } = {},
 	): Promise<{ history?: string }> {
 		const section = this.section(sectionId);
 		return this.#insert(section, "write").write!(this.#context, section, markdown, options);

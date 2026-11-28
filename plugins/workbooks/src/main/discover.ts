@@ -1,10 +1,11 @@
 import {
 	DEFAULT_PAGES_MCP_SERVER,
+	resolveSections,
 	type Workbook,
 	type WorkbookSectionRef,
 	type WorkbookTemplate,
 } from "../contracts";
-import { sectionRef } from "./create-workbook";
+import { GUIDE_TITLE, sectionRef } from "./create-workbook";
 import type { PagesToolCaller } from "./pages-tools";
 
 /**
@@ -31,8 +32,6 @@ export function parseMarker(
 
 const normalized = (title: string) => title.trim().toLowerCase();
 
-const DEFAULT_GUIDE_TITLE = "How to work here";
-
 /**
  * A workbook's guide and sections, found among its Project's pages by title:
  * the template's when it's known, otherwise any known template's (the first
@@ -51,19 +50,15 @@ export function matchSections(
 		if (!pageByTitle.has(normalized(page.title)))
 			pageByTitle.set(normalized(page.title), page.page_id);
 	}
-	const guideTitles = new Set([
-		...sources.map((source) => normalized(source.guide.title)),
-		normalized(DEFAULT_GUIDE_TITLE),
-	]);
-	const guidePageId = [...guideTitles].map((title) => pageByTitle.get(title)).find(Boolean);
+	const guidePageId = pageByTitle.get(normalized(GUIDE_TITLE));
 
 	const sections: WorkbookSectionRef[] = [];
 	const taken = new Set<string>();
 	for (const source of sources) {
-		for (const page of source.pages) {
+		for (const { page, sections: pageSections } of resolveSections(source)) {
 			const pageId = page.home ? undefined : pageByTitle.get(normalized(page.title));
 			if (page.home ? !template : !pageId) continue;
-			for (const section of page.sections) {
+			for (const section of pageSections) {
 				if (taken.has(section.id)) continue;
 				taken.add(section.id);
 				sections.push(sectionRef(section, pageId ? { pageId } : {}));

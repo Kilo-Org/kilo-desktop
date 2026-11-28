@@ -1,21 +1,25 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
 import {
+	oneLine,
 	resolveSections,
 	templateQuestions,
 	type ResolvedSection,
+	type SectionTypeDefinition,
 	type WorkbookSectionRef,
 	type WorkbookTemplate,
 } from "../contracts";
-import { INSERT_IMPLEMENTATIONS } from "./inserts";
-import { sectionNote } from "./inserts/helpers";
 import type { PagesToolCaller } from "./pages-tools";
 
 /** The title of every workbook's guide page. */
 export const GUIDE_TITLE = "How to work here";
 
+type Types = (type: string) => SectionTypeDefinition | undefined;
+
 export interface NewWorkbookContent {
 	readonly template: WorkbookTemplate;
+	/** The section types on offer, by id. */
+	readonly types: Types;
 	readonly name: string;
 	/** The wizard's answers, by the section each fills. */
 	readonly values: Readonly<Record<string, string>>;
@@ -36,9 +40,10 @@ const NOT_GIVEN = "_Not given yet._";
 /** Required wizard questions left empty, by label. */
 export function missingRequiredFields(
 	template: WorkbookTemplate,
+	types: Types,
 	values: Readonly<Record<string, string>>,
 ): string[] {
-	return templateQuestions(template)
+	return templateQuestions(template, types)
 		.filter((field) => field.required && !values[field.id]?.trim())
 		.map((field) => field.label);
 }
@@ -67,17 +72,17 @@ export function sectionRef(
  */
 export function renderPage(
 	template: WorkbookTemplate,
+	types: Types,
 	sections: readonly ResolvedSection[],
 	values: Readonly<Record<string, string>>,
 ): string {
-	const asked = new Set(templateQuestions(template).map((field) => field.id));
+	const asked = new Set(templateQuestions(template, types).map((field) => field.id));
 	const parts: string[] = [];
 	for (const section of sections) {
 		if (section.heading) parts.push(`## ${section.heading}`);
-		const note = sectionNote(section);
-		if (note) parts.push(note);
+		if (section.collects) parts.push(`_${oneLine(section.collects)}_`);
 		if (asked.has(section.id)) parts.push(values[section.id]?.trim() || NOT_GIVEN);
-		const starter = INSERT_IMPLEMENTATIONS[section.type].starter?.();
+		const starter = types(section.type)?.starter?.();
 		if (starter) parts.push(starter);
 	}
 	return parts.join("\n\n");
@@ -94,8 +99,8 @@ export async function createWorkbookContent(
 	pages: PagesToolCaller,
 	content: NewWorkbookContent,
 ): Promise<CreatedWorkbookContent> {
-	const { template, name, values } = content;
-	const missing = missingRequiredFields(template, values);
+	const { template, types, name, values } = content;
+	const missing = missingRequiredFields(template, types, values);
 	if (missing.length > 0) {
 		throw new KernelError("VALIDATION", `Fill in the Brief first: ${missing.join(", ")}.`);
 	}
@@ -109,9 +114,9 @@ export async function createWorkbookContent(
 	const projectId = project?.project_id;
 	if (!projectId) throw new KernelError("UNAVAILABLE", "Pages didn't return the new Project.");
 
-	const resolved = resolveSections(template);
+	const resolved = resolveSections(template, types);
 	const home = resolved.find((entry) => entry.page.home)!;
-	await writeHome(pages, projectId, renderPage(template, home.sections, values), nonce);
+	await writeHome(pages, projectId, renderPage(template, types, home.sections, values), nonce);
 	const guide = await createPage(pages, projectId, GUIDE_TITLE, template.guide, nonce);
 
 	const sections: WorkbookSectionRef[] = home.sections.map((section) => sectionRef(section, {}));
@@ -123,7 +128,7 @@ export async function createWorkbookContent(
 			pages,
 			projectId,
 			page.title,
-			renderPage(template, pageSections, values),
+			renderPage(template, types, pageSections, values),
 			nonce,
 		);
 		sections.push(...pageSections.map((section) => sectionRef(section, { pageId })));

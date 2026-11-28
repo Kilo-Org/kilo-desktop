@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { resolveSections, workbookTemplateSchema } from "../contracts";
 import { FakePages } from "../test/fake-pages";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
+import { BUILT_IN_SECTION_TYPES } from "./section-types";
 import { createWorkbookContent, missingRequiredFields, renderPage } from "./create-workbook";
 import { toolResultPayload } from "./pages-tools";
 
 const coding = workbookTemplateSchema.parse(BUILT_IN_TEMPLATES.coding());
+const types = (type: string) => BUILT_IN_SECTION_TYPES[type];
 
 describe("createWorkbookContent", () => {
 	it("copies the template into a new Project: the home page, the guide and the other pages", async () => {
@@ -14,6 +16,7 @@ describe("createWorkbookContent", () => {
 
 		const created = await createWorkbookContent(pages, {
 			template: coding,
+			types,
 			name: "Fix the server bug",
 			values: { goal: "Fix the bug in the Kilo server", "context-and-links": "  " },
 			description: "Workbook · Coding (coding)",
@@ -84,6 +87,7 @@ describe("createWorkbookContent", () => {
 		await expect(
 			createWorkbookContent(pages, {
 				template: coding,
+				types,
 				name: "x",
 				values: { goal: " " },
 				description: "Workbook · Coding (coding)",
@@ -98,6 +102,7 @@ describe("createWorkbookContent", () => {
 		await expect(
 			createWorkbookContent(pages, {
 				template: coding,
+				types,
 				name: "x",
 				values: { goal: "g" },
 				description: "Workbook · Coding (coding)",
@@ -112,6 +117,7 @@ describe("createWorkbookContent", () => {
 		await expect(
 			createWorkbookContent(pages, {
 				template: coding,
+				types,
 				name: "x",
 				values: { goal: "g" },
 				description: "Workbook · Coding (coding)",
@@ -122,12 +128,12 @@ describe("createWorkbookContent", () => {
 
 describe("renderPage and missingRequiredFields", () => {
 	it("fills the wizard's answers and lists missing required fields", () => {
-		const home = resolveSections(coding)[0]!.sections;
-		expect(renderPage(coding, home, { goal: " Ship it " })).toContain(
+		const home = resolveSections(coding, types)[0]!.sections;
+		expect(renderPage(coding, types, home, { goal: " Ship it " })).toContain(
 			"_\n\nShip it\n\n## Where we left off",
 		);
-		expect(missingRequiredFields(coding, {})).toEqual(["Goal"]);
-		expect(missingRequiredFields(coding, { goal: "g" })).toEqual([]);
+		expect(missingRequiredFields(coding, types, {})).toEqual(["Goal"]);
+		expect(missingRequiredFields(coding, types, { goal: "g" })).toEqual([]);
 	});
 });
 

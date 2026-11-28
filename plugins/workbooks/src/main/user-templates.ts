@@ -1,6 +1,11 @@
 import { KernelError, type PluginFs } from "@kilo-desktop/kernel";
 
-import { workbookTemplateSchema, type WorkbookTemplateInput } from "../contracts";
+import {
+	templateIssues,
+	workbookTemplateSchema,
+	type SectionTypeLookup,
+	type WorkbookTemplateInput,
+} from "../contracts";
 import { GUIDE_FILE, templateFromFiles } from "./template-files";
 
 /** Where user templates live in kilo.workbooks' own data folder: one folder per template. */
@@ -45,6 +50,7 @@ export class UserTemplates {
 		template: unknown,
 		guide: string,
 		reserved: ReadonlySet<string>,
+		types: SectionTypeLookup,
 	): Promise<WorkbookTemplateInput> {
 		const { guide: _, schemaVersion: __, ...rest } = template as Record<string, unknown>;
 		const checked = workbookTemplateSchema.safeParse({ ...rest, guide });
@@ -53,6 +59,10 @@ export class UserTemplates {
 				"VALIDATION",
 				`Not a valid workbook template: ${issuesOf(checked.error)}`,
 			);
+		}
+		const issues = templateIssues(checked.data, types);
+		if (issues.length > 0) {
+			throw new KernelError("VALIDATION", `Not a valid workbook template: ${issues.join("; ")}`);
 		}
 		if (reserved.has(checked.data.id)) {
 			throw new KernelError(

@@ -1,4 +1,4 @@
-import { sectionUsage, type Workbook } from "../contracts";
+import { sectionUsage, type SectionTypeDefinition, type Workbook } from "../contracts";
 
 export interface InstructionsContent {
 	/** The Brief's markdown, when it could be read. */
@@ -20,12 +20,21 @@ export interface InstructionsContent {
 export function workbookInstructions(
 	workbook: Workbook,
 	content: InstructionsContent = {},
+	types: (type: string) => SectionTypeDefinition | undefined = () => undefined,
 ): string {
 	const where = workbook.url ?? `Pages project ${workbook.projectId}`;
 	const handoff = workbook.sections.find((section) => section.type === "handoff");
+	const how = (section: Workbook["sections"][number]) => {
+		const type = types(section.type);
+		if (!type) return `this section type isn't installed: read it, but don't write to it.`;
+		const actions = Object.keys(type.actions ?? {});
+		return `${sectionUsage(type, section.instructions)}${
+			actions.length ? ` Its actions: ${actions.join(", ")}.` : ""
+		}`;
+	};
 	const sections = workbook.sections.map((section) => {
 		const collects = section.collects ? ` ${section.collects}` : "";
-		return `- \`${section.id}\` ${section.title ?? section.id} (${section.type}):${collects} How: ${sectionUsage(section)}`;
+		return `- \`${section.id}\` ${section.title ?? section.id} (${section.type}):${collects} How: ${how(section)}`;
 	});
 	return [
 		`# Workbook: ${workbook.name}`,

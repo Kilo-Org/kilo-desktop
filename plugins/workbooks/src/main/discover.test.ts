@@ -7,11 +7,13 @@ import {
 } from "../contracts";
 import { FakePages } from "../test/fake-pages";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
+import { BUILT_IN_SECTION_TYPES } from "./section-types";
 import { discoverWorkbooks, markerFor, matchSections, parseMarker } from "./discover";
 
 const coding = workbookTemplateSchema.parse(BUILT_IN_TEMPLATES.coding());
 const blank = workbookTemplateSchema.parse(BUILT_IN_TEMPLATES.blank());
 const templates: WorkbookTemplate[] = [coding, blank];
+const types = (type: string) => BUILT_IN_SECTION_TYPES[type];
 
 describe("the workbook marker", () => {
 	it("names the template and its id", () => {
@@ -56,6 +58,7 @@ describe("matchSections", () => {
 			],
 			templates,
 			coding,
+			types,
 		);
 
 		expect(matched.guidePageId).toBe("g");
@@ -76,7 +79,7 @@ describe("matchSections", () => {
 	});
 
 	it("leaves out the sections of pages it can't find", () => {
-		const matched = matchSections([page("Plan", "p")], templates, coding);
+		const matched = matchSections([page("Plan", "p")], templates, coding, types);
 
 		expect(matched.sections.map((section) => section.id)).toEqual([
 			"goal",
@@ -95,6 +98,7 @@ describe("matchSections", () => {
 			[page("Decisions & findings", "r"), page("Notes", "n")],
 			templates,
 			undefined,
+			types,
 		);
 
 		expect(matched.guidePageId).toBeUndefined();
@@ -121,7 +125,7 @@ describe("discoverWorkbooks", () => {
 		]);
 		const older = pages.addProject("Scratch", "Workbook · Blank · workspace: W", ["Notes"]);
 
-		const found = await discoverWorkbooks(pages, { templates: () => templates });
+		const found = await discoverWorkbooks(pages, { templates: () => templates, types });
 
 		expect(found.map((workbook) => workbook.id)).toEqual([made, spike, older]);
 		expect(found[0]).toMatchObject({
@@ -153,6 +157,7 @@ describe("discoverWorkbooks", () => {
 
 		const [found] = await discoverWorkbooks(pages, {
 			templates: () => templates,
+			types,
 			known: (id) => (id === projectId ? known : undefined),
 		});
 

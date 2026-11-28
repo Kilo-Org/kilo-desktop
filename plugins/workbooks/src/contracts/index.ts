@@ -1,9 +1,11 @@
 import type { PluginDefinitions } from "@kilo-desktop/kernel";
 
+import { SectionTypePoint, SectionTypes } from "./section-types";
 import { WorkbookTemplatePoint, WorkbookTemplates } from "./templates";
 import { SessionWorkbooks } from "./sessions";
 import { Workbooks } from "./workbooks";
 
+export * from "./section-types";
 export * from "./sessions";
 export * from "./templates";
 export * from "./workbooks";
@@ -20,6 +22,6 @@ export const WORKBOOKS_FEATURE_FLAG = "workbooks";
 
 /** What the kernel needs to know about this plugin without running it. */
 export const WORKBOOKS_DEFINITIONS: PluginDefinitions = {
-	domainObjects: [WorkbookTemplates, Workbooks, SessionWorkbooks],
-	extensionPoints: [WorkbookTemplatePoint],
+	domainObjects: [WorkbookTemplates, SectionTypes, Workbooks, SessionWorkbooks],
+	extensionPoints: [WorkbookTemplatePoint, SectionTypePoint],
 };

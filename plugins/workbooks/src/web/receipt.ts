@@ -64,6 +64,10 @@ export function receiptText(
 			return isError
 				? "Couldn't delete the workbook template"
 				: `Deleted workbook template ${text(args.id)}`;
+		case "section_action":
+			return isError
+				? `Couldn't run ${text(args.action)} on ${text(args.section)}`
+				: `Ran ${text(args.action)} on ${text(args.section)}`;
 		case "set_activity":
 			if (isError) return "Couldn't update activity";
 			return args.doing ? `Activity: ${text(args.doing)}` : "Cleared activity";

@@ -5,7 +5,6 @@ import { createPluginHost, type PluginHost } from "@kilo-desktop/kernel/testing/
 
 import manifest from "../../plugin.json";
 import {
-	SECTION_CATALOGUE,
 	WORKBOOKS_DEFINITIONS,
 	WorkbookTemplatePoint,
 	WorkbookTemplates,
@@ -13,6 +12,7 @@ import {
 	type WorkbookTemplate,
 	type WorkbookTemplateInput,
 } from "../contracts";
+import { BUILT_IN_SECTION_TYPES } from "./section-types";
 import { templateFromFiles } from "./template-files";
 import { workbooksMainEntry } from "./index";
 
@@ -81,8 +81,10 @@ async function boot(...others: ReturnType<typeof templatePlugin>[]) {
 	return { host, templates: host.renderer.kernelSdk.domainObjects.get(WorkbookTemplates)! };
 }
 
+const types = (type: string) => BUILT_IN_SECTION_TYPES[type];
+
 const summarise = (template: WorkbookTemplate) =>
-	resolveSections(template).flatMap(({ page, sections }) =>
+	resolveSections(template, types).flatMap(({ page, sections }) =>
 		sections.map((section) => [page.title, section.id, section.type, section.heading ?? null]),
 	);
 
@@ -118,9 +120,9 @@ describe("workbook templates", () => {
 			["Decisions & findings", "findings", "log", "Findings"],
 			["Change Log", "change-log", "change-log", null],
 		]);
-		const plan = resolveSections(coding)[1]!.sections[0]!;
+		const plan = resolveSections(coding, types)[1]!.sections[0]!;
 		expect(plan).toMatchObject({
-			collects: SECTION_CATALOGUE.plan.collects,
+			collects: BUILT_IN_SECTION_TYPES.plan!.collects,
 			instructions: expect.stringContaining("Each step ends in one commit"),
 		});
 		expect(templates.getState().issues).toEqual([]);
@@ -143,7 +145,7 @@ describe("workbook templates", () => {
 					id: "goal",
 					label: "What this is about",
 					required: true,
-					hint: SECTION_CATALOGUE.goal.collects,
+					hint: BUILT_IN_SECTION_TYPES.goal!.collects,
 				},
 			]);
 	});
@@ -216,7 +218,7 @@ describe("workbook templates", () => {
 		expect(messages[0]).toContain("pages");
 		expect(messages[1]).toContain('"coding" is already taken');
 		expect(messages[2]).toBe("can't read it");
-		expect(messages[3]).toContain("Invalid option");
+		expect(messages[3]).toContain('needs section type "journal", which isn\'t installed');
 		expect(messages[4]).toContain('two sections would both be "tips"');
 		expect(messages[5]).toContain("only one section can be a plan");
 		expect(messages[6]).toContain('Unrecognized key: "fields"');

@@ -1,9 +1,11 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { WorkbookSectionRef } from "../../contracts";
-import type { Line, SectionScope } from "../section-scope";
-import { replaceBodyEdits, sectionName } from "./helpers";
-import type { Insert } from "./types";
+import {
+	sectionName,
+	type SectionLine,
+	type SectionTypeDefinition,
+	type WorkbookSectionRef,
+} from "../../contracts";
 
 /**
  * An output: what the work produces, built up over many chats and kept
@@ -18,16 +20,15 @@ const HEADING = /^(#{1,6}) +(.*?)\s*$/;
 const partLevel = (section: WorkbookSectionRef) => (section.heading ? 3 : 2);
 
 /** The part titled `title`: its heading line and the lines under it. */
-function findPart(scope: SectionScope, section: WorkbookSectionRef, title: string) {
+function findPart(lines: readonly SectionLine[], section: WorkbookSectionRef, title: string) {
 	const level = partLevel(section);
 	const wanted = title.trim().toLowerCase();
-	const lines = scope.lines;
 	const at = lines.findIndex((line) => {
 		const match = HEADING.exec(line.text);
 		return match?.[1]!.length === level && match[2]!.toLowerCase() === wanted;
 	});
 	if (at === -1) return undefined;
-	const body: Line[] = [];
+	const body: SectionLine[] = [];
 	for (const line of lines.slice(at + 1)) {
 		const match = HEADING.exec(line.text);
 		if (match && match[1]!.length <= level) break;
@@ -36,22 +37,27 @@ function findPart(scope: SectionScope, section: WorkbookSectionRef, title: strin
 	return { heading: lines[at]!, body };
 }
 
-export const output: Insert = {
+export const output: SectionTypeDefinition = {
+	single: false,
+	title: "Result",
+	collects: "What the work produces, organised as the finished thing should read.",
+	usage:
+		"Build the result here as the chat produces it, organised as the finished thing should read: add a new part (add_item: text = its title, detail = its content), improve the part something belongs to (write_section with part), or rewrite the whole when it needs reshaping (write_section). Never notes or drafts about the chat.",
 	/** Adds a new part: text = its title, detail = its content. */
 	async add(context, section, item) {
 		const title = item.text.trim();
 		const content = item.detail?.trim();
 		if (!content) throw new KernelError("VALIDATION", "Give the part its content (detail).");
 		const hashes = "#".repeat(partLevel(section));
-		const written = await context.change(section, (scope, edits) => {
-			if (findPart(scope, section, title)) {
+		const written = await context.edit(section, (lines, edits) => {
+			if (findPart(lines, section, title)) {
 				throw new KernelError(
 					"VALIDATION",
 					`${sectionName(section)} already has "${title}": revise it with write_section and part.`,
 				);
 			}
 			const text = `${hashes} ${title}\n\n${content}`;
-			edits.insertParagraph(scope.end, text);
+			edits.appendParagraph(text);
 			return text;
 		});
 		return { written };
@@ -62,20 +68,17 @@ export const output: Insert = {
 		const part = options.part?.trim();
 		if (part) {
 			const hashes = "#".repeat(partLevel(section));
-			await context.change(section, (scope, edits) => {
-				const found = findPart(scope, section, part);
+			await context.edit(section, (lines, edits) => {
+				const found = findPart(lines, section, part);
 				if (!found) {
-					edits.insertParagraph(scope.end, `${hashes} ${part}\n\n${markdown.trim()}`);
+					edits.appendParagraph(`${hashes} ${part}\n\n${markdown.trim()}`);
 					return;
 				}
 				for (const line of found.body) if (line.text.trim()) edits.remove(line);
-				edits.insertParagraph(found.heading, markdown.trim());
+				edits.insertParagraphAfter(found.heading, markdown.trim());
 			});
 		} else {
-			await context.rewrite(section, (blocks) => ({
-				operations: replaceBodyEdits(blocks, section.heading, markdown.trim()),
-				result: undefined,
-			}));
+			await context.replaceBody(section, markdown.trim());
 		}
 		return {};
 	},

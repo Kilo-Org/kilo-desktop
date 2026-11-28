@@ -9,14 +9,16 @@ import {
 	SessionWorkbooks,
 	Workbooks,
 	sectionUsage,
+	type SectionTypeDefinition,
 	type Workbook,
 } from "../contracts";
 import type { PagesToolCaller } from "./pages-tools";
-import { stepParts } from "./inserts/plan";
+import { stepParts } from "./section-types/plan";
 import { WorkbookWriter } from "./workbook-writer";
 
 export interface WorkbookToolDeps {
 	readonly pages: (workbook: Workbook) => PagesToolCaller;
+	readonly sectionTypes: (type: string) => SectionTypeDefinition | undefined;
 	readonly today?: () => string;
 }
 
@@ -35,6 +37,7 @@ export const WORKBOOK_TOOL_IDS = [
 	"write_section",
 	"hand_off",
 	"set_activity",
+	"section_action",
 ] as const;
 
 const workbookIdInput = z
@@ -53,11 +56,13 @@ const stepInput = z.string().min(1).describe('The step number ("3") or words fro
 
 /**
  * The agent tools that read and write the calling chat's workbook, in the
- * vocabulary of the workbook model: sections, each one insert (goal, plan,
- * handoff, activity, todo, log, questions, notes, output). A call
+ * vocabulary of the workbook model: sections, each of a section type
+ * (built-in or contributed through `kilo.workbooks/section-type`). A call
  * finds the workbook from the chat's work session (its active workbook), so
- * agents never name it; the formats and rules come from WorkbookWriter, so
- * they stay what the app expects however many agents write. Descriptions stay
+ * agents never name it; formats and rules come from each section's type, so
+ * they stay what the app expects however many agents write. The dedicated
+ * tools for the built-in types' own actions (add_task, hand_off…) run those
+ * actions; `section_action` runs any type's. Descriptions stay
  * neutral: each template's words reach agents through its sections'
  * `collects`, its Brief and its guide.
  */
@@ -82,7 +87,10 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 			?.getState()
 			.workbooks.find((candidate) => candidate.id === id || candidate.projectId === id);
 		if (!workbook) throw new KernelError("NOT_FOUND", `No workbook "${id}".`);
-		return { workbook, writer: new WorkbookWriter(deps.pages(workbook), workbook, today) };
+		return {
+			workbook,
+			writer: new WorkbookWriter(deps.pages(workbook), workbook, deps.sectionTypes, today),
+		};
 	};
 
 	/** Who the calling chat is, for the activity section: its work session's title. */
@@ -98,9 +106,13 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 
 	/** Updates the caller's activity line; never fails the tool call it follows. */
 	const noteActivity = async (writer: WorkbookWriter, who: string, doing: string | undefined) => {
-		await writer.setActivity(who, doing).catch((error: unknown) => {
-			sdk.logger.warn(`Couldn't update the workbook's activity: ${String(error)}`);
-		});
+		const section = writer.workbookSections().find((candidate) => candidate.type === "activity");
+		if (!section || !deps.sectionTypes("activity")) return;
+		await writer
+			.action(section, "set_activity", { who, ...(doing ? { doing } : {}) })
+			.catch((error: unknown) => {
+				sdk.logger.warn(`Couldn't update the workbook's activity: ${String(error)}`);
+			});
 	};
 
 	const implement = <Input extends z.ZodType>(
@@ -148,13 +160,23 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 						: {};
 			return {
 				workbook: { id: workbook.id, name: workbook.name, url: workbook.url ?? null },
-				sections: workbook.sections.map(({ id, title, type, collects, instructions }) => ({
-					usage: sectionUsage({ type, instructions }),
-					id,
-					title: title ?? null,
-					type,
-					...(collects ? { collects } : {}),
-				})),
+				sections: workbook.sections.map(({ id, title, type, collects, instructions }) => {
+					const definition = deps.sectionTypes(type);
+					const actions = Object.entries(definition?.actions ?? {}).map(([name, action]) => ({
+						name,
+						description: action.description,
+					}));
+					return {
+						id,
+						title: title ?? null,
+						type,
+						...(collects ? { collects } : {}),
+						usage: definition
+							? sectionUsage(definition, instructions)
+							: `This section type ("${type}") isn't installed: read it, but don't write to it.`,
+						...(actions.length ? { actions } : {}),
+					};
+				}),
 				showing: section ?? "brief",
 				markdown: await writer.read(target),
 			};
@@ -191,7 +213,10 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		"add_task",
 		'Add a task under a plan step: a chore, a review comment ("**file or area**: issue and suggested fix") or a job only the user can do (end it with "(you)"). A task is part of its step; work that belongs to no step is a new step or a follow-up.',
 		z.object({ step: stepInput, text: z.string().min(1), workbookId: workbookIdInput }),
-		async ({ step, text }, writer) => ({ step, line: await writer.addTask(step, text) }),
+		async ({ step, text }, writer) => ({
+			step,
+			line: await writer.action(writer.only("plan"), "add_task", { step, text }),
+		}),
 	);
 
 	implement(
@@ -205,7 +230,7 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		}),
 		async ({ step, task, done }, writer) => ({
 			step,
-			line: await writer.setTaskDone(step, task, done),
+			line: await writer.action(writer.only("plan"), "set_task_done", { step, task, done }),
 		}),
 	);
 
@@ -257,7 +282,8 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 		}),
 		async ({ step, title, intent }, writer) => ({
 			step,
-			line: await writer.editStep(step, {
+			line: await writer.action(writer.only("plan"), "edit_step", {
+				step,
 				...(title ? { title } : {}),
 				...(intent ? { intent } : {}),
 			}),
@@ -274,7 +300,8 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 			workbookId: workbookIdInput,
 		}),
 		async ({ step, before, after }, writer) => ({
-			renumbered: await writer.moveStep(step, {
+			renumbered: await writer.action(writer.only("plan"), "move_step", {
+				step,
 				...(before ? { before } : {}),
 				...(after ? { after } : {}),
 			}),
@@ -318,9 +345,11 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 			workbookId: workbookIdInput,
 		}),
 		async ({ question, recordIn, text, detail }, writer) =>
-			writer.answerQuestion(question, {
+			writer.action(await writer.holding("questions", question), "answer", {
+				question,
 				...(recordIn ? { recordIn } : {}),
-				...(text ? { entry: { text, ...(detail ? { detail } : {}) } } : {}),
+				...(text ? { text } : {}),
+				...(detail ? { detail } : {}),
 			}),
 	);
 
@@ -354,7 +383,11 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 			workbookId: workbookIdInput,
 		}),
 		async ({ title, text, who }, writer, _workbook, agent) => {
-			const result = await writer.handOff({ headline: title, body: text, ...(who ? { who } : {}) });
+			const result = await writer.action(writer.only("handoff"), "hand_off", {
+				title,
+				text,
+				...(who ? { who } : {}),
+			});
 			await noteActivity(writer, agent, undefined);
 			return result;
 		},
@@ -371,7 +404,27 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 			if (!workbook.sections.some((section) => section.type === "activity")) {
 				throw new KernelError("NOT_FOUND", "This workbook has no activity section.");
 			}
-			return { who, line: (await writer.setActivity(who, doing)) ?? null };
+			const line = await writer.action(writer.only("activity"), "set_activity", {
+				who,
+				...(doing ? { doing } : {}),
+			});
+			return { who, line: line ?? null };
 		},
+	);
+
+	implement(
+		"section_action",
+		"Run a section type's own action on a section: read_workbook lists each section's actions and what their input means.",
+		z.object({
+			section: sectionInput,
+			action: z.string().min(1).describe("The action's name, from read_workbook."),
+			input: z.record(z.string(), z.unknown()).default({}).describe("The action's input."),
+			workbookId: workbookIdInput,
+		}),
+		async ({ section, action, input }, writer) => ({
+			section,
+			action,
+			result: (await writer.action(writer.section(section), action, input)) ?? null,
+		}),
 	);
 }

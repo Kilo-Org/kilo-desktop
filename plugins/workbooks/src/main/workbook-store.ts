@@ -8,6 +8,7 @@ import {
 	type Workbook,
 	type WorkbookBackend,
 	type WorkbookSectionRef,
+	type SectionTypeDefinition,
 	type WorkbookTemplate,
 } from "../contracts";
 import { createWorkbookContent } from "./create-workbook";
@@ -36,6 +37,8 @@ export interface WorkbookStoreDeps {
 	/** Whether a workspace exists, to record a new workbook's first use there. */
 	readonly workspace: (id: string) => object | undefined;
 	readonly pages: (backend: WorkbookBackend) => PagesToolCaller;
+	/** The section types on offer, by id. */
+	readonly sectionTypes: (type: string) => SectionTypeDefinition | undefined;
 	readonly now?: () => Date;
 }
 
@@ -106,6 +109,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 				}
 				const content = await createWorkbookContent(deps.pages(DEFAULT_BACKEND), {
 					template,
+					types: deps.sectionTypes,
 					name,
 					values,
 					description: markerFor(template),
@@ -207,6 +211,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 		try {
 			const found = await discoverWorkbooks(deps.pages(DEFAULT_BACKEND), {
 				templates: deps.templates,
+				types: deps.sectionTypes,
 				known: (projectId) => {
 					const known = byId(projectId);
 					return known && (known.sections.length > 0 || known.guidePageId) ? known : undefined;
@@ -295,10 +300,11 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): Workb
 			readMarkdown(pages, { project_id: workbook.projectId }),
 			workbook.guidePageId ? readMarkdown(pages, { page_id: workbook.guidePageId }) : undefined,
 		]);
-		return workbookInstructions(workbook, {
-			...(brief ? { brief } : {}),
-			...(guide ? { guide } : {}),
-		});
+		return workbookInstructions(
+			workbook,
+			{ ...(brief ? { brief } : {}), ...(guide ? { guide } : {}) },
+			deps.sectionTypes,
+		);
 	}
 
 	return { recordUse, currentId, instructions };

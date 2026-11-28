@@ -1,29 +1,30 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import { appendItem, findItem, oneLine } from "./helpers";
-import type { Insert } from "./types";
+import { findItem, oneLine, type SectionTypeDefinition } from "../../contracts";
 
 /** A todo list: independent tick boxes, `- [ ] Item (context)`. */
 
 const CHECKBOX = /^- \[[ xX]\]/;
 
-export const todo: Insert = {
+export const todo: SectionTypeDefinition = {
+	single: false,
+	title: "To do",
+	collects: "Things to do, ticked when done.",
+	usage: "Add items as they come up (add_item) and tick them when done (set_status).",
+
 	async add(context, section, item) {
 		const extra = item.detail?.trim();
 		const line = `- [ ] ${oneLine(item.text)}${extra ? ` (${oneLine(extra)})` : ""}`;
-		const written = await context.change(section, (scope, edits) => {
-			appendItem(scope, edits, line);
-			return line;
-		});
-		return { written };
+		await context.edit(section, (_lines, edits) => edits.append(line));
+		return { written: line };
 	},
 
 	setStatus(context, section, item, change) {
 		if (change.status !== "done" && change.status !== "todo") {
 			throw new KernelError("VALIDATION", "A todo item is either done or todo.");
 		}
-		return context.change(section, (scope, edits) => {
-			const line = findItem(scope, item, section, (text) => CHECKBOX.test(text));
+		return context.edit(section, (lines, edits) => {
+			const line = findItem(lines, item, section, (text) => CHECKBOX.test(text));
 			const text = line.text.replace(CHECKBOX, `- [${change.status === "done" ? "x" : " "}]`);
 			edits.set(line, text);
 			return text;
@@ -31,8 +32,8 @@ export const todo: Insert = {
 	},
 
 	async remove(context, section, item) {
-		const removed = await context.change(section, (scope, edits) => {
-			const line = findItem(scope, item, section);
+		const removed = await context.edit(section, (lines, edits) => {
+			const line = findItem(lines, item, section);
 			edits.remove(line);
 			return line.text;
 		});

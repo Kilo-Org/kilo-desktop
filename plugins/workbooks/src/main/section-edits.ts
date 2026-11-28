@@ -1,79 +1,12 @@
-import { KernelError } from "@kilo-desktop/kernel";
-
-import type { WorkbookSectionRef } from "../../contracts";
-import { sectionScope, type Block, type Line, type SectionScope } from "../section-scope";
-
-/**
- * Plain functions inserts share: text tidying, finding an item, and composing
- * line edits. Sharing a helper never ties two inserts together: an insert
- * that needs to differ stops calling it.
- */
-
-/** A top-level list item. */
-export const ITEM_LINE = /^- /;
-export const LIST_LINE = /^\s*- /;
-export const INDENTED = /^(\s+)\S/;
-/** An italic line (`_…_` or `*…*`, not bold): a section's standing note. */
-export const NOTE_LINE = /^(_|\*(?!\*))\S/;
-
-const TRAILING_DATE = /\s*\(\d{4}-\d{2}-\d{2}(?:, [^)]*)?\)[.\s]*$/;
-
-/** One line of text, without a trailing date (the writer adds its own). */
-export function oneLine(text: string): string {
-	return text.replace(/\s+/g, " ").trim().replace(TRAILING_DATE, "");
-}
-
-/** Text ending in one full stop (or its own ? or !). */
-export function sentence(text: string): string {
-	const trimmed = oneLine(text);
-	return /[.?!]$/.test(trimmed) ? trimmed : `${trimmed}.`;
-}
-
-export const sectionName = (section: Pick<WorkbookSectionRef, "title" | "id">) =>
-	section.title ?? section.id;
-
-/** The line shown under a section's heading: what it collects. */
-export function sectionNote(section: Pick<WorkbookSectionRef, "collects">): string | undefined {
-	const text = section.collects;
-	return text ? `_${oneLine(text)}_` : undefined;
-}
-
-/** The one top-level item of the section matching `words` (and `accept`, when given). */
-export function findItem(
-	scope: SectionScope,
-	words: string,
-	section: WorkbookSectionRef,
-	accept: (text: string) => boolean = () => true,
-): Line {
-	const wanted = oneLine(words).toLowerCase();
-	const matches = scope.lines.filter(
-		(line) =>
-			ITEM_LINE.test(line.text) && accept(line.text) && line.text.toLowerCase().includes(wanted),
-	);
-	if (matches.length !== 1) {
-		throw new KernelError(
-			matches.length === 0 ? "NOT_FOUND" : "VALIDATION",
-			matches.length === 0
-				? `Nothing in ${sectionName(section)} matches "${words}".`
-				: `"${words}" matches ${matches.length} items in ${sectionName(section)}; use more of its words.`,
-		);
-	}
-	return matches[0]!;
-}
-
-/** Adds an item after the section's last list line, in the same list; a section with no list yet gets one after its last line. */
-export function appendItem(scope: SectionScope, edits: LineEdits, text: string): void {
-	const last = scope.lines.findLast((line) => LIST_LINE.test(line.text));
-	if (last) edits.insertAfter(last, [text]);
-	else edits.insertParagraph(scope.end, text);
-}
-
-/** Adds an item before the section's first one (newest first), or after its last. */
-export function prependItem(scope: SectionScope, edits: LineEdits, text: string): void {
-	const first = scope.lines.find((line) => ITEM_LINE.test(line.text));
-	if (first) edits.insertBefore(first, [text]);
-	else appendItem(scope, edits, text);
-}
+import {
+	INDENTED,
+	ITEM_LINE,
+	LIST_LINE,
+	NOTE_LINE,
+	type SectionEdits,
+	type SectionLine,
+} from "../contracts";
+import { sectionScope, type Block, type Line, type SectionScope } from "./section-scope";
 
 /**
  * The edits that replace a section's body with `body`, keeping the italic
@@ -168,7 +101,7 @@ export class LineEdits {
 			(block.markdown ?? "").split("\n").forEach((line, index) => {
 				out.push(...(before.get(index) ?? []));
 				const value = set.has(index) ? set.get(index) : line;
-				if (value !== null && value !== undefined) out.push(value);
+				if (value !== null && value !== undefined) out.push(...value.split("\n"));
 				out.push(...(after.get(index) ?? []));
 			});
 			const markdown = tidy(out);
@@ -215,4 +148,31 @@ function tidy(lines: readonly string[]): string {
 	}
 	while (out.length > 0 && !out.at(-1)!.trim()) out.pop();
 	return out.join("\n");
+}
+
+/**
+ * The `SectionEdits` a section type is given: line edits within one
+ * section's scope, with its list and paragraph helpers.
+ */
+export function sectionEdits(scope: SectionScope, edits: LineEdits): SectionEdits {
+	const line = (value: SectionLine) => value as Line;
+	const append = (text: string) => {
+		const last = scope.lines.findLast((candidate) => LIST_LINE.test(candidate.text));
+		if (last) edits.insertAfter(last, [text]);
+		else edits.insertParagraph(scope.end, text);
+	};
+	return {
+		set: (value, text) => edits.set(line(value), text),
+		remove: (value) => edits.remove(line(value)),
+		insertBefore: (value, texts) => edits.insertBefore(line(value), texts),
+		insertAfter: (value, texts) => edits.insertAfter(line(value), texts),
+		append,
+		prepend: (text) => {
+			const first = scope.lines.find((candidate) => ITEM_LINE.test(candidate.text));
+			if (first) edits.insertBefore(first, [text]);
+			else append(text);
+		},
+		appendParagraph: (text) => edits.insertParagraph(scope.end, text),
+		insertParagraphAfter: (value, text) => edits.insertParagraph(line(value), text),
+	};
 }

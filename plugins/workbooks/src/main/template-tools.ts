@@ -3,13 +3,15 @@ import { z } from "zod";
 import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 import { defineTool, Tool } from "@kilo-desktop/plugin-core/contracts";
 
-import { SECTION_CATALOGUE, SECTION_TYPES, type WorkbookTemplate } from "../contracts";
+import { SectionTypes, type WorkbookTemplate } from "../contracts";
+import type { SectionTypeRegistry } from "./section-type-registry";
 import type { UserTemplates } from "./user-templates";
 
 export const TEMPLATE_TOOL_IDS = ["read_templates", "save_template", "delete_template"] as const;
 
 export interface TemplateToolDeps {
 	readonly user: UserTemplates;
+	readonly sectionTypes: SectionTypeRegistry;
 	readonly find: (id: string) => WorkbookTemplate | undefined;
 	readonly all: () => WorkbookTemplate[];
 	readonly contributedIds: () => ReadonlySet<string>;
@@ -68,13 +70,7 @@ export function implementTemplateTools(sdk: PluginSdk, deps: TemplateToolDeps): 
 					.flatMap((entry) =>
 						"problem" in entry ? [{ id: entry.folder, problem: entry.problem }] : [],
 					),
-				sectionTypes: SECTION_TYPES.map((type) => ({
-					type,
-					onePerWorkbook: SECTION_CATALOGUE[type].single,
-					title: SECTION_CATALOGUE[type].title,
-					collects: SECTION_CATALOGUE[type].collects,
-					usage: SECTION_CATALOGUE[type].usage,
-				})),
+				sectionTypes: sdk.domainObjects.get(SectionTypes)?.getState().types ?? [],
 				format: FORMAT,
 			};
 		},
@@ -88,7 +84,12 @@ export function implementTemplateTools(sdk: PluginSdk, deps: TemplateToolDeps): 
 			guide: z.string().min(1).describe("The guide's markdown (How to work here)."),
 		}),
 		async ({ template, guide }) => {
-			const saved = await deps.user.save(template, guide, deps.contributedIds());
+			const saved = await deps.user.save(
+				template,
+				guide,
+				deps.contributedIds(),
+				deps.sectionTypes.facts,
+			);
 			deps.reread();
 			return { saved: saved.id, name: saved.name };
 		},

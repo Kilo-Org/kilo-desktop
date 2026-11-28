@@ -6,13 +6,13 @@ The pre-rolled templates (Coding; Blank) live in `plugins/workbooks/templates/` 
 
 ## The model
 
-A workbook is made of **pages**, and pages hold **sections**. One page is **home**: the Project's own document (the Brief). Every section has a **section type** from a catalogue the app fixes (`SECTION_CATALOGUE` in `src/contracts/templates.ts`). Like a pre-printed stationery insert, a section type comes finished: its format, rules, behaviour, starting content, default title, default label and built-in instructions for agents are all fixed. A template only picks section types and arranges them on pages, and per section may set its words:
+A workbook is made of **pages**, and pages hold **sections**. One page is **home**: the Project's own document (the Brief). Every section has a **section type**. Like a pre-printed stationery insert, a section type comes finished: its format, rules, behaviour, starting content, default title, default label and built-in instructions for agents are all fixed. A template only picks section types and arranges them on pages, and per section may set its words:
 
 - **`title`:** its heading (defaults to the section type's own).
 - **`collects`:** what belongs in it, in plain words (defaults to the section type's label). It is shown under the heading and given to every chat, so agents file things where they belong; Decisions and Findings are both `log` sections with different `collects`.
 - **`instructions`:** how to work with it in this kind of work, added after the section type's own. The Coding template's plan adds "each step ends in one commit", which the plan section type never says.
 
-Nothing else is configurable. Each section type is implemented on its own in `src/main/inserts/` (its format, rules and tool actions), so one can change without touching the others.
+Nothing else is configurable. The section types kilo.workbooks ships:
 
 | Section type | Default title         | How many       | Fixed behaviour                                                                                                                                                                              |
 | ------------ | --------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -26,6 +26,18 @@ Nothing else is configurable. Each section type is implemented on its own in `sr
 | `questions`  | Open questions        | any            | answering records the answer in a log the agent names, then the question goes                                                                                                                |
 | `notes`      | Notes                 | any            | free writing, replaced whole; the Brief's first notes section is the wizard's optional context question                                                                                      |
 | `output`     | Result                | any            | the result being built: parts under subheadings, added, revised or rewritten whole                                                                                                           |
+
+## Section types are contributed
+
+Section types come through the **`kilo.workbooks/section-type`** extension point (additive, implemented in main); kilo.workbooks ships its own ten through it from `src/main/section-types/`, one file each. A contribution's id is the type's id, used in templates (`{ "type": "calendar" }`). Its implementation is a `SectionTypeDefinition` (`src/contracts/section-types.ts`):
+
+- **Facts:** `single`, `title`, `collects`, `usage`.
+- **Generic actions,** each reached through its tool, implemented only when supported: `starter` (what a new section starts with), `add` (add_item), `setStatus` (set_status), `remove` (remove_item), `supersede`, `write` (write_section); `refusals` say why an unsupported one is refused.
+- **Its own actions** (`actions`): a description, a zod input and `run`. Agents reach them through `section_action`; `read_workbook` and chat instructions list them. The built-ins' actions (the plan's add_task, set_task_done, edit_step, move_step; the handoff's hand_off; activity's set_activity; questions' answer) also keep their dedicated tools, which run the same actions.
+
+A section type never touches Pages: it is given a `SectionTypeContext` to read its workbook's sections and edit their lines (`edit`, with `append`, `prepend`, `set`, `remove`, `insertBefore`/`After`, paragraphs), replace a section's body, and reach other sections; edits are retried once when another writer got there first. The contracts also export the text helpers the built-ins use (`oneLine`, `sentence`, `findItem`…).
+
+The types on offer, and any skipped (malformed, or an id a higher-priority contribution already offers), are in `kilo.workbooks/section-types`. A template that uses a type nobody offers is skipped, with the reason, until one is; templates are checked again whenever the types change. In an existing workbook, a section whose type has gone can be read but not written, and the rest keeps working. Progress, the picker and the instructions every chat gets read only the built-in plan, handoff, activity and questions types.
 
 Every workbook's first move is the same: refine the Brief, draft the Plan, and stop for the user to confirm.
 

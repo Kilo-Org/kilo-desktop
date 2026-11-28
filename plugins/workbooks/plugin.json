@@ -25,6 +25,11 @@
 			"id": "template",
 			"kind": "additive",
 			"description": "A workbook template offered when creating a workbook."
+		},
+		{
+			"id": "section-type",
+			"kind": "additive",
+			"description": "A section type workbook templates can use."
 		}
 	],
 	"domainObjects": [
@@ -32,6 +37,11 @@
 			"id": "templates",
 			"home": "main",
 			"description": "The workbook templates on offer, and any skipped as invalid."
+		},
+		{
+			"id": "section-types",
+			"home": "main",
+			"description": "The section types on offer, and any skipped as invalid."
 		},
 		{
 			"id": "workbooks",
@@ -52,6 +62,38 @@
 				},
 				{
 					"id": "blank"
+				}
+			],
+			"kilo.workbooks/section-type": [
+				{
+					"id": "goal"
+				},
+				{
+					"id": "plan"
+				},
+				{
+					"id": "handoff"
+				},
+				{
+					"id": "activity"
+				},
+				{
+					"id": "change-log"
+				},
+				{
+					"id": "todo"
+				},
+				{
+					"id": "log"
+				},
+				{
+					"id": "questions"
+				},
+				{
+					"id": "notes"
+				},
+				{
+					"id": "output"
 				}
 			],
 			"kernel/flag": [
@@ -175,6 +217,13 @@
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
+				},
+				{
+					"id": "section_action",
+					"title": "Run a section type's action",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
 				}
 			],
 			"kilo.work-sessions/work-session-action": [
@@ -205,7 +254,8 @@
 						"kilo.workbooks/set_activity",
 						"kilo.workbooks/read_templates",
 						"kilo.workbooks/save_template",
-						"kilo.workbooks/delete_template"
+						"kilo.workbooks/delete_template",
+						"kilo.workbooks/section_action"
 					],
 					"standalone": true,
 					"when": {

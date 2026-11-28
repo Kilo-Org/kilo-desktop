@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 
-import { SECTION_CATALOGUE, SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
+import { SessionWorkbooks, Workbooks, type Workbook } from "../contracts";
+import { BUILT_IN_SECTION_TYPES } from "./section-types";
 import { bootWorkbooks } from "../test/hosts";
-import { withStatus } from "./inserts/plan";
+import { withStatus } from "./section-types/plan";
 import { sectionMarkdown } from "./section-scope";
 import { WorkbookWriter, replaceBodyEdits } from "./workbook-writer";
 
@@ -63,7 +64,7 @@ describe("workbook tools", () => {
 		const on = await boot();
 		await expect
 			.poll(() => on.tools().filter((tool) => tool.pluginId === "kilo.workbooks").length)
-			.toBe(16);
+			.toBe(17);
 
 		const off = await boot({ flag: false });
 		expect(off.tools().filter((tool) => tool.pluginId === "kilo.workbooks")).toEqual([]);
@@ -444,7 +445,7 @@ describe("workbook tools", () => {
 		const { call, section } = await boot();
 		const own = (doing?: string) => (doing ? { doing } : {});
 
-		const nobody = `_${SECTION_CATALOGUE.activity.collects}_\n\n- Nobody right now.`;
+		const nobody = `_${BUILT_IN_SECTION_TYPES.activity!.collects}_\n\n- Nobody right now.`;
 		expect(section("activity")).toBe(nobody);
 		await call("set_status", { item: "1", status: "in_progress" });
 		expect(section("activity")).toMatch(
@@ -468,10 +469,17 @@ describe("workbook tools", () => {
 		await call("set_activity", { doing: "something long ago" });
 		const later = new Date(Date.now() + 13 * 3_600_000);
 
-		await new WorkbookWriter(pages, workbook, today, () => later).setActivity(
-			"Other",
-			"fresh work",
+		const writer = new WorkbookWriter(
+			pages,
+			workbook,
+			(type) => BUILT_IN_SECTION_TYPES[type],
+			today,
+			() => later,
 		);
+		await writer.action(writer.only("activity"), "set_activity", {
+			who: "Other",
+			doing: "fresh work",
+		});
 
 		expect(section("activity")).not.toContain("something long ago");
 		expect(section("activity")).toContain("- **Other**: fresh work (since ");

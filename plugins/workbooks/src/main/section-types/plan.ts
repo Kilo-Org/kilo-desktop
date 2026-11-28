@@ -1,9 +1,21 @@
+import { z } from "zod";
+
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { WorkbookSectionRef } from "../../contracts";
-import { sectionScope, type Block, type Line } from "../section-scope";
-import { INDENTED, appendItem, oneLine } from "./helpers";
-import type { Insert, InsertContext, Renumbering, StatusChange, StepStatus } from "./types";
+import {
+	INDENTED,
+	oneLine,
+	type SectionLine,
+	type SectionEdits,
+	type SectionTypeContext,
+	type SectionTypeDefinition,
+	type StatusChange,
+	type StepStatus,
+	type WorkbookSectionRef,
+} from "../../contracts";
+
+/** Steps whose numbers changed: `from` is the old number, `to` the new. */
+export type Renumbering = { from: number; to: number }[];
 
 /**
  * The plan: numbered steps, each a top-level checkbox with its tasks
@@ -125,65 +137,73 @@ function findStep(lines: readonly string[], step: string): number {
 	return matches[0]!;
 }
 
-function stepLines(blocks: readonly Block[], section: WorkbookSectionRef): Line[] {
-	return sectionScope(blocks, section.heading).lines.filter((line) => STEP_LINE.test(line.text));
+/** Replaces `lines` with `texts` (which may be more or fewer lines). */
+function replaceLines(
+	lines: readonly SectionLine[],
+	texts: readonly string[],
+	edits: SectionEdits,
+) {
+	edits.set(lines[0]!, texts.join("\n"));
+	for (const line of lines.slice(1)) edits.remove(line);
 }
 
-const replaceBlock = (block: Block, lines: readonly string[]) => ({
-	op: "replace_block_markdown",
-	node_id: block.node_id,
-	markdown: lines.join("\n"),
-});
-
-/** Finds one step and rewrites its block with `change`, which edits the block's lines in place. */
+/** Finds one step and lets `change` edit its lines (the step, then its tasks) in place. */
 function withStep<T>(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	step: string,
 	change: (lines: string[], at: number) => T,
 ): Promise<T> {
-	return context.rewrite(section, (blocks) => {
-		const matches = stepLines(blocks, section).filter((line) => matchesStep(line.text, step));
+	return context.edit(section, (all, edits) => {
+		const texts = all.map((line) => line.text);
+		const matches = texts.flatMap((text, index) =>
+			STEP_LINE.test(text) && matchesStep(text, step) ? [index] : [],
+		);
 		if (matches.length !== 1) throw stepNotFound(step, matches.length);
-		const { block, index } = matches[0]!;
-		const lines = (block.markdown ?? "").split("\n");
-		const result = change(lines, index);
-		return { operations: [replaceBlock(block, lines)], result };
+		const at = matches[0]!;
+		const end = stepExtent(texts, at);
+		const region = texts.slice(at, end + 1);
+		const result = change(region, 0);
+		replaceLines(all.slice(at, end + 1), region, edits);
+		return result;
 	});
 }
 
-/** Rewrites the block holding every step with `change`, then renumbers the steps in order. */
+/** Lets `change` edit every step's lines (first step through the last's tasks), then renumbers them in order. */
 function withSteps(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	change: (lines: string[]) => void,
 ): Promise<Renumbering> {
-	return context.rewrite(section, (blocks) => {
-		const steps = stepLines(blocks, section);
-		const block = steps[0]?.block;
-		if (!block) throw new KernelError("NOT_FOUND", "The Plan has no steps.");
-		if (steps.some((line) => line.block.node_id !== block.node_id)) {
-			throw new KernelError(
-				"UNAVAILABLE",
-				"The Plan's steps are split across blocks; edit them in Pages.",
-			);
-		}
-		const lines = (block.markdown ?? "").split("\n");
-		change(lines);
+	return context.edit(section, (all, edits) => {
+		const texts = all.map((line) => line.text);
+		const steps = texts.flatMap((text, index) => (STEP_LINE.test(text) ? [index] : []));
+		if (steps.length === 0) throw new KernelError("NOT_FOUND", "The Plan has no steps.");
+		const first = steps[0]!;
+		const last = stepExtent(texts, steps.at(-1)!);
+		const region = texts.slice(first, last + 1);
+		change(region);
 		const renumbering: Renumbering = [];
 		let number = 0;
-		for (let index = 0; index < lines.length; index += 1) {
-			const parts = stepParts(lines[index]!);
+		for (let index = 0; index < region.length; index += 1) {
+			const parts = stepParts(region[index]!);
 			if (!parts) continue;
 			number += 1;
 			if (parts.number !== number) renumbering.push({ from: parts.number, to: number });
-			lines[index] = lines[index]!.replace(/^(- \[[ xX]\] \*\*)\d+\./, `$1${number}.`);
+			region[index] = region[index]!.replace(/^(- \[[ xX]\] \*\*)\d+\./, `$1${number}.`);
 		}
-		return { operations: [replaceBlock(block, lines)], result: renumbering };
+		replaceLines(all.slice(first, last + 1), region, edits);
+		return renumbering;
 	});
 }
 
-export const plan: Insert = {
+export const plan: SectionTypeDefinition = {
+	single: true,
+	title: "Plan",
+	collects:
+		"The work, in order, each step sized for one chat; the checkboxes under it are its tasks, and jobs only the user can do are marked (you).",
+	usage:
+		"Mark a step in progress before starting it, tick its tasks as you go, and mark it done once they're all ticked, saying what it achieved (set_status). Re-cut the plan with edit_step, move_step, add_item and remove_item; steps renumber themselves.",
 	starter: () =>
 		[
 			stepLine(1, "Refine the Brief and draft this Plan", "the first chat's job."),
@@ -194,14 +214,14 @@ export const plan: Insert = {
 
 	async add(context, section, item) {
 		let number = 0;
-		const written = await context.change(section, (scope, edits) => {
-			const numbers = scope.lines.flatMap((line) => stepParts(line.text)?.number ?? []);
+		const written = await context.edit(section, (lines, edits) => {
+			const numbers = lines.flatMap((line) => stepParts(line.text)?.number ?? []);
 			number = 1 + Math.max(0, ...numbers);
 			const text = [
 				stepLine(number, item.text, item.detail ?? ""),
 				...(item.tasks ?? []).filter((task) => task.trim()).map((task) => taskLine(task)),
 			].join("\n");
-			appendItem(scope, edits, text);
+			edits.append(text);
 			return text;
 		});
 		return { written, step: number };
@@ -247,6 +267,46 @@ export const plan: Insert = {
 		return { removed, renumbered };
 	},
 
+	actions: {
+		add_task: {
+			description: "Add a task under a step (step = its number or words from it; text).",
+			input: z.object({ step: z.string().min(1), text: z.string().min(1) }),
+			run: (context, section, input: { step: string; text: string }) =>
+				addTask(context, section, input.step, input.text),
+		},
+		set_task_done: {
+			description: "Tick (or, with done: false, untick) a step's task (task = words from it).",
+			input: z.object({
+				step: z.string().min(1),
+				task: z.string().min(1),
+				done: z.boolean().default(true),
+			}),
+			run: (context, section, input: { step: string; task: string; done: boolean }) =>
+				setTaskDone(context, section, input.step, input.task, input.done),
+		},
+		edit_step: {
+			description: "Rename a step or change its intent, keeping its number, tasks and status.",
+			input: z.object({
+				step: z.string().min(1),
+				title: z.string().optional(),
+				intent: z.string().optional(),
+			}),
+			run: (context, section, input: { step: string; title?: string; intent?: string }) =>
+				editStep(context, section, input.step, input),
+		},
+		move_step: {
+			description:
+				"Move a step (with its tasks) before or after another; returns the numbers that changed.",
+			input: z.object({
+				step: z.string().min(1),
+				before: z.string().optional(),
+				after: z.string().optional(),
+			}),
+			run: (context, section, input: { step: string; before?: string; after?: string }) =>
+				moveStep(context, section, input.step, input),
+		},
+	},
+
 	refusals: {
 		supersede: "Plan steps aren't superseded: edit, move or remove them.",
 		write: "The plan holds steps: add or change them instead.",
@@ -255,7 +315,7 @@ export const plan: Insert = {
 
 /** Adds a task under a step, after its other tasks. */
 export function addTask(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	step: string,
 	text: string,
@@ -271,7 +331,7 @@ export function addTask(
 
 /** Ticks (or unticks) one of a step's tasks, found by words from it. */
 export function setTaskDone(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	step: string,
 	task: string,
@@ -298,7 +358,7 @@ export function setTaskDone(
 
 /** Renames a step or changes its intent, keeping its number, tasks and status. */
 export function editStep(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	step: string,
 	change: { title?: string; intent?: string },
@@ -314,7 +374,7 @@ export function editStep(
 
 /** Moves a step (with its tasks) before or after another, then renumbers every step. */
 export function moveStep(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	step: string,
 	place: { before?: string; after?: string },

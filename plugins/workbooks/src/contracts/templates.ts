@@ -7,106 +7,11 @@ import {
 	method,
 } from "@kilo-desktop/kernel";
 
-/**
- * The section types every workbook template is built from (docs/workbooks):
- * like pre-printed stationery inserts, each comes finished, with its format,
- * rules, behaviour and starting content fixed by the app; its own default
- * title and label (what it collects); and its built-in instructions for
- * agents (`usage`). A template only picks section types, arranges them on
- * pages and, per section, may set its title, what it collects (`collects`)
- * and extra instructions for this kind of work (`instructions`). Every chat
- * is given each section's collects (what) and usage plus instructions (how).
- * Section types marked `single` appear at most once in a workbook.
- */
-export const SECTION_CATALOGUE = {
-	goal: {
-		single: true,
-		title: "Goal",
-		collects: "What should be true when this is done, in the user's words.",
-		usage:
-			"Never rewrite it yourself: propose a change and write it only once the user confirms (write_section with userConfirmed).",
-	},
-	plan: {
-		single: true,
-		title: "Plan",
-		collects:
-			"The work, in order, each step sized for one chat; the checkboxes under it are its tasks, and jobs only the user can do are marked (you).",
-		usage:
-			"Mark a step in progress before starting it, tick its tasks as you go, and mark it done once they're all ticked, saying what it achieved (set_status). Re-cut the plan with edit_step, move_step, add_item and remove_item; steps renumber themselves.",
-	},
-	handoff: {
-		single: true,
-		title: "Where we left off",
-		collects:
-			"The latest handoff only: what was just done, what's next, any (you) tasks, and anything a fresh chat must know.",
-		usage:
-			"Before stopping, or when the context is running low, hand off (hand_off). It replaces the latest entry; every entry is also kept in the change log, when the workbook has one.",
-	},
-	activity: {
-		single: true,
-		title: "Who's working on what",
-		collects:
-			"Who is working in this workbook right now, and on what. Kept up to date by the workbook tools.",
-		usage:
-			"Kept up to date for you: starting a plan step puts you here, finishing it or handing off takes you off. When you're working on something that isn't a plan step, say what with set_activity, and clear it when you stop.",
-	},
-	"change-log": {
-		single: true,
-		title: "Change Log",
-		collects: "Every handoff, newest first.",
-		usage: "Filled by hand_off; don't add to it directly.",
-	},
-	todo: {
-		single: false,
-		title: "To do",
-		collects: "Things to do, ticked when done.",
-		usage: "Add items as they come up (add_item) and tick them when done (set_status).",
-	},
-	log: {
-		single: false,
-		title: "Log",
-		collects: "Things worth keeping, as they come up.",
-		usage:
-			"Add an entry the moment something worth keeping comes up (add_item: text = a headline, detail = the rest). Never edit or delete an entry: supersede a wrong one (supersede), and record a reversal as a new entry that supersedes the old (add_item with supersedes).",
-	},
-	questions: {
-		single: false,
-		title: "Open questions",
-		collects: "Things only the user can decide.",
-		usage:
-			"Put questions only the user can answer here, not only in the chat (add_item). When the user answers one, record the answer in a log and remove the question (answer_question with recordIn).",
-	},
-	notes: {
-		single: false,
-		title: "Notes",
-		collects: "Anything worth writing down.",
-		usage: "Keep it current: rewrite it as a whole when it changes (write_section).",
-	},
-	output: {
-		single: false,
-		title: "Result",
-		collects: "What the work produces, organised as the finished thing should read.",
-		usage:
-			"Build the result here as the chat produces it, organised as the finished thing should read: add a new part (add_item: text = its title, detail = its content), improve the part something belongs to (write_section with part), or rewrite the whole when it needs reshaping (write_section). Never notes or drafts about the chat.",
-	},
-} as const satisfies Record<
-	string,
-	{ single: boolean; title: string; collects: string; usage: string }
->;
-
-export const SECTION_TYPES = Object.keys(SECTION_CATALOGUE) as [
-	keyof typeof SECTION_CATALOGUE,
-	...(keyof typeof SECTION_CATALOGUE)[],
-];
-export type SectionType = keyof typeof SECTION_CATALOGUE;
+import type { SectionTypeFacts } from "./section-types";
 
 /** How to work with a section: its type's instructions, then any its template adds. */
-export function sectionUsage(section: {
-	type: SectionType;
-	instructions?: string | undefined;
-}): string {
-	const usage = SECTION_CATALOGUE[section.type].usage;
-	return section.instructions ? `${usage} ${section.instructions}` : usage;
+export function sectionUsage(type: { readonly usage: string }, instructions?: string): string {
+	return instructions ? `${type.usage} ${instructions}` : type.usage;
 }
 
 /** What the first chat in a new workbook does, whatever its template. */
@@ -126,7 +31,8 @@ const slug = (text: string) =>
 
 /** A section of a template page: a section type, and optionally the words that make it this template's. */
 export const templateSectionSchema = z.strictObject({
-	type: z.enum(SECTION_TYPES),
+	/** A section type's id (`kilo.workbooks/section-type`). */
+	type: slugSchema,
 	/** Its heading; defaults to the section type's own. */
 	title: z.string().min(1).optional(),
 	/** What belongs in it, in plain words; defaults to the section type's label. */
@@ -151,7 +57,7 @@ export type TemplatePage = z.output<typeof templatePageSchema>;
  */
 export interface ResolvedSection {
 	readonly id: string;
-	readonly type: SectionType;
+	readonly type: string;
 	readonly title: string;
 	readonly heading: string | undefined;
 	readonly collects: string;
@@ -163,17 +69,18 @@ export interface ResolvedSection {
  * home with a single section is that section (no heading). A section's id is
  * its type for a section type a workbook has once (goal, plan…); otherwise its
  * title's slug when it has a title, the page's when it is the whole page, or
- * its type.
+ * its type. A type nobody offers resolves with its id as its title.
  */
 export function resolveSections(
 	template: Pick<WorkbookTemplate, "pages">,
+	types: SectionTypeLookup,
 ): { page: TemplatePage; sections: ResolvedSection[] }[] {
 	return template.pages.map((page) => {
 		const whole = !page.home && page.sections.length === 1;
 		return {
 			page,
 			sections: page.sections.map((section) => {
-				const printed = SECTION_CATALOGUE[section.type];
+				const printed = types(section.type) ?? { single: false, title: section.type, collects: "" };
 				const title = section.title ?? (whole ? page.title : printed.title);
 				const id = printed.single
 					? section.type
@@ -196,8 +103,11 @@ export function resolveSections(
 }
 
 /** The wizard's questions: the goal (required), and context for the Brief's first notes section. */
-export function templateQuestions(template: Pick<WorkbookTemplate, "pages">): BriefField[] {
-	const resolved = resolveSections(template);
+export function templateQuestions(
+	template: Pick<WorkbookTemplate, "pages">,
+	types: SectionTypeLookup,
+): BriefField[] {
+	const resolved = resolveSections(template, types);
 	const all = resolved.flatMap((entry) => entry.sections);
 	const goal = all.find((section) => section.type === "goal");
 	const context = resolved
@@ -233,22 +143,36 @@ export const workbookTemplateSchema = z
 		for (const title of repeated(template.pages.map((page) => page.title.toLowerCase()))) {
 			issue(`two pages are titled "${title}"`);
 		}
-		const all = resolveSections(template).flatMap((entry) => entry.sections);
-		for (const id of repeated(all.map((section) => section.id))) {
-			issue(`two sections would both be "${id}": give them different titles`);
-		}
-		for (const type of SECTION_TYPES) {
-			if (
-				SECTION_CATALOGUE[type].single &&
-				all.filter((section) => section.type === type).length > 1
-			) {
-				issue(`only one section can be a ${type}`);
-			}
-		}
-		if (!all.some((section) => section.type === "goal")) issue("a template needs a goal section");
 	});
 export type WorkbookTemplate = z.output<typeof workbookTemplateSchema>;
 export type WorkbookTemplateInput = z.input<typeof workbookTemplateSchema>;
+
+/** The section types on offer, by id. */
+export type SectionTypeLookup = (type: string) => SectionTypeFacts | undefined;
+
+/**
+ * What's wrong with a template given the section types on offer: types
+ * nobody offers, a one-per-workbook type used twice, two sections that would
+ * share an id, or no goal. Empty when it can be used.
+ */
+export function templateIssues(template: WorkbookTemplate, types: SectionTypeLookup): string[] {
+	const issues: string[] = [];
+	const used = template.pages.flatMap((page) => page.sections.map((section) => section.type));
+	for (const type of new Set(used)) {
+		if (!types(type)) issues.push(`needs section type "${type}", which isn't installed`);
+		else if (types(type)!.single && used.filter((candidate) => candidate === type).length > 1) {
+			issues.push(`only one section can be a ${type}`);
+		}
+	}
+	const ids = resolveSections(template, types).flatMap((entry) =>
+		entry.sections.map((section) => section.id),
+	);
+	for (const id of new Set(ids.filter((id, index) => ids.indexOf(id) !== index))) {
+		issues.push(`two sections would both be "${id}": give them different titles`);
+	}
+	if (!used.includes("goal")) issues.push("a template needs a goal section");
+	return issues;
+}
 
 /** What a `template` contribution implements, in main: its template, validated by kilo.workbooks. */
 export interface WorkbookTemplateSource {

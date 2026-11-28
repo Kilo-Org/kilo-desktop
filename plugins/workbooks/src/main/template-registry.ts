@@ -4,11 +4,14 @@ import {
 	WorkbookTemplatePoint,
 	WorkbookTemplates,
 	FIRST_MOVE,
+	templateIssues,
 	templateQuestions,
 	workbookTemplateSchema,
+	type SectionTypeLookup,
 	type TemplateSummary,
 	type WorkbookTemplate,
 } from "../contracts";
+import type { SectionTypeRegistry } from "./section-type-registry";
 
 /** Templates from outside the extension point: the person's own, by source label. */
 export interface ExtraTemplate {
@@ -19,7 +22,9 @@ export interface ExtraTemplate {
 /**
  * Provides `kilo.workbooks/templates` from every `template` contribution
  * implemented in main, then any `extra` ones (the person's own templates),
- * re-read whenever the point changes or `reread` is called.
+ * re-read whenever the point or the section types on offer change, or
+ * `reread` is called. A template that uses a section type nobody offers is
+ * skipped until one is.
  *
  * Each contribution's template is validated on every read; one that fails, or
  * that repeats an id a higher-priority contribution already offers, is left
@@ -29,6 +34,7 @@ export interface ExtraTemplate {
  */
 export function provideTemplates(
 	sdk: PluginSdk,
+	sectionTypes: SectionTypeRegistry,
 	extra: () => readonly ExtraTemplate[] = () => [],
 ): {
 	find(id: string): WorkbookTemplate | undefined;
@@ -74,7 +80,7 @@ export function provideTemplates(
 		const pointCount = sdk.extensions.list(WorkbookTemplatePoint).length;
 		const fromPoint = new Set<string>();
 		for (const [index, contribution] of sources.entries()) {
-			const outcome = readTemplate(contribution.read);
+			const outcome = readTemplate(contribution.read, sectionTypes.facts);
 			if ("problem" in outcome) {
 				if (outcome.problem) report(contribution.key, outcome.problem);
 				continue;
@@ -91,7 +97,7 @@ export function provideTemplates(
 				name: template.name,
 				description: template.description,
 				...(template.icon ? { icon: template.icon } : {}),
-				fields: templateQuestions(template),
+				fields: templateQuestions(template, sectionTypes.facts),
 				firstMove: FIRST_MOVE,
 				source: contribution.key,
 			});
@@ -103,6 +109,7 @@ export function provideTemplates(
 
 	reread();
 	sdk.extensions.subscribe(WorkbookTemplatePoint, reread);
+	sectionTypes.subscribe(reread);
 	return {
 		find: (id) => templates.get(id),
 		all: () => [...templates.values()],
@@ -113,12 +120,16 @@ export function provideTemplates(
 
 function readTemplate(
 	read: (() => unknown) | undefined,
+	types: SectionTypeLookup,
 ): { template: WorkbookTemplate } | { problem: string | null } {
 	// Implemented in another process (never, for a main point) or not yet bound.
 	if (!read) return { problem: null };
 	try {
 		const result = workbookTemplateSchema.safeParse(read());
-		if (result.success) return { template: result.data };
+		if (result.success) {
+			const issues = templateIssues(result.data, types);
+			return issues.length > 0 ? { problem: issues.join("; ") } : { template: result.data };
+		}
 		return {
 			problem: result.error.issues
 				.map((issue) => (issue.path.length ? `${issue.path.join(".")}: ` : "") + issue.message)

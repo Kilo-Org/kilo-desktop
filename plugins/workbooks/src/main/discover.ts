@@ -3,6 +3,7 @@ import {
 	resolveSections,
 	type Workbook,
 	type WorkbookSectionRef,
+	type SectionTypeLookup,
 	type WorkbookTemplate,
 } from "../contracts";
 import { GUIDE_TITLE, sectionRef } from "./create-workbook";
@@ -43,6 +44,7 @@ export function matchSections(
 	pages: readonly { page_id: string; title: string }[],
 	templates: readonly WorkbookTemplate[],
 	template: WorkbookTemplate | undefined,
+	types: SectionTypeLookup,
 ): { guidePageId?: string; sections: WorkbookSectionRef[] } {
 	const sources = template ? [template] : templates;
 	const pageByTitle = new Map<string, string>();
@@ -55,7 +57,7 @@ export function matchSections(
 	const sections: WorkbookSectionRef[] = [];
 	const taken = new Set<string>();
 	for (const source of sources) {
-		for (const { page, sections: pageSections } of resolveSections(source)) {
+		for (const { page, sections: pageSections } of resolveSections(source, types)) {
 			const pageId = page.home ? undefined : pageByTitle.get(normalized(page.title));
 			if (page.home ? !template : !pageId) continue;
 			for (const section of pageSections) {
@@ -73,6 +75,7 @@ export type DiscoveredWorkbook = Omit<Workbook, "lastUsedAt" | "usedIn">;
 
 export interface DiscoverDeps {
 	readonly templates: () => readonly WorkbookTemplate[];
+	readonly types: SectionTypeLookup;
 	/** What's already known of a workbook's pages, so they needn't be listed again. */
 	readonly known?: (projectId: string) => Pick<Workbook, "guidePageId" | "sections"> | undefined;
 }
@@ -117,6 +120,7 @@ export async function discoverWorkbooks(
 					}),
 					templates,
 					template,
+					deps.types,
 				);
 			return {
 				id: project.project_id,

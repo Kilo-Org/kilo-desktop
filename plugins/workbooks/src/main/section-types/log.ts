@@ -1,6 +1,11 @@
-import type { WorkbookSectionRef } from "../../contracts";
-import { findItem, oneLine, prependItem, sentence } from "./helpers";
-import type { Insert, InsertContext } from "./types";
+import {
+	findItem,
+	oneLine,
+	sentence,
+	type SectionTypeContext,
+	type SectionTypeDefinition,
+	type WorkbookSectionRef,
+} from "../../contracts";
 
 /**
  * A log: dated entries, newest first, never rewritten:
@@ -29,55 +34,58 @@ function supersededLine(line: string, by: string, date: string): string {
 }
 
 /** Adds an already-written entry at the top of a log. */
-export function addToLog(
-	context: InsertContext,
+export async function addToLog(
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	line: string,
 ): Promise<string> {
-	return context.change(section, (scope, edits) => {
-		prependItem(scope, edits, line);
-		return line;
-	});
+	await context.edit(section, (_lines, edits) => edits.prepend(line));
+	return line;
 }
 
 export function supersedeEntry(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	item: string,
 	by: string,
 ): Promise<string> {
-	return context.change(section, (scope, edits) => {
-		const line = findItem(scope, item, section, (text) => !SUPERSEDED_LINE.test(text));
+	return context.edit(section, (lines, edits) => {
+		const line = findItem(lines, item, section, (text) => !SUPERSEDED_LINE.test(text));
 		const text = supersededLine(line.text, by, context.today());
 		edits.set(line, text);
 		return text;
 	});
 }
 
-export const log: Insert = {
+export const log: SectionTypeDefinition = {
+	single: false,
+	title: "Log",
+	collects: "Things worth keeping, as they come up.",
+	usage:
+		"Add an entry the moment something worth keeping comes up (add_item: text = a headline, detail = the rest). Never edit or delete an entry: supersede a wrong one (supersede), and record a reversal as a new entry that supersedes the old (add_item with supersedes).",
+
 	async add(context, section, item) {
-		const written = await context.change(section, (scope, edits) => {
-			const line = entryLine(
-				{
-					headline: item.text,
-					...(item.detail ? { body: item.detail } : {}),
-					...(item.who ? { who: item.who } : {}),
-				},
-				context.today(),
-			);
+		const line = entryLine(
+			{
+				headline: item.text,
+				...(item.detail ? { body: item.detail } : {}),
+				...(item.who ? { who: item.who } : {}),
+			},
+			context.today(),
+		);
+		await context.edit(section, (lines, edits) => {
 			if (item.supersedes) {
 				const old = findItem(
-					scope,
+					lines,
 					item.supersedes,
 					section,
 					(text) => !SUPERSEDED_LINE.test(text),
 				);
 				edits.set(old, supersededLine(old.text, item.text, context.today()));
 			}
-			prependItem(scope, edits, line);
-			return line;
+			edits.prepend(line);
 		});
-		return { written };
+		return { written: line };
 	},
 
 	supersede: supersedeEntry,

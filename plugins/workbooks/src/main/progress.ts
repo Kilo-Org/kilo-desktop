@@ -1,8 +1,8 @@
 import type { WorkbookProgress } from "../contracts";
-import { stepParts } from "./inserts/plan";
-import { openQuestions } from "./inserts/questions";
+import { stepParts } from "./section-types/plan";
+import { openQuestions } from "./section-types/questions";
 
-export { handoffEntries } from "./inserts/handoff";
+export { handoffEntries } from "./section-types/handoff";
 export { openQuestions };
 
 /** Plan steps from the plan section's markdown, with the status their suffix and checkbox say. */

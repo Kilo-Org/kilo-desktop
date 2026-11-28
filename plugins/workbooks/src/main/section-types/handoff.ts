@@ -1,7 +1,14 @@
-import type { WorkbookSectionRef } from "../../contracts";
-import { NOTE_LINE, oneLine, replaceBodyEdits, sentence } from "./helpers";
+import { z } from "zod";
+
+import {
+	NOTE_LINE,
+	oneLine,
+	sentence,
+	type SectionTypeContext,
+	type SectionTypeDefinition,
+	type WorkbookSectionRef,
+} from "../../contracts";
 import { addToLog } from "./log";
-import type { Insert, InsertContext } from "./types";
 
 /**
  * Where we left off: one dated entry, `- **Headline.** Body. (date, who)`,
@@ -12,7 +19,7 @@ import type { Insert, InsertContext } from "./types";
 export interface Handoff {
 	readonly headline: string;
 	readonly body: string;
-	readonly who?: string;
+	readonly who?: string | undefined;
 }
 
 function handoffLine(handoff: Handoff, date: string): string {
@@ -32,27 +39,39 @@ export function handoffEntries(markdown: string): string[] {
 
 /** Replaces the entry (keeping its note) and adds the same entry to the change log. */
 export async function handOff(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	handoff: Handoff,
 ): Promise<{ written: string; history?: string }> {
 	const written = handoffLine(handoff, context.today());
 	const history = context.workbook.sections.find((candidate) => candidate.type === "change-log");
 	if (history) await addToLog(context, history, written);
-	await context.rewrite(section, (blocks) => ({
-		operations: replaceBodyEdits(blocks, section.heading, written),
-		result: undefined,
-	}));
+	await context.replaceBody(section, written);
 	return { written, ...(history ? { history: history.id } : {}) };
 }
 
-export const handoff: Insert = {
+const USE = "Use hand_off for Where we left off.";
+
+export const handoff: SectionTypeDefinition = {
+	single: true,
+	title: "Where we left off",
+	collects:
+		"The latest handoff only: what was just done, what's next, any (you) tasks, and anything a fresh chat must know.",
+	usage:
+		"Before stopping, or when the context is running low, hand off (hand_off). It replaces the latest entry; every entry is also kept in the change log, when the workbook has one.",
 	starter: () => "- Nothing yet.",
-	refusals: {
-		add: "Use hand_off for Where we left off.",
-		remove: "Use hand_off for Where we left off.",
-		setStatus: "Use hand_off for Where we left off.",
-		supersede: "Use hand_off for Where we left off.",
-		write: "Use hand_off for Where we left off.",
+	actions: {
+		hand_off: {
+			description:
+				"Replace the latest handoff (title = a short headline, text = where the work stands, who = who is handing off); it is also kept in the change log.",
+			input: z.object({
+				title: z.string().min(1),
+				text: z.string().min(1),
+				who: z.string().optional(),
+			}),
+			run: (context, section, input: { title: string; text: string; who?: string }) =>
+				handOff(context, section, { headline: input.title, body: input.text, who: input.who }),
+		},
 	},
+	refusals: { add: USE, remove: USE, setStatus: USE, supersede: USE, write: USE },
 };

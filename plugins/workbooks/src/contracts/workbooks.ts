@@ -2,8 +2,6 @@ import { z } from "zod";
 
 import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
-import { SECTION_TYPES } from "./templates";
-
 /**
  * Where a workbook's content lives. For now every workbook is a Pages Project
  * reached through one of Kilo's MCP servers (the user's `pages` entry); a
@@ -24,7 +22,8 @@ export type WorkbookBackend = z.output<typeof workbookBackendSchema>;
  */
 export const workbookSectionRefSchema = z.object({
 	id: z.string().min(1),
-	type: z.enum(SECTION_TYPES),
+	/** Its section type's id. */
+	type: z.string().min(1),
 	title: z.string().min(1).optional(),
 	/** What belongs in it, with its section type's default filled in. */
 	collects: z.string().min(1).optional(),

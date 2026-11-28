@@ -121,9 +121,7 @@ describe("the user's own workbook templates", () => {
 			yours: true,
 		});
 		expect(list.templates).toContainEqual(expect.objectContaining({ id: "coding", yours: false }));
-		expect((list.sectionTypes as { type: string }[]).map((entry) => entry.type)).toContain(
-			"output",
-		);
+		expect((list.sectionTypes as { id: string }[]).map((entry) => entry.id)).toContain("output");
 		await expect(call("read_templates", { id: "recipe" })).resolves.toMatchObject({
 			template: { id: "recipe" },
 			guide: "Taste as you go.\n",

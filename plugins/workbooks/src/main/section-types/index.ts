@@ -1,4 +1,4 @@
-import type { SectionType } from "../../contracts";
+import type { SectionTypeDefinition } from "../../contracts";
 import { activity } from "./activity";
 import { changeLog } from "./change-log";
 import { goal } from "./goal";
@@ -9,14 +9,13 @@ import { output } from "./output";
 import { plan } from "./plan";
 import { questions } from "./questions";
 import { todo } from "./todo";
-import type { Insert } from "./types";
 
 /**
- * Each insert's implementation, by its id in the catalogue
- * (contracts/templates.ts `SECTION_CATALOGUE`). One file per insert, so each can change
- * on its own.
+ * The section types kilo.workbooks ships, by `section-type` contribution id
+ * (which is each type's id). One file per type, so each can change on its
+ * own; they use only what kilo.workbooks' contracts offer any contributor.
  */
-export const INSERT_IMPLEMENTATIONS: Readonly<Record<SectionType, Insert>> = {
+export const BUILT_IN_SECTION_TYPES: Readonly<Record<string, SectionTypeDefinition>> = {
 	goal,
 	plan,
 	handoff,
@@ -28,12 +27,3 @@ export const INSERT_IMPLEMENTATIONS: Readonly<Record<SectionType, Insert>> = {
 	notes,
 	output,
 };
-
-export type {
-	Insert,
-	InsertContext,
-	NewItem,
-	Renumbering,
-	StatusChange,
-	StepStatus,
-} from "./types";

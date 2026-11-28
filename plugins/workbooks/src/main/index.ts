@@ -8,10 +8,12 @@ import {
 import { KiloServer } from "@kilo-desktop/plugin-core/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { WorkbookTemplatePoint, type WorkbookBackend } from "../contracts";
+import { SectionTypePoint, WorkbookTemplatePoint, type WorkbookBackend } from "../contracts";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
 import { kiloPagesCaller } from "./kilo-pages";
 import type { PagesToolCaller } from "./pages-tools";
+import { BUILT_IN_SECTION_TYPES } from "./section-types";
+import { provideSectionTypes } from "./section-type-registry";
 import { provideTemplates } from "./template-registry";
 import { implementTemplateTools } from "./template-tools";
 import { UserTemplates } from "./user-templates";
@@ -35,6 +37,10 @@ export interface WorkbooksMainOptions {
 export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): PluginEntry {
 	return definePlugin({
 		async activate(sdk) {
+			for (const [id, definition] of Object.entries(BUILT_IN_SECTION_TYPES)) {
+				sdk.extensions.implement(SectionTypePoint, id, definition);
+			}
+			const sectionTypes = provideSectionTypes(sdk);
 			for (const [id, read] of Object.entries(BUILT_IN_TEMPLATES)) {
 				sdk.extensions.implement(WorkbookTemplatePoint, id, { read });
 			}
@@ -43,7 +49,7 @@ export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): Pl
 			await user.load().catch((error: unknown) => {
 				sdk.logger.warn(`Couldn't read your workbook templates: ${String(error)}`);
 			});
-			const templates = provideTemplates(sdk, () =>
+			const templates = provideTemplates(sdk, sectionTypes, () =>
 				user.list().map((entry) => ({
 					source: `your templates/${entry.folder}`,
 					read: () => {
@@ -52,16 +58,20 @@ export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): Pl
 					},
 				})),
 			);
-			implementTemplateTools(sdk, { user, ...templates });
+			implementTemplateTools(sdk, { user, sectionTypes, ...templates });
 			const pages = options.pages ?? kiloPages(sdk);
 			const workbooks = provideWorkbooks(sdk, {
 				template: templates.find,
 				templates: templates.all,
 				workspace: (id) => workspaceOf(sdk, id),
+				sectionTypes: sectionTypes.find,
 				pages,
 			});
 			provideSessionWorkbooks(sdk, workbooks);
-			implementWorkbookTools(sdk, { pages: (workbook) => pages(workbook.backend) });
+			implementWorkbookTools(sdk, {
+				pages: (workbook) => pages(workbook.backend),
+				sectionTypes: sectionTypes.find,
+			});
 			implementWorkbookChatConfig(sdk, workbooks);
 		},
 	});

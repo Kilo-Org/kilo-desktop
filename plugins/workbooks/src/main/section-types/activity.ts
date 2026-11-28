@@ -1,6 +1,12 @@
-import type { WorkbookSectionRef } from "../../contracts";
-import { ITEM_LINE, appendItem, oneLine } from "./helpers";
-import type { Insert, InsertContext } from "./types";
+import { z } from "zod";
+
+import {
+	ITEM_LINE,
+	oneLine,
+	type SectionTypeContext,
+	type SectionTypeDefinition,
+	type WorkbookSectionRef,
+} from "../../contracts";
 
 /**
  * Who is working in the workbook right now, and on what: one line per agent,
@@ -40,15 +46,15 @@ export function activeAgents(markdown: string): { who: string; doing: string }[]
  * left.
  */
 export function setActivity(
-	context: InsertContext,
+	context: SectionTypeContext,
 	section: WorkbookSectionRef,
 	who: string,
 	doing: string | undefined,
 ): Promise<string | undefined> {
 	const name = oneLine(who).replaceAll("*", "");
 	const now = context.now();
-	return context.change(section, (scope, edits) => {
-		const items = scope.lines.filter((line) => ITEM_LINE.test(line.text));
+	return context.edit(section, (lines, edits) => {
+		const items = lines.filter((line) => ITEM_LINE.test(line.text));
 		const mine = items.find((line) => ENTRY.exec(line.text)?.[1] === name);
 		const stale = items.filter((line) => {
 			if (line === mine || line.text === PLACEHOLDER) return false;
@@ -63,7 +69,7 @@ export function setActivity(
 			: undefined;
 		if (mine && text) edits.set(mine, text);
 		else if (mine) edits.remove(mine);
-		else if (text) appendItem(scope, edits, text);
+		else if (text) edits.append(text);
 		const placeholder = items.find((line) => line.text === PLACEHOLDER);
 		const dropped = new Set(stale);
 		const others = items.filter(
@@ -72,19 +78,29 @@ export function setActivity(
 		if (text && placeholder) edits.remove(placeholder);
 		if (!text && others.length === 0 && !placeholder) {
 			if (mine) edits.set(mine, PLACEHOLDER);
-			else appendItem(scope, edits, PLACEHOLDER);
+			else edits.append(PLACEHOLDER);
 		}
 		return text;
 	});
 }
 
-export const activity: Insert = {
+const KEPT = "Activity is kept up to date for you; say what you're doing with set_activity.";
+
+export const activity: SectionTypeDefinition = {
+	single: true,
+	title: "Who's working on what",
+	collects:
+		"Who is working in this workbook right now, and on what. Kept up to date by the workbook tools.",
+	usage:
+		"Kept up to date for you: starting a plan step puts you here, finishing it or handing off takes you off. When you're working on something that isn't a plan step, say what with set_activity, and clear it when you stop.",
 	starter: () => PLACEHOLDER,
-	refusals: {
-		add: "Activity is kept up to date for you; say what you're doing with set_activity.",
-		remove: "Activity is kept up to date for you; clear yours with set_activity.",
-		setStatus: "Activity is kept up to date for you; say what you're doing with set_activity.",
-		supersede: "Activity is kept up to date for you.",
-		write: "Activity is kept up to date for you; say what you're doing with set_activity.",
+	actions: {
+		set_activity: {
+			description: "Set what `who` is doing (doing), or leave doing out to take them off the list.",
+			input: z.object({ who: z.string().min(1), doing: z.string().optional() }),
+			run: (context, section, input: { who: string; doing?: string }) =>
+				setActivity(context, section, input.who, input.doing),
+		},
 	},
+	refusals: { add: KEPT, remove: KEPT, setStatus: KEPT, supersede: KEPT, write: KEPT },
 };

@@ -1,24 +1,20 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { SectionType, Workbook, WorkbookSectionRef } from "../contracts";
 import {
-	INSERT_IMPLEMENTATIONS,
-	type Insert,
-	type InsertContext,
+	sectionName,
 	type NewItem,
-	type Renumbering,
+	type SectionTypeContext,
+	type SectionTypeDefinition,
+	type SectionVerb,
 	type StatusChange,
-} from "./inserts";
-import { LineEdits, sectionName } from "./inserts/helpers";
-import { setActivity } from "./inserts/activity";
-import { handOff, type Handoff } from "./inserts/handoff";
-import { addTask, editStep, moveStep, setTaskDone } from "./inserts/plan";
-import { answerQuestion } from "./inserts/questions";
+	type Workbook,
+	type WorkbookSectionRef,
+} from "../contracts";
 import type { PagesToolCaller } from "./pages-tools";
 import { sectionScope, type Block } from "./section-scope";
+import { LineEdits, replaceBodyEdits, sectionEdits } from "./section-edits";
 
-export { replaceBodyEdits } from "./inserts/helpers";
-export type { NewItem, Renumbering, StatusChange } from "./inserts";
+export { replaceBodyEdits } from "./section-edits";
 
 /** Where to read or write: a page (the Brief without one), and a section's heading on it. */
 type Target = Pick<WorkbookSectionRef, "pageId" | "heading">;
@@ -28,23 +24,24 @@ interface ReadPage {
 	readonly blocks: readonly Block[];
 }
 
-type Action = "add" | "setStatus" | "remove" | "supersede" | "write";
-
 /**
- * Writes workbook items into Pages through each section's insert
- * (inserts/), which owns its format and rules; this class owns only Pages:
- * finding sections, reading pages, sending edits. A section is the part of a
+ * Writes a workbook's sections through their section types
+ * (`kilo.workbooks/section-type`), which own every format and rule; this
+ * class owns only Pages: finding sections, reading pages, sending edits, and
+ * the `SectionTypeContext` every type is given. A section is the part of a
  * page under its heading, or a whole page; a missing heading is added at the
- * end of the page. Every write reads the page first and sends its revision;
- * a write that loses a race with another writer is retried once on the fresh
- * page, which is enough for concurrent agents adding items.
+ * end of the page. Every write reads the page first and sends its revision; a
+ * write that loses a race with another writer is retried once on the fresh
+ * page, which is enough for concurrent agents adding items. A section whose
+ * type nobody offers can be read but not written.
  */
 export class WorkbookWriter {
-	readonly #context: InsertContext;
+	readonly #context: SectionTypeContext;
 
 	constructor(
 		private readonly pages: PagesToolCaller,
 		private readonly workbook: Workbook,
+		private readonly types: (type: string) => SectionTypeDefinition | undefined,
 		today: () => string,
 		now: () => Date = () => new Date(),
 	) {
@@ -53,12 +50,13 @@ export class WorkbookWriter {
 			today,
 			now,
 			section: (id) => this.section(id),
-			change: (section, change) =>
+			read: (section) => this.read(section),
+			edit: (section, change) =>
 				this.#withRetry(async () => {
 					const page = await this.#read(section);
 					const scope = sectionScope(page.blocks, section.heading);
 					const edits = new LineEdits();
-					const result = change(scope, edits);
+					const result = change(scope.lines, sectionEdits(scope, edits));
 					const operations =
 						scope.found || !section.heading
 							? edits.operations()
@@ -71,12 +69,14 @@ export class WorkbookWriter {
 					await this.#edit(section, page.revision, operations);
 					return result;
 				}),
-			rewrite: (section, compose) =>
+			replaceBody: (section, markdown) =>
 				this.#withRetry(async () => {
 					const page = await this.#read(section);
-					const { operations, result } = compose(page.blocks);
-					await this.#edit(section, page.revision, operations);
-					return result;
+					await this.#edit(
+						section,
+						page.revision,
+						replaceBodyEdits(page.blocks, section.heading, markdown),
+					);
 				}),
 		};
 	}
@@ -90,8 +90,28 @@ export class WorkbookWriter {
 		return section;
 	}
 
-	/** The workbook's one section of a one-per-workbook insert (goal, plan, handoff). */
-	only(type: SectionType): WorkbookSectionRef {
+	workbookSections(): readonly WorkbookSectionRef[] {
+		return this.workbook.sections;
+	}
+
+	/** Of the sections of `type`, the one holding an item matching `words` (the first, when there's one). */
+	async holding(type: string, words: string): Promise<WorkbookSectionRef> {
+		const candidates = this.workbook.sections.filter((section) => section.type === type);
+		if (candidates.length === 0)
+			throw new KernelError("NOT_FOUND", `This workbook has no ${type} section.`);
+		if (candidates.length === 1) return candidates[0]!;
+		const wanted = words.toLowerCase();
+		const texts = await Promise.all(candidates.map((section) => this.read(section)));
+		const index = texts.findIndex((text) =>
+			text.split("\n").some((line) => /^- /.test(line) && line.toLowerCase().includes(wanted)),
+		);
+		if (index === -1)
+			throw new KernelError("NOT_FOUND", `Nothing in a ${type} section matches "${words}".`);
+		return candidates[index]!;
+	}
+
+	/** The workbook's one section of a type (the plan, the handoff…). */
+	only(type: string): WorkbookSectionRef {
 		const section = this.workbook.sections.find((candidate) => candidate.type === type);
 		if (!section) throw new KernelError("NOT_FOUND", `This workbook has no ${type} section.`);
 		return section;
@@ -111,83 +131,79 @@ export class WorkbookWriter {
 			.trim();
 	}
 
-	/** Adds an item in the section's insert's format. Returns what was written, and a new step's number. */
-	addItem(sectionId: string, item: NewItem): Promise<{ written: string; step?: number }> {
+	addItem(sectionId: string, item: NewItem) {
 		const section = this.section(sectionId);
-		return this.#insert(section, "add").add!(this.#context, section, item);
+		return this.#verb(section, "add").add!(this.#context, section, item);
 	}
 
-	/** Sets a plan step's status, or ticks a todo item. Returns its line. */
 	setStatus(sectionId: string, item: string, change: StatusChange): Promise<string> {
 		const section = this.section(sectionId);
-		return this.#insert(section, "setStatus").setStatus!(this.#context, section, item, change);
+		return this.#verb(section, "setStatus").setStatus!(this.#context, section, item, change);
 	}
 
-	removeItem(
-		sectionId: string,
-		item: string,
-	): Promise<{ removed: string; renumbered?: Renumbering }> {
+	removeItem(sectionId: string, item: string) {
 		const section = this.section(sectionId);
-		return this.#insert(section, "remove").remove!(this.#context, section, item);
+		return this.#verb(section, "remove").remove!(this.#context, section, item);
 	}
 
 	supersede(sectionId: string, item: string, by: string): Promise<string> {
 		const section = this.section(sectionId);
-		return this.#insert(section, "supersede").supersede!(this.#context, section, item, by);
+		return this.#verb(section, "supersede").supersede!(this.#context, section, item, by);
 	}
 
 	writeSection(
 		sectionId: string,
 		markdown: string,
 		options: { userConfirmed?: boolean; part?: string } = {},
-	): Promise<{ history?: string }> {
+	) {
 		const section = this.section(sectionId);
-		return this.#insert(section, "write").write!(this.#context, section, markdown, options);
+		return this.#verb(section, "write").write!(this.#context, section, markdown, options);
 	}
 
-	addTask(step: string, text: string): Promise<string> {
-		return addTask(this.#context, this.only("plan"), step, text);
+	/** Runs a section type's own action (`actions`) on a section, validating its input. */
+	async action(section: WorkbookSectionRef, name: string, input: unknown): Promise<unknown> {
+		const definition = this.#type(section);
+		const action = definition.actions?.[name];
+		if (!action) {
+			const names = Object.keys(definition.actions ?? {});
+			throw new KernelError(
+				"NOT_FOUND",
+				`${sectionName(section)} (${section.type}) has no "${name}" action${
+					names.length ? ` (it has: ${names.join(", ")})` : ""
+				}.`,
+			);
+		}
+		const parsed = action.input.safeParse(input);
+		if (!parsed.success) {
+			throw new KernelError(
+				"VALIDATION",
+				`"${name}" input: ${parsed.error.issues
+					.map((issue) => (issue.path.length ? `${issue.path.join(".")}: ` : "") + issue.message)
+					.join("; ")}`,
+			);
+		}
+		return action.run(this.#context, section, parsed.data as never);
 	}
 
-	setTaskDone(step: string, task: string, done: boolean): Promise<string> {
-		return setTaskDone(this.#context, this.only("plan"), step, task, done);
+	/** The section's type definition; refuses a section whose type nobody offers. */
+	#type(section: WorkbookSectionRef): SectionTypeDefinition {
+		const definition = this.types(section.type);
+		if (!definition) {
+			throw new KernelError(
+				"UNAVAILABLE",
+				`${sectionName(section)} is a "${section.type}" section, and that section type isn't installed.`,
+			);
+		}
+		return definition;
 	}
 
-	editStep(step: string, change: { title?: string; intent?: string }): Promise<string> {
-		return editStep(this.#context, this.only("plan"), step, change);
-	}
-
-	moveStep(step: string, place: { before?: string; after?: string }): Promise<Renumbering> {
-		return moveStep(this.#context, this.only("plan"), step, place);
-	}
-
-	answerQuestion(
-		question: string,
-		answer: { recordIn?: string; entry?: Omit<NewItem, "supersedes" | "tasks"> },
-	): Promise<{ removed: string; recorded?: string }> {
-		return answerQuestion(this.#context, question, answer, (section) => this.#read(section));
-	}
-
-	handOff(entry: Handoff): Promise<{ written: string; history?: string }> {
-		return handOff(this.#context, this.only("handoff"), entry);
-	}
-
-	/**
-	 * Sets what `who` is doing in the activity section, or with no `doing`
-	 * takes them off it; does nothing in a workbook without one.
-	 */
-	async setActivity(who: string, doing: string | undefined): Promise<string | undefined> {
-		const section = this.workbook.sections.find((candidate) => candidate.type === "activity");
-		return section ? setActivity(this.#context, section, who, doing) : undefined;
-	}
-
-	/** The section's insert, when it supports `action`; otherwise says why not. */
-	#insert(section: WorkbookSectionRef, action: Action): Insert {
-		const insert = INSERT_IMPLEMENTATIONS[section.type];
-		if (insert[action]) return insert;
+	/** The section's type, when it supports `verb`; otherwise says why not. */
+	#verb(section: WorkbookSectionRef, verb: SectionVerb): SectionTypeDefinition {
+		const definition = this.#type(section);
+		if (definition[verb]) return definition;
 		throw new KernelError(
 			"VALIDATION",
-			insert.refusals?.[action] ?? `${sectionName(section)} (${section.type}) can't do that.`,
+			definition.refusals?.[verb] ?? `${sectionName(section)} (${section.type}) can't do that.`,
 		);
 	}
 
